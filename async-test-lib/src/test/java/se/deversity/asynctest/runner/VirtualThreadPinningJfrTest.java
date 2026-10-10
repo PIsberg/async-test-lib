@@ -14,8 +14,6 @@ import java.io.InputStream;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -33,9 +31,14 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  *
  * <p>The pinning fixture blocks inside a class initializer, the one cause that pins on every JDK
  * this project builds on: a 2026-10-10 probe saw the event for it on 21, 24 and 26, where a
- * {@code synchronized} block pinned on 21 only (JEP 491). Each run initializes a fresh copy of the
- * class in its own loader, so a rerun in the same JVM (PIT, a repeated test) pins again instead of
- * finding the class already initialized.
+ * {@code synchronized} block pinned on 21 only (JEP 491). Each body execution initializes a fresh
+ * copy of the class in its own loader, so the same initializer pins again in every round.
+ *
+ * <p>A site is reported only when it pinned in at least two rounds. The first CI run of this feed
+ * reported hundreds of pins on the corpus's correct bodies, nearly all a few milliseconds of
+ * workers contending on {@code ClassLoader.loadClass} or a library's first use (Netty, Jackson,
+ * our own detectors' lazy state): real pins, but warm-up, which a class can only do once per JVM.
+ * A pin that recurs round after round is the code; that is the line the fixtures here draw.
  *
  * <p>Every test checks that its fixture body ran to the end and that each initializer it needed
  * finished. A body that throws produces no pin and no report, and the silent tests would then
@@ -47,7 +50,7 @@ class VirtualThreadPinningJfrTest {
     private static final String DETECTOR = "VirtualThreadPinningDetector";
     private static final Map<String, String> REPORTS = new ConcurrentHashMap<>();
 
-    /** Fixture bodies that ran to their last statement. */
+    /** Fixture body executions that ran to their last statement. */
     static final AtomicInteger COMPLETED = new AtomicInteger();
     /** Fresh copies of {@link BlockingInitializer} that finished initializing. */
     static final AtomicInteger INITIALIZED = new AtomicInteger();
@@ -72,9 +75,9 @@ class VirtualThreadPinningJfrTest {
         }
     }
 
-    /** One worker initializes a fresh copy of {@link BlockingInitializer}. */
-    public static class PinsInClassInitializer {
-        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = true,
+    /** Each round's worker initializes a fresh copy of {@link BlockingInitializer}. */
+    public static class PinsInEveryRound {
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = true,
                    includes = DetectorType.VIRTUAL_THREAD_PINNING)
         void body() {
             initializeFreshCopy(BlockingInitializer.class);
@@ -82,9 +85,25 @@ class VirtualThreadPinningJfrTest {
         }
     }
 
+    /** The same pin in round one only: the shape of class-loading warm-up. */
+    public static class PinsInFirstRoundOnly {
+        static final AtomicInteger EXECUTIONS = new AtomicInteger();
+
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = true,
+                   includes = DetectorType.VIRTUAL_THREAD_PINNING)
+        void body() throws InterruptedException {
+            if (EXECUTIONS.getAndIncrement() == 0) {
+                initializeFreshCopy(BlockingInitializer.class);
+            } else {
+                Thread.sleep(50);
+            }
+            COMPLETED.incrementAndGet();
+        }
+    }
+
     /** The same block outside any initializer: a virtual thread unmounts and nothing pins. */
     public static class BlocksWithoutPinning {
-        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = true,
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = true,
                    includes = DetectorType.VIRTUAL_THREAD_PINNING)
         void body() throws InterruptedException {
             Thread.sleep(50);
@@ -96,7 +115,7 @@ class VirtualThreadPinningJfrTest {
     public static class BlocksInsideSynchronized {
         private static final Object LOCK = new Object();
 
-        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = true,
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = true,
                    includes = DetectorType.VIRTUAL_THREAD_PINNING)
         void body() throws InterruptedException {
             synchronized (LOCK) {
@@ -106,50 +125,59 @@ class VirtualThreadPinningJfrTest {
         }
     }
 
-    /** Waits while a thread that is not one of the run's workers pins. */
-    public static class ForeignThreadPins {
-        static volatile CountDownLatch go = new CountDownLatch(1);
-        static volatile CountDownLatch pinned = new CountDownLatch(1);
-
-        @AsyncTest(threads = 1, invocations = 1, useVirtualThreads = true,
+    /** In every round, a thread the body starts (not a worker) pins and the body joins it. */
+    public static class BodyStartedThreadPins {
+        @AsyncTest(threads = 1, invocations = 2, useVirtualThreads = true,
                    includes = DetectorType.VIRTUAL_THREAD_PINNING)
         void body() throws InterruptedException {
-            go.countDown();
-            if (pinned.await(10, TimeUnit.SECONDS)) {
-                COMPLETED.incrementAndGet();
-            }
+            Thread.ofVirtual().start(() -> initializeFreshCopy(BlockingInitializer.class)).join();
+            COMPLETED.incrementAndGet();
         }
     }
 
     @Test
-    @DisplayName("a worker blocking in a class initializer is reported with no recording call")
-    void pinInAClassInitializerIsReported() {
+    @DisplayName("a worker blocking in a class initializer in every round is reported with no recording call")
+    void pinInEveryRoundIsReported() {
         int initialized = INITIALIZED.get();
-        run(PinsInClassInitializer.class);
-        assertEquals(initialized + 1, INITIALIZED.get(), "the initializer never ran, so nothing pinned");
+        run(PinsInEveryRound.class, 2);
+        assertEquals(initialized + 2, INITIALIZED.get(), "the initializers never ran, so nothing pinned");
         assertTrue(REPORTS.containsKey(DETECTOR),
-                "the worker blocked for 50 ms inside <clinit>, which pins a virtual thread on every "
-                        + "supported JDK and makes the JVM emit jdk.VirtualThreadPinned. The body "
+                "each round's worker blocked for 50 ms inside <clinit>, which pins a virtual thread on "
+                        + "every supported JDK and makes the JVM emit jdk.VirtualThreadPinned. The body "
                         + "recorded nothing, so the report has to come from that event. Reports: "
                         + REPORTS.keySet());
     }
 
     @Test
-    @DisplayName("one blocking call reported by several JFR events is one pinning event")
-    void oneBlockingCallIsOneEvent() {
-        run(PinsInClassInitializer.class);
+    @DisplayName("one blocking call reported by several JFR events is one pinning event per thread")
+    void oneBlockingCallIsOneEventPerThread() {
+        run(PinsInEveryRound.class, 2);
         String report = Objects.requireNonNull(REPORTS.get(DETECTOR), "no pinning report at all");
         // The JVM emits one event per park on the carrier; a timed sleep re-parks for its
-        // remainder, so a single sleep produced two events on 21, 24 and 26 in the probe.
-        assertTrue(report.contains(": 1 virtual thread pinning event(s)"),
+        // remainder, so a single sleep produced two events on 21, 24 and 26 in the probe. Two
+        // rounds, one fresh virtual worker each: two events, not four.
+        assertTrue(report.contains(": 2 virtual thread pinning event(s)"),
                 "one sleep on one thread at one site must be one event, not one per park. Report: "
                         + report);
     }
 
     @Test
+    @DisplayName("a site that pinned in one round only is warm-up, not a finding")
+    void pinInOneRoundOnlyIsSilent() {
+        int initialized = INITIALIZED.get();
+        PinsInFirstRoundOnly.EXECUTIONS.set(0);
+        run(PinsInFirstRoundOnly.class, 2);
+        assertEquals(initialized + 1, INITIALIZED.get(), "round one's initializer never ran");
+        assertFalse(REPORTS.containsKey(DETECTOR),
+                "the initializer pinned in round one and nothing pinned in round two: a class "
+                        + "loads and initializes once per JVM, so a pin that cannot recur is warm-up. "
+                        + "Report: " + REPORTS.get(DETECTOR));
+    }
+
+    @Test
     @DisplayName("the same block outside an initializer is silent, so the report above is the pin and not the sleep")
     void blockingWithoutPinningIsSilent() {
-        run(BlocksWithoutPinning.class);
+        run(BlocksWithoutPinning.class, 2);
         assertFalse(REPORTS.containsKey(DETECTOR),
                 "a virtual thread sleeping outside any initializer or monitor unmounts; nothing "
                         + "pinned. Report: " + REPORTS.get(DETECTOR));
@@ -158,7 +186,7 @@ class VirtualThreadPinningJfrTest {
     @Test
     @DisplayName("blocking inside synchronized is reported only on a JDK where it still pins")
     void synchronizedPinsOnlyBeforeJdk24() {
-        run(BlocksInsideSynchronized.class);
+        run(BlocksInsideSynchronized.class, 2);
         boolean pinsHere = Runtime.version().feature() < 24;
         assertEquals(pinsHere, REPORTS.containsKey(DETECTOR),
                 "JEP 491 stopped synchronized from pinning in JDK 24, and the JVM's own event is "
@@ -169,32 +197,19 @@ class VirtualThreadPinningJfrTest {
 
     @Test
     @DisplayName("a pin on a thread that is not one of the run's workers is not this run's finding")
-    void aForeignThreadsPinIsNotAttributed() throws InterruptedException {
-        ForeignThreadPins.go = new CountDownLatch(1);
-        ForeignThreadPins.pinned = new CountDownLatch(1);
+    void aNonWorkersPinIsNotAttributed() {
         int initialized = INITIALIZED.get();
-        Thread foreign = Thread.ofVirtual().name("not-a-worker").start(() -> {
-            try {
-                if (ForeignThreadPins.go.await(10, TimeUnit.SECONDS)) {
-                    initializeFreshCopy(BlockingInitializer.class);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } finally {
-                ForeignThreadPins.pinned.countDown();
-            }
-        });
-        run(ForeignThreadPins.class);
-        foreign.join(TimeUnit.SECONDS.toMillis(10));
-        assertEquals(initialized + 1, INITIALIZED.get(), "the foreign thread never ran the initializer");
+        run(BodyStartedThreadPins.class, 2);
+        assertEquals(initialized + 2, INITIALIZED.get(), "the body's threads never ran the initializer");
         // JFR delivers every event to every open stream, so a run in parallel with another
-        // test sees that test's pins; attributing them would report the wrong test.
+        // test sees that test's pins; attributing them would report the wrong test. A thread
+        // the body starts is indistinguishable from one, which is what #983 is about.
         assertFalse(REPORTS.containsKey(DETECTOR),
-                "the pin happened on a thread the run did not start. Report: " + REPORTS.get(DETECTOR));
+                "the pins happened on threads the runner did not start. Report: " + REPORTS.get(DETECTOR));
     }
 
-    /** Runs {@code fixture} and fails unless its one body execution ran to the end. */
-    private static void run(Class<?> fixture) {
+    /** Runs {@code fixture} and fails unless all {@code executions} of its body ran to the end. */
+    private static void run(Class<?> fixture, int executions) {
         REPORTS.clear();
         int completed = COMPLETED.get();
         AsyncTestListener capture = new AsyncTestListener() {
@@ -206,7 +221,7 @@ class VirtualThreadPinningJfrTest {
         try (AsyncTestListenerRegistry.Registration r = AsyncTestListenerRegistry.registerScoped(capture)) {
             EngineTestKit.engine("junit-jupiter").selectors(selectClass(fixture)).execute();
         }
-        assertEquals(completed + 1, COMPLETED.get(),
+        assertEquals(completed + executions, COMPLETED.get(),
                 fixture.getSimpleName() + "'s body did not run to the end, so its silence or its "
                         + "report says nothing about pinning");
     }

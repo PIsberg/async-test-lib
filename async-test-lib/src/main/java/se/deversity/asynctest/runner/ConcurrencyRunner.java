@@ -487,7 +487,7 @@ public class ConcurrencyRunner {
         // between and leave a JFR recording running for the life of the JVM. start() never
         // throws: without a usable JFR it returns null and the detector keeps its recorded feed.
         @Nullable JfrPinningStream pinningStream = (pinningTarget != null && workerThreadIds != null)
-                ? JfrPinningStream.start(pinningTarget, workerThreadIds::contains, testMethod.getName())
+                ? JfrPinningStream.start(pinningTarget, workerThreadIds, testMethod.getName())
                 : null;
         phase2Analysis.drainBeforeAnalysis(pinningStream);
 
@@ -527,6 +527,11 @@ public class ConcurrencyRunner {
                     phase1.atomicity.markInvocationStart();
                 }
                 phase2Context.markInvocationStart();
+                // Before this round's workers start: the stream reports only a site that pinned
+                // in two rounds, and the workers already started are the earlier rounds'.
+                if (pinningStream != null) {
+                    pinningStream.markRound();
+                }
                 // Before the workers exist, so every one of them sees this round's rendezvous.
                 phase2Context.openRendezvousForRound(actualThreads, remainingMs);
                 AsyncTestListenerRegistry.fireInvocationStarted(i, actualThreads);
@@ -687,6 +692,11 @@ public class ConcurrencyRunner {
                             + "hint=\"pin in the @AsyncTest workers themselves to have the pin "
                             + "reported, or read a clean pinning report as covering the workers only\"",
                         testMethod.getName(), unattributedPins);
+                }
+                // DEBUG, not INFO: nearly every run has some, from class loading on first use.
+                if (pinningStream.singleRoundSites() > 0) {
+                    log.debug("runner.pinning.single-round test={} sites={}",
+                        testMethod.getName(), pinningStream.singleRoundSites());
                 }
             }
 

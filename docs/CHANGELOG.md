@@ -17,7 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   measured duration. The event is the running JDK's verdict, so an observed pin is never marked
   obsolete: it fires for a `synchronized` block on JDK 21 and not on 24+ (JEP 491), and for a
   blocking class initializer or an FFM upcall on every JDK, which a 2026-10-10 probe confirmed on
-  21, 24 and 26. One blocking call that parks twice is one event. Pins on other threads, a thread
+  21, 24 and 26. One blocking call that parks twice is one event. A call site is reported only when
+  it pinned in at least two rounds: the first CI run reported hundreds of 0-36 ms pins on the
+  corpus's correct bodies, workers contending on `ClassLoader.loadClass` and libraries' first use,
+  which happen once per JVM; they are counted at DEBUG in `runner.pinning.single-round`, and a run
+  of one round gets no observed finding. Pins on other threads, a thread
   the body started or a test running in parallel, are counted in the new per-test INFO event
   `runner.pinning.unattributed` and not reported. Cost when the detector is enabled: about 4 ms to
   start and 10-20 ms to stop per test, plus 230-535 ms once per JVM for JFR itself; without a

@@ -35,7 +35,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * events are delivered when the stream stops after the run, so they are in the run's report and
  * not in an {@link #analyzePinning()} the body calls itself. Pins on threads the body starts are
  * not attributed (they are counted in {@code runner.pinning.unattributed}); for those, and on a
- * JVM without JFR, {@link #recordPinningEvent} records a pin the caller describes.
+ * JVM without JFR, {@link #recordPinningEvent} records a pin the caller describes. A call site
+ * that pinned in one round only is not reported: class loading and a library's first use pin
+ * once per JVM, so such a pin is warm-up, and a run of one round gets no observed finding.
  *
  * <p>A recorded event is classified by cause and JDK version: one whose cause no longer pins on
  * the running JDK is kept in the report but annotated as obsolete, so tests written against JDK

@@ -402,7 +402,10 @@ no agent and no recording call.
 The pinning detector takes the JFR feed only for a run on virtual workers (`useVirtualThreads`,
 the default) and only for pins on those workers: JFR reports every virtual thread in the JVM, so a
 pin on a thread the body started, or in a test running in parallel, is counted in
-`runner.pinning.unattributed` and not reported. The event is the running JDK's own verdict, so it
+`runner.pinning.unattributed` and not reported. A call site is reported only when it pinned in at
+least two rounds: workers contending on `ClassLoader.loadClass` or a library's first use pin for a
+few milliseconds once per JVM, which is warm-up and not the code, so a run of one round gets no
+observed finding. The event is the running JDK's own verdict, so it
 fires for a blocking `synchronized` block up to JDK 23 and not from 24 (JEP 491), and for blocking
 inside a class initializer or under a native frame on every JDK. Without a usable JFR (a runtime
 image without `jdk.jfr`) the detector keeps its recording feed. The four:
