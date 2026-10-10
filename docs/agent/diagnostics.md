@@ -53,6 +53,16 @@ Read a clean report from any of these as "not observed" rather than "nothing the
 names the test that triggered it, and each carries a `hint=` field with the same advice as the
 table above.
 
+`runner.pinning.unattributed test=... events=<n>` is logged per test rather than per JVM, because
+it is about that test's body. `VirtualThreadPinningDetector` reads the JVM's own
+`jdk.VirtualThreadPinned` JFR event on a run with virtual workers, and JFR reports every virtual
+thread in the JVM: a pin on a thread the body started, or in a test running in parallel, cannot be
+attributed to this run and is counted here instead of reported. Pin in the `@AsyncTest` workers
+themselves to have the pin reported. A call site that pinned in one round only is not reported
+either (class loading on first use is the usual cause), and is counted at DEBUG in
+`runner.pinning.single-round test=... sites=<n>`. A JVM without a usable JFR logs
+`pinning.jfr.unavailable` once at DEBUG, and the detector keeps its recording feed.
+
 ### When a detector leaves a note
 
 Some detectors write notes that are not findings, such as `SynchronizedNonFinalDetector`'s

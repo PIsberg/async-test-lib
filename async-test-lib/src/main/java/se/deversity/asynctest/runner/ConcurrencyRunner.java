@@ -22,9 +22,11 @@ import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.GradedFindings;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
+import se.deversity.asynctest.diagnostics.JfrPinningStream;
 import se.deversity.asynctest.diagnostics.MemoryModelValidator;
 import se.deversity.asynctest.diagnostics.Phase1DetectorSet;
 import se.deversity.asynctest.diagnostics.TrustTier;
+import se.deversity.asynctest.diagnostics.VirtualThreadPinningDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadStressConfig;
 import se.deversity.asynctest.report.Baseline;
 import se.deversity.asynctest.telemetry.TelemetryBridge;
@@ -296,12 +298,17 @@ public class ConcurrencyRunner {
         // this point are still woven.
         AgentAutoAttach.attachIfRequested();
         AtomicityValidator telemetryTarget = phase2Context.sharedAtomicityValidator();
-        @Nullable Set<Long> workerThreadIds =
-                (telemetryTarget != null && TelemetryRegistry.isRunning())
-                        ? ConcurrentHashMap.newKeySet()
-                        : null;
+        boolean telemetryRunning = telemetryTarget != null && TelemetryRegistry.isRunning();
+        // The JVM's jdk.VirtualThreadPinned events are filtered by the same worker set, and
+        // only a virtual worker can pin, so platform workers leave the feed off.
+        @Nullable VirtualThreadPinningDetector pinningTarget = config.useVirtualThreads
+                ? phase2Context.sharedVirtualThreadPinningDetector()
+                : null;
+        @Nullable Set<Long> workerThreadIds = (telemetryRunning || pinningTarget != null)
+                ? ConcurrentHashMap.newKeySet()
+                : null;
         TelemetryBridge telemetryBridge = null;
-        if (telemetryTarget != null && workerThreadIds != null) {
+        if (telemetryRunning && telemetryTarget != null && workerThreadIds != null) {
             telemetryBridge = TelemetryBridge.activateWithFilter(telemetryTarget, workerThreadIds::contains);
         }
 
@@ -476,6 +483,14 @@ public class ConcurrencyRunner {
         // around it was memoized.)
         boolean timeoutAlreadyReported = false;
 
+        // Opened immediately before the try whose finally closes it, so nothing can throw in
+        // between and leave a JFR recording running for the life of the JVM. start() never
+        // throws: without a usable JFR it returns null and the detector keeps its recorded feed.
+        @Nullable JfrPinningStream pinningStream = (pinningTarget != null && workerThreadIds != null)
+                ? JfrPinningStream.start(pinningTarget, workerThreadIds, testMethod.getName())
+                : null;
+        phase2Analysis.drainBeforeAnalysis(pinningStream);
+
         try {
             for (int i = 0; i < config.invocations; i++) {
                 long remainingMs = remainingMillis(deadlineNanos);
@@ -512,6 +527,11 @@ public class ConcurrencyRunner {
                     phase1.atomicity.markInvocationStart();
                 }
                 phase2Context.markInvocationStart();
+                // Before this round's workers start: the stream reports only a site that pinned
+                // in two rounds, and the workers already started are the earlier rounds'.
+                if (pinningStream != null) {
+                    pinningStream.markRound();
+                }
                 // Before the workers exist, so every one of them sees this round's rendezvous.
                 phase2Context.openRendezvousForRound(actualThreads, remainingMs);
                 AsyncTestListenerRegistry.fireInvocationStarted(i, actualThreads);
@@ -653,6 +673,30 @@ public class ConcurrencyRunner {
                             + "executor from the @AsyncTest workers, or read a clean atomicity "
                             + "report as covering the workers only\"",
                         testMethod.getName(), unattributed);
+                }
+            }
+
+            // Usually already closed by the analysis on a reporting path; close() is idempotent,
+            // and this call is the one that guarantees the recording ends with the run.
+            if (pinningStream != null) {
+                pinningStream.close();
+                // Said per test at INFO for the reason the telemetry line above is: it is about
+                // this body. JFR reports every virtual thread in the JVM, so the count also holds
+                // pins of another test running in parallel, which is why they are not attributed.
+                long unattributedPins = pinningStream.unattributedEvents();
+                if (unattributedPins > 0) {
+                    log.info("runner.pinning.unattributed test={} events={} "
+                            + "reason=\"the JVM reported virtual-thread pins on threads that are not "
+                            + "this run's workers: threads the body started, or a test running in "
+                            + "parallel, so they are not this run's findings\" "
+                            + "hint=\"pin in the @AsyncTest workers themselves to have the pin "
+                            + "reported, or read a clean pinning report as covering the workers only\"",
+                        testMethod.getName(), unattributedPins);
+                }
+                // DEBUG, not INFO: nearly every run has some, from class loading on first use.
+                if (pinningStream.singleRoundSites() > 0) {
+                    log.debug("runner.pinning.single-round test={} sites={}",
+                        testMethod.getName(), pinningStream.singleRoundSites());
                 }
             }
 
@@ -1505,10 +1549,16 @@ public class ConcurrencyRunner {
         private final AsyncTestContext ctx;
         private final String testName;
         private @Nullable Map<String, String> reports;
+        private @Nullable JfrPinningStream pinningStream;
 
         Phase2Analysis(AsyncTestContext ctx, String testName) {
             this.ctx = ctx;
             this.testName = testName;
+        }
+
+        /** Sets the stream {@link #get()} stops before analyzing; {@code null} when there is none. */
+        void drainBeforeAnalysis(@Nullable JfrPinningStream stream) {
+            this.pinningStream = stream;
         }
 
         /**
@@ -1543,6 +1593,13 @@ public class ConcurrencyRunner {
                 // final round could contribute events or not depending on timing. No-op when
                 // the registry is not running, i.e. whenever the agent is not attached.
                 TelemetryRegistry.flush();
+                // JFR delivers pins in batches and had delivered none of them before stop() in
+                // the 2026-10-10 probe, so the analysis sees them only after this. Every report
+                // path comes through here, the failure and timeout reports included.
+                JfrPinningStream pins = pinningStream;
+                if (pins != null) {
+                    pins.close();
+                }
                 memo = ctx.analyzeAllNamed();
                 reports = memo;
                 logNotes(testName, ctx.detectorNotes());
