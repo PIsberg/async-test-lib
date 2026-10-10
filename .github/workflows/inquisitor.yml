@@ -98,7 +98,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run the Inquisitor
-        uses: anthropics/claude-code-action@58985842b834ed26087302ba27d07bc24ca8697a # v1
+        uses: anthropics/claude-code-action@6fed3ca145920b639991cb756090506e1bcaf515 # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
