@@ -617,8 +617,14 @@ class CorpusRecordingLaneTest {
     private static final java.util.concurrent.locks.Condition SIGNALLED_CONDITION =
             CONDITION_LOCK.newCondition();
 
-    /** Serializes the consumer setup/handshake for the signalled row so only one runs at a time (#618). */
-    private static final Object SIGNALLED_CONSUMER_GATE = new Object();
+    /**
+     * Serializes the consumer setup/handshake for the signalled row so only one runs at a time (#618).
+     * A lock, not a monitor: the body waits and joins inside it, and on JDK 21 a virtual worker
+     * that blocks while holding a monitor is pinned to its carrier, which the JFR-fed pinning
+     * detector reports on this row in every round. A {@code ReentrantLock} parks without pinning.
+     */
+    private static final java.util.concurrent.locks.ReentrantLock SIGNALLED_CONSUMER_GATE =
+            new java.util.concurrent.locks.ReentrantLock();
 
     /**
      * Serializes starting the one consumer parked on {@link #UNSIGNALLED_CONDITION}. A plain monitor,
@@ -790,8 +796,13 @@ class CorpusRecordingLaneTest {
     private static final java.util.concurrent.CyclicBarrier RESET_BARRIER =
             new java.util.concurrent.CyclicBarrier(2);
 
-    /** Serializes the break-await-reset cycle on {@link #RESET_BARRIER}, so one body's reset cannot repair another's break. */
-    private static final Object RESET_BARRIER_GATE = new Object();
+    /**
+     * Serializes the break-await-reset cycle on {@link #RESET_BARRIER}, so one body's reset cannot
+     * repair another's break. A lock, not a monitor, for the reason {@link #SIGNALLED_CONSUMER_GATE}
+     * gives: the body awaits the barrier inside it, which pins a virtual worker on JDK 21.
+     */
+    private static final java.util.concurrent.locks.ReentrantLock RESET_BARRIER_GATE =
+            new java.util.concurrent.locks.ReentrantLock();
 
     /** Two parties and one untimed waiter: the waiter can never be joined (#631). */
     private static final java.util.concurrent.CyclicBarrier STRANDING_BARRIER =
@@ -3535,7 +3546,8 @@ class CorpusRecordingLaneTest {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.cyclicBarrierDetector();
         detector.registerBarrier(RESET_BARRIER, "reset-barrier", 2);
-        synchronized (RESET_BARRIER_GATE) {
+        RESET_BARRIER_GATE.lock();
+        try {
             try {
                 RESET_BARRIER.await(1, TimeUnit.NANOSECONDS);   // a lone party: times out, breaks it
                 throw new IllegalStateException("a lone party cannot trip a two-party barrier");
@@ -3555,6 +3567,8 @@ class CorpusRecordingLaneTest {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+        } finally {
+            RESET_BARRIER_GATE.unlock();
         }
     }
 
@@ -3842,7 +3856,8 @@ class CorpusRecordingLaneTest {
         CorpusRecorder.countBodyExecution();
         var detector = AsyncTestContext.conditionVariableDetector();
         detector.registerCondition(CONDITION_LOCK, SIGNALLED_CONDITION, "signalled");
-        synchronized (SIGNALLED_CONSUMER_GATE) {
+        SIGNALLED_CONSUMER_GATE.lock();
+        try {
             CountDownLatch waiting = new CountDownLatch(1);
             boolean[] ready = {false};
             Thread waiter = new Thread(() -> {
@@ -3875,6 +3890,8 @@ class CorpusRecordingLaneTest {
                 CONDITION_LOCK.unlock();
             }
             waiter.join();
+        } finally {
+            SIGNALLED_CONSUMER_GATE.unlock();
         }
     }
 
