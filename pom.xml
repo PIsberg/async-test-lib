@@ -115,7 +115,7 @@
         <error-prone.version>2.50.0</error-prone.version>
         <nullaway.version>0.14.2</nullaway.version>
         <jspecify.version>1.0.1</jspecify.version>
-        <asm.version>9.10.1</asm.version>
+        <asm.version>9.11</asm.version>
         <bytebuddy.version>1.18.14</bytebuddy.version>
         <ecj.version>3.46.100</ecj.version>
         <slf4j.version>2.0.20</slf4j.version>
