@@ -230,6 +230,30 @@ class OwnershipOfferWeavingTest {
                 OfferedChunkBean::blockingDeque);
     }
 
+    /**
+     * Flushes until the chunk's offer and take have both reached {@code validator}, for at most ten
+     * seconds.
+     *
+     * <p>{@link TelemetryRegistry#flush()} waits one second for the drain and then returns, and
+     * closing the bridge discards whatever the drain delivers after that. On a loaded runner one
+     * flush can therefore leave the case with no events at all, which is one way the Gradle JDK 21
+     * leg read zero offers (#997). Returning as soon as both kinds are present keeps a doubled
+     * event visible to the assertions.
+     */
+    private static void flushUntilBothArrive(RecordingValidator validator, int chunkId)
+            throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        do {
+            TelemetryRegistry.flush();
+            boolean offered = validator.ofKind("offered").stream().anyMatch(e -> e.identity() == chunkId);
+            boolean taken = validator.ofKind("taken").stream().anyMatch(e -> e.identity() == chunkId);
+            if (offered && taken) {
+                return;
+            }
+            Thread.sleep(10);
+        } while (System.nanoTime() < deadline);
+    }
+
     // ---- The events -----------------------------------------------------------------------------
 
     @TestFactory
@@ -244,7 +268,7 @@ class OwnershipOfferWeavingTest {
                 actors.run(1, () -> shape.offer().apply(bean, chunk));
                 Chunk taken = actors.run(2, () -> shape.take().apply(bean));
                 assertSame(chunk, taken, "the fixture must hand over the offered chunk");
-                TelemetryRegistry.flush();
+                flushUntilBothArrive(validator, System.identityHashCode(chunk));
             }
             int chunkId = System.identityHashCode(chunk);
             Object container = shape.container().apply(bean);
@@ -253,7 +277,7 @@ class OwnershipOfferWeavingTest {
             List<Event> taken = validator.ofKind("taken").stream()
                     .filter(e -> e.identity() == chunkId).toList();
             assertEquals(1, offered.size(), shape.name() + ": the offer must be published once; "
-                    + validator.events);
+                    + validator.events + ", dropped " + TelemetryRegistry.droppedEvents());
             if (container != null) {
                 assertEquals(System.identityHashCode(container), offered.get(0).container(),
                         shape.name() + ": the offer must name the container the chunk went into");
@@ -261,7 +285,7 @@ class OwnershipOfferWeavingTest {
             assertTrue(offered.get(0).container() != 0,
                     shape.name() + ": the offer must name a container");
             assertEquals(1, taken.size(), shape.name() + ": the take must be published once; "
-                    + validator.events);
+                    + validator.events + ", dropped " + TelemetryRegistry.droppedEvents());
             assertEquals(offered.get(0).container(), taken.get(0).container(),
                     shape.name() + ": the take must name the container the chunk came out of");
         }));

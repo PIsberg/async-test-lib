@@ -208,6 +208,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that no event drains twice. The new `testMpscConcurrencyWithAStarvedConsumer` starts the drainer
   after 1.3 s, which reproduces the drop on every run: it read 3,992 of 4,000 against the old
   assertion and passes against the new one.
+- **`OwnershipOfferWeavingTest` could read zero offers on a loaded runner, and Gradle hid why
+  (#997).** One Gradle JDK 21 run failed `Collection.addAll / Queue.remove()` with "the offer must
+  be published once" and passed on rerun; Gradle printed only the exception class and line. Two
+  changes: the Gradle `test` task now prints full assertion messages, and the test flushes until
+  the chunk's offer and take have both arrived (at most 10 s) instead of flushing once.
+  `TelemetryRegistry.flush()` gives up after one second and closing the bridge discards anything
+  drained later, which is the one way the case could see no event at all; a doubled event still
+  fails, now with the events and the drop count in the message. Not reproduced locally: 83 of 83
+  green under Maven and Gradle.
 
 ## [1.13.1] - 2026-10-09
 

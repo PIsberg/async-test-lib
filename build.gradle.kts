@@ -185,6 +185,11 @@ subprojects {
         // Permit AsyncTestAgent.selfAttach() to attach to the forked test JVM
         // (self-attach is disabled by default since JDK 9). Mirrors the Maven surefire argLine.
         jvmArgs("-Djdk.attach.allowAttachSelf=true")
+        // Print the assertion message, not just the exception class and line: a flaky failure on
+        // one CI leg is otherwise reported without the state its message carries (#997).
+        testLogging {
+            exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        }
         // Instrument this project's classes only, which is all the report covers (#897), and keep
         // JaCoCo off the named-module fixture: its instrumentation gives the module a read edge to
         // the class path before the agent attaches, which voids the NamedModule*WeavingTest
