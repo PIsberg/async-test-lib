@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A swallowed `InterruptedException` is found in unmodified code.** `catch (InterruptedException
+  e)` that neither rethrows nor restores the flag is the most common concurrency defect static
+  analysers report, and `INTERRUPT_SWALLOWING` and `INTERRUPT_MISHANDLING` fired only when a body
+  recorded the catch itself. A handler also runs only when an interrupt arrives, which a test seldom
+  delivers, so waiting for one would almost never report. With `collections=true` the new
+  `InterruptHandlerWeaver` reads each method that declares such a handler, follows the handler
+  through the method's control flow, ordinary code included, and calls it swallowing when a path
+  reaches a return and no call that restores the flag (a method named `interrupt`, or a helper
+  whose name says it restores one) is reachable from the handler; a path ending in an `ATHROW`
+  hands the exception on. Following ordinary code keeps Guava's `Uninterruptibles` silent, which
+  notes the interrupt, goes on waiting and restores it in a `finally`: the first corpus run named
+  it on three Guava subjects until the rule did. A `run()` that
+  returns on interrupt is a thread's own policy and is not named. A swallowing method's entry hands
+  its handlers' `Owner.method:line` locations to both detectors, once per run, so the default
+  preset, which runs `INTERRUPT_MISHANDLING`, reports them. `InterruptHandlerWeaverTest` pins ten
+  shapes against the bytecode and loads every woven class through the verifier, which caught a
+  buffered frame replaying the class reader's reused arrays,
+  `AgentInterruptHooksTest` and `InterruptFeedWeavingTest` go through the hook and the real agent,
+  and the corpus gains two agent pairs. Both detectors move to the agent-fed feed (34 of the
+  detectors can see unmodified code, 112 remain recording-only).
+
 - **The three `CompletableFuture` misuses that lose work or a thread are fed by the agent.** The
   agent has substituted `supplyAsync`, `runAsync`, every dependent stage, `join` and `get` since
   #741, for the happens-before model, and fed none of it to `COMPLETABLE_FUTURE_EXCEPTIONS`,

@@ -193,10 +193,16 @@ class DetectorEvidenceMatchesCodeTest {
             entry(DetectorType.CF_COMMON_POOL_BLOCKING, "the woven feed sees the task on a "
                     + "common-pool worker and the call about to block, but "
                     + "recordCommonPoolSubmission and recordBlockingCall still take the caller's "
-                    + "word for both"));
+                    + "word for both"),
+            entry(DetectorType.INTERRUPT_SWALLOWING, "the agent reads the handler's bytecode, a "
+                    + "shape no interrupt was seen to take, and recordCatch still takes the caller's "
+                    + "word for whether the flag was restored"),
+            entry(DetectorType.INTERRUPT_MISHANDLING, "the same handler shape the agent reads, and "
+                    + "recordInterruptException and recordIgnoredException still take the caller's "
+                    + "word"));
 
     /** How many entries {@link #FED_BELOW_OBSERVED} may hold; lower it when an entry leaves. */
-    private static final int FED_BELOW_OBSERVED_CEILING = 10;
+    private static final int FED_BELOW_OBSERVED_CEILING = 12;
 
     /**
      * Ungraded detectors above the PROMPT cap that name a threshold, each with why the threshold

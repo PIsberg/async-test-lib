@@ -1044,6 +1044,75 @@ class CorpusAgentPairLaneTest {
                 onTheCommonPool ? ForkJoinPool.commonPool() : SHARED_POOL).join();
     }
 
+    // --- A swallowed InterruptedException ------------------------------------------------------
+
+    /** Stays empty; the interrupt rows poll it briefly, which is a call that throws InterruptedException. */
+    private static final BlockingQueue<Object> INTERRUPT_QUEUE = new ArrayBlockingQueue<>(1);
+
+    /** Polls the hand-over queue briefly; an interrupt is caught, logged by nobody, and lost. */
+    private static void pollSwallowingTheInterrupt() {
+        try {
+            INTERRUPT_QUEUE.poll(1, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            // lost: neither rethrown nor restored
+        }
+    }
+
+    /** The same poll, restoring the flag when interrupted. */
+    private static void pollRestoringTheInterrupt() {
+        try {
+            INTERRUPT_QUEUE.poll(1, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Every worker calls a method whose InterruptedException handler neither rethrows nor restores
+     * the flag. No interrupt arrives; the handler's code is what the weaver judged.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_interrupt_swallowedByAHandler() {
+        counted(CorpusAgentPairLaneTest::pollSwallowingTheInterrupt);
+    }
+
+    /** The same poll, through a handler that restores the flag. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_interrupt_restoredByAHandler() {
+        counted(CorpusAgentPairLaneTest::pollRestoringTheInterrupt);
+    }
+
+    /** Polls, swallowing the interrupt, for the default preset's interrupt detector. */
+    private static void takeSwallowingTheInterrupt() {
+        try {
+            INTERRUPT_QUEUE.poll(1, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            INTERRUPT_QUEUE.clear();
+        }
+    }
+
+    /** The same poll, rethrowing the interrupt wrapped. */
+    private static void takeRethrowingTheInterrupt() {
+        try {
+            INTERRUPT_QUEUE.poll(1, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** The same swallowing shape, named for INTERRUPT_MISHANDLING, the default preset's detector. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_interrupt_mishandledByAHandler() {
+        counted(CorpusAgentPairLaneTest::takeSwallowingTheInterrupt);
+    }
+
+    /** The same poll, through a handler that restores the flag and rethrows. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_interrupt_rethrownByAHandler() {
+        counted(CorpusAgentPairLaneTest::takeRethrowingTheInterrupt);
+    }
+
     // --- Thread daemon flag, left running (#736) ----------------------------------------------
 
     /**

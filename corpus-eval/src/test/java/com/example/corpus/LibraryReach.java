@@ -77,6 +77,13 @@ final class LibraryReach {
                 "agent-fed through the woven supplyAsync and the blocking calls inside it; a "
                         + "firing library row needs a library task that blocks on the common "
                         + "pool, and no corpus library ships that defect");
+        unreached(DetectorType.INTERRUPT_SWALLOWING,
+                "agent-fed through the handler weaver; a firing library row needs a "
+                        + "documented-unsafe library method whose InterruptedException handler "
+                        + "swallows the interrupt on a path a subject runs, and no corpus library "
+                        + "ships that defect");
+        unreached(DetectorType.INTERRUPT_MISHANDLING,
+                "agent-fed through the same handler weaver, with the same reason");
     }
 
     private static void unreached(DetectorType type, String reason) {

@@ -1330,7 +1330,7 @@ final class CollectionAccessWeaver {
     }
 
     /** Buffers annotation visitor actions so they can be replayed to another visitor. */
-    private static final class BufferedAnnotationVisitor extends AnnotationVisitor {
+    static final class BufferedAnnotationVisitor extends AnnotationVisitor {
         private final List<Consumer<AnnotationVisitor>> actions = new ArrayList<>();
 
         BufferedAnnotationVisitor() {

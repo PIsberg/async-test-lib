@@ -6,6 +6,8 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -39,15 +41,37 @@ public class InterruptSwallowingDetector {
         final String threadName;
         final String location;
         final boolean restored;
+        /** Whether the agent judged the handler from its code rather than a body recording a catch. */
+        final boolean woven;
 
-        CatchEvent(String threadName, String location, boolean restored) {
+        CatchEvent(String threadName, String location, boolean restored, boolean woven) {
             this.threadName = threadName;
             this.location   = location;
             this.restored   = restored;
+            this.woven      = woven;
         }
     }
 
     private final List<CatchEvent> events = new CopyOnWriteArrayList<>();
+
+    /** The location strings the agent has handed over, so a method's every entry after the first costs one lookup. */
+    private final Set<String> wovenLocations = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Records swallowing handlers the agent found in a method that ran during the run: catches of
+     * {@code InterruptedException} that neither rethrow nor restore the flag, judged from the
+     * bytecode. Each location is reported once per run, against the first thread that ran it.
+     *
+     * @param locations the handlers, {@code Owner.method:line} joined by commas (null-safe)
+     * @param thread    the thread that entered the method (null-safe)
+     * @since 1.13.2
+     */
+    public void recordSwallowingHandlers(String locations, Thread thread) {
+        if (locations == null || thread == null || !wovenLocations.add(locations)) return;
+        for (String location : locations.split(",", -1)) {
+            events.add(new CatchEvent(thread.getName(), location, false, true));
+        }
+    }
 
     /**
      * Records how an {@code InterruptedException} was handled.
@@ -60,7 +84,7 @@ public class InterruptSwallowingDetector {
     public void recordCatch(Thread thread, String location, boolean restored) {
         if (thread == null) return;
         events.add(new CatchEvent(thread.getName(),
-                location != null ? location : "unknown", restored));
+                location != null ? location : "unknown", restored, false));
     }
 
     /**
@@ -70,7 +94,15 @@ public class InterruptSwallowingDetector {
         InterruptSwallowingReport r = new InterruptSwallowingReport();
         for (CatchEvent e : events) {
             if (!e.restored) {
-                String finding = String.format(
+                String finding = e.woven
+                        ? String.format(
+                                "The catch of InterruptedException at [%s] neither rethrows it "
+                                        + "nor restores the interrupt flag, and its method ran on "
+                                        + "thread '%s' during the run — call "
+                                        + "Thread.currentThread().interrupt() or rethrow the "
+                                        + "exception",
+                                e.location, e.threadName)
+                        : String.format(
                         "Thread '%s' caught InterruptedException at [%s] without restoring "
                                 + "the interrupt flag — call Thread.currentThread().interrupt() "
                                 + "or rethrow the exception",

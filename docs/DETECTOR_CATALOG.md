@@ -332,7 +332,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (28)
+### Agent-fed (30)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -426,6 +426,20 @@ it stays silent. The same blocking calls inside a task handed to the common `For
 `CompletableFutureCommonPoolBlockingDetector`, except a `join` or `get` of a `CompletableFuture`,
 which the pool compensates for through `managedBlock`.
 
+`InterruptSwallowingDetector` and `InterruptMonitor` are the agent's one reading of a shape rather
+than a call. A `catch (InterruptedException e)` that neither rethrows nor restores the flag loses
+the one cancellation signal a thread gets, and its handler runs only when an interrupt arrives,
+which a test seldom delivers. So `InterruptHandlerWeaver` buffers a method that declares such a
+handler, follows the handler through the method's control flow, ordinary code included, and calls
+it swallowing when a path reaches a return and no call that restores the flag is reachable from
+the handler at all; a path ending in an `ATHROW` hands the exception on. The walk goes past the
+handler because a handler may only note the interrupt: Guava's `Uninterruptibles` sets a flag,
+goes on waiting, and restores the interrupt in a `finally`, which an earlier version of the rule
+named on three Guava subjects of the corpus. A `run()` that returns on interrupt is a thread's own
+policy and is not named. When a method holding a swallowing handler runs on a run's thread, its
+entry names the handler's location to both detectors, once per run; `INTERRUPT_MISHANDLING` is the
+one the default preset runs.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
@@ -434,7 +448,8 @@ which the pool compensates for through `managedBlock`.
 `MissedSignalDetector`, `ExplicitGcDetector`, `DaemonThreadHygieneDetector`, `ABAProblemDetector`,
 `SynchronizedNonFinalDetector`, `NonAtomicConcurrentMapUpdateDetector`, `ExecutorShutdownDetector`,
 `FutureIgnoredDetector`, `CompletableFutureExceptionDetector`,
-`CompletableFutureBlockingCallbackDetector`, `CompletableFutureCommonPoolBlockingDetector`
+`CompletableFutureBlockingCallbackDetector`, `CompletableFutureCommonPoolBlockingDetector`,
+`InterruptSwallowingDetector`, `InterruptMonitor`
 
 ### Zero-config (4)
 
@@ -475,9 +490,10 @@ weaver's stream rather than a call site. `ThreadPoolMonitor` and the rest of the
 family need a task's start and completion as events of their own, and a substituted `submit` sees
 neither: the task runs later, somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector`
 describe a shape in the code rather
-than any particular method, and no substitution can see a shape.
+than any particular method, and no substitution can see a shape; the one shape the agent reads,
+an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (114)
+### Recording-only (112)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -495,7 +511,7 @@ recording is the feed:
 `LockContentionDetector`,
 `LazyInitRaceDetector`, `PhaserDetector`, `StampedLockDetector`, `ExchangerDetector`,
 `ScheduledExecutorDetector`, `ForkJoinPoolDetector`, `ThreadFactoryDetector`,
-`RaceConditionDetector`, `ThreadLocalMonitor`, `BusyWaitDetector`, `InterruptMonitor`,
+`RaceConditionDetector`, `ThreadLocalMonitor`, `BusyWaitDetector`,
 `ThreadLeakDetector`, `UnboundedQueueDetector`, `ThreadStarvationDetector`,
 `TimerDetector`, `CopyOnWriteCollectionDetector`,
 `StructuredConcurrencyMisuseDetector`, `VirtualThreadContextLeakDetector`,
@@ -509,7 +525,7 @@ recording is the feed:
 `SynchronizedOnLiteralDetector`, `PublicLockExposureDetector`, `ForkJoinTaskBlockingDetector`,
 `OptimisticReadValidationDetector`,
 `WeakReferenceRaceDetector`,
-`StatefulLambdaDetector`, `InterruptSwallowingDetector`,
+`StatefulLambdaDetector`,
 `MdcContextLeakDetector`, `SystemPropertyMutationDetector`,
 `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`,
 `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`,

@@ -1352,6 +1352,37 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the same sleeping supplier handed a pool of its own, which is the fix"),
 
+            new RecordingSubject("agent_interrupt_swallowedByAHandler", JDK,
+                    "java.lang.InterruptedException",
+                    DetectorType.INTERRUPT_SWALLOWING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker calls a method whose catch of InterruptedException neither "
+                            + "rethrows nor restores the flag, so an interrupt arriving there "
+                            + "would be lost. No interrupt arrives: the weaver judged the handler "
+                            + "from its bytecode and the method's entry names it",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_interrupt_restoredByAHandler", JDK,
+                    "java.lang.InterruptedException",
+                    DetectorType.INTERRUPT_SWALLOWING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same poll, through a handler that calls "
+                            + "Thread.currentThread().interrupt()"),
+
+            new RecordingSubject("agent_interrupt_mishandledByAHandler", JDK,
+                    "java.lang.Thread",
+                    DetectorType.INTERRUPT_MISHANDLING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the swallowing shape again, for the interrupt detector the default preset "
+                            + "runs: a handler that clears a queue and goes on",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_interrupt_rethrownByAHandler", JDK,
+                    "java.lang.Thread",
+                    DetectorType.INTERRUPT_MISHANDLING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same poll, through a handler that restores the flag and rethrows"),
+
             new RecordingSubject("agent_thread_startedWithNoDaemonDecision", JDK,
                     "java.lang.Thread",
                     DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,

@@ -126,7 +126,12 @@ public final class DetectorFeeds {
             // is recorded where it happens.
             DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS,
             DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK,
-            DetectorType.CF_COMMON_POOL_BLOCKING);
+            DetectorType.CF_COMMON_POOL_BLOCKING,
+            // A catch of InterruptedException that neither rethrows nor restores the flag. A
+            // handler runs only when an interrupt arrives, which a test seldom delivers, so the
+            // weaver reads the handler's bytecode instead and names it when its method runs.
+            DetectorType.INTERRUPT_SWALLOWING,
+            DetectorType.INTERRUPT_MISHANDLING);
 
     /**
      * Fed by the JVM and the harness with no recording call.

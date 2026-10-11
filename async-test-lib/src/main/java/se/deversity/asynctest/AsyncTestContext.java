@@ -2061,6 +2061,27 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link InterruptSwallowingDetector} for the run the calling thread works for, or
+     * {@code null}}: a woven method holding a swallowing {@code InterruptedException} handler
+     * names it on entry.
+     */
+    static @Nullable InterruptSwallowingDetector currentInterruptSwallowingDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.interruptSwallowingDetector;
+    }
+
+    /**
+     * {@return the {@link InterruptMonitor} for the run the calling thread works for, or
+     * {@code null}}: the same woven entry as {@link #currentInterruptSwallowingDetector()} names
+     * the handler to it, so the default preset, which enables this detector and not that one,
+     * reports it too.
+     */
+    static @Nullable InterruptMonitor currentInterruptMonitor() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.registry.interruptMonitor;
+    }
+
+    /**
      * {@return the {@link LockOrderValidator} for the calling thread's test, or {@code null}}
      *
      * <p>Same contract as {@link #currentSharedCollectionDetector()}, for the same reason:
