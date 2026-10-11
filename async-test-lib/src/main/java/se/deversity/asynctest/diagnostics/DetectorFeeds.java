@@ -137,7 +137,10 @@ public final class DetectorFeeds {
             DetectorType.SYNCHRONIZED_COLLECTION_ITERATION,
             // System.setProperty and clearProperty, and the JVM's default Locale and TimeZone,
             // which every thread reads and nothing else in the library covered.
-            DetectorType.SYSTEM_PROPERTY_MUTATION);
+            DetectorType.SYSTEM_PROPERTY_MUTATION,
+            // Process.waitFor, and the getters that take a child's stdout or stderr pipe: a wait
+            // no other thread drains for is a hang once the child writes a pipe's worth.
+            DetectorType.PROCESS_STREAM_STARVATION);
 
     /**
      * Fed by the JVM and the harness with no recording call.

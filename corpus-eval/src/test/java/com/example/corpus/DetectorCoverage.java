@@ -39,7 +39,7 @@ final class DetectorCoverage {
         // --- What a refusal here does and does not cost.
         //
         //     The library's own DetectorFiringContractTest already requires every detector to
-        //     have a test asserting a positive finding, so "can it fire" is gated for all 146
+        //     have a test asserting a positive finding, so "can it fire" is gated for every one
         //     whether or not the corpus pairs them. What a corpus pair adds on top is the other
         //     direction: a case that goes through the same calls and must stay silent, which is
         //     the false-positive half and the one no unit test tends to write.

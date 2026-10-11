@@ -41,7 +41,7 @@ final class AgentRowPremise {
      *
      * <p>Every {@code record*} and {@code register*} entry point in the library is reached from a
      * static accessor on {@code AsyncTestContext}, so naming the class covers the API without
-     * having to enumerate 146 detectors' worth of method names, and keeps covering it when one is
+     * having to enumerate every detector's method names, and keeps covering it when one is
      * added.
      */
     private static final String RECORDING_API = "AsyncTestContext";

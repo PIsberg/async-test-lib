@@ -300,6 +300,19 @@ class StructuredViolationCoverageTest {
                 d.recordComputeEnd("BOARDS", 0, b, "x");
                 return d.analyze();
             }),
+            new Path("ProcessStreamStarvationDetector", "waited for a child whose pipes nobody took", () -> {
+                var d = new ProcessStreamStarvationDetector();
+                Process child = new Process() {
+                    @Override public java.io.OutputStream getOutputStream() { return java.io.OutputStream.nullOutputStream(); }
+                    @Override public java.io.InputStream getInputStream() { return java.io.InputStream.nullInputStream(); }
+                    @Override public java.io.InputStream getErrorStream() { return java.io.InputStream.nullInputStream(); }
+                    @Override public int waitFor() { return 0; }
+                    @Override public int exitValue() { return 0; }
+                    @Override public void destroy() { }
+                };
+                d.recordWaitFor(child, Thread.currentThread());
+                return d.analyze();
+            }),
             new Path("LockUpgradeDeadlockDetector", "write lock attempted under the read lock", () -> {
                 var d = new LockUpgradeDeadlockDetector();
                 var lock = new ReentrantReadWriteLock();

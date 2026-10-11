@@ -372,5 +372,7 @@ public enum DetectorType {
     /** Detects a StructuredTaskScope result list or subtask read after its scope closed or off the owner thread - the escape JDK 26's List return types made easy. */
     SCOPE_RESULT_ESCAPE,
     /** Detects misuse of the JEP 526 lazy collections List.ofLazy and Map.ofLazy - circular element dependencies, a non-deterministic or null-producing mapping function. */
-    LAZY_COLLECTION_MISUSE
+    LAZY_COLLECTION_MISUSE,
+    /** Detects Process.waitFor() on a child whose stdout or stderr is a pipe no other thread drains - the child blocks once the pipe fills, and the wait never returns. */
+    PROCESS_STREAM_STARVATION
 }

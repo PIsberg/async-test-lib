@@ -143,6 +143,18 @@ future that is not done, or a sleep, latch await, `Object.wait` or take from an 
 reported when it happens inside a callback, and the same calls inside a task on the common
 `ForkJoinPool` are reported as blocking that pool.
 
+Child processes are watched too. A woven `ProcessBuilder.start` or `startPipeline` records each
+child with its builder, which is how a stderr merged into stdout is told from a pipe on Linux,
+where the JDK still hands out a pipe object for it. A woven `Process.waitFor`, timed, with a
+`Duration` (JDK 25+) or neither, records which of the
+child's stdout and stderr are still pipes no thread has taken, and the woven `getInputStream`,
+`getErrorStream`, `inputReader` and `errorReader` record a take on whichever thread makes it.
+`ProcessStreamStarvationDetector` reports a wait whose pipe no other thread took: a child that
+writes a pipe's worth blocks, and the wait never returns. A drain thread or task that takes the
+pipe after the wait began excuses it (`ProcessFeedSparesCorrectUseTest`). One that runs in code
+the agent does not weave, a process library's own pump threads for example, takes its pipe
+unseen, and the wait is reported (#996).
+
 The same option substitutes `Object.wait`, `notify` and `notifyAll` (#694), which is what feeds
 `MissedSignalDetector` without a recorded call: the hooks run with the monitor held, so a notify is
 judged against the threads really inside `wait()`. The weaver also inserts one call in front of

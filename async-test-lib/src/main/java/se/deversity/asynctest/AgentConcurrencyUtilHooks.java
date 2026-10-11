@@ -1,6 +1,16 @@
 package se.deversity.asynctest;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.lang.reflect.UndeclaredThrowableException;
+import java.nio.charset.Charset;
+import java.time.Duration;
 import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
@@ -42,6 +52,7 @@ import se.deversity.asynctest.diagnostics.ExecutorShutdownDetector;
 import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
+import se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector;
 import se.deversity.asynctest.diagnostics.SemaphoreMisuseDetector;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.vibetags.annotations.AIContract;
@@ -765,6 +776,207 @@ public final class AgentConcurrencyUtilHooks {
         }
         completionObserved(receiver);
         return value;
+    }
+
+    /**
+     * Weaves {@code ProcessBuilder.start()}: the child is started, then recorded on
+     * {@code PROCESS_STREAM_STARVATION} with its builder, which alone tells a stderr merged into
+     * stdout from a pipe on Linux.
+     *
+     * @param receiver the builder
+     * @return the started child
+     * @throws IOException if the child cannot be started
+     * @since 1.13.2
+     */
+    public static Process processBuilderStart(ProcessBuilder receiver) throws IOException {
+        Process process = receiver.start();
+        started(receiver, process);
+        return process;
+    }
+
+    /**
+     * Weaves {@code ProcessBuilder.startPipeline(List)}, as {@link #processBuilderStart} for each
+     * builder and the child it started.
+     *
+     * @param builders the builders, in pipeline order
+     * @return the started children, in the same order
+     * @throws IOException if a child cannot be started
+     * @since 1.13.2
+     */
+    public static List<Process> processBuilderStartPipeline(List<ProcessBuilder> builders)
+            throws IOException {
+        List<Process> processes = ProcessBuilder.startPipeline(builders);
+        for (int i = 0; i < processes.size() && i < builders.size(); i++) {
+            started(builders.get(i), processes.get(i));
+        }
+        return processes;
+    }
+
+    /**
+     * Weaves {@code Process.waitFor()}: the wait is recorded on
+     * {@code PROCESS_STREAM_STARVATION} with the output pipes no thread had taken yet, then made.
+     *
+     * @param receiver the child process
+     * @return its exit value
+     * @throws InterruptedException if interrupted while waiting
+     * @since 1.13.2
+     */
+    public static int processWaitFor(Process receiver) throws InterruptedException {
+        waitingFor(receiver);
+        return receiver.waitFor();
+    }
+
+    /**
+     * Weaves {@code Process.waitFor(long, TimeUnit)}, as {@link #processWaitFor(Process)}: a wait
+     * with a timeout still waits on a child that cannot finish.
+     *
+     * @param receiver the child process
+     * @param timeout  how long to wait
+     * @param unit     the unit of {@code timeout}
+     * @return whether the child exited in time
+     * @throws InterruptedException if interrupted while waiting
+     * @since 1.13.2
+     */
+    public static boolean processWaitFor(Process receiver, long timeout, TimeUnit unit)
+            throws InterruptedException {
+        waitingFor(receiver);
+        return receiver.waitFor(timeout, unit);
+    }
+
+    /**
+     * Weaves {@code Process.waitFor(Duration)}, as {@link #processWaitFor(Process)}. The method
+     * exists from JDK 25 and the library compiles for 21, so it is called through a handle
+     * resolved once; on an older JDK no call site can carry this descriptor, and the hook is
+     * never reached.
+     *
+     * @param receiver the child process
+     * @param duration how long to wait
+     * @return whether the child exited in time
+     * @throws InterruptedException if interrupted while waiting
+     * @since 1.13.2
+     */
+    public static boolean processWaitFor(Process receiver, Duration duration)
+            throws InterruptedException {
+        waitingFor(receiver);
+        MethodHandle waitFor = WAIT_FOR_DURATION;
+        if (waitFor == null) {
+            throw new UnsupportedOperationException("Process.waitFor(Duration) needs JDK 25");
+        }
+        try {
+            return (boolean) waitFor.invokeExact(receiver, duration);
+        } catch (InterruptedException | RuntimeException | Error e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new UndeclaredThrowableException(t);
+        }
+    }
+
+    /** {@code Process.waitFor(Duration)}, or {@code null} before JDK 25. */
+    private static final @Nullable MethodHandle WAIT_FOR_DURATION = waitForDuration();
+
+    private static @Nullable MethodHandle waitForDuration() {
+        try {
+            return MethodHandles.publicLookup().findVirtual(Process.class, "waitFor",
+                    MethodType.methodType(boolean.class, Duration.class));
+        } catch (NoSuchMethodException | IllegalAccessException beforeJdk25) {
+            return null;
+        }
+    }
+
+    /**
+     * Weaves {@code Process.getInputStream()}: the child's stdout pipe is taken, which the detector
+     * reads as drained.
+     *
+     * @param receiver the child process
+     * @return the stream
+     * @since 1.13.2
+     */
+    public static InputStream processInputStream(Process receiver) {
+        streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDOUT);
+        return receiver.getInputStream();
+    }
+
+    /**
+     * Weaves {@code Process.getErrorStream()}, as {@link #processInputStream} for stderr.
+     *
+     * @param receiver the child process
+     * @return the stream
+     * @since 1.13.2
+     */
+    public static InputStream processErrorStream(Process receiver) {
+        streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDERR);
+        return receiver.getErrorStream();
+    }
+
+    /**
+     * Weaves {@code Process.inputReader()}, as {@link #processInputStream}.
+     *
+     * @param receiver the child process
+     * @return the reader
+     * @since 1.13.2
+     */
+    public static BufferedReader processInputReader(Process receiver) {
+        streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDOUT);
+        return receiver.inputReader();
+    }
+
+    /**
+     * Weaves {@code Process.inputReader(Charset)}, as {@link #processInputStream}.
+     *
+     * @param receiver the child process
+     * @param charset  the charset to decode with
+     * @return the reader
+     * @since 1.13.2
+     */
+    public static BufferedReader processInputReader(Process receiver, Charset charset) {
+        streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDOUT);
+        return receiver.inputReader(charset);
+    }
+
+    /**
+     * Weaves {@code Process.errorReader()}, as {@link #processErrorStream}.
+     *
+     * @param receiver the child process
+     * @return the reader
+     * @since 1.13.2
+     */
+    public static BufferedReader processErrorReader(Process receiver) {
+        streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDERR);
+        return receiver.errorReader();
+    }
+
+    /**
+     * Weaves {@code Process.errorReader(Charset)}, as {@link #processErrorStream}.
+     *
+     * @param receiver the child process
+     * @param charset  the charset to decode with
+     * @return the reader
+     * @since 1.13.2
+     */
+    public static BufferedReader processErrorReader(Process receiver, Charset charset) {
+        streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDERR);
+        return receiver.errorReader(charset);
+    }
+
+    private static void started(ProcessBuilder builder, Process process) {
+        ProcessStreamStarvationDetector detector = AsyncTestContext.currentProcessStreamStarvationDetector();
+        if (detector != null) {
+            detector.recordStarted(builder, process);
+        }
+    }
+
+    private static void waitingFor(Process process) {
+        ProcessStreamStarvationDetector detector = AsyncTestContext.currentProcessStreamStarvationDetector();
+        if (detector != null) {
+            detector.recordWaitFor(process, Thread.currentThread());
+        }
+    }
+
+    private static void streamTaken(Process process, ProcessStreamStarvationDetector.Stream stream) {
+        ProcessStreamStarvationDetector detector = AsyncTestContext.currentProcessStreamStarvationDetector();
+        if (detector != null) {
+            detector.recordStreamTaken(process, stream);
+        }
     }
 
     /**

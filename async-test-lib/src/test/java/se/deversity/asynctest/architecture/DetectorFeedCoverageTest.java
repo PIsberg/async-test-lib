@@ -176,7 +176,7 @@ class DetectorFeedCoverageTest {
                         + "DetectorFeeds, and it is the number a reader uses to decide whether "
                         + "to attach the agent at all. Phrase it as \"N of them\": a bare "
                         + "\"N detectors\" in prose is read by DetectorCatalogCoverageTest "
-                        + "as a claim about the total, which is 146.");
+                        + "as a claim about the total, which is " + DetectorType.values().length + ".");
         assertTrue(readme.contains("instead of " + zeroConfig + "."),
                 "README.md must say the agent takes that count up from " + zeroConfig
                         + ", the ZERO_CONFIG rows: without the comparison the first number "

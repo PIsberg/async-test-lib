@@ -974,7 +974,7 @@ final class CorpusGates {
     /**
      * The exposure table's own gate, from the measured direction.
      *
-     * <p>{@code DetectorFeeds} claims 125 of the 146 detectors cannot say anything until the test
+     * <p>{@code DetectorFeeds} claims every recording-only detector cannot say anything until the test
      * body records what it did. This module records nothing, so if one of them speaks the claim is
      * false and every denominator printed in the report is wrong. Reading the report's zeroes as
      * "looked and saw nothing" depends on this holding.

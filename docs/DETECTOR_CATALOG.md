@@ -1,6 +1,6 @@
 # Detector Catalog
 
-`async-test-lib` includes **146 detectors** organized across different phases. The phase files linked below hold a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
+`async-test-lib` includes **147 detectors** organized across different phases. The phase files linked below hold a categorized catalog detailing the most critical concurrency bugs detected by the library, accompanied by "Buggy Code" vs. "Fixed Code" examples.
 
 ## Detectors by phase
 
@@ -19,7 +19,7 @@ The numbered detector entries live in [`detector-catalog/`](detector-catalog/), 
 | [09-stateful-jdk-and-coordination.md](detector-catalog/09-stateful-jdk-and-coordination.md) | Entries 111 to 120. Phases 17 and 19: ByteBuffer, charset coders, checksums, FileChannel position, iterators, contended atomics, JSON mappers, latches, executors, futures |
 | [10-jdk-25-26.md](detector-catalog/10-jdk-25-26.md) | Entries 121 to 126. Phases 16 and 18: StableValue, StructuredTaskScope, Gatherer, LazyConstant, final-field mutation and KDF, wired into `detectAll` |
 | [11-flow-and-ffm.md](detector-catalog/11-flow-and-ffm.md) | Entries 127 to 135. Phases 19 and 20: Flow publishers, confined arenas, memory segments, VarHandle, records, static-init deadlock, virtual-thread pooling, thread-per-task, SplittableRandom |
-| [12-futures-scale-structured.md](detector-catalog/12-futures-scale-structured.md) | Entries 136 to 146. Phases 22 to 24: CompletableFuture publication, lambda capture, virtual-thread scale, JDK 26 scopes and lazy constants |
+| [12-futures-scale-structured.md](detector-catalog/12-futures-scale-structured.md) | Entries 136 to 147. Phases 22 to 24: CompletableFuture publication, lambda capture, virtual-thread scale, JDK 26 scopes and lazy constants |
 
 ## Severity
 
@@ -66,7 +66,7 @@ check something".
 | **PROMPT** | The detector saw a pattern it cannot fully model, most often a shared object whose lock it has no way to see. Correct code that shares an object produces the same signal as a race. | Open a ticket, not fail a build |
 | **ADVISORY** | A performance or hygiene note, not a correctness claim. | Read it, gate on nothing |
 
-**The tier is in the code, not in this document.** `DetectorTrust` classifies all 146, the runner
+**The tier is in the code, not in this document.** `DetectorTrust` classifies all 147, the runner
 prints the tier above every finding, every `Violation` carries it as a `trustTier` attribute (and,
 for a report that grades its findings, each finding's tier in report order as `findingTiers`), and
 `@AsyncTest(minTrust = TrustTier.VERDICT)` restricts the `failOn` gate to the tiers you name.
@@ -308,7 +308,7 @@ not brings back the accesses since the latest earlier hand-off it is ordered aft
 access when there is none.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 38 VERDICT, 72 PROMPT, 29 FACT and 7
+tier is one a reader has to rank alone. The split is 38 VERDICT, 73 PROMPT, 29 FACT and 7
 ADVISORY. PROMPT is the honest default: it says nobody has measured that detector's
 silent-on-correct-code direction, or that what it decides from is a thread count or a threshold,
 not that the detector is wrong. FACT and ADVISORY are statements about the kind of claim a finding
@@ -332,7 +332,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (32)
+### Agent-fed (33)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -456,6 +456,16 @@ two JVM defaults no detector covered before: `Locale.setDefault`, recorded under
 and a key written from two threads with no lock held across the writes is reported; writes under
 `synchronized (System.getProperties())` take turns and are not.
 
+`ProcessStreamStarvationDetector` hears the woven `ProcessBuilder.start` and `startPipeline`, the
+woven `Process.waitFor` and the calls that take a child's output pipe (`getInputStream`,
+`getErrorStream`, `inputReader`, `errorReader`). A wait for
+a child whose stdout or stderr is still a pipe that no other thread took is reported: once the
+child writes a pipe's worth it blocks, and the wait never returns. A taken pipe is assumed
+drained, and so is one a drain task takes after the wait began; an output the `ProcessBuilder`
+redirected has no pipe and is not reported. The start tells it which builders merged stderr into
+stdout: on Linux that stderr is still a pipe object, at end of stream, and the stream alone does
+not say so.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
@@ -466,7 +476,7 @@ and a key written from two threads with no lock held across the writes is report
 `FutureIgnoredDetector`, `CompletableFutureExceptionDetector`,
 `CompletableFutureBlockingCallbackDetector`, `CompletableFutureCommonPoolBlockingDetector`,
 `InterruptSwallowingDetector`, `InterruptMonitor`, `SynchronizedCollectionIterationDetector`,
-`SystemPropertyMutationDetector`
+`SystemPropertyMutationDetector`, `ProcessStreamStarvationDetector`
 
 ### Zero-config (4)
 

@@ -1,7 +1,7 @@
 # corpus-eval
 
-Measures what the 146 detectors report on 139 subjects drawn from 116 third-party classes with a
-documented thread-safety contract, and how many of the 146 the run could feed at all. The write-up,
+Measures what the library's detectors report on 139 subjects drawn from 116 third-party classes with a
+documented thread-safety contract, and how many of them the run could feed at all. The write-up,
 with the numbers and what they do and do not support, is
 [docs/analysis/corpus-eval.md](../docs/analysis/corpus-eval.md).
 
@@ -23,9 +23,9 @@ A run executes six lanes and writes one report per lane under `target/corpus-eva
 | Lane | Report | What it is |
 |---|---|---|
 | `agent-on` | `corpus-eval.md` | The agent attached as `fields=true,collections=true`, with Surefire's own classes excluded from weaving (#561). Every number the write-up quotes comes from here. |
-| `agent-off` | `corpus-eval-agent-off.md` | The same subjects with nothing attached. The control: `DetectorFeeds` says the 32 agent-fed detectors have no input without the agent, so this lane must observe nothing from them, and `CorpusGates` asserts it. |
+| `agent-off` | `corpus-eval-agent-off.md` | The same subjects with nothing attached. The control: `DetectorFeeds` says the 33 agent-fed detectors have no input without the agent, so this lane must observe nothing from them, and `CorpusGates` asserts it. |
 | `recording` | `corpus-eval-recording.md` | The same libraries, with bodies that call the recording API. A different measurement over a different denominator, which is why it writes its own report and is never merged into the other two. |
-| `agent-pairs` | `corpus-eval-agent-pairs.md` | The mirror image of the recording lane, for the 32 agent-fed detectors it cannot reach. The agent is attached and the body records nothing: the difference between a firing row and its silent twin is a field declaration, and everything in between comes from the weaver. `AgentRowPremise` fails the lane if a body here touches the recording API. Some pairs call the JDK type from the test file; others call only Guava, Jackson, HikariCP, Spring, commons-lang3 or Groovy, so the woven call sits inside the library, and `LibraryReach` accounts for which agent-fed detectors that reaches. |
+| `agent-pairs` | `corpus-eval-agent-pairs.md` | The mirror image of the recording lane, for the 33 agent-fed detectors it cannot reach. The agent is attached and the body records nothing: the difference between a firing row and its silent twin is a field declaration, and everything in between comes from the weaver. `AgentRowPremise` fails the lane if a body here touches the recording API. Some pairs call the JDK type from the test file; others call only Guava, Jackson, HikariCP, Spring, commons-lang3 or Groovy, so the woven call sits inside the library, and `LibraryReach` accounts for which agent-fed detectors that reaches. |
 | `agent-pairs-library-excluded` | `corpus-eval-agent-pairs-library-excluded.md` | The agent-pair lane's library rows again, with every corpus library on the agent's `excludes=` list. A library pair claims its finding came from a JDK call inside the library, so with the library unwoven each firing row must go silent. `CorpusGates.checkLibraryExclusionLane` fails on a row that still fires, on a library row whose package the excludes list does not cover, and on a row that did not run in full. A row that uses a library type but whose woven call site is the test body (`Corpus.BODY_CALL_SITE_ROWS`, the JCTools hand-off pair) makes no such claim and does not run here. |
 | `idioms` | `corpus-eval-idioms.md` | Correct user-code concurrency, the way a user writes it, with every detector on and the agent attached: a mutable object handed through a `BlockingQueue`, plain data published by a volatile flag, a latch, a guarded wait loop, a pool checked out through a queue. Each correct row is followed by its broken twin, the same code with the synchronization removed or misplaced, which must wake its named detector. A correct row fails the run on any finding at `FACT` tier or above from any detector (a graded detector's report is read at the strongest tier among its findings, as the runner clamped them), and on any finding at all from the detector it names. Correct idioms the happens-before model does not see yet are listed in `Corpus.idiomKnownGaps()` with the reason, and must keep reporting until a fix closes them. `IdiomRowPremise` fails the lane if a body records outside the rows `Corpus.idiomManualApiRows()` names. |
 
@@ -44,7 +44,7 @@ other people are asked to trust.
 ## Exposure, and why the reports lead with it
 
 A finding count with no denominator cannot be read. The two unmodified lanes record nothing by
-hand, so 141 of the 146 detectors are never fed there at all, and their zero means "never ran",
+hand, so every detector `DetectorFeeds` calls recording-only is never fed there at all, and their zero means "never ran",
 not "looked and found nothing". The recording lane exists to move a named handful out of that
 column, and it counts a detector as exposed only if a subject actually records to it - claiming
 the whole feed would trade one unreadable denominator for another. Each report therefore prints, before any rate: how many detectors the lane could

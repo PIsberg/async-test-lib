@@ -412,6 +412,8 @@ public final class AsyncTestConfig {
     public final boolean detectScopeResultEscape;
     /** Whether {@link DetectorType#LAZY_COLLECTION_MISUSE} is enabled for this run. */
     public final boolean detectLazyCollectionMisuse;
+    /** Whether {@link DetectorType#PROCESS_STREAM_STARVATION} is enabled for this run. */
+    public final boolean detectProcessStreamStarvation;
 
     // ---- Benchmarking ----
     /** Resolved value of {@link AsyncTest#enableBenchmarking()} for this run. */
@@ -601,6 +603,7 @@ public final class AsyncTestConfig {
         detectScopeConfigurationMisuse = enabled.contains(DetectorType.SCOPE_CONFIGURATION_MISUSE);
         detectScopeResultEscape = enabled.contains(DetectorType.SCOPE_RESULT_ESCAPE);
         detectLazyCollectionMisuse = enabled.contains(DetectorType.LAZY_COLLECTION_MISUSE);
+        detectProcessStreamStarvation = enabled.contains(DetectorType.PROCESS_STREAM_STARVATION);
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -1736,6 +1739,12 @@ public final class AsyncTestConfig {
          * @return this builder
          */
         public Builder detectLazyCollectionMisuse(boolean v) { return flag(DetectorType.LAZY_COLLECTION_MISUSE, v); }
+        /**
+         * Sets {@link AsyncTestConfig#detectProcessStreamStarvation}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectProcessStreamStarvation(boolean v) { return flag(DetectorType.PROCESS_STREAM_STARVATION, v); }
         /**
          * Sets {@link AsyncTestConfig#enableBenchmarking}.
          * @param v the value to use

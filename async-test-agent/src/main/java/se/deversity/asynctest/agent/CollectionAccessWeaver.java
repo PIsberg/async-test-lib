@@ -1,6 +1,7 @@
 package se.deversity.asynctest.agent;
 
 import java.lang.reflect.Method;
+import java.nio.charset.Charset;
 import java.security.MessageDigest;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
@@ -777,7 +778,25 @@ final class CollectionAccessWeaver {
                     ThreadFactory.class),
             Entry.call(Exchanger.class, "exchange", "exchange", Object.class),
             Entry.call(Exchanger.class, "exchange", "exchange", Object.class, long.class,
-                    TimeUnit.class));
+                    TimeUnit.class),
+            // A child process waited for before its output pipe is taken: the wait records which
+            // pipes no thread had taken, and each getter records the take, on whichever thread
+            // drains. Every hook returns what the call it replaces returns. The start rows hand
+            // the detector the builder: on Linux a stderr merged into stdout is still a pipe
+            // object, and only redirectErrorStream() says nothing will ever be written to it.
+            Entry.call(ProcessBuilder.class, "start", "processBuilderStart"),
+            Entry.staticCall(ProcessBuilder.class, "startPipeline", "processBuilderStartPipeline",
+                    List.class),
+            Entry.call(Process.class, "waitFor", "processWaitFor"),
+            Entry.call(Process.class, "waitFor", "processWaitFor", long.class, TimeUnit.class),
+            // JDK 25+. Matched by descriptor, so on an older JDK no call site carries it.
+            Entry.call(Process.class, "waitFor", "processWaitFor", Duration.class),
+            Entry.call(Process.class, "getInputStream", "processInputStream"),
+            Entry.call(Process.class, "getErrorStream", "processErrorStream"),
+            Entry.call(Process.class, "inputReader", "processInputReader"),
+            Entry.call(Process.class, "inputReader", "processInputReader", Charset.class),
+            Entry.call(Process.class, "errorReader", "processErrorReader"),
+            Entry.call(Process.class, "errorReader", "processErrorReader", Charset.class));
 
     /**
      * The monitor table: {@code Object.wait}, {@code notify} and {@code notifyAll} (#694).

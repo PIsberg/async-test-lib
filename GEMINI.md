@@ -125,6 +125,7 @@ Detailed per-element guardrails live in scoped rule files that Gemini CLI does n
 - `se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector` → `.gemini/rules/async-test-detectors.md`
+- `se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.ScopeConfigurationMisuseDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.ScopeJoinerMisuseDetector` → `.gemini/rules/async-test-detectors.md`

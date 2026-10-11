@@ -4,7 +4,7 @@ Issue: #924. Status: experimental prototype in `OperationHistory` and `Sequentia
 
 ## The gap
 
-The 146 detectors recognise known race shapes: a shared `SimpleDateFormat`, a check-then-act on a
+The 147 detectors recognise known race shapes: a shared `SimpleDateFormat`, a check-then-act on a
 `ConcurrentMap`, a lock taken in two orders. A data structure that returns a wrong answer without
 matching any of those shapes passes. A concurrent counter whose increment is a read followed by a
 write can hand two threads the same value, and unless the test author asserts on that exact

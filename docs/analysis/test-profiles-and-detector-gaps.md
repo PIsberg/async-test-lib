@@ -144,14 +144,17 @@ Verified absent means a grep for the listed JDK types returns nothing in `src/ma
    finding is a fact, not an inference. The Phase 12 fixture already tiptoes around exactly
    this ("`TimeZone.setDefault()` would change process-wide state and leak",
    `Phase12OperationalHygieneDetectorsFixtureTest:140`), which is good evidence the bug class
-   is real and unhandled. Cheap to build.
+   is real and unhandled. Cheap to build. **Covered 2026-10-11** without a new constant: the agent
+   feeds both calls to `SYSTEM_PROPERTY_MUTATION` under the keys `default Locale` and
+   `default TimeZone`, so a write from two threads is judged like any other key.
 3. **`PIPED_STREAM_DEADLOCK`** - `PipedInputStream`/`PipedOutputStream` used from a single
    thread, which the JDK javadoc itself warns may deadlock, plus writes with no connected
    reader. Record reader and writer thread ids per pipe pair; same-thread read and write is a
    factual finding.
 4. **`PROCESS_STREAM_STARVATION`** - `Process.waitFor()` without draining stdout/stderr, the
    classic child-process buffer deadlock. Mildly heuristic (small outputs never fill the
-   buffer), so it takes the RC8 conditional wording and MEDIUM severity.
+   buffer), so it takes the RC8 conditional wording and MEDIUM severity. **Built 2026-10-11**
+   as entry 147, agent-fed through the woven `waitFor` and pipe getters, `MEDIUM`, tier `PROMPT`.
 5. **`CLASS_INIT_DEADLOCK`** - threads blocked in `<clinit>` frames, detected from the same
    ThreadMXBean dump the deadlock detector already takes. Extends the family the accuracy
    eval rates trustworthy in both directions. Rarer in the wild, hence rank 5.

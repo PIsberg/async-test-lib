@@ -147,6 +147,7 @@ import se.deversity.asynctest.diagnostics.ScopeJoinerMisuseDetector;
 import se.deversity.asynctest.diagnostics.ScopeConfigurationMisuseDetector;
 import se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector;
 import se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector;
+import se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -368,6 +369,7 @@ final class DetectorRegistry {
     final @Nullable ScopeConfigurationMisuseDetector scopeConfigurationMisuseDetector;
     final @Nullable ScopeResultEscapeDetector scopeResultEscapeDetector;
     final @Nullable LazyCollectionMisuseDetector lazyCollectionMisuseDetector;
+    final @Nullable ProcessStreamStarvationDetector processStreamStarvationDetector;
 
     /** The run's selection, read by {@link #create} while the constructor runs. */
     private final Set<DetectorType> enabled;
@@ -597,6 +599,7 @@ final class DetectorRegistry {
         scopeConfigurationMisuseDetector = create(DetectorType.SCOPE_CONFIGURATION_MISUSE, ScopeConfigurationMisuseDetector::new);
         scopeResultEscapeDetector = create(DetectorType.SCOPE_RESULT_ESCAPE, ScopeResultEscapeDetector::new);
         lazyCollectionMisuseDetector = create(DetectorType.LAZY_COLLECTION_MISUSE, LazyCollectionMisuseDetector::new);
+        processStreamStarvationDetector = create(DetectorType.PROCESS_STREAM_STARVATION, ProcessStreamStarvationDetector::new);
     }
 
     /**
@@ -1155,6 +1158,10 @@ final class DetectorRegistry {
         ifIssue(lazyCollectionMisuseDetector,
                 LazyCollectionMisuseDetector::analyze,
                 LazyCollectionMisuseDetector.Report::hasIssues, out);
+
+        ifIssue(processStreamStarvationDetector,
+                ProcessStreamStarvationDetector::analyze,
+                ProcessStreamStarvationDetector.Report::hasIssues, out);
 
         lastGrades = out.grades();
         lastSeverities = out.severities();
