@@ -119,7 +119,14 @@ public final class DetectorFeeds {
             DetectorType.EXECUTOR_SHUTDOWN,
             // A submit whose future the caller pops. Nothing can inspect it afterwards, so the
             // detector reports it when the future says its task failed.
-            DetectorType.FUTURE_IGNORED);
+            DetectorType.FUTURE_IGNORED,
+            // The CompletableFuture hooks of the happens-before model (#741). A root future the
+            // caller pops is judged by whether its task failed; a woven stage marks its callback's
+            // entry and exit, and a woven blocking call inside it, or inside a common-pool task,
+            // is recorded where it happens.
+            DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS,
+            DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK,
+            DetectorType.CF_COMMON_POOL_BLOCKING);
 
     /**
      * Fed by the JVM and the harness with no recording call.

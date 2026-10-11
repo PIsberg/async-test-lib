@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The three `CompletableFuture` misuses that lose work or a thread are fed by the agent.** The
+  agent has substituted `supplyAsync`, `runAsync`, every dependent stage, `join` and `get` since
+  #741, for the happens-before model, and fed none of it to `COMPLETABLE_FUTURE_EXCEPTIONS`,
+  `COMPLETABLE_FUTURE_BLOCKING_CALLBACK` or `CF_COMMON_POOL_BLOCKING`. A root future whose caller
+  pops it can never be handled, joined or read; the static-call path now arms the same `POP`
+  lookahead a `submit` uses, and `CompletableFutureExceptionDetector` reports such a future when its
+  own state at analysis says its task failed. A woven stage marks its callback's entry and exit,
+  and a woven `join` or `get` of a future not yet done, `Thread.sleep`, `CountDownLatch.await`,
+  `Object.wait` or `take` from an empty queue inside it is recorded as blocking in a callback;
+  `allOf(a, b).thenApply(v -> a.join() + b.join())` joins finished futures and stays silent. The
+  same calls inside a task on the common `ForkJoinPool` are recorded as blocking that pool, except a
+  `CompletableFuture` join or get, which the pool compensates for. `AgentCompletableFutureHooksTest`
+  did not compile against the old hooks and is green, with the no-executor case assumed only where
+  the common pool's parallelism exceeds 1 (below that the JDK runs such a task on a thread of its
+  own); the corpus gains three agent pairs. The three move to the agent-fed feed (32 of the
+  detectors can see unmodified code, 114 remain recording-only).
+
 - **`EXECUTOR_SHUTDOWN` and `FUTURE_IGNORED` are fed by the agent.** The shutdown detector reports
   only an executor it was told the code created, which is what keeps a shared or injected pool
   silent, and the agent could not tell it because the `Executors` factories are static calls

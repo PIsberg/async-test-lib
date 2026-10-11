@@ -2322,8 +2322,8 @@ mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair 
 the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
-added below, and the Guava service pair (#736), 18 of the 25 agent-fed detectors are measured in
-both directions on call sites inside a library. `LibraryReach` records why the other seven are not,
+added below, and the Guava service pair (#736), 18 of the 28 agent-fed detectors are measured in
+both directions on call sites inside a library. `LibraryReach` records why the other ten are not,
 and `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:
 
@@ -2336,6 +2336,9 @@ arrangement `DetectorCoverage` uses for refusals:
 | `CONCURRENT_MAP_CHECK_THEN_ACT` | agent-fed since 2026-10-11, through the woven `Map.get`, `containsKey`, `put` and `remove`. A firing library row needs a documented-unsafe library method that checks a concurrent map and then acts on it, and no corpus library ships that defect; `agent_concurrentMap_containsKeyThenPutRacing` and its twin under the map's monitor pair it in the test file |
 | `EXECUTOR_SHUTDOWN` | agent-fed since 2026-10-11, through the woven `Executors` factories and `submit` (#387). A firing library row needs a documented-unsafe library method that creates a pool and leaves it running, and no corpus library ships that defect; `agent_executor_createdAndLeftRunning` and its shut-down twin pair it in the test file |
 | `FUTURE_IGNORED` | agent-fed since 2026-10-11, through the `POP` after a woven `submit`. A firing library row needs a library method that drops the future of a task that fails, and no corpus library ships that defect; `agent_future_failingSubmitDiscarded` and its inspected twin pair it in the test file |
+| `COMPLETABLE_FUTURE_EXCEPTIONS` | agent-fed since 2026-10-11, through the `POP` after a woven `supplyAsync` or `runAsync`. A firing library row needs a library method that drops a failing async root, and no corpus library ships that defect; `agent_completableFuture_failingRunAsyncDiscarded` and its joined twin pair it in the test file |
+| `COMPLETABLE_FUTURE_BLOCKING_CALLBACK` | agent-fed since 2026-10-11, through the woven stage wrapper and blocking calls. A firing library row needs a library callback that blocks on a pending future, and no corpus library ships that defect; `agent_completableFuture_callbackJoinsAPendingFuture` and its twin, whose join finds the future done, pair it in the test file |
+| `CF_COMMON_POOL_BLOCKING` | agent-fed since 2026-10-11, through the woven `supplyAsync` and blocking calls. A firing library row needs a library task that sleeps on the common pool, and no corpus library ships that defect; `agent_completableFuture_sleepsOnTheCommonPool` and its dedicated-pool twin pair it in the test file |
 
 **A library type reached from the test body (#692).** `agent_jctoolsHandOff_offererWritesAfterTheOffer`
 and its twin hand an object from one worker to another through the real JCTools `MpscArrayQueue`,

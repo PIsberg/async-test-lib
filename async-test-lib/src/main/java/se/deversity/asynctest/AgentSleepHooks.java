@@ -45,6 +45,7 @@ public final class AgentSleepHooks {
      * @throws InterruptedException if interrupted while sleeping
      */
     public static void sleep(long millis) throws InterruptedException {
+        AgentConcurrencyUtilHooks.blocking("Thread.sleep", false);
         // Never recordSleep(millis): that one asks ThreadMXBean which monitors the thread holds,
         // and ThreadMXBean does not report virtual threads - which the runner uses by default, so
         // it would answer "none" for every worker and the finding would never fire. The lockset
@@ -75,6 +76,7 @@ public final class AgentSleepHooks {
      * @since 1.11.0
      */
     public static void sleepHoldingMonitor(long millis, Object monitor) throws InterruptedException {
+        AgentConcurrencyUtilHooks.blocking("Thread.sleep", false);
         recordHeld(millis, monitor);
         Thread.sleep(millis);
     }
@@ -93,6 +95,7 @@ public final class AgentSleepHooks {
      * @throws InterruptedException if interrupted while sleeping
      */
     public static void sleep(Duration duration) throws InterruptedException {
+        AgentConcurrencyUtilHooks.blocking("Thread.sleep", false);
         recordUnderLockset(recordableMillis(duration));
         Thread.sleep(duration);
     }
@@ -106,6 +109,7 @@ public final class AgentSleepHooks {
      */
     public static void sleepHoldingMonitor(Duration duration, Object monitor)
             throws InterruptedException {
+        AgentConcurrencyUtilHooks.blocking("Thread.sleep", false);
         recordHeld(recordableMillis(duration), monitor);
         Thread.sleep(duration);
     }
@@ -123,6 +127,7 @@ public final class AgentSleepHooks {
      * @throws InterruptedException if interrupted while sleeping
      */
     public static void sleep(long millis, int nanos) throws InterruptedException {
+        AgentConcurrencyUtilHooks.blocking("Thread.sleep", false);
         recordUnderLockset(recordableMillis(millis, nanos));
         Thread.sleep(millis, nanos);
     }
@@ -137,6 +142,7 @@ public final class AgentSleepHooks {
      */
     public static void sleepHoldingMonitor(long millis, int nanos, Object monitor)
             throws InterruptedException {
+        AgentConcurrencyUtilHooks.blocking("Thread.sleep", false);
         recordHeld(recordableMillis(millis, nanos), monitor);
         Thread.sleep(millis, nanos);
     }

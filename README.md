@@ -34,7 +34,7 @@
 - **146 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types and more; a bare `@AsyncTest` runs the 12 in `Preset.ESSENTIALS` and `detectAll = true` runs them all. See [Detectors](#detectors) for what feeds them.
 - **JUnit native, 5 and 6** — a plain `@TestTemplate`: no JVM flags, no required configuration, and it works from Kotlin, Groovy, Scala and Clojure. Jupiter 5.9.3 through 6.1.2, verified per release ([compatibility table](docs/BUILDING.md#junit-compatibility), [language notes](docs/JVM_LANGUAGES.md)).
 - **Every finding says how far to trust it** — each detector carries a trust tier, so `failOn` can gate a merge on the measured end of the scale while everything else is still reported ([the tiers](docs/DETECTOR_CATALOG.md#trust-tiers), [Evidence](#evidence-what-has-been-measured-and-on-whose-code)).
-- **Optional agent** — `async-test-agent` rewrites field accesses, collection and lock calls, shared JDK objects, coordination primitives, `Object.wait` and `notify`, `Thread.sleep`, `System.gc`, `Thread.start` and `Thread.setDaemon`, and the monitor of `synchronized (owner.field)`, with Byte Buddy, so **29 of them can see code you did not modify** instead of 4. Being able to see is not the same as firing: on 82 third-party subjects two of the 21 exposed at the time produced every finding, and the other nineteen were correctly silent because nothing in that corpus writes the idiom they model. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
+- **Optional agent** — `async-test-agent` rewrites field accesses, collection and lock calls, shared JDK objects, coordination primitives, `Object.wait` and `notify`, `Thread.sleep`, `System.gc`, `Thread.start` and `Thread.setDaemon`, and the monitor of `synchronized (owner.field)`, with Byte Buddy, so **32 of them can see code you did not modify** instead of 4. Being able to see is not the same as firing: on 82 third-party subjects two of the 21 exposed at the time produced every finding, and the other nineteen were correctly silent because nothing in that corpus writes the idiom they model. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
 - **CI-ready out of the box** — JUnit XML, machine-readable JSON, SARIF, or plain `AssertionError` fail-gates, straight into GitHub Actions, Jenkins and GitLab CI.
 
 <div align="center">
@@ -110,12 +110,13 @@ above, and the correct idioms the happens-before model does not see yet are list
 with the reason, so that a fix flips them visibly.
 
 The library agent pairs put the woven JDK call inside Guava, Jackson, HikariCP, Spring, commons-lang3
-or Groovy instead of the test file, so 18 of the 25 agent-fed detectors are measured on a call site
+or Groovy instead of the test file, so 18 of the 28 agent-fed detectors are measured on a call site
 nobody here compiled; `EXPLICIT_GC` is refused a pair in every lane, and `MISSED_SIGNAL`,
-`ABA_PROBLEM`, `SYNCHRONIZED_NON_FINAL`, `CONCURRENT_MAP_CHECK_THEN_ACT`, `EXECUTOR_SHUTDOWN` and
-`FUTURE_IGNORED` have a JDK pair only, because no corpus library waits behind an `if`, pushes a
-popped node back, reassigns a field it synchronizes on, checks a concurrent map before acting on
-it, leaves a pool it created running or drops a failing task's future. Their
+`ABA_PROBLEM`, `SYNCHRONIZED_NON_FINAL`, `CONCURRENT_MAP_CHECK_THEN_ACT`, `EXECUTOR_SHUTDOWN`,
+`FUTURE_IGNORED` and the three `CompletableFuture` detectors fed by the agent have a JDK pair only,
+because no corpus library waits behind an `if`, pushes a popped node back, reassigns a field it
+synchronizes on, checks a concurrent map before acting on it, leaves a pool it created running,
+drops a failing task's future or blocks inside a callback or on the common pool. Their
 first run found a detector that dropped every sleep held under a `ReentrantLock`, which the
 test-file pair could not see because it sleeps inside a `synchronized` method.
 
@@ -330,8 +331,8 @@ job, pass `-Dasync-test.detectAll=true` (`mvn test -Dasync-test.detectAll=true`;
 on every `@AsyncTest`: `includes` still select exactly their list and `excludes` still apply.
 
 **What feeds them.** Four read the JVM and the harness directly and need no configuration at
-all. With the agent attached that becomes 29, because the woven streams carry what those
-detectors need without a line of instrumentation. The remaining 117 observe what the test body
+all. With the agent attached that becomes 32, because the woven streams carry what those
+detectors need without a line of instrumentation. The remaining 114 observe what the test body
 records explicitly through `AsyncTestContext`, and the catalog says which of three reasons
 keeps each of them there. When a detector is
 enabled but nothing can feed it, the runner says so once per JVM at INFO rather than letting an

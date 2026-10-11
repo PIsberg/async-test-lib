@@ -65,6 +65,18 @@ final class LibraryReach {
                         + "library method that drops the future of a task that fails, and no "
                         + "corpus library ships that defect, so its pair submits from the test "
                         + "file");
+        unreached(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS,
+                "agent-fed through the POP after a woven supplyAsync or runAsync; a firing "
+                        + "library row needs a library method that drops a failing async root, "
+                        + "and no corpus library ships that defect");
+        unreached(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK,
+                "agent-fed through the woven stage wrapper; a firing library row needs a "
+                        + "library callback that blocks on a pending future, and no corpus library "
+                        + "ships that defect");
+        unreached(DetectorType.CF_COMMON_POOL_BLOCKING,
+                "agent-fed through the woven supplyAsync and the blocking calls inside it; a "
+                        + "firing library row needs a library task that blocks on the common "
+                        + "pool, and no corpus library ships that defect");
     }
 
     private static void unreached(DetectorType type, String reason) {

@@ -35,7 +35,9 @@ import java.util.Formatter;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ForkJoinPool;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
@@ -952,6 +954,94 @@ class CorpusAgentPairLaneTest {
         } catch (ExecutionException expected) {
             // observed
         }
+    }
+
+    // --- CompletableFuture: a dropped failing root, a blocking callback, the common pool --------
+
+    /**
+     * Every worker starts a runAsync whose task throws, and drops the future: the call is a
+     * statement, so its result is popped.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_failingRunAsyncDiscarded() {
+        CompletableFuture.runAsync(CorpusAgentPairLaneTest::failingTask, SHARED_POOL);
+    }
+
+    /** The same failing runAsync, with the future kept and its failure read through get. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_failingRunAsyncJoined() {
+        CompletableFuture<Void> future =
+                CompletableFuture.runAsync(CorpusAgentPairLaneTest::failingTask, SHARED_POOL);
+        counted(() -> readTheFailure(future));
+    }
+
+    /**
+     * Registers a callback that joins {@code gate}, completes the source on the shared pool so the
+     * callback runs there, and completes {@code gate} either before the source, so the join finds
+     * it done, or once the callback has started, so the join waits.
+     */
+    private static void callbackJoins(boolean gateFirst) throws InterruptedException {
+        CompletableFuture<Object> source = new CompletableFuture<>();
+        CompletableFuture<Object> gate = new CompletableFuture<>();
+        CountDownLatch inCallback = new CountDownLatch(1);
+        CompletableFuture<Object> stage = source.thenApply(v -> {
+            inCallback.countDown();
+            return gate.join();
+        });
+        if (gateFirst) {
+            gate.complete("open");
+        }
+        SHARED_POOL.execute(() -> source.complete("go"));
+        assertTrue(inCallback.await(10, TimeUnit.SECONDS), "the callback did not start");
+        if (!gateFirst) {
+            Thread.sleep(20); // lets the callback reach the join before the gate opens
+            gate.complete("open");
+        }
+        stage.join();
+    }
+
+    /** A callback joins a future the body completes only after the callback has started. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_callbackJoinsAPendingFuture() {
+        counted(() -> callbackJoins(false));
+    }
+
+    /** The same callback and join, with the joined future completed first. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_callbackJoinsADoneFuture() {
+        counted(() -> callbackJoins(true));
+    }
+
+    /** A supplier that sleeps briefly: blocking work. */
+    private static Object sleepBriefly() {
+        try {
+            Thread.sleep(2);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return "slept";
+    }
+
+    /**
+     * Every worker hands the common pool a sleeping supplier. The pool is named explicitly: with
+     * parallelism 1, which a two-core runner has, the JDK runs an executor-less async task on a
+     * thread of its own and no pool worker would ever sleep.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_sleepsOnTheCommonPool() {
+        counted(() -> supplySleeping(true));
+    }
+
+    /** The same sleeping supplier on a pool of its own. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_sleepsOnADedicatedPool() {
+        counted(() -> supplySleeping(false));
+    }
+
+    /** Hands the sleeping supplier to the common pool or to the shared one, and waits for it. */
+    private static void supplySleeping(boolean onTheCommonPool) {
+        CompletableFuture.supplyAsync(CorpusAgentPairLaneTest::sleepBriefly,
+                onTheCommonPool ? ForkJoinPool.commonPool() : SHARED_POOL).join();
     }
 
     // --- Thread daemon flag, left running (#736) ----------------------------------------------

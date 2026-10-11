@@ -717,12 +717,16 @@ final class CollectionAccessWeaver {
                     Function.class),
             Entry.call(CompletionStage.class, "exceptionallyComposeAsync", "exceptionallyComposeAsync",
                     Function.class, Executor.class),
-            Entry.staticCall(CompletableFuture.class, "supplyAsync", "supplyAsync", Supplier.class),
+            // A root future the caller pops can never be joined or handled, so a failure of its
+            // task reaches nobody; the POP becomes asyncResultDiscarded, as after a submit.
+            Entry.staticCall(CompletableFuture.class, "supplyAsync", "supplyAsync", Supplier.class)
+                    .whenResultDiscarded("asyncResultDiscarded"),
             Entry.staticCall(CompletableFuture.class, "supplyAsync", "supplyAsync", Supplier.class,
-                    Executor.class),
-            Entry.staticCall(CompletableFuture.class, "runAsync", "runAsync", Runnable.class),
+                    Executor.class).whenResultDiscarded("asyncResultDiscarded"),
+            Entry.staticCall(CompletableFuture.class, "runAsync", "runAsync", Runnable.class)
+                    .whenResultDiscarded("asyncResultDiscarded"),
             Entry.staticCall(CompletableFuture.class, "runAsync", "runAsync", Runnable.class,
-                    Executor.class),
+                    Executor.class).whenResultDiscarded("asyncResultDiscarded"),
             // execute wraps its task only on the JDK executors that never hand it back; the
             // hook decides by the executor's exact class (#741, #834).
             Entry.call(Executor.class, "execute", "execute", Runnable.class),
@@ -1955,6 +1959,10 @@ final class CollectionAccessWeaver {
                         super.visitMethodInsn(Opcodes.INVOKESTATIC,
                                 target.hookOwnerInternalName(), target.hookMethodName(),
                                 target.hookDescriptor(), false);
+                        // A static call whose result is the defect when dropped, which today is a
+                        // root CompletableFuture, arms the same one-instruction lookahead a
+                        // virtual one does.
+                        justSubstituted = target.hasDiscardVariant() ? target : null;
                         return;
                     }
                 }

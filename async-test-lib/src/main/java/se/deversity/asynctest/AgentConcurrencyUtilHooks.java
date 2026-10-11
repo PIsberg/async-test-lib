@@ -15,6 +15,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
+import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -33,6 +34,9 @@ import org.jspecify.annotations.Nullable;
 
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureCommonPoolBlockingDetector;
+import se.deversity.asynctest.diagnostics.CompletableFutureExceptionDetector;
 import se.deversity.asynctest.diagnostics.CountDownLatchDetector;
 import se.deversity.asynctest.diagnostics.ExecutorShutdownDetector;
 import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
@@ -304,6 +308,9 @@ public final class AgentConcurrencyUtilHooks {
      * @throws InterruptedException if interrupted while waiting
      */
     public static void await(CountDownLatch receiver) throws InterruptedException {
+        if (receiver.getCount() > 0) {
+            blocking("CountDownLatch.await", false);
+        }
         LatchMisuseDetector misuse = AsyncTestContext.currentLatchMisuseDetector();
         if (misuse != null) {
             misuse.observeLatch(receiver);
@@ -501,6 +508,9 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.2
      */
     public static Object take(BlockingQueue<Object> receiver) throws InterruptedException {
+        if (receiver.isEmpty()) {
+            blocking("BlockingQueue.take", false);
+        }
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
         if (detector != null) {
             detector.observeQueue(receiver);
@@ -687,6 +697,9 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static @Nullable Object join(CompletableFuture<Object> receiver) {
+        if (!receiver.isDone()) {
+            blocking("CompletableFuture.join", true);
+        }
         Object value;
         try {
             value = receiver.join();
@@ -711,6 +724,9 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static @Nullable Object get(Future<Object> receiver)
             throws InterruptedException, ExecutionException {
+        if (!receiver.isDone()) {
+            blockingOn(receiver);
+        }
         Object value;
         try {
             value = receiver.get();
@@ -737,6 +753,9 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static @Nullable Object get(Future<Object> receiver, long timeout, TimeUnit unit)
             throws InterruptedException, ExecutionException, TimeoutException {
+        if (!receiver.isDone()) {
+            blockingOn(receiver);
+        }
         Object value;
         try {
             value = receiver.get(timeout, unit);
@@ -2417,7 +2436,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static CompletableFuture<Object> supplyAsync(Supplier<Object> supplier) {
         // The NullPointerException the call itself throws for a missing function.
-        HandedTask handed = new HandedTask(Objects.requireNonNull(supplier));
+        HandedTask handed = new HandedTask(Objects.requireNonNull(supplier)).onTheCommonPool();
         return Submissions.remember(CompletableFuture.supplyAsync(handed), handed);
     }
 
@@ -2430,10 +2449,14 @@ public final class AgentConcurrencyUtilHooks {
      * @return the new future
      * @since 1.12.3
      */
+    @SuppressWarnings("ReferenceEquality") // the common pool, by identity
     public static CompletableFuture<Object> supplyAsync(Supplier<Object> supplier,
                                                         Executor executor) {
         // The NullPointerException the call itself throws for a missing function.
         HandedTask handed = new HandedTask(Objects.requireNonNull(supplier));
+        if (executor == ForkJoinPool.commonPool()) { // NOPMD CompareObjectsWithEquals - the one pool, by identity
+            handed.onTheCommonPool();
+        }
         return Submissions.remember(CompletableFuture.supplyAsync(handed, executor), handed);
     }
 
@@ -2447,7 +2470,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static CompletableFuture<Void> runAsync(Runnable task) {
         // The NullPointerException the call itself throws for a missing function.
-        HandedTask handed = new HandedTask(Objects.requireNonNull(task));
+        HandedTask handed = new HandedTask(Objects.requireNonNull(task)).onTheCommonPool();
         return Submissions.remember(CompletableFuture.runAsync(handed), handed);
     }
 
@@ -2461,10 +2484,93 @@ public final class AgentConcurrencyUtilHooks {
      * @return the new future
      * @since 1.12.3
      */
+    @SuppressWarnings("ReferenceEquality") // the common pool, by identity
     public static CompletableFuture<Void> runAsync(Runnable task, Executor executor) {
         // The NullPointerException the call itself throws for a missing function.
         HandedTask handed = new HandedTask(Objects.requireNonNull(task));
+        if (executor == ForkJoinPool.commonPool()) { // NOPMD CompareObjectsWithEquals - the one pool, by identity
+            handed.onTheCommonPool();
+        }
         return Submissions.remember(CompletableFuture.runAsync(handed, executor), handed);
+    }
+
+    /**
+     * Stands in for the {@code POP} after a woven {@code supplyAsync} or {@code runAsync} whose
+     * future the caller never kept. Nothing can join, get or handle that future afterwards, so the
+     * detector judges it at analysis by whether its task failed.
+     *
+     * @param future the future the caller discarded
+     * @since 1.13.2
+     */
+    public static void asyncResultDiscarded(CompletableFuture<?> future) {
+        CompletableFutureExceptionDetector detector =
+                AsyncTestContext.currentCompletableFutureExceptionDetector();
+        if (detector != null) {
+            detector.recordDiscarded(future, Thread.currentThread(),
+                    "CompletableFuture.supplyAsync or runAsync");
+        }
+    }
+
+    /**
+     * The common-pool task the calling thread is running, for the blocking detector, while it
+     * runs; unset everywhere else.
+     */
+    private static final ThreadLocal<HandedTask> COMMON_POOL_TASK = new ThreadLocal<>();
+
+    /**
+     * Hands a call that is about to block the calling thread to the two detectors that judge a
+     * block by where it happens: inside a {@code CompletableFuture} callback, and inside a task on
+     * the common {@code ForkJoinPool}.
+     *
+     * <p>Called only when the call will block, never for a join of a future already complete:
+     * {@code allOf(a, b).thenApply(v -> a.join() + b.join())} joins two finished futures inside a
+     * callback, which is the documented way to combine results and blocks nothing.
+     *
+     * @param callType the blocking API, as the report names it
+     * @param managed  whether the JDK compensates a {@code ForkJoinPool} for it, as
+     *                 {@code CompletableFuture.join} and {@code get} do through
+     *                 {@code ForkJoinPool.managedBlock}: such a call does not starve the pool, so
+     *                 only the callback detector hears it
+     */
+    static void blocking(String callType, boolean managed) {
+        Thread thread = Thread.currentThread();
+        CompletableFutureBlockingCallbackDetector callbacks =
+                AsyncTestContext.currentCfBlockingCallbackDetector();
+        if (callbacks != null) {
+            callbacks.recordBlockingCall(thread, callType);
+        }
+        if (managed) {
+            return;
+        }
+        HandedTask task = COMMON_POOL_TASK.get();
+        if (task != null) {
+            CompletableFutureCommonPoolBlockingDetector pool =
+                    AsyncTestContext.currentCfCommonPoolBlockingDetector();
+            if (pool != null) {
+                pool.recordBlockingCall(task, thread, callType);
+            }
+        }
+    }
+
+    /** {@link #blocking} for a get of {@code future}, managed when it is a {@code CompletableFuture}. */
+    private static void blockingOn(Future<?> future) {
+        if (future instanceof CompletableFuture) {
+            blocking("CompletableFuture.get", true);
+        } else {
+            blocking("Future.get", false);
+        }
+    }
+
+    /**
+     * {@return a short name for a callback or task in a report}: the declaring class for a lambda
+     * or method reference, whose own class name is a generated one, else the simple class name.
+     */
+    static String callbackLabel(Object function) {
+        String name = function.getClass().getName();
+        int lambda = name.indexOf("$$Lambda");
+        String owner = lambda >= 0 ? name.substring(0, lambda) : name;
+        owner = owner.substring(owner.lastIndexOf('.') + 1);
+        return lambda >= 0 ? "lambda in " + owner : owner;
     }
 
     /**
@@ -2898,6 +3004,9 @@ public final class AgentConcurrencyUtilHooks {
         private final long token;
         private final @Nullable AsyncTestContext submittedIn;
 
+        /** Whether the task was handed to the common pool, and declared to the blocking detector. */
+        private volatile boolean commonPool;
+
         HandedTask(Object task) {
             this.task = task;
             this.submitted = HappensBefore.handOff();
@@ -2906,14 +3015,62 @@ public final class AgentConcurrencyUtilHooks {
             TelemetryRegistry.taskSubmitted(token);
         }
 
+        /**
+         * Declares this task, submitted to the common {@code ForkJoinPool}, to the detector that
+         * reports a blocking call inside one; this wrapper is the identity it is tracked by.
+         *
+         * @return this task
+         */
+        HandedTask onTheCommonPool() {
+            CompletableFutureCommonPoolBlockingDetector pool =
+                    AsyncTestContext.currentCfCommonPoolBlockingDetector();
+            if (pool != null) {
+                pool.recordCommonPoolSubmission(this, Thread.currentThread(), callbackLabel(task));
+                commonPool = true;
+            }
+            return this;
+        }
+
+        /**
+         * Marks this task as the one the calling thread runs, when it is a common-pool task running
+         * on a common-pool worker. With parallelism 1 the JDK runs such a task on a thread of its
+         * own, which starves nothing, and that thread is not a pool worker.
+         *
+         * @return whether it marked, so {@link #leavePool} knows to undo it
+         */
+        @SuppressWarnings("ReferenceEquality") // the common pool, by identity
+        private boolean enterPool() {
+            if (commonPool && Thread.currentThread() instanceof ForkJoinWorkerThread worker
+                    && worker.getPool() == ForkJoinPool.commonPool()) { // NOPMD CompareObjectsWithEquals - the one pool, by identity
+                COMMON_POOL_TASK.set(this);
+                return true;
+            }
+            return false;
+        }
+
+        /** Undoes {@link #enterPool}, restoring whatever task the thread was running before. */
+        private static void leavePool(boolean entered, @Nullable HandedTask outer) {
+            if (!entered) {
+                return;
+            }
+            if (outer == null) {
+                COMMON_POOL_TASK.remove();
+            } else {
+                COMMON_POOL_TASK.set(outer);
+            }
+        }
+
         @Override
         public void run() {
             HappensBefore.receive(submitted);
             AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
+            HandedTask outer = COMMON_POOL_TASK.get();
+            boolean entered = enterPool();
             try {
                 ((Runnable) task).run();
             } finally {
+                leavePool(entered, outer);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
                 AsyncTestContext.restoreLent(lentBefore);
@@ -2925,9 +3082,12 @@ public final class AgentConcurrencyUtilHooks {
             HappensBefore.receive(submitted);
             AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
+            HandedTask outer = COMMON_POOL_TASK.get();
+            boolean entered = enterPool();
             try {
                 return ((Callable<?>) task).call();
             } finally {
+                leavePool(entered, outer);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
                 AsyncTestContext.restoreLent(lentBefore);
@@ -2939,9 +3099,12 @@ public final class AgentConcurrencyUtilHooks {
             HappensBefore.receive(submitted);
             AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
+            HandedTask outer = COMMON_POOL_TASK.get();
+            boolean entered = enterPool();
             try {
                 return ((Supplier<?>) task).get();
             } finally {
+                leavePool(entered, outer);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
                 AsyncTestContext.restoreLent(lentBefore);
@@ -3025,8 +3188,17 @@ public final class AgentConcurrencyUtilHooks {
             }
             AsyncTestContext lentBefore = AsyncTestContext.lend(registeredIn);
             TelemetryRegistry.taskStarted(token);
+            // Inside the loan, so a callback a pool thread runs for the run is the run's.
+            CompletableFutureBlockingCallbackDetector callbacks =
+                    AsyncTestContext.currentCfBlockingCallbackDetector();
+            if (callbacks != null) {
+                callbacks.recordEnterCallback(callbackLabel(callback()), Thread.currentThread());
+            }
             return lentBefore;
         }
+
+        /** {@return the caller's function this stage runs} */
+        abstract Object callback();
 
         /**
          * Takes the clock of the thread that ran the function, for a join of the stage, and ends
@@ -3035,6 +3207,11 @@ public final class AgentConcurrencyUtilHooks {
          * @param lentBefore what {@link #begin} returned
          */
         final void end(@Nullable AsyncTestContext lentBefore) {
+            CompletableFutureBlockingCallbackDetector callbacks =
+                    AsyncTestContext.currentCfBlockingCallbackDetector();
+            if (callbacks != null) {
+                callbacks.recordExitCallback(Thread.currentThread());
+            }
             finished = HappensBefore.handOff();
             TelemetryRegistry.taskEnded();
             AsyncTestContext.restoreLent(lentBefore);
@@ -3050,6 +3227,11 @@ public final class AgentConcurrencyUtilHooks {
         StageFunction(Object function, @Nullable Object source, @Nullable Object other) {
             super(source, other);
             this.function = function;
+        }
+
+        @Override
+        Object callback() {
+            return function;
         }
 
         @Override
@@ -3132,6 +3314,11 @@ public final class AgentConcurrencyUtilHooks {
         StageBiFunction(Object function, @Nullable Object source, @Nullable Object other) {
             super(source, other);
             this.function = function;
+        }
+
+        @Override
+        Object callback() {
+            return function;
         }
 
         @Override

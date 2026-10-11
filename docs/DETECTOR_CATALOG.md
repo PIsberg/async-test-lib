@@ -332,7 +332,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (25)
+### Agent-fed (28)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -413,6 +413,19 @@ the agent path hands the detector the discarded future and the detector reports 
 future's own state at analysis says its task failed: fire-and-forget of a task that succeeded, or
 that is still running when the run ends, draws nothing.
 
+The `CompletableFuture` detectors for the three misuses that lose work or a thread joined the
+same day. The agent has substituted `supplyAsync`, `runAsync`, every dependent stage, `join` and
+`get` since #741, for the happens-before model, and fed none of them to these. A root future whose
+caller pops it can never be handled, joined or read, so `CompletableFutureExceptionDetector`
+reports one whose own state at analysis says its task failed, through the same `POP` lookahead as
+a discarded `submit`. A woven stage marks its callback's entry and exit, and a woven blocking call
+inside it, a `join` or `get` of a future that is not yet done, a `Thread.sleep`, a latch await, an
+`Object.wait` or a take from an empty queue, reaches `CompletableFutureBlockingCallbackDetector`.
+`allOf(a, b).thenApply(v -> a.join() + b.join())` joins finished futures and blocks nothing, so
+it stays silent. The same blocking calls inside a task handed to the common `ForkJoinPool` reach
+`CompletableFutureCommonPoolBlockingDetector`, except a `join` or `get` of a `CompletableFuture`,
+which the pool compensates for through `managedBlock`.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
@@ -420,7 +433,8 @@ that is still running when the run ends, draws nothing.
 `CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
 `MissedSignalDetector`, `ExplicitGcDetector`, `DaemonThreadHygieneDetector`, `ABAProblemDetector`,
 `SynchronizedNonFinalDetector`, `NonAtomicConcurrentMapUpdateDetector`, `ExecutorShutdownDetector`,
-`FutureIgnoredDetector`
+`FutureIgnoredDetector`, `CompletableFutureExceptionDetector`,
+`CompletableFutureBlockingCallbackDetector`, `CompletableFutureCommonPoolBlockingDetector`
 
 ### Zero-config (4)
 
@@ -457,12 +471,13 @@ visitor, which is the argument for having built the path as a mechanism. What re
 static entry has to be worth its instruction, the same bar the virtual ones meet.
 
 **The input is not a call.** `VisibilityMonitor` needs field reads and writes, which is the field
-weaver's stream rather than a call site. `ThreadPoolMonitor` and the `CompletableFuture` family
-need a task's start and completion, and a substituted `submit` sees neither: the task runs later,
-somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector` describe a shape in the code rather
+weaver's stream rather than a call site. `ThreadPoolMonitor` and the rest of the `CompletableFuture`
+family need a task's start and completion as events of their own, and a substituted `submit` sees
+neither: the task runs later, somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector`
+describe a shape in the code rather
 than any particular method, and no substitution can see a shape.
 
-### Recording-only (117)
+### Recording-only (114)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -471,7 +486,7 @@ recording is the feed:
 `VisibilityMonitor`, `FalseSharingDetector`, `WakeupDetector`, `ConstructorSafetyValidator`,
 `SynchronizerMonitor`, `ThreadPoolMonitor`,
 `MemoryOrderingMonitor`, `PipelineMonitor`, `ReadWriteLockMonitor`,
-`CompletableFutureExceptionDetector`, `CompletableFutureCompletionLeakDetector`,
+`CompletableFutureCompletionLeakDetector`,
 `ThreadPoolDeadlockDetector`, `ConcurrentModificationDetector`,
 `SharedRandomDetector`, `ConditionVariableDetector`,
 `ParallelStreamDetector`, `ResourceLeakDetector`,
@@ -492,7 +507,7 @@ recording is the feed:
 `AtomicNonAtomicUpdateDetector`, `SynchronizedCollectionIterationDetector`,
 `ConcurrentMapComputeRecursionDetector`,
 `SynchronizedOnLiteralDetector`, `PublicLockExposureDetector`, `ForkJoinTaskBlockingDetector`,
-`OptimisticReadValidationDetector`, `CompletableFutureCommonPoolBlockingDetector`,
+`OptimisticReadValidationDetector`,
 `WeakReferenceRaceDetector`,
 `StatefulLambdaDetector`, `InterruptSwallowingDetector`,
 `MdcContextLeakDetector`, `SystemPropertyMutationDetector`,
@@ -503,7 +518,7 @@ recording is the feed:
 `SharedDeflaterDetector`, `ThisEscapeDetector`,
 `ThreadLocalRandomMisuseDetector`, `CompletableFutureObtrudeDetector`, `SpuriousWakeupDetector`,
 `LockUpgradeDeadlockDetector`,
-`CompletableFutureBlockingCallbackDetector`, `StableValueMisuseDetector`,
+`StableValueMisuseDetector`,
 `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`,
 `SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
 `FileChannelPositionRaceDetector`, `SharedIteratorDetector`, `HighContentionAtomicDetector`,

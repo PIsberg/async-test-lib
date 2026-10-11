@@ -2030,6 +2030,37 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link CompletableFutureExceptionDetector} for the run the calling thread works
+     * for, or {@code null}}: the woven {@code supplyAsync} and {@code runAsync} hand it a root
+     * future its caller discarded.
+     */
+    static @Nullable CompletableFutureExceptionDetector currentCompletableFutureExceptionDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.completableFutureExceptionDetector;
+    }
+
+    /**
+     * {@return the {@link CompletableFutureBlockingCallbackDetector} for the run the calling thread
+     * works for, or {@code null}}: a woven stage marks its callback's entry and exit on the thread
+     * that runs it, which the run lent the callback to, and a woven blocking call inside it is
+     * recorded.
+     */
+    static @Nullable CompletableFutureBlockingCallbackDetector currentCfBlockingCallbackDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.cfBlockingCallbackDetector;
+    }
+
+    /**
+     * {@return the {@link CompletableFutureCommonPoolBlockingDetector} for the run the calling
+     * thread works for, or {@code null}}: a woven {@code supplyAsync} or {@code runAsync} on the
+     * common pool declares its task, and a woven blocking call the task makes is recorded.
+     */
+    static @Nullable CompletableFutureCommonPoolBlockingDetector currentCfCommonPoolBlockingDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.cfCommonPoolBlockingDetector;
+    }
+
+    /**
      * {@return the {@link LockOrderValidator} for the calling thread's test, or {@code null}}
      *
      * <p>Same contract as {@link #currentSharedCollectionDetector()}, for the same reason:

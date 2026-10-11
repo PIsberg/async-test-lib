@@ -6,8 +6,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 
@@ -75,6 +78,46 @@ public class CompletableFutureExceptionDetector extends AbstractInstanceDetector
     }
 
     private volatile boolean enabled = true;
+
+    /** How many discarded futures one run keeps; later ones are counted and not judged. */
+    static final int MAX_DISCARDED = 4_096;
+
+    /** A root future its caller dropped, and the thread that did. */
+    private record Discarded(Future<?> future, String threadLabel, String call) { }
+
+    private final Queue<Discarded> discarded = new ConcurrentLinkedQueue<>();
+    private final AtomicInteger discardedCount = new AtomicInteger();
+
+    /**
+     * Records a root future its caller discarded at the call that created it, which the agent sees
+     * as the {@code POP} after a woven {@code supplyAsync} or {@code runAsync}.
+     *
+     * <p>Nothing can register a handler on, join or get a future nobody holds, so a failure of its
+     * task reaches nobody. Whether it failed is read from the future at {@link #analyze()}: a task
+     * that succeeded, or has not finished, is not reported. Only a root is fed this way; a dropped
+     * dependent stage may fail only because its source did, and the source may have been observed.
+     *
+     * @param future the discarded future (null-safe)
+     * @param thread the thread that discarded it (null-safe)
+     * @param call   the call that created it, for the report
+     * @since 1.13.2
+     */
+    public void recordDiscarded(Future<?> future, Thread thread, String call) {
+        if (future == null || thread == null || discardedCount.incrementAndGet() > MAX_DISCARDED) {
+            return;
+        }
+        discarded.add(new Discarded(future, ReportSections.threadLabel(thread), call));
+    }
+
+    /** {@return the failure {@code future} completed with, or {@code null} if it has not failed} */
+    private static @Nullable Throwable failureOf(Future<?> future) {
+        try {
+            return future.isDone() && future.state() == Future.State.FAILED
+                    ? future.exceptionNow() : null;
+        } catch (RuntimeException unreadable) { // NOPMD AvoidCatchingGenericException - a third-party Future's state() may throw anything
+            return null;
+        }
+    }
 
     /**
      * Register a CompletableFuture for monitoring.
@@ -185,6 +228,16 @@ public class CompletableFutureExceptionDetector extends AbstractInstanceDetector
             if (state.completed) {
                 report.completionStatus.put(state.name, 
                     state.completedExceptionally ? "exceptional" : "normal");
+            }
+        }
+
+        for (Discarded d : discarded) {
+            Throwable failure = failureOf(d.future());
+            if (failure != null) {
+                report.unhandledExceptions.add(String.format(
+                    "future returned by %s was discarded by thread '%s' and completed "
+                        + "exceptionally with %s: %s — no handler, join or get can ever see it",
+                    d.call(), d.threadLabel(), failure.getClass().getName(), failure.getMessage()));
             }
         }
 

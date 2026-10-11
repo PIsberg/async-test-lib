@@ -1302,6 +1302,56 @@ final class Corpus {
                     "the same failing submit with the future kept and its exception read "
                             + "through get, so the failure reached the caller"),
 
+            new RecordingSubject("agent_completableFuture_failingRunAsyncDiscarded", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker starts a runAsync whose task throws and drops the future, so no "
+                            + "handler, join or get can ever see the failure. Nothing is recorded: "
+                            + "the POP after the woven runAsync hands the future to the detector, "
+                            + "which reads the failure from it",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_completableFuture_failingRunAsyncJoined", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same failing runAsync with the future kept and its failure read through "
+                            + "get, so it reached the caller"),
+
+            new RecordingSubject("agent_completableFuture_callbackJoinsAPendingFuture", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a thenApply callback joins a second future that is completed only after the "
+                            + "callback has started, so the thread running the callback parks "
+                            + "inside it. Nothing is recorded: the woven stage marks the callback "
+                            + "and the woven join finds its future not done",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_completableFuture_callbackJoinsADoneFuture", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same callback and join, with the second future completed before the "
+                            + "first, so the join returns at once: the allOf-then-join idiom"),
+
+            new RecordingSubject("agent_completableFuture_sleepsOnTheCommonPool", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.CF_COMMON_POOL_BLOCKING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker hands the common ForkJoinPool a supplier that sleeps, which "
+                            + "parks a worker of the pool every parallel stream in the JVM "
+                            + "shares. Nothing is recorded: the woven supplyAsync marks the task "
+                            + "and the woven sleep inside it is seen there",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("agent_completableFuture_sleepsOnADedicatedPool", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.CF_COMMON_POOL_BLOCKING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same sleeping supplier handed a pool of its own, which is the fix"),
+
             new RecordingSubject("agent_thread_startedWithNoDaemonDecision", JDK,
                     "java.lang.Thread",
                     DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,

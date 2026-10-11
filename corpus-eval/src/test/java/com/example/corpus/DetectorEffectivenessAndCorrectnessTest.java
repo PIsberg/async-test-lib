@@ -142,20 +142,22 @@ class DetectorEffectivenessAndCorrectnessTest {
         Set<DetectorType> agentFed = LibraryReach.agentFed();
 
         // Every agent-fed detector is reached through third-party library bytecode except the
-        // seven LibraryReach gives a reason for: no corpus library calls System.gc, none waits
+        // ten LibraryReach gives a reason for: no corpus library calls System.gc, none waits
         // behind an if (#694), none pushes a popped node back onto a lock-free stack (#817), none
         // reassigns a field it synchronizes on (#793), none checks a concurrent map and then acts
-        // on it, none leaves a pool it created running, and none drops a failing task's future.
+        // on it, none leaves a pool it created running, none drops a failing task's future or a
+        // failing async root, none blocks inside a callback, and none blocks on the common pool.
         // The daemon-hygiene weave is reached through a Guava service left running (#736).
-        assertEquals(agentFed.size() - 7, reached.size(),
-                "all agent-fed detectors except EXPLICIT_GC, MISSED_SIGNAL, ABA_PROBLEM, "
-                        + "SYNCHRONIZED_NON_FINAL, CONCURRENT_MAP_CHECK_THEN_ACT, "
-                        + "EXECUTOR_SHUTDOWN and FUTURE_IGNORED must be reached through "
-                        + "library bytecode");
+        assertEquals(agentFed.size() - 10, reached.size(),
+                "all agent-fed detectors except the ten LibraryReach.unreached() names must be "
+                        + "reached through library bytecode");
         assertEquals(Set.of(DetectorType.EXPLICIT_GC, DetectorType.MISSED_SIGNAL,
                         DetectorType.ABA_PROBLEM, DetectorType.SYNCHRONIZED_NON_FINAL,
                         DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT,
-                        DetectorType.EXECUTOR_SHUTDOWN, DetectorType.FUTURE_IGNORED),
+                        DetectorType.EXECUTOR_SHUTDOWN, DetectorType.FUTURE_IGNORED,
+                        DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS,
+                        DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK,
+                        DetectorType.CF_COMMON_POOL_BLOCKING),
                 LibraryReach.unreached().keySet());
     }
 
