@@ -175,10 +175,28 @@ class DetectorEvidenceMatchesCodeTest {
             entry(DetectorType.VIRTUAL_THREAD_PINNING, "the JFR feed reaches virtual workers only, "
                     + "and recordPinningEvent still adds a pin described by the caller, judged by its "
                     + "description; the report does not grade the two apart, so the row keeps "
-                    + "ASSERTED until it does"));
+                    + "ASSERTED until it does"),
+            entry(DetectorType.EXECUTOR_SHUTDOWN, "the woven Executors factories declare what the "
+                    + "run created and the executor's own state decides shutdown, but "
+                    + "recordExecutorCreated still takes the caller's word for ownership, which "
+                    + "nothing checks; the report does not grade the two apart"),
+            entry(DetectorType.FUTURE_IGNORED, "a dropped submit is judged by the future's own "
+                    + "state, but recordSubmit and recordInspect still report a future the caller "
+                    + "says nobody inspected; the report does not grade the two apart"),
+            entry(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, "a dropped async root is judged by "
+                    + "the future's own state, but the recorded path still reports a future older "
+                    + "than 100 ms with no handler, a threshold over records, and the report does "
+                    + "not grade the two apart"),
+            entry(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, "the woven stage marks the "
+                    + "callback and the woven call is seen to block, but recordEnterCallback and "
+                    + "recordBlockingCall still take the caller's word for both"),
+            entry(DetectorType.CF_COMMON_POOL_BLOCKING, "the woven feed sees the task on a "
+                    + "common-pool worker and the call about to block, but "
+                    + "recordCommonPoolSubmission and recordBlockingCall still take the caller's "
+                    + "word for both"));
 
     /** How many entries {@link #FED_BELOW_OBSERVED} may hold; lower it when an entry leaves. */
-    private static final int FED_BELOW_OBSERVED_CEILING = 5;
+    private static final int FED_BELOW_OBSERVED_CEILING = 10;
 
     /**
      * Ungraded detectors above the PROMPT cap that name a threshold, each with why the threshold
