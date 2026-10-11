@@ -940,9 +940,33 @@ class CorpusRecordingLaneTest {
     private static final ThreadLocal<java.security.SecureRandom> CONFINED_SECURE_RANDOM =
             ThreadLocal.withInitial(java.security.SecureRandom::new);
 
+    /**
+     * Initializes the JDK's lock queue-node classes here, on a platform thread, before any row runs.
+     * A queue node is allocated only when an acquire contends, so the first contended acquire in the
+     * lane initializes the class, and a virtual worker that waits for another worker to finish that
+     * initialization is pinned. On JDK 25 the JFR feed reported exactly that on
+     * {@code recorded_readLock_releasedBeforeWriting} ("Waited for initialization of
+     * AbstractQueuedLongSynchronizer$ExclusiveNode"): class-loading warm-up the row is not about
+     * (#988), not a pin in its code. An uncontended lock and unlock would not do: it never allocates
+     * a node. A name missing on some JDK is skipped; the run then shows whether it mattered.
+     */
+    private static void initializeLockQueueNodes() {
+        for (String synchronizer : List.of("AbstractQueuedSynchronizer", "AbstractQueuedLongSynchronizer")) {
+            for (String node : List.of("Node", "ExclusiveNode", "SharedNode", "ConditionNode")) {
+                try {
+                    Class.forName("java.util.concurrent.locks." + synchronizer + "$" + node, true,
+                            ClassLoader.getSystemClassLoader());
+                } catch (ClassNotFoundException absentOnThisJdk) {
+                    // Nothing to initialize.
+                }
+            }
+        }
+    }
+
     @BeforeAll
     static void installRecorder() throws IOException, SQLException, NoSuchAlgorithmException {
         CorpusRecorder.install();
+        initializeLockQueueNodes();
 
         sharedDocumentBuilder = newDocumentBuilder();
         try {
