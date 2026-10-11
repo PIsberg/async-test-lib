@@ -84,8 +84,10 @@ class AgentProcessHooksTest {
         }
     }
 
+    // The JDK 25 waitFor(Duration) is judged the same way. No @DisplayName: this test skips on
+    // JDK 21, and .github/skipped-tests.txt matches the name Gradle's report carries, which would
+    // otherwise be the display name rather than the method name Maven's carries.
     @Test
-    @DisplayName("the JDK 25 waitFor(Duration) is judged the same way")
     void durationWaitForIsReported() throws Exception {
         assumeTrue(Runtime.version().feature() >= 25, "Process.waitFor(Duration) is JDK 25+");
         installed();
