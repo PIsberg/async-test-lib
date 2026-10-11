@@ -416,7 +416,7 @@ image without `jdk.jfr`) the detector keeps its recording feed. The four:
 ### Why the rest are recording-only
 
 Agent-feeding a detector works when one JDK method call carries everything the detector needs. That
-is what the eighteen above have in common: a lock acquired, a formatter used, a permit taken. Three
+is what the agent-fed detectors above have in common: a lock acquired, a formatter used, a permit taken. Three
 things stop the others, and each was checked against the code rather than assumed.
 
 **The detector needs a fact the substitution cannot supply.** `ExecutorShutdownDetector` reports an
