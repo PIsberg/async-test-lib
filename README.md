@@ -2,7 +2,7 @@
 
 # @AsyncTest - Asynchronous Testing Library for Java
 
-**JUnit 5 & 6 concurrency stress testing — one annotation, 146 detectors**
+**JUnit 5 & 6 concurrency stress testing — one annotation, 147 detectors**
 
 [![Maven Central](https://img.shields.io/maven-central/v/se.deversity.async-test-lib/async-test-lib)](https://central.sonatype.com/artifact/se.deversity.async-test-lib/async-test-lib)
 [![Javadoc](https://img.shields.io/badge/javadoc-latest-blue)](https://pisberg.github.io/async-test-lib/api/latest/)
@@ -31,10 +31,10 @@
 ## Why async-test?
 
 - **One annotation** — `@AsyncTest` runs your test body on N threads × M rounds, collided on a `CyclicBarrier` so every round starts at the same instant. No executor boilerplate, no `CountDownLatch`, no `Thread.join` loops.
-- **146 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types and more; a bare `@AsyncTest` runs the 12 in `Preset.ESSENTIALS` and `detectAll = true` runs them all. See [Detectors](#detectors) for what feeds them.
+- **147 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types and more; a bare `@AsyncTest` runs the 12 in `Preset.ESSENTIALS` and `detectAll = true` runs them all. See [Detectors](#detectors) for what feeds them.
 - **JUnit native, 5 and 6** — a plain `@TestTemplate`: no JVM flags, no required configuration, and it works from Kotlin, Groovy, Scala and Clojure. Jupiter 5.9.3 through 6.1.2, verified per release ([compatibility table](docs/BUILDING.md#junit-compatibility), [language notes](docs/JVM_LANGUAGES.md)).
 - **Every finding says how far to trust it** — each detector carries a trust tier, so `failOn` can gate a merge on the measured end of the scale while everything else is still reported ([the tiers](docs/DETECTOR_CATALOG.md#trust-tiers), [Evidence](#evidence-what-has-been-measured-and-on-whose-code)).
-- **Optional agent** — `async-test-agent` rewrites field accesses, collection and lock calls, shared JDK objects, coordination primitives, `Object.wait` and `notify`, `Thread.sleep`, `System.gc`, `Thread.start` and `Thread.setDaemon`, and the monitor of `synchronized (owner.field)`, with Byte Buddy, so **36 of them can see code you did not modify** instead of 4. Being able to see is not the same as firing: on 82 third-party subjects two of the 21 exposed at the time produced every finding, and the other nineteen were correctly silent because nothing in that corpus writes the idiom they model. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
+- **Optional agent** — `async-test-agent` rewrites field accesses, collection and lock calls, shared JDK objects, coordination primitives, `Object.wait` and `notify`, `Thread.sleep`, `System.gc`, `Thread.start` and `Thread.setDaemon`, and the monitor of `synchronized (owner.field)`, with Byte Buddy, so **37 of them can see code you did not modify** instead of 4. Being able to see is not the same as firing: on 82 third-party subjects two of the 21 exposed at the time produced every finding, and the other nineteen were correctly silent because nothing in that corpus writes the idiom they model. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
 - **CI-ready out of the box** — JUnit XML, machine-readable JSON, SARIF, or plain `AssertionError` fail-gates, straight into GitHub Actions, Jenkins and GitLab CI.
 
 <div align="center">
@@ -93,11 +93,11 @@ anything.
 
 **The eval prints its denominator before any rate**, because a finding count on its own cannot
 tell "no false positive from detector X" apart from "X never ran". In code that records nothing,
-only 21 of the 146 detectors can see anything at all, and seven of those produced every finding in
-the corpus. Saying so is the difference between a measurement and a marketing number. Two more
+only 21 of the 146 shipped when this was first measured could see anything at all, and seven of
+those produced every finding in the corpus. Saying so is the difference between a measurement and a marketing number. Two more
 lanes exist for exactly that reason. One records what the body did, the way a user following
 `AsyncTestContext` would; the other attaches the agent and writes the bug next to its fix. Between
-them 132 of the 146 detectors are paired with a case that must fire and a twin that must stay
+them 133 of the 147 detectors are paired with a case that must fire and a twin that must stay
 silent, and the other 14 carry a written reason. 34 of those pairs are what let their detectors
 carry `VERDICT`, the tier a build can fail on; a pair alone is not enough, because the detector
 must also decide from something other than the test's own record call. HikariCP joins the corpus
@@ -110,15 +110,16 @@ above, and the correct idioms the happens-before model does not see yet are list
 with the reason, so that a fix flips them visibly.
 
 The library agent pairs put the woven JDK call inside Guava, Jackson, HikariCP, Spring, commons-lang3
-or Groovy instead of the test file, so 18 of the 32 agent-fed detectors are measured on a call site
+or Groovy instead of the test file, so 18 of the 33 agent-fed detectors are measured on a call site
 nobody here compiled; `EXPLICIT_GC` is refused a pair in every lane, and `MISSED_SIGNAL`,
 `ABA_PROBLEM`, `SYNCHRONIZED_NON_FINAL`, `CONCURRENT_MAP_CHECK_THEN_ACT`, `EXECUTOR_SHUTDOWN`,
 `FUTURE_IGNORED`, the three `CompletableFuture` detectors, the two interrupt detectors and
-`SYNCHRONIZED_COLLECTION_ITERATION` and `SYSTEM_PROPERTY_MUTATION` fed by the agent have a JDK
-pair only,
+`SYNCHRONIZED_COLLECTION_ITERATION`, `SYSTEM_PROPERTY_MUTATION` and `PROCESS_STREAM_STARVATION`
+fed by the agent have a JDK pair only,
 because no corpus library waits behind an `if`, pushes a popped node back, reassigns a field it
 synchronizes on, checks a concurrent map before acting on it, leaves a pool it created running,
-drops a failing task's future or blocks inside a callback or on the common pool. Their
+drops a failing task's future, blocks inside a callback or on the common pool, or waits for a
+child process. Their
 first run found a detector that dropped every sleep held under a `ReentrantLock`, which the
 test-file pair could not see because it sleeps inside a `synchronized` method.
 
@@ -311,7 +312,7 @@ After the run, the **detector registry** analyses what was observed and reports 
 
 ## Detectors
 
-146 detectors. A bare `@AsyncTest` runs the curated `ESSENTIALS` preset; one flag turns on every detector, or cherry-pick:
+147 detectors. A bare `@AsyncTest` runs the curated `ESSENTIALS` preset; one flag turns on every detector, or cherry-pick:
 
 ```java
 // The default: Preset.ESSENTIALS, 12 high-signal detectors
@@ -333,7 +334,7 @@ job, pass `-Dasync-test.detectAll=true` (`mvn test -Dasync-test.detectAll=true`;
 on every `@AsyncTest`: `includes` still select exactly their list and `excludes` still apply.
 
 **What feeds them.** Four read the JVM and the harness directly and need no configuration at
-all. With the agent attached that becomes 36, because the woven streams carry what those
+all. With the agent attached that becomes 37, because the woven streams carry what those
 detectors need without a line of instrumentation. The remaining 110 observe what the test body
 records explicitly through `AsyncTestContext`, and the catalog says which of three reasons
 keeps each of them there. When a detector is
@@ -354,7 +355,7 @@ wrote is in [the accuracy eval](docs/analysis/detector-accuracy-eval.md).
 | **Locks & monitors** | Boxed-primitive lock (`synchronized(Integer)`), public lock exposure, lock leak, nested monitor lockout, `StampedLock` optimistic-read without `validate()`, lock downgrade |
 | **Lifecycle** | Executor never shut down, thread leak, `Future` result ignored, `CountDownLatch` misuse, `CyclicBarrier` trip count wrong |
 | **Concurrency primitives** | `CompletableFuture` chain issues, blocking on common pool, `ForkJoinTask` blocking, `Exchanger`, `Phaser`, `Semaphore` misuse |
-| **Hygiene** | Interrupt swallowing, MDC context leak, `System.setProperty` from multiple threads, `System.gc()` in tests, deprecated thread API (`Thread.stop()` etc.) |
+| **Hygiene** | Interrupt swallowing, MDC context leak, `System.setProperty` from multiple threads, `Process.waitFor` before the child's output is drained, `System.gc()` in tests, deprecated thread API (`Thread.stop()` etc.) |
 | **Phase 13** | Daemon-thread hygiene, illegal `notify*()`, shared `SecureRandom`, shared `WeakHashMap`/`IdentityHashMap`, shared JDBC `Connection`/`Statement`/`ResultSet` |
 | **Phase 14** (new) | Shared stateful crypto (`Cipher`/`Mac`/`Signature`), non-atomic `ConcurrentMap` check-then-act, shared `Deflater`/`Inflater`, constructor `this`-escape, cached `ThreadLocalRandom` used off-thread |
 | **Phase 16 — JDK 25/26 preview** | `StableValue` misuse (read-before-set / double-set / reentrant `orElseSet`), `StructuredTaskScope` lifecycle (fork-after-join, result-before-join, owner-confinement, missing join, and JDK 26 join-timeout hazards), parallel-`Gatherer` without a combiner |

@@ -92,6 +92,10 @@ final class LibraryReach {
                 "agent-fed through the woven System.setProperty and the JVM-default setters; a "
                         + "firing library row needs a library method that writes one from several "
                         + "threads unguarded, and no corpus library ships that defect");
+        unreached(DetectorType.PROCESS_STREAM_STARVATION,
+                "agent-fed through the woven Process.waitFor and pipe getters; a firing library "
+                        + "row needs a library method that starts a child and waits before "
+                        + "draining it, and no corpus library starts processes");
     }
 
     private static void unreached(DetectorType type, String reason) {

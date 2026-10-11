@@ -1416,6 +1416,24 @@ final class Corpus {
                     "the same writes under synchronized (System.getProperties()), so the workers "
                             + "take turns"),
 
+            new RecordingSubject("agent_process_waitedForBeforeDraining", JDK,
+                    "java.lang.Process",
+                    DetectorType.PROCESS_STREAM_STARVATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker waits for a child process whose merged output is a pipe nobody "
+                            + "has taken, and reads it only after the wait. A child that writes a "
+                            + "pipe's worth blocks and the wait never returns; java -version is quiet "
+                            + "enough that it does. Nothing is recorded: the woven waitFor asks the "
+                            + "Process which outputs are pipes",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("agent_process_drainedWhileWaiting", JDK,
+                    "java.lang.Process",
+                    DetectorType.PROCESS_STREAM_STARVATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same child, with a thread draining its output started before the wait, "
+                            + "as the Process javadoc asks"),
+
             new RecordingSubject("agent_thread_startedWithNoDaemonDecision", JDK,
                     "java.lang.Thread",
                     DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,

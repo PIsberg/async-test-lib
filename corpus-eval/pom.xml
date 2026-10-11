@@ -231,8 +231,8 @@
                          measurement over a different denominator, which is why it writes its own
                          report and never merges into the unmodified lanes. The corpus records
                          nothing by hand, which is what makes its findings attributable to
-                         unmodified code and also what leaves 125 of the 146 detectors with an
-                         exposure of zero in those lanes. This lane gives a named handful of them
+                         unmodified code and also what leaves every recording-only detector with an
+                         exposure of zero in those lanes (DetectorFeeds says which). This lane gives a named handful of them
                          a denominator, by calling the recording API the way a user following
                          AsyncTestContext does.
                          The agent stays detached on purpose: with both feeds live a finding could

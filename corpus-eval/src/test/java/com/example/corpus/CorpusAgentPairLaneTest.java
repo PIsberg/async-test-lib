@@ -20,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import se.deversity.asynctest.AsyncTest;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.charset.StandardCharsets;
@@ -1176,6 +1177,68 @@ class CorpusAgentPairLaneTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_systemProperty_setUnderTheTablesLock() {
         counted(() -> setTheProperty(true));
+    }
+
+    // --- A child process waited for before its output is read -------------------------------
+
+    /** Children the undrained row has started: one per worker, not one per execution. */
+    private static final AtomicInteger UNDRAINED_CHILDREN = new AtomicInteger();
+
+    /** Children the drained row has started, capped the same way. */
+    private static final AtomicInteger DRAINED_CHILDREN = new AtomicInteger();
+
+    /**
+     * Starts {@code java -version} with its output merged into one pipe and waits for it: either
+     * reading only once the wait returns, or with a drain thread started first. The first
+     * {@link #THREADS} executions of a row start a child and the rest return, because each child
+     * is a JVM and the rows judge the wait, not how many there were.
+     */
+    private static void waitForAChild(boolean drainWhileWaiting, AtomicInteger started)
+            throws InterruptedException {
+        if (started.incrementAndGet() > THREADS) {
+            return;
+        }
+        String java = ProcessHandle.current().info().command().orElse("java");
+        Process child;
+        try {
+            child = new ProcessBuilder(java, "-version").redirectErrorStream(true).start();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        try {
+            if (drainWhileWaiting) {
+                Thread drain = new Thread(() -> readAll(child));
+                drain.setDaemon(true);
+                drain.start();
+                child.waitFor();
+                drain.join();
+            } else {
+                child.waitFor();
+                readAll(child);
+            }
+        } finally {
+            child.destroyForcibly();
+        }
+    }
+
+    private static void readAll(Process child) {
+        try {
+            child.getInputStream().readAllBytes();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /** Every worker waits for its child before anything reads the child's output. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 60_000, detectAll = true)
+    void agent_process_waitedForBeforeDraining() {
+        counted(() -> waitForAChild(false, UNDRAINED_CHILDREN));
+    }
+
+    /** The same child, drained by a thread started before the wait. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 60_000, detectAll = true)
+    void agent_process_drainedWhileWaiting() {
+        counted(() -> waitForAChild(true, DRAINED_CHILDREN));
     }
 
     // --- Thread daemon flag, left running (#736) ----------------------------------------------

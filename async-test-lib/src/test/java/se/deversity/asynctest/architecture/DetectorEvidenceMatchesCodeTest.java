@@ -206,10 +206,13 @@ class DetectorEvidenceMatchesCodeTest {
             entry(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, "the woven iterator() asks "
                     + "Thread.holdsLock of the wrapper's monitor, but recordIterationStarted still "
                     + "takes the caller's word for whether it held it; the report does not grade "
-                    + "the two apart"));
+                    + "the two apart"),
+            entry(DetectorType.PROCESS_STREAM_STARVATION, "the woven waitFor asks the Process which "
+                    + "outputs are pipes, but a taken pipe is assumed drained, not seen read, and "
+                    + "recordStreamTaken takes the caller's word for the take itself"));
 
     /** How many entries {@link #FED_BELOW_OBSERVED} may hold; lower it when an entry leaves. */
-    private static final int FED_BELOW_OBSERVED_CEILING = 13;
+    private static final int FED_BELOW_OBSERVED_CEILING = 14;
 
     /**
      * Ungraded detectors above the PROMPT cap that name a threshold, each with why the threshold

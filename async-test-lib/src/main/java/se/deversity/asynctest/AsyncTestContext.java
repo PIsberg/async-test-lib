@@ -153,6 +153,7 @@ import se.deversity.asynctest.diagnostics.ScopeJoinerMisuseDetector;
 import se.deversity.asynctest.diagnostics.ScopeConfigurationMisuseDetector;
 import se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector;
 import se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector;
+import se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
@@ -425,6 +426,7 @@ public final class AsyncTestContext {
     final @Nullable ScopeConfigurationMisuseDetector scopeConfigurationMisuseDetector;
     final @Nullable ScopeResultEscapeDetector scopeResultEscapeDetector;
     final @Nullable LazyCollectionMisuseDetector lazyCollectionMisuseDetector;
+    final @Nullable ProcessStreamStarvationDetector processStreamStarvationDetector;
 
     // ---- Agent-telemetry bridge target (1.7.0+) ----
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
@@ -585,6 +587,7 @@ public final class AsyncTestContext {
         scopeConfigurationMisuseDetector = registry.scopeConfigurationMisuseDetector;
         scopeResultEscapeDetector = registry.scopeResultEscapeDetector;
         lazyCollectionMisuseDetector = registry.lazyCollectionMisuseDetector;
+        processStreamStarvationDetector = registry.processStreamStarvationDetector;
         // Agent-telemetry bridge target
         atomicityValidator                     = registry.atomicityValidator;
 
@@ -2040,6 +2043,16 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link ProcessStreamStarvationDetector} for the run the calling thread works
+     * for, or {@code null}}: the woven {@code Process.waitFor} and the woven calls that take a
+     * child's output pipe record here.
+     */
+    static @Nullable ProcessStreamStarvationDetector currentProcessStreamStarvationDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.processStreamStarvationDetector;
+    }
+
+    /**
      * {@return the {@link SynchronizedCollectionIterationDetector} for the run the calling thread
      * works for, or {@code null}}: a woven {@code iterator()} or {@code stream()} on a synchronized
      * wrapper, and a woven view of a synchronized map, are handed to it.
@@ -3375,6 +3388,18 @@ public final class AsyncTestContext {
      */
     public static LazyCollectionMisuseDetector lazyCollectionMisuseDetector() {
         return require(DetectorType.LAZY_COLLECTION_MISUSE, c -> c.lazyCollectionMisuseDetector);
+    }
+
+    /**
+     * Returns the {@link ProcessStreamStarvationDetector} for the current test.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@link DetectorType#PROCESS_STREAM_STARVATION} is not enabled
+     * @since 1.13.2
+     *
+     * @return the {@link ProcessStreamStarvationDetector} for the active {@code @AsyncTest} context
+     */
+    public static ProcessStreamStarvationDetector processStreamStarvationDetector() {
+        return require(DetectorType.PROCESS_STREAM_STARVATION, c -> c.processStreamStarvationDetector);
     }
 
     // ---- Phase 1 / Phase 3 detector accessors ----

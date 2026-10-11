@@ -4,7 +4,7 @@ paths: ["**/diagnostics/**"]
 
 ## Conventions for every detector in this package
 
-These hold for all 146 detectors and are therefore stated once here rather than restated as a
+These hold for all 147 detectors and are therefore stated once here rather than restated as a
 per-class `@AITestDriven` annotation — one annotation per detector cost one `<element>` line each
 in the always-loaded `<scoped_rules>` index of `CLAUDE.md`.
 
@@ -92,6 +92,9 @@ a performance budget) are annotated individually and appear below.
 
 ### se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/PlatformThreadPerTaskDetectorTest.java
+
+### se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/ProcessStreamStarvationDetectorTest.java
 
 ### se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/RecordMutableComponentLeakDetectorTest.java
@@ -251,6 +254,10 @@ a performance budget) are annotated individually and appear below.
 ### se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector
 - **Strategy**: OTHER
 - **Note**: Created threads accumulate in a ConcurrentLinkedQueue; probe bookkeeping in ConcurrentHashMap; counters are AtomicInteger. analyze() reads a moment-in-time snapshot and is safe to call concurrently with recording.
+
+### se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector
+- **Strategy**: OTHER
+- **Note**: Per-process state in a ConcurrentHashMap keyed by identity, with a get-then-computeIfAbsent hot path; takers are concurrent sets; the first wait is claimed once with a CAS.
 
 ### se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector
 - **Strategy**: OTHER

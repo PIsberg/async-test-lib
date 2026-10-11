@@ -69,6 +69,9 @@
 ### se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/PlatformThreadPerTaskDetectorTest.java
 
+### se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/ProcessStreamStarvationDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/RecordMutableComponentLeakDetectorTest.java
 
@@ -227,6 +230,10 @@
 ### se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector
 - **Strategy**: OTHER
 - **Note**: Created threads accumulate in a ConcurrentLinkedQueue; probe bookkeeping in ConcurrentHashMap; counters are AtomicInteger. analyze() reads a moment-in-time snapshot and is safe to call concurrently with recording.
+
+### se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector
+- **Strategy**: OTHER
+- **Note**: Per-process state in a ConcurrentHashMap keyed by identity, with a get-then-computeIfAbsent hot path; takers are concurrent sets; the first wait is claimed once with a CAS.
 
 ### se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector
 - **Strategy**: OTHER

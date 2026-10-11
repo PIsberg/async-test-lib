@@ -727,6 +727,44 @@ class DiscardedOfferWeavingTest {
                                       long timeout, TimeUnit unit) throws Exception {
             return x.exchange(item, timeout, unit);
         }
+
+        public static int processWaitFor(Process p) throws InterruptedException {
+            return p.waitFor();
+        }
+
+        public static boolean processWaitFor(Process p, long timeout, TimeUnit unit)
+                throws InterruptedException {
+            return p.waitFor(timeout, unit);
+        }
+
+        public static boolean processWaitFor(Process p, java.time.Duration d)
+                throws InterruptedException {
+            return p.waitFor(d.toMillis(), TimeUnit.MILLISECONDS);
+        }
+
+        public static java.io.InputStream processInputStream(Process p) {
+            return p.getInputStream();
+        }
+
+        public static java.io.InputStream processErrorStream(Process p) {
+            return p.getErrorStream();
+        }
+
+        public static java.io.BufferedReader processInputReader(Process p) {
+            return p.inputReader();
+        }
+
+        public static java.io.BufferedReader processInputReader(Process p, java.nio.charset.Charset cs) {
+            return p.inputReader(cs);
+        }
+
+        public static java.io.BufferedReader processErrorReader(Process p) {
+            return p.errorReader();
+        }
+
+        public static java.io.BufferedReader processErrorReader(Process p, java.nio.charset.Charset cs) {
+            return p.errorReader(cs);
+        }
     }
 
     @Test

@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`PROCESS_STREAM_STARVATION`, detector 147: `Process.waitFor()` on a child whose output nobody
+  drains.** A child writes stdout and stderr into pipes of a few kilobytes and blocks once one is
+  full, so a parent that waits before reading waits for a child that is waiting for it. It hangs
+  only on a verbose child, which is why it passes tests that run a quiet one, and no detector
+  covered it. The first wait for a process records which of its outputs are still pipes nobody
+  took; analysis excuses a pipe a thread other than the waiter took at any time (the drain task
+  that starts after the wait) and one the `ProcessBuilder` redirected. `MEDIUM`, tier `PROMPT`,
+  evidence `ASSERTED`. With `collections=true` the agent weaves `waitFor`, the timed `waitFor`, `waitFor(Duration)` on JDK 25+,
+  `getInputStream`, `getErrorStream`, `inputReader` and `errorReader`, so it fires on unmodified
+  code (37 of the detectors can see unmodified code, 110 remain recording-only).
+  `ProcessStreamStarvationDetectorTest` failed against the first draft on a drain task taking its
+  pipe after the wait began and on a `Process` without `pid()`; both pass.
+  `ProcessFeedWeavingTest` fires through the real weaver and `ProcessFeedSparesCorrectUseTest`
+  stays silent on three correct twins, and goes red when the `getInputStream` row is removed.
+  New: example 150, consumer-fixture `Phase25ProcessStreamFixtureTest`, catalog entry 147.
+
 - **`SYSTEM_PROPERTY_MUTATION` is fed by the agent, and covers the JVM's default Locale and
   TimeZone.** `System.setProperty` and `clearProperty` from several threads with no lock held race
   on state every thread reads, and the detector heard only writes a body recorded. With

@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
  *
  * <p>Every rate is printed over the denominator it was measured against. A finding count on its
  * own cannot distinguish a detector that looked and saw nothing from one that was never fed, and
- * in this corpus 125 of the 146 are never fed at all, so the exposure section is not decoration.
+ * in this corpus every detector {@code DetectorFeeds} calls recording-only is never fed at all, so the exposure section is not decoration.
  */
 final class CorpusReport {
 
