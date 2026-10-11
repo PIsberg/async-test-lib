@@ -42,9 +42,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   - drain the output on another thread while waiting
  *   - or redirect it: redirectErrorStream(true), Redirect.DISCARD, a file
  *
- * With the agent attached (collections=true) the woven waitFor and stream
- * getters feed the detector with no recording call; these tests record
- * by hand so that they run without it.
+ * With the agent attached (collections=true) the woven start, waitFor and
+ * stream getters feed the detector with no recording call; these tests
+ * record by hand so that they run without it. Recording the start matters:
+ * on Linux a stderr merged into stdout is still a pipe object, and only
+ * the builder says that nothing will ever be written to it.
  */
 class ToolRunnerTest {
 
@@ -67,6 +69,7 @@ class ToolRunnerTest {
 
     private Process start(ProcessBuilder builder) throws IOException {
         Process process = builder.start();
+        detector.recordStarted(builder, process);
         started.add(process);
         return process;
     }

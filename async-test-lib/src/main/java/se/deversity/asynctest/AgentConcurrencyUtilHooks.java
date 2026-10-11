@@ -1,6 +1,7 @@
 package se.deversity.asynctest;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -9,6 +10,7 @@ import java.lang.reflect.UndeclaredThrowableException;
 import java.nio.charset.Charset;
 import java.time.Duration;
 import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
@@ -777,6 +779,40 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * Weaves {@code ProcessBuilder.start()}: the child is started, then recorded on
+     * {@code PROCESS_STREAM_STARVATION} with its builder, which alone tells a stderr merged into
+     * stdout from a pipe on Linux.
+     *
+     * @param receiver the builder
+     * @return the started child
+     * @throws IOException if the child cannot be started
+     * @since 1.13.2
+     */
+    public static Process processBuilderStart(ProcessBuilder receiver) throws IOException {
+        Process process = receiver.start();
+        started(receiver, process);
+        return process;
+    }
+
+    /**
+     * Weaves {@code ProcessBuilder.startPipeline(List)}, as {@link #processBuilderStart} for each
+     * builder and the child it started.
+     *
+     * @param builders the builders, in pipeline order
+     * @return the started children, in the same order
+     * @throws IOException if a child cannot be started
+     * @since 1.13.2
+     */
+    public static List<Process> processBuilderStartPipeline(List<ProcessBuilder> builders)
+            throws IOException {
+        List<Process> processes = ProcessBuilder.startPipeline(builders);
+        for (int i = 0; i < processes.size() && i < builders.size(); i++) {
+            started(builders.get(i), processes.get(i));
+        }
+        return processes;
+    }
+
+    /**
      * Weaves {@code Process.waitFor()}: the wait is recorded on
      * {@code PROCESS_STREAM_STARVATION} with the output pipes no thread had taken yet, then made.
      *
@@ -920,6 +956,13 @@ public final class AgentConcurrencyUtilHooks {
     public static BufferedReader processErrorReader(Process receiver, Charset charset) {
         streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDERR);
         return receiver.errorReader(charset);
+    }
+
+    private static void started(ProcessBuilder builder, Process process) {
+        ProcessStreamStarvationDetector detector = AsyncTestContext.currentProcessStreamStarvationDetector();
+        if (detector != null) {
+            detector.recordStarted(builder, process);
+        }
     }
 
     private static void waitingFor(Process process) {

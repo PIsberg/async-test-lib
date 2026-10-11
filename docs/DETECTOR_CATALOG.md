@@ -456,12 +456,15 @@ two JVM defaults no detector covered before: `Locale.setDefault`, recorded under
 and a key written from two threads with no lock held across the writes is reported; writes under
 `synchronized (System.getProperties())` take turns and are not.
 
-`ProcessStreamStarvationDetector` hears the woven `Process.waitFor` and the calls that take a
-child's output pipe (`getInputStream`, `getErrorStream`, `inputReader`, `errorReader`). A wait for
+`ProcessStreamStarvationDetector` hears the woven `ProcessBuilder.start` and `startPipeline`, the
+woven `Process.waitFor` and the calls that take a child's output pipe (`getInputStream`,
+`getErrorStream`, `inputReader`, `errorReader`). A wait for
 a child whose stdout or stderr is still a pipe that no other thread took is reported: once the
 child writes a pipe's worth it blocks, and the wait never returns. A taken pipe is assumed
 drained, and so is one a drain task takes after the wait began; an output the `ProcessBuilder`
-redirected has no pipe and is not reported.
+redirected has no pipe and is not reported. The start tells it which builders merged stderr into
+stdout: on Linux that stderr is still a pipe object, at end of stream, and the stream alone does
+not say so.
 
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,

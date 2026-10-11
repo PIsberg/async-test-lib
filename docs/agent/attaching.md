@@ -143,7 +143,10 @@ future that is not done, or a sleep, latch await, `Object.wait` or take from an 
 reported when it happens inside a callback, and the same calls inside a task on the common
 `ForkJoinPool` are reported as blocking that pool.
 
-Child processes are watched too. A woven `Process.waitFor`, timed, with a `Duration` (JDK 25+) or neither, records which of the
+Child processes are watched too. A woven `ProcessBuilder.start` or `startPipeline` records each
+child with its builder, which is how a stderr merged into stdout is told from a pipe on Linux,
+where the JDK still hands out a pipe object for it. A woven `Process.waitFor`, timed, with a
+`Duration` (JDK 25+) or neither, records which of the
 child's stdout and stderr are still pipes no thread has taken, and the woven `getInputStream`,
 `getErrorStream`, `inputReader` and `errorReader` record a take on whichever thread makes it.
 `ProcessStreamStarvationDetector` reports a wait whose pipe no other thread took: a child that

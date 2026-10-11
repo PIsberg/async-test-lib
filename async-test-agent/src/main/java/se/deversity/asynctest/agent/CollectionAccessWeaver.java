@@ -781,7 +781,12 @@ final class CollectionAccessWeaver {
                     TimeUnit.class),
             // A child process waited for before its output pipe is taken: the wait records which
             // pipes no thread had taken, and each getter records the take, on whichever thread
-            // drains. Every hook returns what the call it replaces returns.
+            // drains. Every hook returns what the call it replaces returns. The start rows hand
+            // the detector the builder: on Linux a stderr merged into stdout is still a pipe
+            // object, and only redirectErrorStream() says nothing will ever be written to it.
+            Entry.call(ProcessBuilder.class, "start", "processBuilderStart"),
+            Entry.staticCall(ProcessBuilder.class, "startPipeline", "processBuilderStartPipeline",
+                    List.class),
             Entry.call(Process.class, "waitFor", "processWaitFor"),
             Entry.call(Process.class, "waitFor", "processWaitFor", long.class, TimeUnit.class),
             // JDK 25+. Matched by descriptor, so on an older JDK no call site carries it.

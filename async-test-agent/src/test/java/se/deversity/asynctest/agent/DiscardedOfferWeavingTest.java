@@ -728,6 +728,15 @@ class DiscardedOfferWeavingTest {
             return x.exchange(item, timeout, unit);
         }
 
+        public static Process processBuilderStart(ProcessBuilder b) throws java.io.IOException {
+            return b.start();
+        }
+
+        public static java.util.List<Process> processBuilderStartPipeline(
+                java.util.List<ProcessBuilder> builders) throws java.io.IOException {
+            return ProcessBuilder.startPipeline(builders);
+        }
+
         public static int processWaitFor(Process p) throws InterruptedException {
             return p.waitFor();
         }

@@ -36,8 +36,9 @@ class AgentProcessHooksTest {
         started.forEach(Process::destroyForcibly);
     }
 
+    /** Starts the child through the woven {@code ProcessBuilder.start}, as application code does. */
     private Process start(ProcessBuilder builder) throws IOException {
-        Process process = builder.start();
+        Process process = AgentConcurrencyUtilHooks.processBuilderStart(builder);
         started.add(process);
         return process;
     }
@@ -117,6 +118,27 @@ class AgentProcessHooksTest {
     }
 
     @Test
+    @DisplayName("a merged child started through the woven startPipeline, read first, stays silent")
+    void mergedPipelineReadFirstIsSilent() throws Exception {
+        installed();
+        try {
+            List<Process> pipeline = AgentConcurrencyUtilHooks.processBuilderStartPipeline(
+                    List.of(javaVersion().redirectErrorStream(true)));
+            Process process = pipeline.get(0);
+            started.add(process);
+            try (InputStream out = AgentConcurrencyUtilHooks.processInputStream(process)) {
+                out.readAllBytes();
+            }
+            AgentConcurrencyUtilHooks.processWaitFor(process);
+
+            assertFalse(AsyncTestContext.processStreamStarvationDetector().analyze().hasIssues(),
+                    AsyncTestContext.processStreamStarvationDetector().analyze().toString());
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
     @DisplayName("both pipes taken through the woven readers, one on a drain thread, stay silent")
     void bothReadersTakenStaySilent() throws Exception {
         installed();
@@ -156,7 +178,7 @@ class AgentProcessHooksTest {
              InputStream err = AgentConcurrencyUtilHooks.processErrorStream(process);
              BufferedReader errReader = AgentConcurrencyUtilHooks.processErrorReader(process)) {
             assertTrue(out.lines().anyMatch(line -> line.contains("version")));
-            assertTrue(err.read() < 0, "merged, so stderr is the null stream");
+            assertTrue(err.read() < 0, "merged, so nothing is ever written to stderr");
             assertTrue(errReader.readLine() == null);
         }
         assertTrue(AgentConcurrencyUtilHooks.processWaitFor(process) >= 0);

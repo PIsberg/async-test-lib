@@ -16,9 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   covered it. The first wait for a process records which of its outputs are still pipes nobody
   took; analysis excuses a pipe a thread other than the waiter took at any time (the drain task
   that starts after the wait) and one the `ProcessBuilder` redirected. `MEDIUM`, tier `PROMPT`,
-  evidence `ASSERTED`. With `collections=true` the agent weaves `waitFor`, the timed `waitFor`, `waitFor(Duration)` on JDK 25+,
+  evidence `ASSERTED`. With `collections=true` the agent weaves `ProcessBuilder.start` and
+  `startPipeline`, `waitFor`, the timed `waitFor`, `waitFor(Duration)` on JDK 25+,
   `getInputStream`, `getErrorStream`, `inputReader` and `errorReader`, so it fires on unmodified
-  code (37 of the detectors can see unmodified code, 110 remain recording-only).
+  code (37 of the detectors can see unmodified code, 110 remain recording-only). A recording body
+  passes the builder to `recordStarted`: on Linux the JDK hands out a pipe object, at end of
+  stream, for a stderr merged into stdout, where Windows hands out its null stream, and only the
+  builder tells the two apart. The first CI run reported that merged stderr on every Linux leg;
+  `mergedStderrIsSilentWhenTheBuilderSaysSo` reproduces it on any OS with a `Process` shaped like
+  Linux's, and was red before `recordStarted` did anything.
   `ProcessStreamStarvationDetectorTest` failed against the first draft on a drain task taking its
   pipe after the wait began and on a `Process` without `pid()`; both pass.
   `ProcessFeedWeavingTest` fires through the real weaver and `ProcessFeedSparesCorrectUseTest`

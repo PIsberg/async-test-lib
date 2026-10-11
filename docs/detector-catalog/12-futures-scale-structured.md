@@ -288,7 +288,7 @@ against, so a detector for it would be a guess dressed as a measurement.
 ### 147. Process Stream Starvation
 * **Severity**: `MEDIUM`
 * **Trust tier**: **prompt** — the agent's `waitFor` asks the `Process` which outputs are real pipes, but a pipe somebody took is assumed drained rather than seen read, and the record methods take the caller's word for a take, so the evidence class is `ASSERTED`.
-* **Description**: Detects `Process.waitFor()` (or the timed `waitFor`) on a child whose stdout or stderr is a pipe that no other thread drains. A child writes into a pipe of a few kilobytes; once it is full the child blocks in its write until the parent reads, so a parent that waits before reading waits for a child that is waiting for it, and neither moves. The `Process` javadoc warns of it. It hangs only when the child writes enough, so the same code passes on a quiet command and hangs on a verbose one, which is why it survives tests. An output the `ProcessBuilder` redirected (a file, `DISCARD`, `INHERIT`, or stderr merged into stdout) has no pipe and is not reported; a pipe taken before the wait, or by another thread at any time, counts as drained. The waiting thread reading the pipe only after its wait returned is the defect, and is reported. Fed by the agent with no recording call.
+* **Description**: Detects `Process.waitFor()` (or the timed `waitFor`) on a child whose stdout or stderr is a pipe that no other thread drains. A child writes into a pipe of a few kilobytes; once it is full the child blocks in its write until the parent reads, so a parent that waits before reading waits for a child that is waiting for it, and neither moves. The `Process` javadoc warns of it. It hangs only when the child writes enough, so the same code passes on a quiet command and hangs on a verbose one, which is why it survives tests. An output the `ProcessBuilder` redirected (a file, `DISCARD`, `INHERIT`, or stderr merged into stdout) has no pipe and is not reported. A merged stderr is recognised from the builder: on Linux the JDK still hands out a pipe object for it, so a recording body passes the builder to `recordStarted`, and the agent weaves `ProcessBuilder.start` and `startPipeline` to do the same; a pipe taken before the wait, or by another thread at any time, counts as drained. The waiting thread reading the pipe only after its wait returned is the defect, and is reported. Fed by the agent with no recording call.
 * **Buggy Code**:
   ```java
   Process p = new ProcessBuilder("mvn", "-v").start();
@@ -304,6 +304,7 @@ against, so a detector for it would be a guess dressed as a measurement.
 * **Detect**:
   ```java
   var d = AsyncTestContext.processStreamStarvationDetector();
+  d.recordStarted(builder, p);  // the builder p was started from: tells a merged stderr from a pipe
   d.recordStreamTaken(p, ProcessStreamStarvationDetector.Stream.STDOUT);
   d.recordWaitFor(p, Thread.currentThread());
   ```

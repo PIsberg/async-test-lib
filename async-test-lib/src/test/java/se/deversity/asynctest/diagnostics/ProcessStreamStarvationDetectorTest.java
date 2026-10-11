@@ -62,7 +62,9 @@ class ProcessStreamStarvationDetectorTest {
     void drainedOrRedirectedIsSilent() throws Exception {
         ProcessStreamStarvationDetector detector = new ProcessStreamStarvationDetector();
 
-        Process drained = java(javaVersion().redirectErrorStream(true));
+        ProcessBuilder merged = javaVersion().redirectErrorStream(true);
+        Process drained = java(merged);
+        detector.recordStarted(merged, drained);
         detector.recordStreamTaken(drained, ProcessStreamStarvationDetector.Stream.STDOUT);
         drained.getInputStream().readAllBytes();
         detector.recordWaitFor(drained, Thread.currentThread());
@@ -102,7 +104,9 @@ class ProcessStreamStarvationDetectorTest {
         // The usual fix: submit the drain, then wait. The task may not have taken the stream yet
         // when the wait starts, and the code is still correct.
         ProcessStreamStarvationDetector detector = new ProcessStreamStarvationDetector();
-        Process process = java(javaVersion().redirectErrorStream(true));
+        ProcessBuilder merged = javaVersion().redirectErrorStream(true);
+        Process process = java(merged);
+        detector.recordStarted(merged, process);
 
         detector.recordWaitFor(process, Thread.currentThread());
         Thread drain = new Thread(() -> {
@@ -124,7 +128,9 @@ class ProcessStreamStarvationDetectorTest {
     @DisplayName("a pipe the waiting thread takes only after its wait is still reported")
     void waiterTakingAfterItsWaitIsReported() throws Exception {
         ProcessStreamStarvationDetector detector = new ProcessStreamStarvationDetector();
-        Process process = java(javaVersion().redirectErrorStream(true));
+        ProcessBuilder merged = javaVersion().redirectErrorStream(true);
+        Process process = java(merged);
+        detector.recordStarted(merged, process);
 
         detector.recordWaitFor(process, Thread.currentThread());
         assertTrue(process.waitFor(30, TimeUnit.SECONDS));
@@ -152,6 +158,53 @@ class ProcessStreamStarvationDetectorTest {
         detector.recordWaitFor(custom, Thread.currentThread());
 
         assertTrue(detector.analyze().hasIssues(), detector.analyze().toString());
+    }
+
+    /**
+     * A child as Linux hands it out from a builder that merged stderr into stdout: the stderr is
+     * still a pipe object, at end of stream from the start, not the JDK's null stream as on
+     * Windows. Only the builder says that nothing can ever be written to it.
+     */
+    private static Process mergedOnLinux() {
+        return new Process() {
+            private final java.io.InputStream out = new java.io.ByteArrayInputStream(new byte[0]);
+            private final java.io.InputStream err = new java.io.ByteArrayInputStream(new byte[0]);
+            @Override public java.io.OutputStream getOutputStream() { return java.io.OutputStream.nullOutputStream(); }
+            @Override public java.io.InputStream getInputStream() { return out; }
+            @Override public java.io.InputStream getErrorStream() { return err; }
+            @Override public int waitFor() { return 0; }
+            @Override public int exitValue() { return 0; }
+            @Override public void destroy() { }
+        };
+    }
+
+    @Test
+    @DisplayName("a merged stderr is not a pipe to drain, even where the JDK hands out a pipe object for it")
+    void mergedStderrIsSilentWhenTheBuilderSaysSo() {
+        ProcessStreamStarvationDetector detector = new ProcessStreamStarvationDetector();
+        Process process = mergedOnLinux();
+
+        detector.recordStarted(new ProcessBuilder("tool").redirectErrorStream(true), process);
+        detector.recordStreamTaken(process, ProcessStreamStarvationDetector.Stream.STDOUT);
+        detector.recordWaitFor(process, Thread.currentThread());
+
+        assertFalse(detector.analyze().hasIssues(),
+                "the builder merged stderr into stdout, which was taken: " + detector.analyze());
+    }
+
+    @Test
+    @DisplayName("a builder that did not merge leaves stderr a pipe, and it is reported")
+    void unmergedStderrIsStillReportedWhenTheBuilderIsKnown() {
+        ProcessStreamStarvationDetector detector = new ProcessStreamStarvationDetector();
+        Process process = mergedOnLinux();
+
+        detector.recordStarted(new ProcessBuilder("tool"), process);
+        detector.recordStreamTaken(process, ProcessStreamStarvationDetector.Stream.STDOUT);
+        detector.recordWaitFor(process, Thread.currentThread());
+
+        ProcessStreamStarvationDetector.Report report = detector.analyze();
+        assertTrue(report.hasIssues(), report.toString());
+        assertTrue(report.violations.get(0).contains("stderr"), report.toString());
     }
 
     @Test

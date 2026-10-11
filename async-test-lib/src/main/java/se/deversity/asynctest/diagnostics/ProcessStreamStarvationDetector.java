@@ -27,22 +27,27 @@ import java.util.concurrent.atomic.AtomicReference;
  * is why it survives tests.
  *
  * <p>The first wait for a process is recorded with the pipes nobody had taken by then, and judged
- * at analysis: a stream the {@code ProcessBuilder} redirected (to a file, {@code DISCARD},
- * {@code INHERIT}, or stderr merged into stdout) has no pipe to fill and is the JDK's null stream,
- * which is not reported; a pipe taken before the wait is assumed to be drained, and so is one a
+ * at analysis: a stream the {@code ProcessBuilder} redirected (to a file, {@code DISCARD} or
+ * {@code INHERIT}) has no pipe to fill and is the JDK's null stream, which is not reported. A
+ * stderr merged into stdout is the null stream on Windows only; on Linux it is a pipe object at end
+ * of stream, so it is recognised from the builder, through {@link #recordStarted}. A pipe taken
+ * before the wait is assumed to be drained, and so is one a
  * thread other than the waiter took at any point, the drain task that may start after the wait.
  * Both err toward silence. The waiter reading the pipe itself after its wait returned is the
  * defect, and is reported. Reading the output on another thread is the usual fix, or redirecting
  * what is not needed.
  *
- * <p>With the agent attached ({@code collections=true}) the woven {@code waitFor}, and the woven
- * {@code getInputStream}, {@code getErrorStream}, {@code inputReader} and {@code errorReader} that
- * take a pipe, feed this detector with no recording call.
+ * <p>With the agent attached ({@code collections=true}) the woven {@code ProcessBuilder.start} and
+ * {@code startPipeline}, the woven {@code waitFor}, and the woven {@code getInputStream},
+ * {@code getErrorStream}, {@code inputReader} and {@code errorReader} that take a pipe, feed this
+ * detector with no recording call.
  *
  * <p>Usage inside {@code @AsyncTest(includes = DetectorType.PROCESS_STREAM_STARVATION)}:
  * <pre>{@code
  * var d = AsyncTestContext.processStreamStarvationDetector();
- * Process p = new ProcessBuilder("make").start();
+ * ProcessBuilder b = new ProcessBuilder("make");
+ * Process p = b.start();
+ * d.recordStarted(b, p);                      // tells a merged stderr from a pipe
  * d.recordWaitFor(p, Thread.currentThread()); // stdout and stderr still unread: reported
  * p.waitFor();
  * }</pre>
@@ -84,6 +89,8 @@ public final class ProcessStreamStarvationDetector {
         /** Per stream, the ids of the threads that took it. */
         final Map<Stream, Set<Long>> takers = new ConcurrentHashMap<>();
         final AtomicReference<@Nullable Wait> firstWait = new AtomicReference<>();
+        /** Whether the builder merged stderr into stdout, from {@link #recordStarted}. */
+        volatile boolean stderrMerged;
     }
 
     private final Map<IdentityKey, State> processes = new ConcurrentHashMap<>();
@@ -94,6 +101,23 @@ public final class ProcessStreamStarvationDetector {
             state = processes.computeIfAbsent(new IdentityKey(process), k -> new State());
         }
         return state;
+    }
+
+    /**
+     * Records the builder a process was started from, so a stderr the builder merged into stdout
+     * is not taken for a pipe to drain. On Windows the JDK hands out its null stream for a merged
+     * stderr, and {@link #recordWaitFor} sees that alone; on Linux it hands out a pipe object at
+     * end of stream, which only the builder tells apart from a real one. Without this record a
+     * merged stderr on Linux is reported as undrained.
+     *
+     * @param builder the builder whose {@code start()} returned {@code process} (null-safe)
+     * @param process the child process (null-safe)
+     */
+    public void recordStarted(ProcessBuilder builder, Process process) {
+        if (builder == null || process == null) return;
+        if (builder.redirectErrorStream()) {
+            stateOf(process).stderrMerged = true;
+        }
     }
 
     /**
@@ -125,7 +149,8 @@ public final class ProcessStreamStarvationDetector {
         if (!state.takers.containsKey(Stream.STDOUT) && isPipe(process.getInputStream())) {
             untaken.add(Stream.STDOUT);
         }
-        if (!state.takers.containsKey(Stream.STDERR) && isPipe(process.getErrorStream())) {
+        if (!state.stderrMerged && !state.takers.containsKey(Stream.STDERR)
+                && isPipe(process.getErrorStream())) {
             untaken.add(Stream.STDERR);
         }
         state.firstWait.compareAndSet(null,

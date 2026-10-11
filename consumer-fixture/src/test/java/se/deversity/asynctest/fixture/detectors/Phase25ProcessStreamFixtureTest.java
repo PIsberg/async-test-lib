@@ -51,8 +51,10 @@ class Phase25ProcessStreamFixtureTest {
         // The hazard: wait for the child while its merged output is a pipe nobody has taken.
         var detector = AsyncTestContext.processStreamStarvationDetector();
         String java = ProcessHandle.current().info().command().orElse("java");
-        Process child = new ProcessBuilder(java, "-version").redirectErrorStream(true).start();
+        ProcessBuilder builder = new ProcessBuilder(java, "-version").redirectErrorStream(true);
+        Process child = builder.start();
         try {
+            detector.recordStarted(builder, child);
             detector.recordWaitFor(child, Thread.currentThread());
             child.waitFor(20, TimeUnit.SECONDS);
             detector.recordStreamTaken(child, ProcessStreamStarvationDetector.Stream.STDOUT);
