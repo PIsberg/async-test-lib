@@ -24,6 +24,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li><b>Waiting for class initialization</b> ({@code <clinit>} on another thread) —
  *       pinned up to JDK 25; <em>no longer pins since JDK 26</em> (virtual threads now
  *       unmount while waiting for class init).</li>
+ *   <li><b>Blocking inside a class initializer</b> ({@code <clinit>} on the pinned thread's
+ *       own stack) — still pins on all JDK versions, JDK 26 included.</li>
  *   <li><b>Blocking native calls</b> (JNI / FFM downcalls) — still pin on all JDK
  *       versions.</li>
  * </ul>
@@ -76,6 +78,13 @@ public class VirtualThreadPinningDetector {
         MONITOR,
         /** Waiting for another thread's class initialization — no longer pins since JDK 26. */
         CLASS_INIT,
+        /**
+         * Blocking while executing a class initializer ({@code <clinit>} on the pinned thread's own
+         * stack) — pins on all JDK versions, JDK 26 included (#985).
+         *
+         * @since 1.13.2
+         */
+        CLASS_INIT_EXECUTING,
         /** Blocking native call (JNI / FFM downcall) — pins on all JDK versions. */
         NATIVE,
         /** Unrecognized description — conservatively treated as still pinning. */
@@ -98,14 +107,31 @@ public class VirtualThreadPinningDetector {
             return PinningCause.MONITOR;
         }
         if (op.contains("clinit") || op.contains("class init") || op.contains("class-init")
-                || op.contains("static initializer")) {
-            return PinningCause.CLASS_INIT;
+                || op.contains("static initializer") || WAITS_FOR_INITIALIZATION.matcher(op).find()) {
+            return classInitCause(op);
         }
         if (op.contains("native") || op.contains("jni") || op.contains("ffm")
                 || op.contains("foreign")) {
             return PinningCause.NATIVE;
         }
         return PinningCause.OTHER;
+    }
+
+    /**
+     * A description that waits <em>for</em> a class initializer, the JDK 24 reason "Waited for
+     * initialization of X by another thread" among them, which names no {@code <clinit>}. Anything else that names one blocks inside
+     * it, which is the case JDK 26 still pins (#985).
+     */
+    private static final java.util.regex.Pattern WAITS_FOR_INITIALIZATION = java.util.regex.Pattern.compile(
+            "wait(?:s|ed|ing)? for (?:the )?(?:class )?init|(?:clinit>?|class init|initiali[sz]ation) wait");
+
+    /**
+     * {@return {@link PinningCause#CLASS_INIT} when the lower-cased {@code description} waits for
+     * another thread's initializer, else {@link PinningCause#CLASS_INIT_EXECUTING}}
+     */
+    static PinningCause classInitCause(String description) {
+        return WAITS_FOR_INITIALIZATION.matcher(description).find()
+                ? PinningCause.CLASS_INIT : PinningCause.CLASS_INIT_EXECUTING;
     }
 
     /**
@@ -122,7 +148,7 @@ public class VirtualThreadPinningDetector {
         return switch (cause) {
             case MONITOR    -> jdkFeatureVersion < 24;  // JEP 491 (JDK 24)
             case CLASS_INIT -> jdkFeatureVersion < 26;  // JDK 26 unmounts on class-init waits
-            case NATIVE, OTHER -> true;
+            case CLASS_INIT_EXECUTING, NATIVE, OTHER -> true;
         };
     }
 
@@ -216,10 +242,8 @@ public class VirtualThreadPinningDetector {
      * Records a pin the JVM reported through {@code jdk.VirtualThreadPinned}; called by
      * {@link JfrPinningStream}, which resolves the cause and the frames from the event.
      *
-     * <p>Unlike {@link #recordPinningEvent} the cause is not checked against the running JDK:
-     * {@link #classifyOperation} maps a blocking {@code <clinit>} to {@link PinningCause#CLASS_INIT},
-     * which {@link #stillPinsOn} calls obsolete on JDK 26, and JDK 26 still emits the event for it.
-     * The event is the verdict. The peak count is raised to at least one, since an event carries
+     * <p>Unlike {@link #recordPinningEvent} the cause is not checked against the running JDK: the
+     * event is the running JDK's own verdict, whatever {@link #stillPinsOn} says of its cause. The peak count is raised to at least one, since an event carries
      * no overlap with the others.
      */
     void recordObservedPinning(long threadId, String threadName, String reason, PinningCause cause,

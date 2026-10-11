@@ -296,7 +296,7 @@ public final class JfrPinningStream implements AutoCloseable {
                 return VirtualThreadPinningDetector.PinningCause.NATIVE;
             }
             if (r.contains("<clinit>") || r.contains("initialization")) {
-                return VirtualThreadPinningDetector.PinningCause.CLASS_INIT;
+                return VirtualThreadPinningDetector.classInitCause(r);
             }
             return VirtualThreadPinningDetector.PinningCause.OTHER;
         }

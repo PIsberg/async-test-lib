@@ -246,6 +246,57 @@ class VirtualThreadPinningDetectorTest {
         assertEquals(0, report.getObsoleteEventCount());
     }
 
+    @Test
+    void classifyOperation_tellsBlockingInAnInitializerFromWaitingForOne() {
+        // Blocking while running a class initializer still pins on JDK 26; waiting for another
+        // thread to finish one does not. A 2026-10-10 probe saw JDK 26 emit the event for the
+        // first ("VM call to X.<clinit> on stack") and not for the second (#985).
+        assertEquals(VirtualThreadPinningDetector.PinningCause.CLASS_INIT_EXECUTING,
+                VirtualThreadPinningDetector.classifyOperation("Thread.sleep in static initializer"));
+        assertEquals(VirtualThreadPinningDetector.PinningCause.CLASS_INIT_EXECUTING,
+                VirtualThreadPinningDetector.classifyOperation("VM call to Codec.<clinit> on stack"));
+        assertEquals(VirtualThreadPinningDetector.PinningCause.CLASS_INIT_EXECUTING,
+                VirtualThreadPinningDetector.classifyOperation("latch await in <clinit>, waiting on a peer"));
+        assertEquals(VirtualThreadPinningDetector.PinningCause.CLASS_INIT,
+                VirtualThreadPinningDetector.classifyOperation(
+                        "Waited for initialization of Codec by another thread"));
+        assertEquals(VirtualThreadPinningDetector.PinningCause.CLASS_INIT,
+                VirtualThreadPinningDetector.classifyOperation("waiting for class initialization"));
+        assertTrue(VirtualThreadPinningDetector.stillPinsOn(
+                VirtualThreadPinningDetector.PinningCause.CLASS_INIT_EXECUTING, 21));
+        assertTrue(VirtualThreadPinningDetector.stillPinsOn(
+                VirtualThreadPinningDetector.PinningCause.CLASS_INIT_EXECUTING, 26));
+    }
+
+    @Test
+    void blockingInAStaticInitializerStaysAFindingOnEveryJdk() throws Exception {
+        VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
+        detector.startMonitoring();
+
+        Thread.ofVirtual().name("vt-clinit-sleep").start(() ->
+                detector.recordPinningEvent(Thread.currentThread(), "Thread.sleep in static initializer")
+        ).join();
+
+        var report = detector.analyzePinning();
+        assertEquals(0, report.getObsoleteEventCount(), "an initializer that blocks pins on every JDK");
+        assertTrue(report.hasIssues());
+    }
+
+    @Test
+    void waitingForAnotherThreadsInitializerIsObsoleteFromJdk26() throws Exception {
+        VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
+        detector.startMonitoring();
+
+        Thread.ofVirtual().name("vt-clinit-wait").start(() ->
+                detector.recordPinningEvent(Thread.currentThread(), "waiting for class initialization")
+        ).join();
+
+        var report = detector.analyzePinning();
+        boolean expectObsolete = Runtime.version().feature() >= 26;
+        assertEquals(expectObsolete ? 1 : 0, report.getObsoleteEventCount());
+        assertEquals(!expectObsolete, report.hasIssues());
+    }
+
     // ---- Additional PIT-mutant-killing tests ----
 
     @Test
@@ -377,10 +428,9 @@ class VirtualThreadPinningDetectorTest {
         VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
         detector.startMonitoring();
 
-        // JDK 26 still reports a virtual thread blocking inside <clinit> ("VM call to
-        // X.<clinit> on stack"), while stillPinsOn(CLASS_INIT, 26) is false because waiting for
-        // another thread's initialization stopped pinning there. The JVM emitting the event is
-        // the verdict for the running JDK, so an observed pin is never obsolete.
+        // stillPinsOn(CLASS_INIT, 26) is false because waiting for another thread's
+        // initialization stopped pinning there. The JVM emitting the event is the verdict for the
+        // running JDK, so an observed pin is never obsolete, whatever its cause says on paper.
         detector.recordObservedPinning(42L, "worker-1",
                 "JFR jdk.VirtualThreadPinned: VM call to Foo.<clinit> on stack (LockSupport.park)",
                 VirtualThreadPinningDetector.PinningCause.CLASS_INIT, 50L,

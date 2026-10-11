@@ -201,6 +201,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`VIRTUAL_THREAD_PINNING` dropped a recorded pin inside a class initializer on JDK 26
+  (#985).** `classifyOperation` mapped every description naming `<clinit>` or a static
+  initializer to `PinningCause.CLASS_INIT`, which `stillPinsOn` calls obsolete on JDK 26. That
+  holds for waiting on another thread's initializer, not for blocking inside one: a 2026-10-10
+  probe saw JDK 26 emit `jdk.VirtualThreadPinned` with "VM call to X.<clinit> on stack" for an
+  initializer that sleeps, and nothing for the thread waiting on it. A new constant,
+  `PinningCause.CLASS_INIT_EXECUTING`, pins on every JDK; `CLASS_INIT` keeps its meaning (waiting)
+  and its JDK 26 cut-off, and a description is classified as waiting only when it says so ("waiting
+  for class initialization", the JDK 24 reason "Waited for initialization of X by another
+  thread"). The JFR feed labels its causes the same way; its pins were never filtered.
+  `blockingInAStaticInitializerStaysAFindingOnEveryJdk` was red on JDK 26 before the split. The
+  JDK 25 waiter row was not re-probed (no JDK 25 here); the javadoc's "pinned up to JDK 25" for
+  waiting is unchanged.
 - **`TelemetryEventBufferTest.testMpscConcurrency` asserted zero loss from a buffer that drops by
   design (#987).** `publish` drops an event after a second with no consumer progress and counts it
   in `droppedCount()`; a full-suite run starved the test's 10 ms scheduled drainer that long once
