@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`EXECUTOR_SHUTDOWN` and `FUTURE_IGNORED` are fed by the agent.** The shutdown detector reports
+  only an executor it was told the code created, which is what keeps a shared or injected pool
+  silent, and the agent could not tell it because the `Executors` factories are static calls
+  (#387). With `collections=true` the static path now weaves all fourteen `Executors` factories:
+  an executor a run thread creates is declared as the run's own, one built in a static initializer
+  is not, since a static pool lives as long as its class, and the woven `submit` and `execute`
+  count its tasks. A pool created and closed in the body stays silent; one closed in `@AfterEach`
+  still reads as leaked, because analysis runs first. For `FUTURE_IGNORED` the weaver turns the
+  `POP` after a `submit` whose future the caller never kept into `submitResultDiscarded`, and the
+  detector reports that future only when its own state at analysis says its task failed, naming
+  the exception: fire-and-forget of a task that succeeded, or that is still running, draws nothing.
+  `AgentExecutorHooksTest` did not compile against the old hooks and is 8/8 green, the
+  `ExecutorFeedWeavingTest` and `ExecutorFeedSparesCorrectUseTest` pair runs the real weaver over
+  a fixture in both directions, and the corpus gains the agent pairs
+  `agent_executor_createdAndLeftRunning` and `agent_future_failingSubmitDiscarded` with their
+  silent twins. Both detectors move to the agent-fed feed (29 of the detectors can see unmodified
+  code, 117 remain recording-only).
+
 - **`CONCURRENT_MAP_CHECK_THEN_ACT` is fed by the agent.** `if (!map.containsKey(k)) map.put(k, v)`
   on a `ConcurrentHashMap` is the most common misuse of the most used concurrent class, and the
   detector for it fired only when the code under test called `recordCheckThenAct` about itself,

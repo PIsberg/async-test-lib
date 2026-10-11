@@ -645,6 +645,72 @@ class DiscardedOfferWeavingTest {
             return x.submit(r, result);
         }
 
+        public static void submitResultDiscarded(java.util.concurrent.Future<?> f) {
+            // the discard rows this test never reaches but the table resolves
+        }
+
+        public static java.util.concurrent.ExecutorService newFixedThreadPool(int n) {
+            return java.util.concurrent.Executors.newFixedThreadPool(n);
+        }
+
+        public static java.util.concurrent.ExecutorService newFixedThreadPool(int n,
+                java.util.concurrent.ThreadFactory f) {
+            return java.util.concurrent.Executors.newFixedThreadPool(n, f);
+        }
+
+        public static java.util.concurrent.ExecutorService newCachedThreadPool() {
+            return java.util.concurrent.Executors.newCachedThreadPool();
+        }
+
+        public static java.util.concurrent.ExecutorService newCachedThreadPool(
+                java.util.concurrent.ThreadFactory f) {
+            return java.util.concurrent.Executors.newCachedThreadPool(f);
+        }
+
+        public static java.util.concurrent.ExecutorService newSingleThreadExecutor() {
+            return java.util.concurrent.Executors.newSingleThreadExecutor();
+        }
+
+        public static java.util.concurrent.ExecutorService newSingleThreadExecutor(
+                java.util.concurrent.ThreadFactory f) {
+            return java.util.concurrent.Executors.newSingleThreadExecutor(f);
+        }
+
+        public static java.util.concurrent.ScheduledExecutorService newScheduledThreadPool(int n) {
+            return java.util.concurrent.Executors.newScheduledThreadPool(n);
+        }
+
+        public static java.util.concurrent.ScheduledExecutorService newScheduledThreadPool(int n,
+                java.util.concurrent.ThreadFactory f) {
+            return java.util.concurrent.Executors.newScheduledThreadPool(n, f);
+        }
+
+        public static java.util.concurrent.ScheduledExecutorService newSingleThreadScheduledExecutor() {
+            return java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+        }
+
+        public static java.util.concurrent.ScheduledExecutorService newSingleThreadScheduledExecutor(
+                java.util.concurrent.ThreadFactory f) {
+            return java.util.concurrent.Executors.newSingleThreadScheduledExecutor(f);
+        }
+
+        public static java.util.concurrent.ExecutorService newWorkStealingPool() {
+            return java.util.concurrent.Executors.newWorkStealingPool();
+        }
+
+        public static java.util.concurrent.ExecutorService newWorkStealingPool(int n) {
+            return java.util.concurrent.Executors.newWorkStealingPool(n);
+        }
+
+        public static java.util.concurrent.ExecutorService newVirtualThreadPerTaskExecutor() {
+            return java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+        }
+
+        public static java.util.concurrent.ExecutorService newThreadPerTaskExecutor(
+                java.util.concurrent.ThreadFactory f) {
+            return java.util.concurrent.Executors.newThreadPerTaskExecutor(f);
+        }
+
         public static Object exchange(java.util.concurrent.Exchanger<Object> x, Object item)
                 throws InterruptedException {
             return x.exchange(item);

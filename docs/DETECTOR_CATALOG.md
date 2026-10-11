@@ -332,7 +332,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (23)
+### Agent-fed (25)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -400,13 +400,27 @@ the read, and callers that install one shared object after a `get` are correct. 
 known false negative: racers that all put one cached box (an `Integer` up to 127) or one enum
 constant are excused even where the check decided other work.
 
+`ExecutorShutdownDetector` and `FutureIgnoredDetector` joined in the same change.
+`ExecutorShutdownDetector` reports only an executor it was told the code created, which is what
+keeps a shared or injected pool silent, and the agent could not tell it: the `Executors` factories
+are static calls (#387). The static path weaves them now, and an executor a run thread creates is
+declared as the run's own, while one built in a static initializer is not, because a static pool
+is shared by design and the run that happened to load its class is not the one to close it. The
+woven `submit` and `execute` count its tasks, and the detector asks the executor itself whether it
+shut down. `FutureIgnoredDetector` compared a recorded submit with a recorded inspection. A
+`submit` whose future the caller pops can never be inspected, and the weaver sees that `POP`, so
+the agent path hands the detector the discarded future and the detector reports it only when the
+future's own state at analysis says its task failed: fire-and-forget of a task that succeeded, or
+that is still running when the run ends, draws nothing.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
 `SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SemaphoreMisuseDetector`,
 `CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
 `MissedSignalDetector`, `ExplicitGcDetector`, `DaemonThreadHygieneDetector`, `ABAProblemDetector`,
-`SynchronizedNonFinalDetector`, `NonAtomicConcurrentMapUpdateDetector`
+`SynchronizedNonFinalDetector`, `NonAtomicConcurrentMapUpdateDetector`, `ExecutorShutdownDetector`,
+`FutureIgnoredDetector`
 
 ### Zero-config (4)
 
@@ -431,15 +445,10 @@ image without `jdk.jfr`) the detector keeps its recording feed. The four:
 ### Why the rest are recording-only
 
 Agent-feeding a detector works when one JDK method call carries everything the detector needs. That
-is what the agent-fed detectors above have in common: a lock acquired, a formatter used, a permit taken. Three
-things stop the others, and each was checked against the code rather than assumed.
-
-**The detector needs a fact the substitution cannot supply.** `ExecutorShutdownDetector` reports an
-executor that was registered with it and then never shut down. Registration is the load-bearing
-half: a `submit` on an executor it has never seen records nothing, so feeding the agent's `submit`
-and `shutdown` calls alone would leave it silent rather than wrong. Registering creation means the
-`Executors` factory methods, which the static substitution path can now reach, so this one is a
-decision rather than a limit - see #387.
+is what the agent-fed detectors above have in common: a lock acquired, a formatter used, a permit taken. Two
+things stop the others, and each was checked against the code rather than assumed. A third, a
+detector that needs a fact the substitution cannot supply, held `ExecutorShutdownDetector` back
+until the `Executors` factories were woven to supply its ownership (#387).
 
 **The call site is static.** This used to stop `SleepInLockDetector` and `ExplicitGcDetector`, and
 stops neither now: the substitution has an `invokestatic` path, `Thread.sleep` was its first user
@@ -453,7 +462,7 @@ need a task's start and completion, and a substituted `submit` sees neither: the
 somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector` describe a shape in the code rather
 than any particular method, and no substitution can see a shape.
 
-### Recording-only (119)
+### Recording-only (117)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -477,7 +486,7 @@ recording is the feed:
 `StructuredConcurrencyMisuseDetector`, `VirtualThreadContextLeakDetector`,
 `ScopedValueMisuseDetector`, `VirtualThreadCpuBoundTaskDetector`,
 `VirtualThreadCarrierExhaustionDetector`, `HttpClientConcurrencyDetector`, `StreamClosingDetector`,
-`CacheConcurrencyDetector`, `CompletableFutureChainDetector`, `ExecutorShutdownDetector`,
+`CacheConcurrencyDetector`, `CompletableFutureChainDetector`,
 `MutableMapKeyDetector`, `NestedMonitorLockoutDetector`, `LockDowngradeDetector`,
 `InheritableThreadLocalMisuseDetector`, `ThreadLocalContaminationDetector`,
 `AtomicNonAtomicUpdateDetector`, `SynchronizedCollectionIterationDetector`,
@@ -486,7 +495,7 @@ recording is the feed:
 `OptimisticReadValidationDetector`, `CompletableFutureCommonPoolBlockingDetector`,
 `WeakReferenceRaceDetector`,
 `StatefulLambdaDetector`, `InterruptSwallowingDetector`,
-`MdcContextLeakDetector`, `SystemPropertyMutationDetector`, `FutureIgnoredDetector`,
+`MdcContextLeakDetector`, `SystemPropertyMutationDetector`,
 `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`,
 `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`,
 `NotifyWithoutMonitorDetector`, `SharedSecureRandomDetector`,

@@ -2004,6 +2004,32 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link ExecutorShutdownDetector} for the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>The woven {@code Executors} factories declare what a run thread creates, and the woven
+     * {@code submit} and {@code execute} count its tasks. A thread the run started or lent a task
+     * to counts as the run's own, the way it does for the shared-instance detectors, and a run
+     * whose analysis has started lends nothing.
+     */
+    static @Nullable ExecutorShutdownDetector currentExecutorShutdownDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.executorShutdownDetector;
+    }
+
+    /**
+     * {@return the {@link FutureIgnoredDetector} for the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>The woven {@code submit} hands it a future its caller discarded, which the detector judges
+     * from the future itself at analysis.
+     */
+    static @Nullable FutureIgnoredDetector currentFutureIgnoredDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.futureIgnoredDetector;
+    }
+
+    /**
      * {@return the {@link LockOrderValidator} for the calling thread's test, or {@code null}}
      *
      * <p>Same contract as {@link #currentSharedCollectionDetector()}, for the same reason:

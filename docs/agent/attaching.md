@@ -130,6 +130,14 @@ calls; under the map's own monitor it is atomic and stays silent
 also excuses racers that all put one cached box such as `Integer.valueOf(1)`: the hook cannot tell
 a value derived from the read from one chosen without it.
 
+Executors are watched the same way. The fourteen `Executors` factories are woven, and an executor a
+run thread creates through one of them is declared to `ExecutorShutdownDetector` as the run's own,
+which is the detector's whole rule: an executor handed in from outside the run, or built in a
+static initializer, is never declared, so leaving it running is not reported (#387). A
+`submit` whose future the caller never kept is seen as the `POP` after the call, and
+`FutureIgnoredDetector` reports that future when its task failed, because nothing can ever read
+the exception it holds.
+
 The same option substitutes `Object.wait`, `notify` and `notifyAll` (#694), which is what feeds
 `MissedSignalDetector` without a recorded call: the hooks run with the monitor held, so a notify is
 judged against the threads really inside `wait()`. The weaver also inserts one call in front of

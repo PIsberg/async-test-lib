@@ -1267,6 +1267,41 @@ final class Corpus {
                             + "monitor, so the first worker's put is what every later check "
                             + "sees and no value is dropped"),
 
+            new RecordingSubject("agent_executor_createdAndLeftRunning", JDK,
+                    "java.util.concurrent.Executors",
+                    DetectorType.EXECUTOR_SHUTDOWN, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one worker a round creates a pool through Executors, hands it a task and "
+                            + "leaves it running past the end of the run. Nothing is recorded: the "
+                            + "woven factory declares the pool as the run's own, which is what "
+                            + "separates it from a pool the code was handed (#387)",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("agent_executor_createdAndShutDown", JDK,
+                    "java.util.concurrent.Executors",
+                    DetectorType.EXECUTOR_SHUTDOWN, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same pool, task and get, closed with shutdown and awaitTermination "
+                            + "before the body ends, so the pool the run owned is terminated "
+                            + "when it is judged"),
+
+            new RecordingSubject("agent_future_failingSubmitDiscarded", JDK,
+                    "java.util.concurrent.ExecutorService",
+                    DetectorType.FUTURE_IGNORED, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker submits a task that throws and drops the future, so the "
+                            + "exception is held by an object nothing can reach. Nothing is "
+                            + "recorded: the weaver turns the POP after submit into the discard "
+                            + "hook, and the detector reads the failure from the future",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_future_failingSubmitInspected", JDK,
+                    "java.util.concurrent.ExecutorService",
+                    DetectorType.FUTURE_IGNORED, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same failing submit with the future kept and its exception read "
+                            + "through get, so the failure reached the caller"),
+
             new RecordingSubject("agent_thread_startedWithNoDaemonDecision", JDK,
                     "java.lang.Thread",
                     DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,

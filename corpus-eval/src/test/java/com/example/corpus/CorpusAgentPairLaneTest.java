@@ -36,7 +36,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -155,6 +161,8 @@ class CorpusAgentPairLaneTest {
     static void reportAndGate() throws IOException {
         LANE_OVER.countDown();
         SERVICE_LEFT_RUNNING.stopAsync();
+        LEFT_RUNNING.forEach(ExecutorService::shutdownNow);
+        SHARED_POOL.shutdownNow();
         CorpusRecorder.uninstall();
         SHARED_FORMATTER.close();
         CorpusLane lane = CorpusLane.current();
@@ -855,6 +863,95 @@ class CorpusAgentPairLaneTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_concurrentMap_containsKeyThenPutUnderItsMonitor() {
         counted(() -> fillTheRoundsKey(GUARDED_FILL, GUARDED_FILL_TICKETS, true));
+    }
+
+    // --- An executor the body creates, and a future it discards -------------------------------
+
+    /**
+     * The pools the leaking row leaves running, shut down once the lane is over: after every row's
+     * analysis, which is when the leak is judged.
+     */
+    private static final Queue<ExecutorService> LEFT_RUNNING = new ConcurrentLinkedQueue<>();
+
+    private static final AtomicInteger POOL_TICKETS = new AtomicInteger();
+
+    private static final AtomicInteger CLOSED_POOL_TICKETS = new AtomicInteger();
+
+    /**
+     * Built in a static initializer, so the agent does not declare it as any run's own: a static
+     * pool lives as long as its class. The discarded-future rows submit to it.
+     */
+    private static final ExecutorService SHARED_POOL = Executors.newFixedThreadPool(2);
+
+    /**
+     * One worker a round creates a pool through {@code Executors}, runs a task on it and, when
+     * {@code shutDown}, closes it with {@code shutdown} and {@code awaitTermination}.
+     */
+    private static void runOnANewPool(AtomicInteger tickets, boolean shutDown)
+            throws InterruptedException {
+        if (tickets.getAndIncrement() % THREADS != 0) {
+            return;
+        }
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            pool.submit(() -> { }).get();
+        } catch (ExecutionException e) {
+            throw new AssertionError("an empty task failed", e);
+        }
+        if (shutDown) {
+            pool.shutdown();
+            assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS), "the pool did not terminate");
+        } else {
+            LEFT_RUNNING.add(pool);
+        }
+    }
+
+    /**
+     * One worker a round creates a pool, hands it a task and leaves it running.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_executor_createdAndLeftRunning() {
+        counted(() -> runOnANewPool(POOL_TICKETS, false));
+    }
+
+    /**
+     * The same pool, task and get, closed before the body ends with shutdown and awaitTermination.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_executor_createdAndShutDown() {
+        counted(() -> runOnANewPool(CLOSED_POOL_TICKETS, true));
+    }
+
+    /** A task that fails, which is what makes a dropped future lose something. */
+    private static void failingTask() {
+        throw new IllegalStateException("a failure only the future holds");
+    }
+
+    /**
+     * Every worker submits a failing task to the shared pool and drops the future: the call is a
+     * statement, so its result is popped and the exception reaches nobody.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_future_failingSubmitDiscarded() {
+        SHARED_POOL.submit(CorpusAgentPairLaneTest::failingTask);
+    }
+
+    /**
+     * The same failing submit, with the future kept and its exception read through get.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_future_failingSubmitInspected() {
+        Future<?> future = SHARED_POOL.submit(CorpusAgentPairLaneTest::failingTask);
+        counted(() -> readTheFailure(future));
+    }
+
+    /** Reads the failure a kept future holds, which is what keeping it is for. */
+    private static void readTheFailure(Future<?> future) throws InterruptedException {
+        try {
+            future.get();
+        } catch (ExecutionException expected) {
+            // observed
+        }
     }
 
     // --- Thread daemon flag, left running (#736) ----------------------------------------------

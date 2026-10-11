@@ -55,6 +55,16 @@ final class LibraryReach {
                         + "library row needs a documented-unsafe library method that checks a "
                         + "concurrent map and then acts on it, and no corpus library ships that "
                         + "defect, so its pair calls the JDK map from the test file");
+        unreached(DetectorType.EXECUTOR_SHUTDOWN,
+                "agent-fed through the woven Executors factories and submit; a firing library "
+                        + "row needs a documented-unsafe library method that creates a pool "
+                        + "through Executors and leaves it running, and no corpus library ships "
+                        + "that defect, so its pair creates the pool in the test file");
+        unreached(DetectorType.FUTURE_IGNORED,
+                "agent-fed through the POP after a woven submit; a firing library row needs a "
+                        + "library method that drops the future of a task that fails, and no "
+                        + "corpus library ships that defect, so its pair submits from the test "
+                        + "file");
     }
 
     private static void unreached(DetectorType type, String reason) {

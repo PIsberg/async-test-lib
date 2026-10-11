@@ -6,6 +6,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Detects {@link java.util.concurrent.Future} instances returned from
@@ -25,6 +30,13 @@ import java.util.Map;
  * d.recordInspect(f, Thread.currentThread()); // call before f.get()
  * f.get();
  * }</pre>
+ *
+ * <p><strong>With the agent attached</strong> ({@code collections=true}) no recording is needed
+ * for the shape that loses an exception for certain: a {@code submit} whose result the caller
+ * discards. The woven call site pops the future, so nothing can ever inspect it, and
+ * {@link #recordDiscarded} receives it. That path reports a future only when its task actually
+ * failed, judged from the future itself at analysis, so fire-and-forget of a task that succeeded,
+ * or that is still running when the run ends, draws nothing.
  *
  * @since 0.10.0
  */
@@ -66,6 +78,48 @@ public class FutureIgnoredDetector extends AbstractInstanceDetector<FutureIgnore
         if (rec != null) rec.inspected = true;
     }
 
+    /** How many discarded futures one run keeps; later ones are counted and named in the report. */
+    static final int MAX_DISCARDED = 4_096;
+
+    /** A future whose caller dropped it, and the thread that did. */
+    private record Discarded(Future<?> future, String threadLabel, String call) { }
+
+    private final Queue<Discarded> discarded = new ConcurrentLinkedQueue<>();
+    private final AtomicInteger discardedCount = new AtomicInteger();
+    private final LongAdder discardedDropped = new LongAdder();
+
+    /**
+     * Records a future its caller discarded at the call that returned it, which the agent sees as
+     * the {@code POP} after a woven {@code submit}.
+     *
+     * <p>A discarded future can never be inspected, so its task's exception, if it throws one,
+     * reaches nobody. Whether it did is read from the future at {@link #analyze()}: a task that
+     * succeeded, or that has not finished, is not reported.
+     *
+     * @param future the discarded future (null-safe)
+     * @param thread the thread that discarded it (null-safe)
+     * @param call   the call that returned it, for the report, such as {@code ExecutorService.submit}
+     * @since 1.13.2
+     */
+    public void recordDiscarded(Future<?> future, Thread thread, String call) {
+        if (future == null || thread == null) return;
+        if (discardedCount.incrementAndGet() > MAX_DISCARDED) {
+            discardedDropped.increment();
+            return;
+        }
+        discarded.add(new Discarded(future, ReportSections.threadLabel(thread), call));
+    }
+
+    /** {@return the failure {@code future} completed with, or {@code null} if it has not failed} */
+    private static @org.jspecify.annotations.Nullable Throwable failureOf(Future<?> future) {
+        try {
+            return future.isDone() && future.state() == Future.State.FAILED
+                    ? future.exceptionNow() : null;
+        } catch (RuntimeException unreadable) { // NOPMD AvoidCatchingGenericException - a third-party Future's state() may throw anything
+            return null;
+        }
+    }
+
     /**
      * {@return report of Futures that were submitted but never inspected}
      */
@@ -82,6 +136,23 @@ public class FutureIgnoredDetector extends AbstractInstanceDetector<FutureIgnore
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }
+        for (Discarded d : discarded) {
+            Throwable failure = failureOf(d.future());
+            if (failure == null) {
+                continue;
+            }
+            String finding = String.format(
+                    "Future returned by %s was discarded by thread '%s' and its task failed with "
+                            + "%s: %s — nothing can ever observe that exception",
+                    d.call(), d.threadLabel(), failure.getClass().getName(), failure.getMessage());
+            r.violations.add(finding);
+            r.structuredViolations.add(new Violation("FutureIgnored", IssueSeverity.HIGH,
+                    finding, List.of(), Map.of(
+                            "call", d.call(),
+                            "exception", failure.getClass().getName()),
+                    Instant.now()));
+        }
+        r.discardedNotTracked = discardedDropped.sum();
         return DetectorFailurePolicy.checkedReport(this, r);
     }
 
@@ -90,6 +161,8 @@ public class FutureIgnoredDetector extends AbstractInstanceDetector<FutureIgnore
         final List<String> violations = new ArrayList<>();
         /** The findings as Violations, at the severity the text resolved to (#801). */
         public final List<Violation> structuredViolations = new ArrayList<>();
+        /** Discarded futures past {@link #MAX_DISCARDED} that were counted and not judged. */
+        long discardedNotTracked;
 
         /**
          * {@return whether there are issues}
@@ -100,6 +173,10 @@ public class FutureIgnoredDetector extends AbstractInstanceDetector<FutureIgnore
         public String toString() {
             StringBuilder sb = new StringBuilder("IGNORED FUTURE DETECTED:\n");
             for (String v : violations) sb.append("  - ").append(v).append("\n");
+            if (discardedNotTracked > 0) {
+                sb.append("  Note: ").append(discardedNotTracked).append(" discarded future(s) past the first ")
+                  .append(MAX_DISCARDED).append(" were counted and not judged.\n");
+            }
             sb.append("""
   Why: A Future that is submitted but never retrieved (get()/join() never called) means the task runs
        fire-and-forget. Exceptions thrown by the task are silently swallowed — the calling thread never

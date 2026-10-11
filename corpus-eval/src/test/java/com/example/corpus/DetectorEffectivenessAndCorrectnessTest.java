@@ -142,18 +142,20 @@ class DetectorEffectivenessAndCorrectnessTest {
         Set<DetectorType> agentFed = LibraryReach.agentFed();
 
         // Every agent-fed detector is reached through third-party library bytecode except the
-        // five LibraryReach gives a reason for: no corpus library calls System.gc, none waits
+        // seven LibraryReach gives a reason for: no corpus library calls System.gc, none waits
         // behind an if (#694), none pushes a popped node back onto a lock-free stack (#817), none
-        // reassigns a field it synchronizes on (#793), and none checks a concurrent map and then
-        // acts on it.
+        // reassigns a field it synchronizes on (#793), none checks a concurrent map and then acts
+        // on it, none leaves a pool it created running, and none drops a failing task's future.
         // The daemon-hygiene weave is reached through a Guava service left running (#736).
-        assertEquals(agentFed.size() - 5, reached.size(),
+        assertEquals(agentFed.size() - 7, reached.size(),
                 "all agent-fed detectors except EXPLICIT_GC, MISSED_SIGNAL, ABA_PROBLEM, "
-                        + "SYNCHRONIZED_NON_FINAL and CONCURRENT_MAP_CHECK_THEN_ACT must be "
-                        + "reached through library bytecode");
+                        + "SYNCHRONIZED_NON_FINAL, CONCURRENT_MAP_CHECK_THEN_ACT, "
+                        + "EXECUTOR_SHUTDOWN and FUTURE_IGNORED must be reached through "
+                        + "library bytecode");
         assertEquals(Set.of(DetectorType.EXPLICIT_GC, DetectorType.MISSED_SIGNAL,
                         DetectorType.ABA_PROBLEM, DetectorType.SYNCHRONIZED_NON_FINAL,
-                        DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT),
+                        DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT,
+                        DetectorType.EXECUTOR_SHUTDOWN, DetectorType.FUTURE_IGNORED),
                 LibraryReach.unreached().keySet());
     }
 

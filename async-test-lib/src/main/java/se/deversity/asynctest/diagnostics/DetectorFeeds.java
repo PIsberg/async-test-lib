@@ -111,7 +111,15 @@ public final class DetectorFeeds {
             // map hooks saw every one of those calls and dropped a ConcurrentMap receiver, because
             // each call alone is safe; the pair is what is not, and the hooks now hand both halves
             // to the detector, which pairs them per thread, map and key.
-            DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT);
+            DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT,
+            // The Executors factories (#387). The shutdown detector reports only an executor it
+            // was told the code created, and a static factory call is the one place that is
+            // known; a pool built in a static initializer is not declared. The woven submit and
+            // execute count its tasks.
+            DetectorType.EXECUTOR_SHUTDOWN,
+            // A submit whose future the caller pops. Nothing can inspect it afterwards, so the
+            // detector reports it when the future says its task failed.
+            DetectorType.FUTURE_IGNORED);
 
     /**
      * Fed by the JVM and the harness with no recording call.

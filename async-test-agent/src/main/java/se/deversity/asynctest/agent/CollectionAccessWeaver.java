@@ -36,8 +36,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Exchanger;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -724,9 +726,43 @@ final class CollectionAccessWeaver {
             // execute wraps its task only on the JDK executors that never hand it back; the
             // hook decides by the executor's exact class (#741, #834).
             Entry.call(Executor.class, "execute", "execute", Runnable.class),
-            Entry.call(ExecutorService.class, "submit", "submit", Callable.class),
-            Entry.call(ExecutorService.class, "submit", "submit", Runnable.class),
-            Entry.call(ExecutorService.class, "submit", "submit", Runnable.class, Object.class),
+            // A submit whose future the caller pops can never be inspected, so the task's
+            // exception reaches nobody; the POP becomes submitResultDiscarded, and a store, a
+            // return or a get is left alone.
+            Entry.call(ExecutorService.class, "submit", "submit", Callable.class)
+                    .whenResultDiscarded("submitResultDiscarded"),
+            Entry.call(ExecutorService.class, "submit", "submit", Runnable.class)
+                    .whenResultDiscarded("submitResultDiscarded"),
+            Entry.call(ExecutorService.class, "submit", "submit", Runnable.class, Object.class)
+                    .whenResultDiscarded("submitResultDiscarded"),
+            // The Executors factories, so a pool the run created is declared as the run's own:
+            // ownership is the whole of the shutdown detector's rule, and an executor handed in
+            // from outside the run is never declared (#387). Each is a static call, which the
+            // static path has reached since #386, and each hook returns exactly what the factory
+            // declares, so the stack after it is the stack after the call it replaces.
+            Entry.staticCall(Executors.class, "newFixedThreadPool", "newFixedThreadPool", int.class),
+            Entry.staticCall(Executors.class, "newFixedThreadPool", "newFixedThreadPool", int.class,
+                    ThreadFactory.class),
+            Entry.staticCall(Executors.class, "newCachedThreadPool", "newCachedThreadPool"),
+            Entry.staticCall(Executors.class, "newCachedThreadPool", "newCachedThreadPool",
+                    ThreadFactory.class),
+            Entry.staticCall(Executors.class, "newSingleThreadExecutor", "newSingleThreadExecutor"),
+            Entry.staticCall(Executors.class, "newSingleThreadExecutor", "newSingleThreadExecutor",
+                    ThreadFactory.class),
+            Entry.staticCall(Executors.class, "newScheduledThreadPool", "newScheduledThreadPool",
+                    int.class),
+            Entry.staticCall(Executors.class, "newScheduledThreadPool", "newScheduledThreadPool",
+                    int.class, ThreadFactory.class),
+            Entry.staticCall(Executors.class, "newSingleThreadScheduledExecutor",
+                    "newSingleThreadScheduledExecutor"),
+            Entry.staticCall(Executors.class, "newSingleThreadScheduledExecutor",
+                    "newSingleThreadScheduledExecutor", ThreadFactory.class),
+            Entry.staticCall(Executors.class, "newWorkStealingPool", "newWorkStealingPool"),
+            Entry.staticCall(Executors.class, "newWorkStealingPool", "newWorkStealingPool", int.class),
+            Entry.staticCall(Executors.class, "newVirtualThreadPerTaskExecutor",
+                    "newVirtualThreadPerTaskExecutor"),
+            Entry.staticCall(Executors.class, "newThreadPerTaskExecutor", "newThreadPerTaskExecutor",
+                    ThreadFactory.class),
             Entry.call(Exchanger.class, "exchange", "exchange", Object.class),
             Entry.call(Exchanger.class, "exchange", "exchange", Object.class, long.class,
                     TimeUnit.class));
@@ -826,7 +862,7 @@ final class CollectionAccessWeaver {
             Entry.call(Thread.Builder.class, "unstarted", "threadBuilderUnstarted",
                     Runnable.class),
             Entry.call(Thread.Builder.class, "factory", "threadBuilderFactory"),
-            Entry.call(java.util.concurrent.ThreadFactory.class, "newThread",
+            Entry.call(ThreadFactory.class, "newThread",
                     "threadFactoryNewThread", Runnable.class));
 
     /**

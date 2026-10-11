@@ -12,11 +12,14 @@ import java.util.concurrent.Exchanger;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -31,6 +34,8 @@ import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
 import se.deversity.asynctest.diagnostics.CountDownLatchDetector;
+import se.deversity.asynctest.diagnostics.ExecutorShutdownDetector;
+import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.SemaphoreMisuseDetector;
@@ -2479,6 +2484,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static Future<Object> submit(ExecutorService receiver, Callable<Object> task) {
+        taskSubmitted(receiver);
         if (!wrapsInvisibly(receiver, task)) {
             return receiver.submit(task);
         }
@@ -2496,6 +2502,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static Future<?> submit(ExecutorService receiver, Runnable task) {
+        taskSubmitted(receiver);
         if (!wrapsInvisibly(receiver, task)) {
             return receiver.submit(task);
         }
@@ -2516,11 +2523,213 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static Future<Object> submit(ExecutorService receiver, Runnable task,
                                         @Nullable Object result) {
+        taskSubmitted(receiver);
         if (!wrapsInvisibly(receiver, task)) {
             return receiver.submit(task, result);
         }
         HandedTask handed = new HandedTask(task);
         return Submissions.remember(receiver.submit((Runnable) handed, result), handed);
+    }
+
+    /**
+     * Stands in for the {@code POP} after a woven {@code submit} whose future the caller never
+     * kept. Nothing can inspect that future afterwards, so the detector judges it at analysis by
+     * whether its task failed.
+     *
+     * @param future the future the caller discarded
+     * @since 1.13.2
+     */
+    public static void submitResultDiscarded(Future<?> future) {
+        FutureIgnoredDetector detector = AsyncTestContext.currentFutureIgnoredDetector();
+        if (detector != null) {
+            detector.recordDiscarded(future, Thread.currentThread(), "ExecutorService.submit");
+        }
+    }
+
+    /** Counts a task handed to {@code executor} for the shutdown detector, which ignores an executor the run did not create. */
+    private static void taskSubmitted(Executor executor) {
+        if (executor instanceof ExecutorService service) {
+            ExecutorShutdownDetector detector = AsyncTestContext.currentExecutorShutdownDetector();
+            if (detector != null) {
+                detector.recordTaskSubmitted(service);
+            }
+        }
+    }
+
+    /**
+     * Declares {@code executor}, just made by a woven {@code Executors} factory, as owned by the
+     * run the calling thread works for, and returns it.
+     *
+     * <p>Ownership is the shutdown detector's whole rule (#387): it reports only an executor it was
+     * told the code created, so a pool handed in from outside the run draws nothing. A pool built
+     * in a static initializer is not declared either. It is shared by design and lives as long as
+     * its class, so the run that happened to load the class is not the one to close it. The stack
+     * is walked only here, once per executor made, never on a task's path.
+     */
+    private static <E extends ExecutorService> E created(E executor) {
+        ExecutorShutdownDetector detector = AsyncTestContext.currentExecutorShutdownDetector();
+        if (detector != null && !insideAStaticInitializer()) {
+            detector.recordExecutorCreated(executor, null);
+        }
+        return executor;
+    }
+
+    /** {@return whether a class initializer is on the calling thread's stack} */
+    private static boolean insideAStaticInitializer() {
+        return STACK.walk(frames -> frames.anyMatch(f -> "<clinit>".equals(f.getMethodName())));
+    }
+
+    private static final StackWalker STACK = StackWalker.getInstance();
+
+    /**
+     * Weaves {@code Executors.newFixedThreadPool(int)}: the pool is declared as the run's own.
+     *
+     * @param threads the number of threads
+     * @return the new pool
+     * @since 1.13.2
+     */
+    public static ExecutorService newFixedThreadPool(int threads) {
+        return created(Executors.newFixedThreadPool(threads));
+    }
+
+    /**
+     * Weaves {@code Executors.newFixedThreadPool(int, ThreadFactory)}, as {@link #newFixedThreadPool(int)}.
+     *
+     * @param threads the number of threads
+     * @param factory the thread factory
+     * @return the new pool
+     * @since 1.13.2
+     */
+    public static ExecutorService newFixedThreadPool(int threads, ThreadFactory factory) {
+        return created(Executors.newFixedThreadPool(threads, factory));
+    }
+
+    /**
+     * Weaves {@code Executors.newCachedThreadPool()}, as {@link #newFixedThreadPool(int)}.
+     *
+     * @return the new pool
+     * @since 1.13.2
+     */
+    public static ExecutorService newCachedThreadPool() {
+        return created(Executors.newCachedThreadPool());
+    }
+
+    /**
+     * Weaves {@code Executors.newCachedThreadPool(ThreadFactory)}, as {@link #newFixedThreadPool(int)}.
+     *
+     * @param factory the thread factory
+     * @return the new pool
+     * @since 1.13.2
+     */
+    public static ExecutorService newCachedThreadPool(ThreadFactory factory) {
+        return created(Executors.newCachedThreadPool(factory));
+    }
+
+    /**
+     * Weaves {@code Executors.newSingleThreadExecutor()}, as {@link #newFixedThreadPool(int)}.
+     *
+     * @return the new executor
+     * @since 1.13.2
+     */
+    public static ExecutorService newSingleThreadExecutor() {
+        return created(Executors.newSingleThreadExecutor());
+    }
+
+    /**
+     * Weaves {@code Executors.newSingleThreadExecutor(ThreadFactory)}, as {@link #newFixedThreadPool(int)}.
+     *
+     * @param factory the thread factory
+     * @return the new executor
+     * @since 1.13.2
+     */
+    public static ExecutorService newSingleThreadExecutor(ThreadFactory factory) {
+        return created(Executors.newSingleThreadExecutor(factory));
+    }
+
+    /**
+     * Weaves {@code Executors.newScheduledThreadPool(int)}, as {@link #newFixedThreadPool(int)}.
+     *
+     * @param coreThreads the number of threads kept in the pool
+     * @return the new pool
+     * @since 1.13.2
+     */
+    public static ScheduledExecutorService newScheduledThreadPool(int coreThreads) {
+        return created(Executors.newScheduledThreadPool(coreThreads));
+    }
+
+    /**
+     * Weaves {@code Executors.newScheduledThreadPool(int, ThreadFactory)}, as {@link #newFixedThreadPool(int)}.
+     *
+     * @param coreThreads the number of threads kept in the pool
+     * @param factory     the thread factory
+     * @return the new pool
+     * @since 1.13.2
+     */
+    public static ScheduledExecutorService newScheduledThreadPool(int coreThreads, ThreadFactory factory) {
+        return created(Executors.newScheduledThreadPool(coreThreads, factory));
+    }
+
+    /**
+     * Weaves {@code Executors.newSingleThreadScheduledExecutor()}, as {@link #newFixedThreadPool(int)}.
+     *
+     * @return the new executor
+     * @since 1.13.2
+     */
+    public static ScheduledExecutorService newSingleThreadScheduledExecutor() {
+        return created(Executors.newSingleThreadScheduledExecutor());
+    }
+
+    /**
+     * Weaves {@code Executors.newSingleThreadScheduledExecutor(ThreadFactory)}, as {@link #newFixedThreadPool(int)}.
+     *
+     * @param factory the thread factory
+     * @return the new executor
+     * @since 1.13.2
+     */
+    public static ScheduledExecutorService newSingleThreadScheduledExecutor(ThreadFactory factory) {
+        return created(Executors.newSingleThreadScheduledExecutor(factory));
+    }
+
+    /**
+     * Weaves {@code Executors.newWorkStealingPool()}, as {@link #newFixedThreadPool(int)}.
+     *
+     * @return the new pool
+     * @since 1.13.2
+     */
+    public static ExecutorService newWorkStealingPool() {
+        return created(Executors.newWorkStealingPool());
+    }
+
+    /**
+     * Weaves {@code Executors.newWorkStealingPool(int)}, as {@link #newFixedThreadPool(int)}.
+     *
+     * @param parallelism the targeted parallelism level
+     * @return the new pool
+     * @since 1.13.2
+     */
+    public static ExecutorService newWorkStealingPool(int parallelism) {
+        return created(Executors.newWorkStealingPool(parallelism));
+    }
+
+    /**
+     * Weaves {@code Executors.newVirtualThreadPerTaskExecutor()}, as {@link #newFixedThreadPool(int)}.
+     *
+     * @return the new executor
+     * @since 1.13.2
+     */
+    public static ExecutorService newVirtualThreadPerTaskExecutor() {
+        return created(Executors.newVirtualThreadPerTaskExecutor());
+    }
+
+    /**
+     * Weaves {@code Executors.newThreadPerTaskExecutor(ThreadFactory)}, as {@link #newFixedThreadPool(int)}.
+     *
+     * @param factory the factory each task's thread comes from
+     * @return the new executor
+     * @since 1.13.2
+     */
+    public static ExecutorService newThreadPerTaskExecutor(ThreadFactory factory) {
+        return created(Executors.newThreadPerTaskExecutor(factory));
     }
 
     /**
@@ -2603,6 +2812,7 @@ public final class AgentConcurrencyUtilHooks {
     public static void execute(Executor receiver, Runnable command) {
         // The NullPointerException the call itself throws for a missing task.
         Objects.requireNonNull(command);
+        taskSubmitted(receiver);
         if (!(command instanceof ForkJoinTask) && executesInvisibly(receiver)) {
             receiver.execute(new HandedTask(command));
             return;
