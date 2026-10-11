@@ -1383,6 +1383,22 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the same poll, through a handler that restores the flag and rethrows"),
 
+            new RecordingSubject("agent_synchronizedList_iteratedWithoutItsLock", JDK,
+                    "java.util.Collections",
+                    DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker walks a Collections.synchronizedList in a for-each loop with "
+                            + "no lock held, which its javadoc forbids: each call is synchronized "
+                            + "and the walk between them is not. Nothing is recorded: the woven "
+                            + "iterator() asks Thread.holdsLock of the list",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_synchronizedList_iteratedUnderItsLock", JDK,
+                    "java.util.Collections",
+                    DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same walk inside synchronized (list), as the javadoc requires"),
+
             new RecordingSubject("agent_thread_startedWithNoDaemonDecision", JDK,
                     "java.lang.Thread",
                     DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,

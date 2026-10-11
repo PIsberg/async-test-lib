@@ -332,7 +332,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (30)
+### Agent-fed (31)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -440,6 +440,15 @@ policy and is not named. When a method holding a swallowing handler runs on a ru
 entry names the handler's location to both detectors, once per run; `INTERRUPT_MISHANDLING` is the
 one the default preset runs.
 
+`SynchronizedCollectionIterationDetector` hears the woven `iterator()`, the call a for-each loop
+compiles to, and `stream()`. A `Collections.synchronized*` wrapper takes its monitor inside each
+call and releases it before the next, and its javadoc requires the caller to hold it across an
+iteration. The hook asks `Thread.holdsLock` of the monitor the wrapper really uses: a synchronized
+list's own, and for a `keySet`, `values` or `entrySet` view the map's, which the woven call that
+returned the view records. A synchronized set or collection the run did not see come out of a map
+is not judged, because it may be such a view, and judging it against its own monitor would report
+the documented `synchronized (map)` idiom.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
@@ -449,7 +458,7 @@ one the default preset runs.
 `SynchronizedNonFinalDetector`, `NonAtomicConcurrentMapUpdateDetector`, `ExecutorShutdownDetector`,
 `FutureIgnoredDetector`, `CompletableFutureExceptionDetector`,
 `CompletableFutureBlockingCallbackDetector`, `CompletableFutureCommonPoolBlockingDetector`,
-`InterruptSwallowingDetector`, `InterruptMonitor`
+`InterruptSwallowingDetector`, `InterruptMonitor`, `SynchronizedCollectionIterationDetector`
 
 ### Zero-config (4)
 
@@ -493,7 +502,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (112)
+### Recording-only (111)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -520,7 +529,7 @@ recording is the feed:
 `CacheConcurrencyDetector`, `CompletableFutureChainDetector`,
 `MutableMapKeyDetector`, `NestedMonitorLockoutDetector`, `LockDowngradeDetector`,
 `InheritableThreadLocalMisuseDetector`, `ThreadLocalContaminationDetector`,
-`AtomicNonAtomicUpdateDetector`, `SynchronizedCollectionIterationDetector`,
+`AtomicNonAtomicUpdateDetector`,
 `ConcurrentMapComputeRecursionDetector`,
 `SynchronizedOnLiteralDetector`, `PublicLockExposureDetector`, `ForkJoinTaskBlockingDetector`,
 `OptimisticReadValidationDetector`,

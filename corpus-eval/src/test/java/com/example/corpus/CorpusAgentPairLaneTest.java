@@ -1113,6 +1113,42 @@ class CorpusAgentPairLaneTest {
         counted(CorpusAgentPairLaneTest::takeRethrowingTheInterrupt);
     }
 
+    // --- Iterating a synchronized wrapper --------------------------------------------------------
+
+    private static final java.util.List<Object> SYNCHRONIZED_LIST =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>(java.util.List.of("a", "b")));
+
+    /** Where the walks put what they read, so the loop is not dead code. */
+    private static final java.util.concurrent.atomic.LongAdder WALKED =
+            new java.util.concurrent.atomic.LongAdder();
+
+    /** Walks the synchronized list, under its monitor or not. */
+    private static void walkTheSynchronizedList(boolean underItsMonitor) {
+        if (underItsMonitor) {
+            synchronized (SYNCHRONIZED_LIST) {
+                for (Object element : SYNCHRONIZED_LIST) {
+                    WALKED.add(element.hashCode());
+                }
+            }
+            return;
+        }
+        for (Object element : SYNCHRONIZED_LIST) {
+            WALKED.add(element.hashCode());
+        }
+    }
+
+    /** Every worker iterates a Collections.synchronizedList with no lock held. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_synchronizedList_iteratedWithoutItsLock() {
+        counted(() -> walkTheSynchronizedList(false));
+    }
+
+    /** The same iteration inside synchronized (list), as the wrapper's javadoc requires. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_synchronizedList_iteratedUnderItsLock() {
+        counted(() -> walkTheSynchronizedList(true));
+    }
+
     // --- Thread daemon flag, left running (#736) ----------------------------------------------
 
     /**

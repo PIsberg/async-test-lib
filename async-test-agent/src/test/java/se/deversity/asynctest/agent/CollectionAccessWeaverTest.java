@@ -56,6 +56,28 @@ class CollectionAccessWeaverTest {
             return receiver.containsKey(key);
         }
 
+        public static java.util.Iterator<Object> iterableIterator(Iterable<Object> receiver) {
+            return receiver.iterator();
+        }
+
+        public static java.util.stream.Stream<Object> collectionStream(
+                java.util.Collection<Object> receiver) {
+            return receiver.stream();
+        }
+
+        public static java.util.Set<Object> mapKeySet(Map<Object, Object> receiver) {
+            return receiver.keySet();
+        }
+
+        public static java.util.Collection<Object> mapValues(Map<Object, Object> receiver) {
+            return receiver.values();
+        }
+
+        public static java.util.Set<Map.Entry<Object, Object>> mapEntrySet(
+                Map<Object, Object> receiver) {
+            return receiver.entrySet();
+        }
+
         public static boolean collectionAdd(java.util.Collection<Object> receiver, Object element) {
             return receiver.add(element);
         }

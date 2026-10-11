@@ -20,6 +20,7 @@ import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector;
 import se.deversity.asynctest.diagnostics.SharedCollectionDetector;
+import se.deversity.asynctest.diagnostics.SynchronizedCollectionIterationDetector;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.vibetags.annotations.AIContract;
 
@@ -207,6 +208,94 @@ public final class AgentCollectionHooks {
         if (detector != null && selfSynchronized(receiver)) {
             detector.agentAct(receiver, key, value, remove);
         }
+    }
+
+    /** {@return whether {@code collection} is one of the {@code Collections.synchronized*} wrappers} */
+    private static boolean synchronizedWrapper(Object collection) {
+        return collection.getClass().getName().startsWith("java.util.Collections$Synchronized");
+    }
+
+    /** Hands an iteration of a synchronized wrapper to its detector, which knows its monitor. */
+    private static void iterated(Object collection) {
+        if (!synchronizedWrapper(collection)) {
+            return;
+        }
+        SynchronizedCollectionIterationDetector detector =
+                AsyncTestContext.currentSynchronizedCollectionIterationDetector();
+        if (detector != null) {
+            detector.agentIteration(collection, Thread.currentThread());
+        }
+    }
+
+    /** Tells the iteration detector that {@code view} came out of the synchronized map {@code owner}. */
+    private static <V> V viewOf(V view, Map<Object, Object> owner) {
+        if (view != null && synchronizedWrapper(owner)) {
+            SynchronizedCollectionIterationDetector detector =
+                    AsyncTestContext.currentSynchronizedCollectionIterationDetector();
+            if (detector != null) {
+                detector.recordView(view, owner);
+            }
+        }
+        return view;
+    }
+
+    /**
+     * Weaves {@code Iterable.iterator()}, the call a for-each loop compiles to: an iteration of a
+     * {@code Collections.synchronized*} wrapper is judged against the monitor it needs held.
+     *
+     * @param receiver the iterable
+     * @return its iterator
+     * @since 1.13.2
+     */
+    public static java.util.Iterator<Object> iterableIterator(Iterable<Object> receiver) {
+        iterated(receiver);
+        return receiver.iterator();
+    }
+
+    /**
+     * Weaves {@code Collection.stream()}, which walks the backing collection as an iterator does.
+     *
+     * @param receiver the collection
+     * @return its stream
+     * @since 1.13.2
+     */
+    public static java.util.stream.Stream<Object> collectionStream(Collection<Object> receiver) {
+        iterated(receiver);
+        return receiver.stream();
+    }
+
+    /**
+     * Weaves {@code Map.keySet()}: a view of a synchronized map is remembered with the map, whose
+     * monitor guards iterating it.
+     *
+     * @param receiver the map
+     * @return its key set
+     * @since 1.13.2
+     */
+    public static java.util.Set<Object> mapKeySet(Map<Object, Object> receiver) {
+        return viewOf(receiver.keySet(), receiver);
+    }
+
+    /**
+     * Weaves {@code Map.values()}, as {@link #mapKeySet}.
+     *
+     * @param receiver the map
+     * @return its values
+     * @since 1.13.2
+     */
+    public static Collection<Object> mapValues(Map<Object, Object> receiver) {
+        return viewOf(receiver.values(), receiver);
+    }
+
+    /**
+     * Weaves {@code Map.entrySet()}, as {@link #mapKeySet}.
+     *
+     * @param receiver the map
+     * @return its entry set
+     * @since 1.13.2
+     */
+    public static java.util.Set<Map.Entry<Object, Object>> mapEntrySet(Map<Object, Object> receiver) {
+        return viewOf(receiver.entrySet(), receiver);
     }
 
     /** Weaves {@code Map.put}. @param receiver the map @param key the key @param value the value @return the previous value */

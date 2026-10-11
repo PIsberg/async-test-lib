@@ -291,6 +291,14 @@ final class CollectionAccessWeaver {
             // The conditional two-argument removal, which is a mutation like its sibling (#440).
             Entry.call(Map.class, "remove", "mapRemove", Object.class, Object.class),
             Entry.call(Map.class, "containsKey", "mapContainsKey", Object.class),
+            // Iteration, and where a synchronized map's views come from: a wrapper from
+            // Collections.synchronized* must be iterated under the monitor it synchronizes on,
+            // which for a map's view is the map's.
+            Entry.call(Iterable.class, "iterator", "iterableIterator"),
+            Entry.call(Collection.class, "stream", "collectionStream"),
+            Entry.call(Map.class, "keySet", "mapKeySet"),
+            Entry.call(Map.class, "values", "mapValues"),
+            Entry.call(Map.class, "entrySet", "mapEntrySet"),
             // Every row that offers into or takes out of a queue has a synchronized-method
             // variant. A plain deque hands an element over only under a lock both sides share, and
             // a synchronized method's monitor has no instruction HeldLocks could see (#796).

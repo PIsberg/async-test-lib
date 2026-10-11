@@ -84,6 +84,10 @@ final class LibraryReach {
                         + "ships that defect");
         unreached(DetectorType.INTERRUPT_MISHANDLING,
                 "agent-fed through the same handler weaver, with the same reason");
+        unreached(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION,
+                "agent-fed through the woven iterator(), stream() and map views; a firing library "
+                        + "row needs a documented-unsafe library method that iterates a "
+                        + "synchronized wrapper unguarded, and no corpus library ships that defect");
     }
 
     private static void unreached(DetectorType type, String reason) {

@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`SYNCHRONIZED_COLLECTION_ITERATION` is fed by the agent.** Iterating a
+  `Collections.synchronized*` wrapper without holding its monitor is the one rule those wrappers'
+  javadoc leaves to the caller, and the detector heard only what a body recorded about itself. With
+  `collections=true` the weaver now substitutes `Iterable.iterator()`, the call a for-each loop
+  compiles to, `Collection.stream()` and `Map.keySet()`, `values()` and `entrySet()`, and the hook
+  asks `Thread.holdsLock` of the monitor the wrapper really uses: a synchronized list's own, a map
+  view's map, recorded when the woven call returned the view. A synchronized set the run did not see
+  come out of a map is not judged, since it may be such a view. The detector now describes the first
+  ten unguarded iterations of a wrapper and counts the rest, where it appended a line per iteration
+  to a copy-on-write list. `AgentSynchronizedIterationHooksTest` did not compile against the old
+  hooks and is green, and the corpus gains an agent pair. The detector moves to the agent-fed feed
+  (35 of the detectors can see unmodified code, 111 remain recording-only).
+
 - **A swallowed `InterruptedException` is found in unmodified code.** `catch (InterruptedException
   e)` that neither rethrows nor restores the flag is the most common concurrency defect static
   analysers report, and `INTERRUPT_SWALLOWING` and `INTERRUPT_MISHANDLING` fired only when a body

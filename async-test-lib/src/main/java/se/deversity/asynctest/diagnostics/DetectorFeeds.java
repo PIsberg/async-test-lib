@@ -131,7 +131,10 @@ public final class DetectorFeeds {
             // handler runs only when an interrupt arrives, which a test seldom delivers, so the
             // weaver reads the handler's bytecode instead and names it when its method runs.
             DetectorType.INTERRUPT_SWALLOWING,
-            DetectorType.INTERRUPT_MISHANDLING);
+            DetectorType.INTERRUPT_MISHANDLING,
+            // Iterating a Collections.synchronized* wrapper: the woven iterator() and stream() ask
+            // Thread.holdsLock of the monitor the wrapper uses, the map's for a view of a map.
+            DetectorType.SYNCHRONIZED_COLLECTION_ITERATION);
 
     /**
      * Fed by the JVM and the harness with no recording call.

@@ -143,14 +143,17 @@ class DetectorEvidenceMatchesCodeTest {
                     + "another, and detectCheckThenActViolation, compare values the caller passed"),
             entry(DetectorType.CACHE_CONCURRENCY, "the read/write finding reads the lockset; the "
                     + "stampede finding counts threads that wrote one key in one round, so a HashMap "
-                    + "guarded by the caller's own lock draws it"));
+                    + "guarded by the caller's own lock draws it"),
+            entry(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, "the agent's iteration asks "
+                    + "Thread.holdsLock of the wrapper's monitor; recordIterationStarted is "
+                    + "reported on the holdingLock flag the caller passes"));
 
     /**
      * How many entries {@link #WEAKER_PATH} may hold. Lower it when an entry leaves; raising it
      * means a detector gained a lockset and kept a weaker class, which is what this gate exists to
      * question.
      */
-    private static final int WEAKER_PATH_CEILING = 3;
+    private static final int WEAKER_PATH_CEILING = 4;
 
     /**
      * Detectors the agent or the JVM feeds that are classified below {@code OBSERVED} and
@@ -199,10 +202,14 @@ class DetectorEvidenceMatchesCodeTest {
                     + "word for whether the flag was restored"),
             entry(DetectorType.INTERRUPT_MISHANDLING, "the same handler shape the agent reads, and "
                     + "recordInterruptException and recordIgnoredException still take the caller's "
-                    + "word"));
+                    + "word"),
+            entry(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, "the woven iterator() asks "
+                    + "Thread.holdsLock of the wrapper's monitor, but recordIterationStarted still "
+                    + "takes the caller's word for whether it held it; the report does not grade "
+                    + "the two apart"));
 
     /** How many entries {@link #FED_BELOW_OBSERVED} may hold; lower it when an entry leaves. */
-    private static final int FED_BELOW_OBSERVED_CEILING = 12;
+    private static final int FED_BELOW_OBSERVED_CEILING = 13;
 
     /**
      * Ungraded detectors above the PROMPT cap that name a threshold, each with why the threshold

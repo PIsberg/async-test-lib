@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -76,11 +77,66 @@ public class SynchronizedCollectionIterationDetector extends AbstractInstanceDet
         if (wrapper == null || thread == null) return;
         WrapperInfo info = trackedState(wrapper);
         if (info == null || holdingLock) return;
-        info.unsafeIterations.incrementAndGet();
+        // Counted every time, described the first few: an iteration in a loop would otherwise grow
+        // the copy-on-write list, and copy it, once per pass on the threads being watched.
+        if (info.unsafeIterations.incrementAndGet() > MAX_DETAILS) return;
         info.details.add(String.format(
             "Thread '%s' iterated '%s' without holding synchronized(%s) — "
             + "concurrent modification may cause ConcurrentModificationException or skipped elements",
             thread.getName(), info.name, info.name));
+    }
+
+    /** How many unsafe iterations of one wrapper are described; the rest are counted. */
+    static final int MAX_DETAILS = 10;
+
+    /** Map views the agent saw handed out, to the map whose monitor guards them. */
+    private final Map<IdentityKey, Object> viewOwners = new ConcurrentHashMap<>();
+
+    /**
+     * Records that {@code view} is a {@code keySet}, {@code values} or {@code entrySet} view of
+     * the synchronized map {@code owner}, which the agent saw returned by a woven call. Such a view
+     * iterates under the map's monitor, not its own.
+     *
+     * @param view  the view the map returned
+     * @param owner the synchronized map
+     * @since 1.13.2
+     */
+    public void recordView(Object view, Object owner) {
+        if (view == null || owner == null) return;
+        viewOwners.putIfAbsent(new IdentityKey(view), owner);
+    }
+
+    /**
+     * Records an iteration the agent saw start: a woven {@code iterator()} or {@code stream()} on a
+     * {@code Collections.synchronized*} wrapper. The wrapper is judged against the monitor it
+     * really synchronizes on: a map view the agent saw handed out against its map, a synchronized
+     * list against itself. A synchronized set or collection the run did not see come out of a map
+     * is not judged, because it may be such a view, and judging it against its own monitor would
+     * report the documented {@code synchronized (map)} idiom.
+     *
+     * @param collection the wrapper being iterated
+     * @param thread     the iterating thread
+     * @since 1.13.2
+     */
+    public void agentIteration(Object collection, Thread thread) {
+        if (collection == null || thread == null) return;
+        Object owner = viewOwners.get(IdentityKey.lookup(collection));
+        Object monitor;
+        String label;
+        if (owner != null) {
+            monitor = owner;
+            label = owner.getClass().getSimpleName() + " view";
+        } else {
+            String type = collection.getClass().getName();
+            if (!"java.util.Collections$SynchronizedList".equals(type)
+                    && !"java.util.Collections$SynchronizedRandomAccessList".equals(type)) {
+                return;
+            }
+            monitor = collection;
+            label = "SynchronizedList";
+        }
+        stateFor(collection, null, label);
+        recordIterationStarted(collection, thread, Thread.holdsLock(monitor));
     }
 
     /**

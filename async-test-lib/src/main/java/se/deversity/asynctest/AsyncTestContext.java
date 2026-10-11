@@ -2030,6 +2030,16 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link SynchronizedCollectionIterationDetector} for the run the calling thread
+     * works for, or {@code null}}: a woven {@code iterator()} or {@code stream()} on a synchronized
+     * wrapper, and a woven view of a synchronized map, are handed to it.
+     */
+    static @Nullable SynchronizedCollectionIterationDetector currentSynchronizedCollectionIterationDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.synchronizedCollectionIterationDetector;
+    }
+
+    /**
      * {@return the {@link CompletableFutureExceptionDetector} for the run the calling thread works
      * for, or {@code null}}: the woven {@code supplyAsync} and {@code runAsync} hand it a root
      * future its caller discarded.
