@@ -199,6 +199,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release fails") says how to create it by hand. `PublishWaitsForCentralTest` went red on the old
   order first.
 
+### Fixed
+
+- **`TelemetryEventBufferTest.testMpscConcurrency` asserted zero loss from a buffer that drops by
+  design (#987).** `publish` drops an event after a second with no consumer progress and counts it
+  in `droppedCount()`; a full-suite run starved the test's 10 ms scheduled drainer that long once
+  and the test read 3,998 of 4,000. It now asserts that drained plus dropped equals published and
+  that no event drains twice. The new `testMpscConcurrencyWithAStarvedConsumer` starts the drainer
+  after 1.3 s, which reproduces the drop on every run: it read 3,992 of 4,000 against the old
+  assertion and passes against the new one.
+
 ## [1.13.1] - 2026-10-09
 
 > **The first 1.13 on Maven Central.** 1.13.0 was tagged and released on GitHub, but Central
