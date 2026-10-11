@@ -106,7 +106,12 @@ public final class DetectorFeeds {
             // synchronized (owner.field) (#793). Recorded without the owner, one instance whose
             // lock was reassigned and several instances with a lock each record the same thing.
             // The woven MONITORENTER passes the owner it was read from, which decides it.
-            DetectorType.SYNCHRONIZED_NON_FINAL);
+            DetectorType.SYNCHRONIZED_NON_FINAL,
+            // containsKey or get, then put or remove, on a map whose calls are each atomic. The
+            // map hooks saw every one of those calls and dropped a ConcurrentMap receiver, because
+            // each call alone is safe; the pair is what is not, and the hooks now hand both halves
+            // to the detector, which pairs them per thread, map and key.
+            DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT);
 
     /**
      * Fed by the JVM and the harness with no recording call.

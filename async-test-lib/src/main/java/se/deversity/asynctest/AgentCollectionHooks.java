@@ -18,6 +18,7 @@ import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 
 import se.deversity.asynctest.diagnostics.HappensBefore;
+import se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector;
 import se.deversity.asynctest.diagnostics.SharedCollectionDetector;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.vibetags.annotations.AIContract;
@@ -157,9 +158,61 @@ public final class AgentCollectionHooks {
         }
     }
 
+    /**
+     * Whether each call on {@code map} is atomic on its own, so that only a pair of calls can race.
+     *
+     * <p>These are the maps {@link #record} skips, and the ones the check-then-act feed watches: a
+     * {@code ConcurrentMap}, a {@code Hashtable}, or a {@code Collections.synchronized*} wrapper,
+     * which takes its monitor inside each call and releases it before the next. A plain map races
+     * on every call, which the shared-collection detector already reports, so pairing its calls
+     * too would report one bug twice.
+     */
+    private static boolean selfSynchronized(Map<?, ?> map) {
+        return map instanceof java.util.concurrent.ConcurrentMap
+                || map instanceof java.util.Hashtable
+                || map.getClass().getName().startsWith("java.util.Collections$Synchronized");
+    }
+
+    /**
+     * Hands a {@code containsKey} or {@code get} on a self-synchronized map to the check-then-act
+     * detector as the check half of a pair.
+     *
+     * @param receiver the map
+     * @param key      the key read
+     * @param absent   whether the call found the key absent
+     * @param read     whether the call was a {@code get}
+     */
+    private static void checkHalf(Map<Object, Object> receiver, @Nullable Object key, boolean absent,
+                                  boolean read) {
+        NonAtomicConcurrentMapUpdateDetector detector =
+                AsyncTestContext.currentNonAtomicConcurrentMapUpdateDetector();
+        if (detector != null && selfSynchronized(receiver)) {
+            detector.agentCheck(receiver, key, absent, read);
+        }
+    }
+
+    /**
+     * Hands a {@code put} or {@code remove} on a self-synchronized map to the check-then-act
+     * detector, which pairs it with the thread's last check on the same map and key.
+     *
+     * @param receiver the map
+     * @param key      the key acted on
+     * @param value    the value put, {@code null} for a remove
+     * @param remove   whether the call was a {@code remove}
+     */
+    private static void actHalf(Map<Object, Object> receiver, @Nullable Object key,
+                                @Nullable Object value, boolean remove) {
+        NonAtomicConcurrentMapUpdateDetector detector =
+                AsyncTestContext.currentNonAtomicConcurrentMapUpdateDetector();
+        if (detector != null && selfSynchronized(receiver)) {
+            detector.agentAct(receiver, key, value, remove);
+        }
+    }
+
     /** Weaves {@code Map.put}. @param receiver the map @param key the key @param value the value @return the previous value */
     public static @Nullable Object mapPut(Map<Object, Object> receiver, Object key, Object value) {
         record(receiver, "put", true);
+        actHalf(receiver, key, value, false);
         // A concurrent map publishes the value to whoever later reads it (HappensBefore): the
         // release comes before the put, so every get that can return the value finds it.
         if (value != null && HappensBefore.publishesElements(receiver)) {
@@ -171,12 +224,15 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Map.get}. @param receiver the map @param key the key @return the mapped value */
     public static @Nullable Object mapGet(Map<Object, Object> receiver, Object key) {
         record(receiver, "get", false);
-        return received(receiver, receiver.get(key));
+        Object value = receiver.get(key);
+        checkHalf(receiver, key, value == null, true);
+        return received(receiver, value);
     }
 
     /** Weaves {@code Map.remove}. @param receiver the map @param key the key @return the removed value */
     public static @Nullable Object mapRemove(Map<Object, Object> receiver, Object key) {
         record(receiver, "remove", true);
+        actHalf(receiver, key, null, true);
         return received(receiver, receiver.remove(key));
     }
 
@@ -209,7 +265,9 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Map.containsKey}. @param receiver the map @param key the key @return whether the key is present */
     public static boolean mapContainsKey(Map<Object, Object> receiver, Object key) {
         record(receiver, "containsKey", false);
-        return receiver.containsKey(key);
+        boolean present = receiver.containsKey(key);
+        checkHalf(receiver, key, !present, false);
+        return present;
     }
 
     /** Weaves {@code Collection.add}. @param receiver the collection @param element the element @return whether it changed */

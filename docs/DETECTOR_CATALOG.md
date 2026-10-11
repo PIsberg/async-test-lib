@@ -332,7 +332,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (22)
+### Agent-fed (23)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -385,13 +385,28 @@ it to the detector with the monitor, so one owner on two monitors is reported an
 owner is not. A monitor taken from a local, a method's return or a static field is not fed, and the
 feed tracks up to 4,096 owners per run, naming any it dropped in a note.
 
+`NonAtomicConcurrentMapUpdateDetector` joined the agent feed after the 2026-10-11 gap review named
+check-then-act on a `ConcurrentHashMap` as the most common misuse it missed. The agent had
+substituted every `Map.get`, `containsKey`, `put` and `remove` call site since collection weaving
+shipped, and the hooks dropped a `ConcurrentMap`, `Hashtable` or `Collections.synchronized*`
+receiver, because each of those calls is atomic on its own. The pair is what is not. The hooks now
+hand a `containsKey` that found the key absent, or any `get`, to the detector as a pending check
+on the calling thread, and a `put` or `remove` on the same map and key in the same round completes
+it. A `containsKey` that found the key decides an overwrite and starts no pair, and a plain
+`HashMap` is left to `SharedCollectionDetector`, which already reports every call on it. The put
+value goes along, so a round whose callers all put one instance is excused, as a hand-recorded
+absent check is: the hook cannot tell a value chosen without reading the map from one derived from
+the read, and callers that install one shared object after a `get` are correct. The cost is a
+known false negative: racers that all put one cached box (an `Integer` up to 127) or one enum
+constant are excused even where the check decided other work.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
 `SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SemaphoreMisuseDetector`,
 `CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
 `MissedSignalDetector`, `ExplicitGcDetector`, `DaemonThreadHygieneDetector`, `ABAProblemDetector`,
-`SynchronizedNonFinalDetector`
+`SynchronizedNonFinalDetector`, `NonAtomicConcurrentMapUpdateDetector`
 
 ### Zero-config (4)
 
@@ -438,7 +453,7 @@ need a task's start and completion, and a substituted `submit` sees neither: the
 somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector` describe a shape in the code rather
 than any particular method, and no substitution can see a shape.
 
-### Recording-only (120)
+### Recording-only (119)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -476,7 +491,7 @@ recording is the feed:
 `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`,
 `NotifyWithoutMonitorDetector`, `SharedSecureRandomDetector`,
 `WeakHashMapSharedDetector`, `JdbcConnectionSharedDetector`, `SharedStatefulCryptoDetector`,
-`NonAtomicConcurrentMapUpdateDetector`, `SharedDeflaterDetector`, `ThisEscapeDetector`,
+`SharedDeflaterDetector`, `ThisEscapeDetector`,
 `ThreadLocalRandomMisuseDetector`, `CompletableFutureObtrudeDetector`, `SpuriousWakeupDetector`,
 `LockUpgradeDeadlockDetector`,
 `CompletableFutureBlockingCallbackDetector`, `StableValueMisuseDetector`,

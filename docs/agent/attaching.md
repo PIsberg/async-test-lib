@@ -117,6 +117,19 @@ and the `Deque` end-specific offers and takes. Each call becomes a
 call to a hook that records and then performs the original operation, so behaviour is unchanged;
 `CollectionWeavingEndToEndTest` pins that a woven program still computes the same values.
 
+A map whose calls are each atomic, a `ConcurrentHashMap`, a `Hashtable` or a
+`Collections.synchronizedMap` wrapper, is not a data race on any one call, so
+`SharedCollectionDetector` leaves it alone. What goes wrong on such a map is the pair:
+`if (!map.containsKey(k)) map.put(k, v)` or `v = map.get(k); map.put(k, v + 1)` from two threads
+loses an update. The map hooks hand those pairs to `NonAtomicConcurrentMapUpdateDetector` with no
+recording call: a `containsKey` that found the key absent, or any `get`, is held as the calling
+thread's pending check, and a `put` or `remove` on the same map and key in the same round completes
+it. The pair is reported when two threads complete it in one round with no lock held across both
+calls; under the map's own monitor it is atomic and stays silent
+(`CheckThenActWeavingEndToEndTest`). A round whose callers all put one instance is excused, which
+also excuses racers that all put one cached box such as `Integer.valueOf(1)`: the hook cannot tell
+a value derived from the read from one chosen without it.
+
 The same option substitutes `Object.wait`, `notify` and `notifyAll` (#694), which is what feeds
 `MissedSignalDetector` without a recorded call: the hooks run with the monitor held, so a notify is
 judged against the threads really inside `wait()`. The weaver also inserts one call in front of

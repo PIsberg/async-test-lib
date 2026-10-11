@@ -1248,6 +1248,25 @@ final class Corpus {
                             + "final, so recorded without its owner this is undecidable (#793); "
                             + "the owner the weaver passes shows one monitor per holder"),
 
+            new RecordingSubject("agent_concurrentMap_containsKeyThenPutRacing", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "six workers check a round's key with containsKey, all find it absent, and "
+                            + "each puts an object of its own, so five of the six objects are "
+                            + "dropped. Each call is atomic and the pair is not. Nothing is "
+                            + "recorded: the woven containsKey and put are paired by the hooks "
+                            + "per thread, map and key",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_concurrentMap_containsKeyThenPutUnderItsMonitor", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same containsKey and put on the round's key, under the map's own "
+                            + "monitor, so the first worker's put is what every later check "
+                            + "sees and no value is dropped"),
+
             new RecordingSubject("agent_thread_startedWithNoDaemonDecision", JDK,
                     "java.lang.Thread",
                     DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,
@@ -4800,9 +4819,10 @@ final class Corpus {
      */
     private static final Map<String, String> IDIOM_MANUAL_API_ROWS = Map.ofEntries(
             Map.entry("idiom_synchronizedCheckThenAct_onAConcurrentHashMap",
-                    "no agent-fed detector models a check-then-act: SharedCollectionDetector sees "
-                            + "two atomic calls on a concurrent map and rightly says nothing, so "
-                            + "NonAtomicConcurrentMapUpdateDetector is told the pair happened"),
+                    "the row is the registered VERDICT evidence for the detector and predates its "
+                            + "agent feed: the woven containsKey and put now reach it too, and the "
+                            + "agent-pair lane measures that path, while this row keeps the "
+                            + "recording that made the pair deterministic"),
             Map.entry("idiom_synchronizedCheckThenAct_withoutTheMonitor",
                     "the twin of the row above, recording the same pair the same way"),
             Map.entry("idiom_threadLocalRandom_currentOnEveryThread",

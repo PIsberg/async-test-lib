@@ -1991,6 +1991,19 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link NonAtomicConcurrentMapUpdateDetector} for the run the calling thread
+     * works for, or {@code null}}
+     *
+     * <p>Same contract as {@link #currentSharedCollectionDetector()}: the map hooks pair a check
+     * and an act on a self-synchronized map and hand both here, and the detector judges overlap,
+     * so a thread the run started or lent a task to counts as the run's own.
+     */
+    static @Nullable NonAtomicConcurrentMapUpdateDetector currentNonAtomicConcurrentMapUpdateDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.nonAtomicConcurrentMapUpdateDetector;
+    }
+
+    /**
      * {@return the {@link LockOrderValidator} for the calling thread's test, or {@code null}}
      *
      * <p>Same contract as {@link #currentSharedCollectionDetector()}, for the same reason:

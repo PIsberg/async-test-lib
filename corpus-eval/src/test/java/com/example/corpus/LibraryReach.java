@@ -50,6 +50,11 @@ final class LibraryReach {
                         + "(owner.field); a firing library row needs a library that reassigns a "
                         + "field it synchronizes on, and no corpus library ships that defect, so "
                         + "its pair synchronizes in the test file");
+        unreached(DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT,
+                "agent-fed through the woven Map.get, containsKey, put and remove; a firing "
+                        + "library row needs a documented-unsafe library method that checks a "
+                        + "concurrent map and then acts on it, and no corpus library ships that "
+                        + "defect, so its pair calls the JDK map from the test file");
     }
 
     private static void unreached(DetectorType type, String reason) {

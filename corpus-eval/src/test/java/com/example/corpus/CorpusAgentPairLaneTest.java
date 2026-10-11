@@ -35,6 +35,8 @@ import java.util.Formatter;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -798,6 +800,61 @@ class CorpusAgentPairLaneTest {
         }
         mine.increment();
         mine.increment();
+    }
+
+    // --- containsKey then put on a ConcurrentHashMap ------------------------------------------
+
+    private static final ConcurrentMap<String, Object> RACED_FILL = new ConcurrentHashMap<>();
+
+    private static final ConcurrentMap<String, Object> GUARDED_FILL = new ConcurrentHashMap<>();
+
+    private static final AtomicInteger RACED_FILL_TICKETS = new AtomicInteger();
+
+    private static final AtomicInteger GUARDED_FILL_TICKETS = new AtomicInteger();
+
+    /**
+     * Fills the round's key if it is absent, with a value of the worker's own.
+     *
+     * <p>The key is the round's, so every round starts absent. Unguarded, every worker checks
+     * before any puts, which is the interleaving that loses all but one of the values; guarded,
+     * the check and the put happen under the map's own monitor and the first worker's put is
+     * what every later check sees.
+     */
+    private static void fillTheRoundsKey(ConcurrentMap<String, Object> map, AtomicInteger tickets,
+                                         boolean underTheMapsMonitor) throws InterruptedException {
+        String key = "round-" + tickets.getAndIncrement() / THREADS;
+        everyWorkerIsHere();
+        if (underTheMapsMonitor) {
+            synchronized (map) {
+                if (!map.containsKey(key)) {
+                    map.put(key, new Object());
+                }
+            }
+            everyWorkerIsHere();
+            return;
+        }
+        boolean present = map.containsKey(key);
+        everyWorkerIsHere();
+        if (!present) {
+            map.put(key, new Object());
+        }
+    }
+
+    /**
+     * Every worker checks the round's key, finds it absent, and puts an object of its own.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_concurrentMap_containsKeyThenPutRacing() {
+        counted(() -> fillTheRoundsKey(RACED_FILL, RACED_FILL_TICKETS, false));
+    }
+
+    /**
+     * The same containsKey and put, under the map's own monitor, so no second worker can land
+     * between the check and the put.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_concurrentMap_containsKeyThenPutUnderItsMonitor() {
+        counted(() -> fillTheRoundsKey(GUARDED_FILL, GUARDED_FILL_TICKETS, true));
     }
 
     // --- Thread daemon flag, left running (#736) ----------------------------------------------

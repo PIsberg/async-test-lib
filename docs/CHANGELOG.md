@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`CONCURRENT_MAP_CHECK_THEN_ACT` is fed by the agent.** `if (!map.containsKey(k)) map.put(k, v)`
+  on a `ConcurrentHashMap` is the most common misuse of the most used concurrent class, and the
+  detector for it fired only when the code under test called `recordCheckThenAct` about itself,
+  which code that makes the mistake does not do. With `collections=true` the agent already
+  substituted every `Map.get`, `containsKey`, `put` and `remove`, and the hooks dropped a
+  `ConcurrentMap`, `Hashtable` or `Collections.synchronized*` receiver because each call is atomic
+  on its own. The hooks now hand the detector a `containsKey` that found the key absent, or any
+  `get`, as the calling thread's pending check, and a `put` or `remove` on the same map and key in
+  the same round completes the pair. A plain `HashMap` stays with `SharedCollectionDetector`, a
+  `containsKey` that found the key starts no pair, and a round whose callers all put one instance
+  is excused, so installing one shared object after a `get` is not reported; the documented cost is
+  that racers putting one cached box (`Integer.valueOf(1)`) or one enum constant are excused too.
+  `AgentMapCheckThenActHooksTest` went red on the four racing shapes before the change and is green
+  with it, `CheckThenActWeavingEndToEndTest` runs the real weaver over a fixture and its monitor
+  twin, and the corpus gains the agent pair `agent_concurrentMap_containsKeyThenPutRacing` (fires,
+  HIGH) and its monitor twin (silent); the agent-on lane still shows 0 findings on its 100
+  documented-safe subjects. The detector moves from the recording-only feed to agent-fed
+  (`DetectorFeeds`, catalog, README: 27 of the detectors can see unmodified code, 119 remain
+  recording-only). `DetectorFeedCoverageTest` now discovers every `AsyncTestContext.current*()`
+  call in the `Agent*Hooks` sources instead of checking a hand-kept list, which had stayed green
+  while the map hooks were rewired into this detector.
+
 - **`VIRTUAL_THREAD_PINNING` reads the JVM's own `jdk.VirtualThreadPinned` JFR event.** The
   detector reported only pins a body passed to `recordPinningEvent`, which are the pins its author
   already knew about, and nothing in the harness fed it. On a run with virtual workers the runner

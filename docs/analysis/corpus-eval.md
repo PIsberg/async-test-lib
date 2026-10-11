@@ -2322,8 +2322,8 @@ mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair 
 the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
-added below, and the Guava service pair (#736), 18 of the 22 agent-fed detectors are measured in
-both directions on call sites inside a library. `LibraryReach` records why the other four are not,
+added below, and the Guava service pair (#736), 18 of the 23 agent-fed detectors are measured in
+both directions on call sites inside a library. `LibraryReach` records why the other five are not,
 and `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:
 
@@ -2333,6 +2333,7 @@ arrangement `DetectorCoverage` uses for refusals:
 | `MISSED_SIGNAL` | agent-fed since #694. A firing library row needs a library method that waits behind an `if`, and no corpus library ships that defect; `agent_wait_behindAnIf` and its looped twin pair it on `jdk:` call sites through the same `MONITOR_ENTRIES` |
 | `ABA_PROBLEM` | agent-fed since #817, through the woven `AtomicReference` calls. A firing library row needs a library that pushes a popped node back onto a lock-free stack, and no corpus library ships that defect; `agent_abaStack_nodePushedBackAfterTheRead` and its twin pair it on `jdk:` call sites |
 | `SYNCHRONIZED_NON_FINAL` | agent-fed since #793, through the woven monitor entry of `synchronized (owner.field)`. A firing library row needs a library that reassigns a field it synchronizes on, and no corpus library ships that defect; `agent_synchronized_onALockOneOwnerReassigns` and its twin pair it in the test file |
+| `CONCURRENT_MAP_CHECK_THEN_ACT` | agent-fed since 2026-10-11, through the woven `Map.get`, `containsKey`, `put` and `remove`. A firing library row needs a documented-unsafe library method that checks a concurrent map and then acts on it, and no corpus library ships that defect; `agent_concurrentMap_containsKeyThenPutRacing` and its twin under the map's monitor pair it in the test file |
 
 **A library type reached from the test body (#692).** `agent_jctoolsHandOff_offererWritesAfterTheOffer`
 and its twin hand an object from one worker to another through the real JCTools `MpscArrayQueue`,
