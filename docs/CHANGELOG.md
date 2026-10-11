@@ -146,6 +146,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`SYSTEM_PROPERTY_MUTATION` names the property it saw written, never the value.** Its warning
+  for a single-thread write read `Property 'k' set to 'v'`. Once the agent feeds every
+  `System.setProperty` a run makes, that is any property the code under test sets, including one
+  holding a credential such as `javax.net.ssl.keyStorePassword`, and the report ends up in CI logs.
+  The detector no longer keeps the value at all; the line reads `Property 'k' set by thread 't'`.
+  `SystemPropertyMutationDetectorTest.reportNamesThePropertyButNeverItsValue` failed on the old
+  text and passes.
+
 - **`VIRTUAL_THREAD_CONTEXT_LEAKS` reports set-without-remove at `MEDIUM`, not `HIGH` (#942).**
   The finding fires only on virtual threads, which are never pooled, so the value it names dies
   with the thread; the HIGH finding fired where the leak cannot happen and was silent where it

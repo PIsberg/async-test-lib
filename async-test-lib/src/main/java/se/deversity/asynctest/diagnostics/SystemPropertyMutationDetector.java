@@ -11,7 +11,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Detects concurrent mutations to JVM system properties via {@link System#setProperty}
@@ -43,15 +42,12 @@ public class SystemPropertyMutationDetector {
 
     private static class MutationEvent {
         final String key;
-        final @Nullable String value;    // null means clearProperty
         final long   threadId;
         final String threadName;
         final String operation; // "set" or "clear"
 
-        MutationEvent(String key, @Nullable String value, long threadId, String threadName,
-                      String operation) {
+        MutationEvent(String key, long threadId, String threadName, String operation) {
             this.key        = key;
-            this.value      = value;
             this.threadId   = threadId;
             this.threadName = threadName;
             this.operation  = operation;
@@ -69,13 +65,14 @@ public class SystemPropertyMutationDetector {
      * Records a {@code System.setProperty(key, value)} call.
      *
      * @param key    the property key (null-safe)
-     * @param value  the new value
+     * @param value  the new value; never kept, so never reported: the agent feeds every write the
+     *               run makes, and a property can hold a credential
      * @param thread the calling thread (null-safe)
      */
     public void recordSet(String key, String value, Thread thread) {
         if (key == null || thread == null) return;
         noteWrite(key, thread);
-        events.add(new MutationEvent(key, value, thread.threadId(), thread.getName(), "set"));
+        events.add(new MutationEvent(key, thread.threadId(), thread.getName(), "set"));
     }
 
     /**
@@ -87,7 +84,7 @@ public class SystemPropertyMutationDetector {
     public void recordClear(String key, Thread thread) {
         if (key == null || thread == null) return;
         noteWrite(key, thread);
-        events.add(new MutationEvent(key, null, thread.threadId(), thread.getName(), "clear"));
+        events.add(new MutationEvent(key, thread.threadId(), thread.getName(), "clear"));
     }
 
     /**
@@ -152,7 +149,7 @@ public class SystemPropertyMutationDetector {
                 r.singleThreadMutations.add(String.format(
                         "Property '%s' %s by thread '%s' — "
                                 + "verify the property is restored after the test",
-                        key, "set".equals(first.operation) ? "set to '" + first.value + "'" : "cleared",
+                        key, "set".equals(first.operation) ? "set" : "cleared",
                         first.threadName));
             }
         }

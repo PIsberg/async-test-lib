@@ -58,6 +58,20 @@ public class SystemPropertyMutationDetectorTest {
     }
 
     @Test
+    void reportNamesThePropertyButNeverItsValue() throws Exception {
+        // The agent feeds every System.setProperty the run makes, and a property can hold a
+        // credential (javax.net.ssl.keyStorePassword); the report ends up in CI logs.
+        var d = new SystemPropertyMutationDetector();
+        d.recordSet("javax.net.ssl.keyStorePassword", "s3cret-solo", Thread.currentThread());
+        onTwoThreads(() -> d.recordSet("api.token", "s3cret-shared", Thread.currentThread()));
+        var report = d.analyze();
+        String text = report.toString() + report.structuredViolations;
+        assertTrue(text.contains("javax.net.ssl.keyStorePassword"), text);
+        assertTrue(text.contains("api.token"), text);
+        assertFalse(text.contains("s3cret"), text);
+    }
+
+    @Test
     void setAndRestoreUnderOneDeclaredLockIsNotReported() throws Exception {
         var d = new SystemPropertyMutationDetector();
         Object propertyLock = new Object();
