@@ -101,57 +101,36 @@ class DetectorFeedCoverageTest {
         assertEquals(SharedCollectionDetector.class, collectionFed,
                 "the collection stream's accessor names the detector it feeds");
 
-        // The lock stream. AgentLockHooks substitutes every Lock.lock()/unlock()/tryLock() call
-        // site, and for a long time handed all of it to HeldLocks alone, so these three saw
-        // nothing unless the user wrote record calls by hand. This gate did not notice, because
-        // it scanned the bridge and the collection hooks and no third place existed yet: a
-        // stream could be routed into a detector with the table still calling it RECORDING.
-        // Resolving the accessor proves the wiring's shape; requiring the hook source to name it
-        // proves the delivery is still there, which is the half reflection cannot see.
-        String lockHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src", "main",
-                "java", "se", "deversity", "asynctest", "AgentLockHooks.java")));
+        // The call-site streams. Every Agent*Hooks class reaches its detectors through an
+        // AsyncTestContext.current*() accessor, so the detectors a woven call can feed are exactly
+        // the accessors those sources call. The set is discovered rather than listed: a list kept
+        // by hand let the map hooks start feeding the check-then-act detector with this gate
+        // green, because AgentCollectionHooks was not among the files it read and the new accessor
+        // was not on its list. Resolving each accessor proves the wiring's shape; finding the call
+        // in a hook source proves the delivery is there, which is the half reflection cannot see.
         Set<DetectorType> wovenFed = EnumSet.noneOf(DetectorType.class);
-        String sharedHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src", "main",
-                "java", "se", "deversity", "asynctest", "AgentSharedInstanceHooks.java")));
-        String concurrencyHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src",
-                "main", "java", "se", "deversity", "asynctest",
-                "AgentConcurrencyUtilHooks.java")));
-        String sleepHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src", "main",
-                "java", "se", "deversity", "asynctest", "AgentSleepHooks.java")));
-        String gcHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src", "main",
-                "java", "se", "deversity", "asynctest", "AgentGcHooks.java")));
-        String monitorHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src", "main",
-                "java", "se", "deversity", "asynctest", "AgentMonitorHooks.java")));
-        String threadHooks = read(repoRoot().resolve(Path.of("async-test-lib", "src", "main",
-                "java", "se", "deversity", "asynctest", "AgentThreadHooks.java")));
-        String wovenHooks = lockHooks + sharedHooks + concurrencyHooks + sleepHooks + gcHooks
-                + monitorHooks + threadHooks;
-        for (String accessor : List.of("currentLockOrderValidator", "currentLockLeakDetector",
-                "currentTryLockMisuseDetector", "currentSimpleDateFormatDetector",
-                "currentSharedMatcherDetector", "currentSharedMessageDigestDetector",
-                "currentCalendarDetector", "currentStringBuilderDetector",
-                "currentSharedDecimalFormatDetector", "currentSharedFormatterDetector",
-                "currentSemaphoreMisuseDetector", "currentCountDownLatchDetector",
-                "currentLatchMisuseDetector", "currentBlockingQueueDetector",
-                "currentSleepInLockDetector", "currentExplicitGcDetector",
-                "currentMissedSignalDetector", "currentDaemonThreadHygieneDetector",
-                "currentABAProblemDetector", "currentSynchronizedNonFinalDetector")) {
-            Class<?> fed;
-            try {
-                fed = AsyncTestContext.class.getDeclaredMethod(accessor).getReturnType();
-            } catch (NoSuchMethodException e) {
-                throw new AssertionError("AgentLockHooks reaches its detectors through "
-                        + "AsyncTestContext." + accessor + "(); if that accessor moved, point "
-                        + "this gate at the new wiring rather than deleting the check", e);
+        Set<String> hookFiles = new TreeSet<>();
+        Pattern accessorCall = Pattern.compile("AsyncTestContext\\.(current[A-Za-z]+)\\(\\)");
+        for (Path hooks : hookSources()) {
+            hookFiles.add(hooks.getFileName().toString());
+            Matcher call = accessorCall.matcher(read(hooks));
+            while (call.find()) {
+                Class<?> fed;
+                try {
+                    fed = AsyncTestContext.class.getDeclaredMethod(call.group(1)).getReturnType();
+                } catch (NoSuchMethodException e) {
+                    throw new AssertionError(hooks.getFileName() + " calls AsyncTestContext."
+                            + call.group(1) + "(), which does not resolve", e);
+                }
+                if (isDetector(fed) && fed != SharedCollectionDetector.class) {
+                    wovenFed.add(typeOf(fed.getSimpleName()));
+                }
             }
-            assertTrue(wovenHooks.contains(accessor + "()"),
-                    "AsyncTestContext." + accessor + "() exists but AgentLockHooks no longer "
-                            + "calls it, so that woven stream no longer reaches a detector and "
-                            + fed.getSimpleName() + " is only reachable by hand. Either restore "
-                            + "the delivery or move the detector back to RECORDING in "
-                            + "DetectorFeeds, so the table keeps matching what the agent does.");
-            wovenFed.add(typeOf(fed.getSimpleName()));
         }
+        assertTrue(hookFiles.containsAll(List.of("AgentCollectionHooks.java",
+                        "AgentLockHooks.java", "AgentConcurrencyUtilHooks.java")),
+                "the hook sources were not found where this gate looks, so it would pass on "
+                        + "nothing; found " + hookFiles);
 
         Set<DetectorType> expected = EnumSet.noneOf(DetectorType.class);
         expected.add(typeOf(AtomicityValidator.class.getSimpleName()));
@@ -244,6 +223,29 @@ class DetectorFeedCoverageTest {
                 }
             }
         }
+    }
+
+    /** {@return every {@code Agent*Hooks.java} source in the library's root package} */
+    private static List<Path> hookSources() {
+        Path dir = repoRoot().resolve(Path.of("async-test-lib", "src", "main", "java", "se",
+                "deversity", "asynctest"));
+        try (var files = Files.list(dir)) {
+            return files.filter(p -> p.getFileName().toString().matches("Agent[A-Za-z]*Hooks\\.java"))
+                    .sorted()
+                    .toList();
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not list " + dir, e);
+        }
+    }
+
+    /** {@return whether {@code type} is a built-in detector class, by its trust row} */
+    private static boolean isDetector(Class<?> type) {
+        for (DetectorTrust.Row row : DetectorTrust.rows()) {
+            if (row.detectorClass().equals(type.getSimpleName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static DetectorType typeOf(String detectorClass) {

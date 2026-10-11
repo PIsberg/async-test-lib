@@ -4,6 +4,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Pins which silent row {@link AgentRowPremise} compares a firing row against.
@@ -39,6 +40,19 @@ class AgentRowPremiseTwinTest {
     void aSilentRowDeclaredFirstIsFound() {
         assertEquals("agent_deadlock_noThreadBlockedOnAnother",
                 twinOf("agent_deadlock_twoThreadsBlockedOnEachOther"));
+    }
+
+    @Test
+    @DisplayName("a row that declares throws still has a body the premise reads")
+    void aRowDeclaringThrowsIsRead() {
+        String source = "class Lane {\n"
+                + "    void agent_x_fires() throws InterruptedException, java.io.IOException {\n"
+                + "        POOL.submit(task);\n"
+                + "    }\n"
+                + "}\n";
+        assertTrue(AgentRowPremise.bodyOf(source, "agent_x_fires").contains("POOL.submit(task)"),
+                "a body read as empty makes no calls, so a firing row with a throws clause "
+                        + "compared against any twin passed the dropped-call check vacuously");
     }
 
     private static String twinOf(String loud) {

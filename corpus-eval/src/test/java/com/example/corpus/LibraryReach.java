@@ -50,6 +50,48 @@ final class LibraryReach {
                         + "(owner.field); a firing library row needs a library that reassigns a "
                         + "field it synchronizes on, and no corpus library ships that defect, so "
                         + "its pair synchronizes in the test file");
+        unreached(DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT,
+                "agent-fed through the woven Map.get, containsKey, put and remove; a firing "
+                        + "library row needs a documented-unsafe library method that checks a "
+                        + "concurrent map and then acts on it, and no corpus library ships that "
+                        + "defect, so its pair calls the JDK map from the test file");
+        unreached(DetectorType.EXECUTOR_SHUTDOWN,
+                "agent-fed through the woven Executors factories and submit; a firing library "
+                        + "row needs a documented-unsafe library method that creates a pool "
+                        + "through Executors and leaves it running, and no corpus library ships "
+                        + "that defect, so its pair creates the pool in the test file");
+        unreached(DetectorType.FUTURE_IGNORED,
+                "agent-fed through the POP after a woven submit; a firing library row needs a "
+                        + "library method that drops the future of a task that fails, and no "
+                        + "corpus library ships that defect, so its pair submits from the test "
+                        + "file");
+        unreached(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS,
+                "agent-fed through the POP after a woven supplyAsync or runAsync; a firing "
+                        + "library row needs a library method that drops a failing async root, "
+                        + "and no corpus library ships that defect");
+        unreached(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK,
+                "agent-fed through the woven stage wrapper; a firing library row needs a "
+                        + "library callback that blocks on a pending future, and no corpus library "
+                        + "ships that defect");
+        unreached(DetectorType.CF_COMMON_POOL_BLOCKING,
+                "agent-fed through the woven supplyAsync and the blocking calls inside it; a "
+                        + "firing library row needs a library task that blocks on the common "
+                        + "pool, and no corpus library ships that defect");
+        unreached(DetectorType.INTERRUPT_SWALLOWING,
+                "agent-fed through the handler weaver; a firing library row needs a "
+                        + "documented-unsafe library method whose InterruptedException handler "
+                        + "swallows the interrupt on a path a subject runs, and no corpus library "
+                        + "ships that defect");
+        unreached(DetectorType.INTERRUPT_MISHANDLING,
+                "agent-fed through the same handler weaver, with the same reason");
+        unreached(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION,
+                "agent-fed through the woven iterator(), stream() and map views; a firing library "
+                        + "row needs a documented-unsafe library method that iterates a "
+                        + "synchronized wrapper unguarded, and no corpus library ships that defect");
+        unreached(DetectorType.SYSTEM_PROPERTY_MUTATION,
+                "agent-fed through the woven System.setProperty and the JVM-default setters; a "
+                        + "firing library row needs a library method that writes one from several "
+                        + "threads unguarded, and no corpus library ships that defect");
     }
 
     private static void unreached(DetectorType type, String reason) {

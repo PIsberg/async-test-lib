@@ -35,6 +35,16 @@ import java.util.Formatter;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ForkJoinPool;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -153,6 +163,9 @@ class CorpusAgentPairLaneTest {
     static void reportAndGate() throws IOException {
         LANE_OVER.countDown();
         SERVICE_LEFT_RUNNING.stopAsync();
+        LEFT_RUNNING.forEach(ExecutorService::shutdownNow);
+        System.clearProperty(PROPERTY);
+        SHARED_POOL.shutdownNow();
         CorpusRecorder.uninstall();
         SHARED_FORMATTER.close();
         CorpusLane lane = CorpusLane.current();
@@ -798,6 +811,371 @@ class CorpusAgentPairLaneTest {
         }
         mine.increment();
         mine.increment();
+    }
+
+    // --- containsKey then put on a ConcurrentHashMap ------------------------------------------
+
+    private static final ConcurrentMap<String, Object> RACED_FILL = new ConcurrentHashMap<>();
+
+    private static final ConcurrentMap<String, Object> GUARDED_FILL = new ConcurrentHashMap<>();
+
+    private static final AtomicInteger RACED_FILL_TICKETS = new AtomicInteger();
+
+    private static final AtomicInteger GUARDED_FILL_TICKETS = new AtomicInteger();
+
+    /**
+     * Fills the round's key if it is absent, with a value of the worker's own.
+     *
+     * <p>The key is the round's, so every round starts absent. Unguarded, every worker checks
+     * before any puts, which is the interleaving that loses all but one of the values; guarded,
+     * the check and the put happen under the map's own monitor and the first worker's put is
+     * what every later check sees.
+     */
+    private static void fillTheRoundsKey(ConcurrentMap<String, Object> map, AtomicInteger tickets,
+                                         boolean underTheMapsMonitor) throws InterruptedException {
+        String key = "round-" + tickets.getAndIncrement() / THREADS;
+        everyWorkerIsHere();
+        if (underTheMapsMonitor) {
+            synchronized (map) {
+                if (!map.containsKey(key)) {
+                    map.put(key, new Object());
+                }
+            }
+            everyWorkerIsHere();
+            return;
+        }
+        boolean present = map.containsKey(key);
+        everyWorkerIsHere();
+        if (!present) {
+            map.put(key, new Object());
+        }
+    }
+
+    /**
+     * Every worker checks the round's key, finds it absent, and puts an object of its own.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_concurrentMap_containsKeyThenPutRacing() {
+        counted(() -> fillTheRoundsKey(RACED_FILL, RACED_FILL_TICKETS, false));
+    }
+
+    /**
+     * The same containsKey and put, under the map's own monitor, so no second worker can land
+     * between the check and the put.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_concurrentMap_containsKeyThenPutUnderItsMonitor() {
+        counted(() -> fillTheRoundsKey(GUARDED_FILL, GUARDED_FILL_TICKETS, true));
+    }
+
+    // --- An executor the body creates, and a future it discards -------------------------------
+
+    /**
+     * The pools the leaking row leaves running, shut down once the lane is over: after every row's
+     * analysis, which is when the leak is judged.
+     */
+    private static final Queue<ExecutorService> LEFT_RUNNING = new ConcurrentLinkedQueue<>();
+
+    private static final AtomicInteger POOL_TICKETS = new AtomicInteger();
+
+    private static final AtomicInteger CLOSED_POOL_TICKETS = new AtomicInteger();
+
+    /**
+     * Built in a static initializer, so the agent does not declare it as any run's own: a static
+     * pool lives as long as its class. The discarded-future rows submit to it.
+     */
+    private static final ExecutorService SHARED_POOL = Executors.newFixedThreadPool(2);
+
+    /**
+     * One worker a round creates a pool through {@code Executors}, runs a task on it and, when
+     * {@code shutDown}, closes it with {@code shutdown} and {@code awaitTermination}.
+     */
+    private static void runOnANewPool(AtomicInteger tickets, boolean shutDown)
+            throws InterruptedException {
+        if (tickets.getAndIncrement() % THREADS != 0) {
+            return;
+        }
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            pool.submit(() -> { }).get();
+        } catch (ExecutionException e) {
+            throw new AssertionError("an empty task failed", e);
+        }
+        if (shutDown) {
+            pool.shutdown();
+            assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS), "the pool did not terminate");
+        } else {
+            LEFT_RUNNING.add(pool);
+        }
+    }
+
+    /**
+     * One worker a round creates a pool, hands it a task and leaves it running.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_executor_createdAndLeftRunning() {
+        counted(() -> runOnANewPool(POOL_TICKETS, false));
+    }
+
+    /**
+     * The same pool, task and get, closed before the body ends with shutdown and awaitTermination.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_executor_createdAndShutDown() {
+        counted(() -> runOnANewPool(CLOSED_POOL_TICKETS, true));
+    }
+
+    /** A task that fails, which is what makes a dropped future lose something. */
+    private static void failingTask() {
+        throw new IllegalStateException("a failure only the future holds");
+    }
+
+    /**
+     * Every worker submits a failing task to the shared pool and drops the future: the call is a
+     * statement, so its result is popped and the exception reaches nobody.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_future_failingSubmitDiscarded() {
+        SHARED_POOL.submit(CorpusAgentPairLaneTest::failingTask);
+    }
+
+    /**
+     * The same failing submit, with the future kept and its exception read through get.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_future_failingSubmitInspected() {
+        Future<?> future = SHARED_POOL.submit(CorpusAgentPairLaneTest::failingTask);
+        counted(() -> readTheFailure(future));
+    }
+
+    /** Reads the failure a kept future holds, which is what keeping it is for. */
+    private static void readTheFailure(Future<?> future) throws InterruptedException {
+        try {
+            future.get();
+        } catch (ExecutionException expected) {
+            // observed
+        }
+    }
+
+    // --- CompletableFuture: a dropped failing root, a blocking callback, the common pool --------
+
+    /**
+     * Every worker starts a runAsync whose task throws, and drops the future: the call is a
+     * statement, so its result is popped.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_failingRunAsyncDiscarded() {
+        CompletableFuture.runAsync(CorpusAgentPairLaneTest::failingTask, SHARED_POOL);
+    }
+
+    /** The same failing runAsync, with the future kept and its failure read through get. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_failingRunAsyncJoined() {
+        CompletableFuture<Void> future =
+                CompletableFuture.runAsync(CorpusAgentPairLaneTest::failingTask, SHARED_POOL);
+        counted(() -> readTheFailure(future));
+    }
+
+    /**
+     * Registers a callback that joins {@code gate}, completes the source on the shared pool so the
+     * callback runs there, and completes {@code gate} either before the source, so the join finds
+     * it done, or once the callback has started, so the join waits.
+     */
+    private static void callbackJoins(boolean gateFirst) throws InterruptedException {
+        CompletableFuture<Object> source = new CompletableFuture<>();
+        CompletableFuture<Object> gate = new CompletableFuture<>();
+        CountDownLatch inCallback = new CountDownLatch(1);
+        CompletableFuture<Object> stage = source.thenApply(v -> {
+            inCallback.countDown();
+            return gate.join();
+        });
+        if (gateFirst) {
+            gate.complete("open");
+        }
+        SHARED_POOL.execute(() -> source.complete("go"));
+        assertTrue(inCallback.await(10, TimeUnit.SECONDS), "the callback did not start");
+        if (!gateFirst) {
+            Thread.sleep(20); // lets the callback reach the join before the gate opens
+            gate.complete("open");
+        }
+        stage.join();
+    }
+
+    /** A callback joins a future the body completes only after the callback has started. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_callbackJoinsAPendingFuture() {
+        counted(() -> callbackJoins(false));
+    }
+
+    /** The same callback and join, with the joined future completed first. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_callbackJoinsADoneFuture() {
+        counted(() -> callbackJoins(true));
+    }
+
+    /** A supplier that sleeps briefly: blocking work. */
+    private static Object sleepBriefly() {
+        try {
+            Thread.sleep(2);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return "slept";
+    }
+
+    /**
+     * Every worker hands the common pool a sleeping supplier. The pool is named explicitly: with
+     * parallelism 1, which a two-core runner has, the JDK runs an executor-less async task on a
+     * thread of its own and no pool worker would ever sleep.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_sleepsOnTheCommonPool() {
+        counted(() -> supplySleeping(true));
+    }
+
+    /** The same sleeping supplier on a pool of its own. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_sleepsOnADedicatedPool() {
+        counted(() -> supplySleeping(false));
+    }
+
+    /** Hands the sleeping supplier to the common pool or to the shared one, and waits for it. */
+    private static void supplySleeping(boolean onTheCommonPool) {
+        CompletableFuture.supplyAsync(CorpusAgentPairLaneTest::sleepBriefly,
+                onTheCommonPool ? ForkJoinPool.commonPool() : SHARED_POOL).join();
+    }
+
+    // --- A swallowed InterruptedException ------------------------------------------------------
+
+    /** Stays empty; the interrupt rows poll it briefly, which is a call that throws InterruptedException. */
+    private static final BlockingQueue<Object> INTERRUPT_QUEUE = new ArrayBlockingQueue<>(1);
+
+    /** Polls the hand-over queue briefly; an interrupt is caught, logged by nobody, and lost. */
+    private static void pollSwallowingTheInterrupt() {
+        try {
+            INTERRUPT_QUEUE.poll(1, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            // lost: neither rethrown nor restored
+        }
+    }
+
+    /** The same poll, restoring the flag when interrupted. */
+    private static void pollRestoringTheInterrupt() {
+        try {
+            INTERRUPT_QUEUE.poll(1, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Every worker calls a method whose InterruptedException handler neither rethrows nor restores
+     * the flag. No interrupt arrives; the handler's code is what the weaver judged.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_interrupt_swallowedByAHandler() {
+        counted(CorpusAgentPairLaneTest::pollSwallowingTheInterrupt);
+    }
+
+    /** The same poll, through a handler that restores the flag. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_interrupt_restoredByAHandler() {
+        counted(CorpusAgentPairLaneTest::pollRestoringTheInterrupt);
+    }
+
+    /** Polls, swallowing the interrupt, for the default preset's interrupt detector. */
+    private static void takeSwallowingTheInterrupt() {
+        try {
+            INTERRUPT_QUEUE.poll(1, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            INTERRUPT_QUEUE.clear();
+        }
+    }
+
+    /** The same poll, rethrowing the interrupt wrapped. */
+    private static void takeRethrowingTheInterrupt() {
+        try {
+            INTERRUPT_QUEUE.poll(1, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** The same swallowing shape, named for INTERRUPT_MISHANDLING, the default preset's detector. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_interrupt_mishandledByAHandler() {
+        counted(CorpusAgentPairLaneTest::takeSwallowingTheInterrupt);
+    }
+
+    /** The same poll, through a handler that restores the flag and rethrows. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_interrupt_rethrownByAHandler() {
+        counted(CorpusAgentPairLaneTest::takeRethrowingTheInterrupt);
+    }
+
+    // --- Iterating a synchronized wrapper --------------------------------------------------------
+
+    private static final java.util.List<Object> SYNCHRONIZED_LIST =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>(java.util.List.of("a", "b")));
+
+    /** Where the walks put what they read, so the loop is not dead code. */
+    private static final java.util.concurrent.atomic.LongAdder WALKED =
+            new java.util.concurrent.atomic.LongAdder();
+
+    /** Walks the synchronized list, under its monitor or not. */
+    private static void walkTheSynchronizedList(boolean underItsMonitor) {
+        if (underItsMonitor) {
+            synchronized (SYNCHRONIZED_LIST) {
+                for (Object element : SYNCHRONIZED_LIST) {
+                    WALKED.add(element.hashCode());
+                }
+            }
+            return;
+        }
+        for (Object element : SYNCHRONIZED_LIST) {
+            WALKED.add(element.hashCode());
+        }
+    }
+
+    /** Every worker iterates a Collections.synchronizedList with no lock held. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_synchronizedList_iteratedWithoutItsLock() {
+        counted(() -> walkTheSynchronizedList(false));
+    }
+
+    /** The same iteration inside synchronized (list), as the wrapper's javadoc requires. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_synchronizedList_iteratedUnderItsLock() {
+        counted(() -> walkTheSynchronizedList(true));
+    }
+
+    // --- A system property written from every worker ------------------------------------------
+
+    /** The property the two rows write; cleared when the lane ends. */
+    private static final String PROPERTY = "corpus-eval.agent-pair.property";
+
+    /** Sets the property to the worker's name, under the properties table's monitor or not. */
+    private static void setTheProperty(boolean underTheTablesMonitor) {
+        if (underTheTablesMonitor) {
+            synchronized (System.getProperties()) {
+                System.setProperty(PROPERTY, Thread.currentThread().getName());
+            }
+            return;
+        }
+        System.setProperty(PROPERTY, Thread.currentThread().getName());
+    }
+
+    /** Every worker sets one system property with no lock held. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_systemProperty_setByEveryWorker() {
+        counted(() -> setTheProperty(false));
+    }
+
+    /** The same writes under the properties table's own monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_systemProperty_setUnderTheTablesLock() {
+        counted(() -> setTheProperty(true));
     }
 
     // --- Thread daemon flag, left running (#736) ----------------------------------------------

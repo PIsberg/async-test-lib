@@ -46,6 +46,7 @@ public final class AgentMonitorHooks {
      * @throws InterruptedException if interrupted while waiting
      */
     public static void monitorWait(Object receiver) throws InterruptedException {
+        AgentConcurrencyUtilHooks.blocking("Object.wait", false);
         MissedSignalDetector detector = observing(receiver);
         if (detector == null || !detector.recordObservedWait(receiver)) {
             receiver.wait();
@@ -66,6 +67,7 @@ public final class AgentMonitorHooks {
      * @throws InterruptedException if interrupted while waiting
      */
     public static void monitorWait(Object receiver, long timeoutMillis) throws InterruptedException {
+        AgentConcurrencyUtilHooks.blocking("Object.wait", false);
         MissedSignalDetector detector = observing(receiver);
         if (detector == null || !detector.recordObservedWait(receiver)) {
             receiver.wait(timeoutMillis);
@@ -88,6 +90,7 @@ public final class AgentMonitorHooks {
      */
     public static void monitorWait(Object receiver, long timeoutMillis, int nanos)
             throws InterruptedException {
+        AgentConcurrencyUtilHooks.blocking("Object.wait", false);
         MissedSignalDetector detector = observing(receiver);
         if (detector == null || !detector.recordObservedWait(receiver)) {
             receiver.wait(timeoutMillis, nanos);

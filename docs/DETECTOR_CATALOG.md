@@ -332,7 +332,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (22)
+### Agent-fed (32)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -385,13 +385,88 @@ it to the detector with the monitor, so one owner on two monitors is reported an
 owner is not. A monitor taken from a local, a method's return or a static field is not fed, and the
 feed tracks up to 4,096 owners per run, naming any it dropped in a note.
 
+`NonAtomicConcurrentMapUpdateDetector` joined the agent feed after the 2026-10-11 gap review named
+check-then-act on a `ConcurrentHashMap` as the most common misuse it missed. The agent had
+substituted every `Map.get`, `containsKey`, `put` and `remove` call site since collection weaving
+shipped, and the hooks dropped a `ConcurrentMap`, `Hashtable` or `Collections.synchronized*`
+receiver, because each of those calls is atomic on its own. The pair is what is not. The hooks now
+hand a `containsKey` that found the key absent, or any `get`, to the detector as a pending check
+on the calling thread, and a `put` or `remove` on the same map and key in the same round completes
+it. A `containsKey` that found the key decides an overwrite and starts no pair, and a plain
+`HashMap` is left to `SharedCollectionDetector`, which already reports every call on it. The put
+value goes along, so a round whose callers all put one instance is excused, as a hand-recorded
+absent check is: the hook cannot tell a value chosen without reading the map from one derived from
+the read, and callers that install one shared object after a `get` are correct. The cost is a
+known false negative: racers that all put one cached box (an `Integer` up to 127) or one enum
+constant are excused even where the check decided other work.
+
+`ExecutorShutdownDetector` and `FutureIgnoredDetector` joined in the same change.
+`ExecutorShutdownDetector` reports only an executor it was told the code created, which is what
+keeps a shared or injected pool silent, and the agent could not tell it: the `Executors` factories
+are static calls (#387). The static path weaves them now, and an executor a run thread creates is
+declared as the run's own, while one built in a static initializer is not, because a static pool
+is shared by design and the run that happened to load its class is not the one to close it. The
+woven `submit` and `execute` count its tasks, and the detector asks the executor itself whether it
+shut down. `FutureIgnoredDetector` compared a recorded submit with a recorded inspection. A
+`submit` whose future the caller pops can never be inspected, and the weaver sees that `POP`, so
+the agent path hands the detector the discarded future and the detector reports it only when the
+future's own state at analysis says its task failed: fire-and-forget of a task that succeeded, or
+that is still running when the run ends, draws nothing.
+
+The `CompletableFuture` detectors for the three misuses that lose work or a thread joined the
+same day. The agent has substituted `supplyAsync`, `runAsync`, every dependent stage, `join` and
+`get` since #741, for the happens-before model, and fed none of them to these. A root future whose
+caller pops it can never be handled, joined or read, so `CompletableFutureExceptionDetector`
+reports one whose own state at analysis says its task failed, through the same `POP` lookahead as
+a discarded `submit`. A woven stage marks its callback's entry and exit, and a woven blocking call
+inside it, a `join` or `get` of a future that is not yet done, a `Thread.sleep`, a latch await, an
+`Object.wait` or a take from an empty queue, reaches `CompletableFutureBlockingCallbackDetector`.
+`allOf(a, b).thenApply(v -> a.join() + b.join())` joins finished futures and blocks nothing, so
+it stays silent. The same blocking calls inside a task handed to the common `ForkJoinPool` reach
+`CompletableFutureCommonPoolBlockingDetector`, except a `join` or `get` of a `CompletableFuture`,
+which the pool compensates for through `managedBlock`.
+
+`InterruptSwallowingDetector` and `InterruptMonitor` are the agent's one reading of a shape rather
+than a call. A `catch (InterruptedException e)` that neither rethrows nor restores the flag loses
+the one cancellation signal a thread gets, and its handler runs only when an interrupt arrives,
+which a test seldom delivers. So `InterruptHandlerWeaver` buffers a method that declares such a
+handler, follows the handler through the method's control flow, ordinary code included, and calls
+it swallowing when a path reaches a return and no call that restores the flag is reachable from
+the handler at all; a path ending in an `ATHROW` hands the exception on. The walk goes past the
+handler because a handler may only note the interrupt: Guava's `Uninterruptibles` sets a flag,
+goes on waiting, and restores the interrupt in a `finally`, which an earlier version of the rule
+named on three Guava subjects of the corpus. A `run()` that returns on interrupt is a thread's own
+policy and is not named. When a method holding a swallowing handler runs on a run's thread, its
+entry names the handler's location to both detectors, once per run; `INTERRUPT_MISHANDLING` is the
+one the default preset runs.
+
+`SynchronizedCollectionIterationDetector` hears the woven `iterator()`, the call a for-each loop
+compiles to, and `stream()`. A `Collections.synchronized*` wrapper takes its monitor inside each
+call and releases it before the next, and its javadoc requires the caller to hold it across an
+iteration. The hook asks `Thread.holdsLock` of the monitor the wrapper really uses: a synchronized
+list's own, and for a `keySet`, `values` or `entrySet` view the map's, which the woven call that
+returned the view records. A synchronized set or collection the run did not see come out of a map
+is not judged, because it may be such a view, and judging it against its own monitor would report
+the documented `synchronized (map)` idiom.
+
+`SystemPropertyMutationDetector` hears the woven `System.setProperty` and `clearProperty`, and the
+two JVM defaults no detector covered before: `Locale.setDefault`, recorded under the key
+`default Locale` (or `default Locale (DISPLAY)` and `(FORMAT)` for a category), and
+`TimeZone.setDefault`, under `default TimeZone`. Each is process-global state every thread reads,
+and a key written from two threads with no lock held across the writes is reported; writes under
+`synchronized (System.getProperties())` take turns and are not.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
 `SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SemaphoreMisuseDetector`,
 `CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
 `MissedSignalDetector`, `ExplicitGcDetector`, `DaemonThreadHygieneDetector`, `ABAProblemDetector`,
-`SynchronizedNonFinalDetector`
+`SynchronizedNonFinalDetector`, `NonAtomicConcurrentMapUpdateDetector`, `ExecutorShutdownDetector`,
+`FutureIgnoredDetector`, `CompletableFutureExceptionDetector`,
+`CompletableFutureBlockingCallbackDetector`, `CompletableFutureCommonPoolBlockingDetector`,
+`InterruptSwallowingDetector`, `InterruptMonitor`, `SynchronizedCollectionIterationDetector`,
+`SystemPropertyMutationDetector`
 
 ### Zero-config (4)
 
@@ -416,15 +491,10 @@ image without `jdk.jfr`) the detector keeps its recording feed. The four:
 ### Why the rest are recording-only
 
 Agent-feeding a detector works when one JDK method call carries everything the detector needs. That
-is what the eighteen above have in common: a lock acquired, a formatter used, a permit taken. Three
-things stop the others, and each was checked against the code rather than assumed.
-
-**The detector needs a fact the substitution cannot supply.** `ExecutorShutdownDetector` reports an
-executor that was registered with it and then never shut down. Registration is the load-bearing
-half: a `submit` on an executor it has never seen records nothing, so feeding the agent's `submit`
-and `shutdown` calls alone would leave it silent rather than wrong. Registering creation means the
-`Executors` factory methods, which the static substitution path can now reach, so this one is a
-decision rather than a limit - see #387.
+is what the agent-fed detectors above have in common: a lock acquired, a formatter used, a permit taken. Two
+things stop the others, and each was checked against the code rather than assumed. A third, a
+detector that needs a fact the substitution cannot supply, held `ExecutorShutdownDetector` back
+until the `Executors` factories were woven to supply its ownership (#387).
 
 **The call site is static.** This used to stop `SleepInLockDetector` and `ExplicitGcDetector`, and
 stops neither now: the substitution has an `invokestatic` path, `Thread.sleep` was its first user
@@ -433,12 +503,14 @@ visitor, which is the argument for having built the path as a mechanism. What re
 static entry has to be worth its instruction, the same bar the virtual ones meet.
 
 **The input is not a call.** `VisibilityMonitor` needs field reads and writes, which is the field
-weaver's stream rather than a call site. `ThreadPoolMonitor` and the `CompletableFuture` family
-need a task's start and completion, and a substituted `submit` sees neither: the task runs later,
-somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector` describe a shape in the code rather
-than any particular method, and no substitution can see a shape.
+weaver's stream rather than a call site. `ThreadPoolMonitor` and the rest of the `CompletableFuture`
+family need a task's start and completion as events of their own, and a substituted `submit` sees
+neither: the task runs later, somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector`
+describe a shape in the code rather
+than any particular method, and no substitution can see a shape; the one shape the agent reads,
+an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (120)
+### Recording-only (110)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -447,7 +519,7 @@ recording is the feed:
 `VisibilityMonitor`, `FalseSharingDetector`, `WakeupDetector`, `ConstructorSafetyValidator`,
 `SynchronizerMonitor`, `ThreadPoolMonitor`,
 `MemoryOrderingMonitor`, `PipelineMonitor`, `ReadWriteLockMonitor`,
-`CompletableFutureExceptionDetector`, `CompletableFutureCompletionLeakDetector`,
+`CompletableFutureCompletionLeakDetector`,
 `ThreadPoolDeadlockDetector`, `ConcurrentModificationDetector`,
 `SharedRandomDetector`, `ConditionVariableDetector`,
 `ParallelStreamDetector`, `ResourceLeakDetector`,
@@ -456,30 +528,30 @@ recording is the feed:
 `LockContentionDetector`,
 `LazyInitRaceDetector`, `PhaserDetector`, `StampedLockDetector`, `ExchangerDetector`,
 `ScheduledExecutorDetector`, `ForkJoinPoolDetector`, `ThreadFactoryDetector`,
-`RaceConditionDetector`, `ThreadLocalMonitor`, `BusyWaitDetector`, `InterruptMonitor`,
+`RaceConditionDetector`, `ThreadLocalMonitor`, `BusyWaitDetector`,
 `ThreadLeakDetector`, `UnboundedQueueDetector`, `ThreadStarvationDetector`,
 `TimerDetector`, `CopyOnWriteCollectionDetector`,
 `StructuredConcurrencyMisuseDetector`, `VirtualThreadContextLeakDetector`,
 `ScopedValueMisuseDetector`, `VirtualThreadCpuBoundTaskDetector`,
 `VirtualThreadCarrierExhaustionDetector`, `HttpClientConcurrencyDetector`, `StreamClosingDetector`,
-`CacheConcurrencyDetector`, `CompletableFutureChainDetector`, `ExecutorShutdownDetector`,
+`CacheConcurrencyDetector`, `CompletableFutureChainDetector`,
 `MutableMapKeyDetector`, `NestedMonitorLockoutDetector`, `LockDowngradeDetector`,
 `InheritableThreadLocalMisuseDetector`, `ThreadLocalContaminationDetector`,
-`AtomicNonAtomicUpdateDetector`, `SynchronizedCollectionIterationDetector`,
+`AtomicNonAtomicUpdateDetector`,
 `ConcurrentMapComputeRecursionDetector`,
 `SynchronizedOnLiteralDetector`, `PublicLockExposureDetector`, `ForkJoinTaskBlockingDetector`,
-`OptimisticReadValidationDetector`, `CompletableFutureCommonPoolBlockingDetector`,
+`OptimisticReadValidationDetector`,
 `WeakReferenceRaceDetector`,
-`StatefulLambdaDetector`, `InterruptSwallowingDetector`,
-`MdcContextLeakDetector`, `SystemPropertyMutationDetector`, `FutureIgnoredDetector`,
+`StatefulLambdaDetector`,
+`MdcContextLeakDetector`,
 `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`,
 `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`,
 `NotifyWithoutMonitorDetector`, `SharedSecureRandomDetector`,
 `WeakHashMapSharedDetector`, `JdbcConnectionSharedDetector`, `SharedStatefulCryptoDetector`,
-`NonAtomicConcurrentMapUpdateDetector`, `SharedDeflaterDetector`, `ThisEscapeDetector`,
+`SharedDeflaterDetector`, `ThisEscapeDetector`,
 `ThreadLocalRandomMisuseDetector`, `CompletableFutureObtrudeDetector`, `SpuriousWakeupDetector`,
 `LockUpgradeDeadlockDetector`,
-`CompletableFutureBlockingCallbackDetector`, `StableValueMisuseDetector`,
+`StableValueMisuseDetector`,
 `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`,
 `SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
 `FileChannelPositionRaceDetector`, `SharedIteratorDetector`, `HighContentionAtomicDetector`,

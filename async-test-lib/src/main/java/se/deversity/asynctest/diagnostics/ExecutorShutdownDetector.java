@@ -11,6 +11,8 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Detects an {@link ExecutorService} that the code under test <em>created</em> and then failed to
  * shut down, or shut down without a subsequent {@code awaitTermination()}.
@@ -26,12 +28,14 @@ import java.util.concurrent.atomic.AtomicInteger;
  * distinguishes them, so the declaration is the only ownership signal there is. Declaring an
  * executor you did not create makes this detector report correct code.
  *
- * <p><strong>Why it is not fed by the agent.</strong> Weaving would declare every executor in the
- * observed program, which is exactly the case above at scale: the common correct pattern would
- * report, and a tool that reports correct code gets switched off. It was considered for agent
- * feeding alongside the coordination primitives and deliberately left out. The reasoning is in
- * <a href="https://github.com/PIsberg/async-test-lib/issues/387">#387</a>, and the factory methods
- * an agent would have to intercept are {@code invokestatic}, which the weaver does not rewrite.
+ * <p><strong>What the agent declares.</strong> With {@code collections=true} the agent weaves the
+ * {@code Executors} factory methods and declares an executor a run thread creates through one of
+ * them, which is the ownership signal this detector needs and the one place it is known
+ * (<a href="https://github.com/PIsberg/async-test-lib/issues/387">#387</a>). An executor handed in
+ * from outside the run is never declared, and neither is one built in a static initializer: a
+ * static pool is shared by design and lives as long as its class. The woven {@code submit} and
+ * {@code execute} count tasks. A pool the class under test creates during the run and closes in
+ * an {@code @AfterEach} still reads as never shut down, because analysis runs first.
  *
  * <p><strong>Why it stays {@code PROMPT}.</strong> A finding is only as good as the declaration
  * behind it. Where a detector at {@code VERDICT} says the code is wrong, this one says the author
@@ -100,7 +104,7 @@ public class ExecutorShutdownDetector {
      * @param executor the executor this scope created (null-safe)
      * @param name     a descriptive label for reports; if null the report numbers it, {@code executor@1}
      */
-    public void recordExecutorCreated(ExecutorService executor, String name) {
+    public void recordExecutorCreated(ExecutorService executor, @Nullable String name) {
         if (executor == null) return;
         String resolved = name != null ? name : unnamedLabels.of(executor, "executor");
         // computeIfAbsent, not put: re-declaring an executor already tracked would reset

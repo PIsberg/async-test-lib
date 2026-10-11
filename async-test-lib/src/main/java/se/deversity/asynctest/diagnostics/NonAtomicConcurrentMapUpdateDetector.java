@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
@@ -221,6 +222,107 @@ public final class NonAtomicConcurrentMapUpdateDetector {
      */
     public void recordCheckThenAct(ConcurrentMap<?, ?> map, Object key, @Nullable Object value,
                                    String operation, Thread thread) {
+        record(map, key, value, operation, thread);
+    }
+
+    /**
+     * Records the check half of a check-then-act the agent saw: a woven {@code containsKey} or
+     * {@code get} on a map whose own calls are each atomic.
+     *
+     * <p>Called by the agent's map hooks, never by a test body. Only the shapes that lose an update
+     * on their own are kept: a key found absent, by either call, and a value read by {@code get},
+     * which a following put may derive from. A {@code containsKey} that found the key decides an
+     * overwrite, which loses nothing unless a third party removes the key in between, so it clears
+     * the thread's pending check rather than setting one.
+     *
+     * @param map    the map, a {@code ConcurrentMap}, a {@code Hashtable} or a
+     *               {@code Collections.synchronized*} wrapper
+     * @param key    the key the check read
+     * @param absent whether the check found the key absent
+     * @param read   whether the check was a {@code get}, which hands the value to the caller
+     * @since 1.13.2
+     */
+    public void agentCheck(Map<?, ?> map, @Nullable Object key, boolean absent, boolean read) {
+        PendingCheck pending = pendingChecks.get();
+        if (!absent && !read) {
+            pending.clear();
+            return;
+        }
+        pending.map = map;
+        pending.key = key;
+        pending.read = read;
+        pending.round = SelfGuard.RoundThreads.roundNow();
+    }
+
+    /**
+     * Records the act half: a woven {@code put} or {@code remove} on {@code map}. It completes a
+     * check-then-act when the calling thread's last check was on the same map, by identity, and
+     * the same key, by the key's equality, in the same round; the check is consumed either way.
+     * A completed pair is recorded with the value put, so a round whose callers all put one
+     * instance is excused exactly as {@link #recordCheckThenAct(ConcurrentMap, Object, Object,
+     * String, Thread)} excuses it.
+     *
+     * @param map    the map acted on
+     * @param key    the key acted on
+     * @param value  the value put, {@code null} for a remove
+     * @param remove whether the act was a {@code remove}
+     * @since 1.13.2
+     */
+    @SuppressWarnings("ReferenceEquality") // one map, by identity
+    public void agentAct(Map<?, ?> map, @Nullable Object key, @Nullable Object value, boolean remove) {
+        PendingCheck pending = pendingChecks.get();
+        Object checkedMap = pending.map;
+        if (checkedMap == null) {
+            return;
+        }
+        Object checkedKey = pending.key;
+        boolean read = pending.read;
+        int round = pending.round;
+        pending.clear();
+        if (checkedMap != map // NOPMD CompareObjectsWithEquals - one map, by identity
+                || !Objects.equals(checkedKey, key)
+                || round != SelfGuard.RoundThreads.roundNow()) {
+            return;
+        }
+        // The put value always goes along, so a round whose callers all put one instance is
+        // excused, as a hand-recorded absent check is. The hook cannot tell a value chosen without
+        // reading the map from one derived from the read, and of the two mistakes that leaves the
+        // false negative: callers that install a shared object after a get are correct, and
+        // reporting them would be a false positive on an idiom. What it costs is racers that all
+        // put one cached box (an Integer up to 127) or one enum constant, which are excused even
+        // where the check decided other work. A remove carries no value and is never excused.
+        record(map, key, remove ? null : value, label(read, remove), Thread.currentThread());
+    }
+
+    /** {@return the report label for a check by get or containsKey and an act by put or remove} */
+    private static String label(boolean read, boolean remove) {
+        if (read) {
+            return remove ? "get-then-remove" : "get-then-put";
+        }
+        return remove ? "containsKey-then-remove" : "containsKey-then-put";
+    }
+
+    /** The calling thread's last check the agent saw, waiting for the act that completes it. */
+    private static final class PendingCheck {
+        @Nullable Object map;
+        @Nullable Object key;
+        boolean read;
+        int round;
+
+        void clear() {
+            map = null;
+            key = null;
+        }
+    }
+
+    /**
+     * Each thread's pending check. Per detector, so per run: a check left pending when a run ends
+     * goes with the run's detector and cannot pair with the next run's act.
+     */
+    private final ThreadLocal<PendingCheck> pendingChecks = ThreadLocal.withInitial(PendingCheck::new);
+
+    private void record(Map<?, ?> map, @Nullable Object key, @Nullable Object value,
+                        String operation, Thread thread) {
         if (map == null || thread == null) return;
         Site site = new Site(new IdentityKey(map), key);
         State s = sites.get(site);

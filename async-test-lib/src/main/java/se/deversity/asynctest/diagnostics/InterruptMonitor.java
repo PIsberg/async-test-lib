@@ -92,6 +92,27 @@ public class InterruptMonitor {
             description
         ));
     }
+    /** The location strings the agent has handed over, so a method's every entry after the first costs one lookup. */
+    private final Set<String> wovenLocations = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Records swallowing handlers the agent found in a method that ran during the run: catches of
+     * {@code InterruptedException} that neither rethrow nor restore the flag, judged from the
+     * bytecode rather than from an interrupt that arrived. Each location is reported once.
+     *
+     * @param locations the handlers, {@code Owner.method:line} joined by commas (null-safe)
+     * @since 1.13.2
+     */
+    public void recordSwallowingHandlers(String locations) {
+        if (!enabled || locations == null || !wovenLocations.add(locations)) {
+            return;
+        }
+        for (String location : locations.split(",", -1)) {
+            ignoredDescriptions.add(String.format("InterruptedException caught at %s is neither "
+                    + "rethrown nor restored, and its method ran during the run", location));
+        }
+    }
+
     /**
      * Records blocking operation without interrupt handling so it can be analysed at the end of the run.
      *

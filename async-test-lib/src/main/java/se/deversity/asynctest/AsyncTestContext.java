@@ -1991,6 +1991,117 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link NonAtomicConcurrentMapUpdateDetector} for the run the calling thread
+     * works for, or {@code null}}
+     *
+     * <p>Same contract as {@link #currentSharedCollectionDetector()}: the map hooks pair a check
+     * and an act on a self-synchronized map and hand both here, and the detector judges overlap,
+     * so a thread the run started or lent a task to counts as the run's own.
+     */
+    static @Nullable NonAtomicConcurrentMapUpdateDetector currentNonAtomicConcurrentMapUpdateDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.nonAtomicConcurrentMapUpdateDetector;
+    }
+
+    /**
+     * {@return the {@link ExecutorShutdownDetector} for the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>The woven {@code Executors} factories declare what a run thread creates, and the woven
+     * {@code submit} and {@code execute} count its tasks. A thread the run started or lent a task
+     * to counts as the run's own, the way it does for the shared-instance detectors, and a run
+     * whose analysis has started lends nothing.
+     */
+    static @Nullable ExecutorShutdownDetector currentExecutorShutdownDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.executorShutdownDetector;
+    }
+
+    /**
+     * {@return the {@link FutureIgnoredDetector} for the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>The woven {@code submit} hands it a future its caller discarded, which the detector judges
+     * from the future itself at analysis.
+     */
+    static @Nullable FutureIgnoredDetector currentFutureIgnoredDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.futureIgnoredDetector;
+    }
+
+    /**
+     * {@return the {@link SystemPropertyMutationDetector} for the run the calling thread works for,
+     * or {@code null}}: the woven {@code System.setProperty}, {@code clearProperty},
+     * {@code Locale.setDefault} and {@code TimeZone.setDefault} record their writes here.
+     */
+    static @Nullable SystemPropertyMutationDetector currentSystemPropertyMutationDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.systemPropertyMutationDetector;
+    }
+
+    /**
+     * {@return the {@link SynchronizedCollectionIterationDetector} for the run the calling thread
+     * works for, or {@code null}}: a woven {@code iterator()} or {@code stream()} on a synchronized
+     * wrapper, and a woven view of a synchronized map, are handed to it.
+     */
+    static @Nullable SynchronizedCollectionIterationDetector currentSynchronizedCollectionIterationDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.synchronizedCollectionIterationDetector;
+    }
+
+    /**
+     * {@return the {@link CompletableFutureExceptionDetector} for the run the calling thread works
+     * for, or {@code null}}: the woven {@code supplyAsync} and {@code runAsync} hand it a root
+     * future its caller discarded.
+     */
+    static @Nullable CompletableFutureExceptionDetector currentCompletableFutureExceptionDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.completableFutureExceptionDetector;
+    }
+
+    /**
+     * {@return the {@link CompletableFutureBlockingCallbackDetector} for the run the calling thread
+     * works for, or {@code null}}: a woven stage marks its callback's entry and exit on the thread
+     * that runs it, which the run lent the callback to, and a woven blocking call inside it is
+     * recorded.
+     */
+    static @Nullable CompletableFutureBlockingCallbackDetector currentCfBlockingCallbackDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.cfBlockingCallbackDetector;
+    }
+
+    /**
+     * {@return the {@link CompletableFutureCommonPoolBlockingDetector} for the run the calling
+     * thread works for, or {@code null}}: a woven {@code supplyAsync} or {@code runAsync} on the
+     * common pool declares its task, and a woven blocking call the task makes is recorded.
+     */
+    static @Nullable CompletableFutureCommonPoolBlockingDetector currentCfCommonPoolBlockingDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.cfCommonPoolBlockingDetector;
+    }
+
+    /**
+     * {@return the {@link InterruptSwallowingDetector} for the run the calling thread works for, or
+     * {@code null}}: a woven method holding a swallowing {@code InterruptedException} handler
+     * names it on entry.
+     */
+    static @Nullable InterruptSwallowingDetector currentInterruptSwallowingDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.interruptSwallowingDetector;
+    }
+
+    /**
+     * {@return the {@link InterruptMonitor} for the run the calling thread works for, or
+     * {@code null}}: the same woven entry as {@link #currentInterruptSwallowingDetector()} names
+     * the handler to it, so the default preset, which enables this detector and not that one,
+     * reports it too.
+     */
+    static @Nullable InterruptMonitor currentInterruptMonitor() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.registry.interruptMonitor;
+    }
+
+    /**
      * {@return the {@link LockOrderValidator} for the calling thread's test, or {@code null}}
      *
      * <p>Same contract as {@link #currentSharedCollectionDetector()}, for the same reason:

@@ -163,7 +163,9 @@ final class AgentRowPremise {
     static String bodyOf(String source, String methodName) {
         Matcher declaration = Pattern.compile(
                 "(?m)^\\s*(?:private\\s+)?(?:static\\s+)?void\\s+"
-                        + Pattern.quote(methodName) + "\\s*\\(\\)\\s*\\{").matcher(source);
+                        + Pattern.quote(methodName)
+                        + "\\s*\\(\\)\\s*(?:throws\\s+[\\w.]+(?:\\s*,\\s*[\\w.]+)*\\s*)?\\{")
+                .matcher(source);
         if (!declaration.find()) {
             return "";
         }

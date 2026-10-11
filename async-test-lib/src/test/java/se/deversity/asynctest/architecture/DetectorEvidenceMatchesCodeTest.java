@@ -143,14 +143,17 @@ class DetectorEvidenceMatchesCodeTest {
                     + "another, and detectCheckThenActViolation, compare values the caller passed"),
             entry(DetectorType.CACHE_CONCURRENCY, "the read/write finding reads the lockset; the "
                     + "stampede finding counts threads that wrote one key in one round, so a HashMap "
-                    + "guarded by the caller's own lock draws it"));
+                    + "guarded by the caller's own lock draws it"),
+            entry(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, "the agent's iteration asks "
+                    + "Thread.holdsLock of the wrapper's monitor; recordIterationStarted is "
+                    + "reported on the holdingLock flag the caller passes"));
 
     /**
      * How many entries {@link #WEAKER_PATH} may hold. Lower it when an entry leaves; raising it
      * means a detector gained a lockset and kept a weaker class, which is what this gate exists to
      * question.
      */
-    private static final int WEAKER_PATH_CEILING = 3;
+    private static final int WEAKER_PATH_CEILING = 4;
 
     /**
      * Detectors the agent or the JVM feeds that are classified below {@code OBSERVED} and
@@ -175,10 +178,38 @@ class DetectorEvidenceMatchesCodeTest {
             entry(DetectorType.VIRTUAL_THREAD_PINNING, "the JFR feed reaches virtual workers only, "
                     + "and recordPinningEvent still adds a pin described by the caller, judged by its "
                     + "description; the report does not grade the two apart, so the row keeps "
-                    + "ASSERTED until it does"));
+                    + "ASSERTED until it does"),
+            entry(DetectorType.EXECUTOR_SHUTDOWN, "the woven Executors factories declare what the "
+                    + "run created and the executor's own state decides shutdown, but "
+                    + "recordExecutorCreated still takes the caller's word for ownership, which "
+                    + "nothing checks; the report does not grade the two apart"),
+            entry(DetectorType.FUTURE_IGNORED, "a dropped submit is judged by the future's own "
+                    + "state, but recordSubmit and recordInspect still report a future the caller "
+                    + "says nobody inspected; the report does not grade the two apart"),
+            entry(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, "a dropped async root is judged by "
+                    + "the future's own state, but the recorded path still reports a future older "
+                    + "than 100 ms with no handler, a threshold over records, and the report does "
+                    + "not grade the two apart"),
+            entry(DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, "the woven stage marks the "
+                    + "callback and the woven call is seen to block, but recordEnterCallback and "
+                    + "recordBlockingCall still take the caller's word for both"),
+            entry(DetectorType.CF_COMMON_POOL_BLOCKING, "the woven feed sees the task on a "
+                    + "common-pool worker and the call about to block, but "
+                    + "recordCommonPoolSubmission and recordBlockingCall still take the caller's "
+                    + "word for both"),
+            entry(DetectorType.INTERRUPT_SWALLOWING, "the agent reads the handler's bytecode, a "
+                    + "shape no interrupt was seen to take, and recordCatch still takes the caller's "
+                    + "word for whether the flag was restored"),
+            entry(DetectorType.INTERRUPT_MISHANDLING, "the same handler shape the agent reads, and "
+                    + "recordInterruptException and recordIgnoredException still take the caller's "
+                    + "word"),
+            entry(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, "the woven iterator() asks "
+                    + "Thread.holdsLock of the wrapper's monitor, but recordIterationStarted still "
+                    + "takes the caller's word for whether it held it; the report does not grade "
+                    + "the two apart"));
 
     /** How many entries {@link #FED_BELOW_OBSERVED} may hold; lower it when an entry leaves. */
-    private static final int FED_BELOW_OBSERVED_CEILING = 5;
+    private static final int FED_BELOW_OBSERVED_CEILING = 13;
 
     /**
      * Ungraded detectors above the PROMPT cap that name a threshold, each with why the threshold

@@ -1248,6 +1248,174 @@ final class Corpus {
                             + "final, so recorded without its owner this is undecidable (#793); "
                             + "the owner the weaver passes shows one monitor per holder"),
 
+            new RecordingSubject("agent_concurrentMap_containsKeyThenPutRacing", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "six workers check a round's key with containsKey, all find it absent, and "
+                            + "each puts an object of its own, so five of the six objects are "
+                            + "dropped. Each call is atomic and the pair is not. Nothing is "
+                            + "recorded: the woven containsKey and put are paired by the hooks "
+                            + "per thread, map and key",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_concurrentMap_containsKeyThenPutUnderItsMonitor", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same containsKey and put on the round's key, under the map's own "
+                            + "monitor, so the first worker's put is what every later check "
+                            + "sees and no value is dropped"),
+
+            new RecordingSubject("agent_executor_createdAndLeftRunning", JDK,
+                    "java.util.concurrent.Executors",
+                    DetectorType.EXECUTOR_SHUTDOWN, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one worker a round creates a pool through Executors, hands it a task and "
+                            + "leaves it running past the end of the run. Nothing is recorded: the "
+                            + "woven factory declares the pool as the run's own, which is what "
+                            + "separates it from a pool the code was handed (#387)",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("agent_executor_createdAndShutDown", JDK,
+                    "java.util.concurrent.Executors",
+                    DetectorType.EXECUTOR_SHUTDOWN, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same pool, task and get, closed with shutdown and awaitTermination "
+                            + "before the body ends, so the pool the run owned is terminated "
+                            + "when it is judged"),
+
+            new RecordingSubject("agent_future_failingSubmitDiscarded", JDK,
+                    "java.util.concurrent.ExecutorService",
+                    DetectorType.FUTURE_IGNORED, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker submits a task that throws and drops the future, so the "
+                            + "exception is held by an object nothing can reach. Nothing is "
+                            + "recorded: the weaver turns the POP after submit into the discard "
+                            + "hook, and the detector reads the failure from the future",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_future_failingSubmitInspected", JDK,
+                    "java.util.concurrent.ExecutorService",
+                    DetectorType.FUTURE_IGNORED, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same failing submit with the future kept and its exception read "
+                            + "through get, so the failure reached the caller"),
+
+            new RecordingSubject("agent_completableFuture_failingRunAsyncDiscarded", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker starts a runAsync whose task throws and drops the future, so no "
+                            + "handler, join or get can ever see the failure. Nothing is recorded: "
+                            + "the POP after the woven runAsync hands the future to the detector, "
+                            + "which reads the failure from it",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_completableFuture_failingRunAsyncJoined", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same failing runAsync with the future kept and its failure read through "
+                            + "get, so it reached the caller"),
+
+            new RecordingSubject("agent_completableFuture_callbackJoinsAPendingFuture", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a thenApply callback joins a second future that is completed only after the "
+                            + "callback has started, so the thread running the callback parks "
+                            + "inside it. Nothing is recorded: the woven stage marks the callback "
+                            + "and the woven join finds its future not done",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_completableFuture_callbackJoinsADoneFuture", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same callback and join, with the second future completed before the "
+                            + "first, so the join returns at once: the allOf-then-join idiom"),
+
+            new RecordingSubject("agent_completableFuture_sleepsOnTheCommonPool", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.CF_COMMON_POOL_BLOCKING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker hands the common ForkJoinPool a supplier that sleeps, which "
+                            + "parks a worker of the pool every parallel stream in the JVM "
+                            + "shares. Nothing is recorded: the woven supplyAsync marks the task "
+                            + "and the woven sleep inside it is seen there",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("agent_completableFuture_sleepsOnADedicatedPool", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.CF_COMMON_POOL_BLOCKING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same sleeping supplier handed a pool of its own, which is the fix"),
+
+            new RecordingSubject("agent_interrupt_swallowedByAHandler", JDK,
+                    "java.lang.InterruptedException",
+                    DetectorType.INTERRUPT_SWALLOWING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker calls a method whose catch of InterruptedException neither "
+                            + "rethrows nor restores the flag, so an interrupt arriving there "
+                            + "would be lost. No interrupt arrives: the weaver judged the handler "
+                            + "from its bytecode and the method's entry names it",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_interrupt_restoredByAHandler", JDK,
+                    "java.lang.InterruptedException",
+                    DetectorType.INTERRUPT_SWALLOWING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same poll, through a handler that calls "
+                            + "Thread.currentThread().interrupt()"),
+
+            new RecordingSubject("agent_interrupt_mishandledByAHandler", JDK,
+                    "java.lang.Thread",
+                    DetectorType.INTERRUPT_MISHANDLING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the swallowing shape again, for the interrupt detector the default preset "
+                            + "runs: a handler that clears a queue and goes on",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_interrupt_rethrownByAHandler", JDK,
+                    "java.lang.Thread",
+                    DetectorType.INTERRUPT_MISHANDLING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same poll, through a handler that restores the flag and rethrows"),
+
+            new RecordingSubject("agent_synchronizedList_iteratedWithoutItsLock", JDK,
+                    "java.util.Collections",
+                    DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker walks a Collections.synchronizedList in a for-each loop with "
+                            + "no lock held, which its javadoc forbids: each call is synchronized "
+                            + "and the walk between them is not. Nothing is recorded: the woven "
+                            + "iterator() asks Thread.holdsLock of the list",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_synchronizedList_iteratedUnderItsLock", JDK,
+                    "java.util.Collections",
+                    DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same walk inside synchronized (list), as the javadoc requires"),
+
+            new RecordingSubject("agent_systemProperty_setByEveryWorker", JDK,
+                    "java.lang.System",
+                    DetectorType.SYSTEM_PROPERTY_MUTATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker writes one system property with no lock held, so what any "
+                            + "thread in the JVM reads for it depends on the schedule. Nothing is "
+                            + "recorded: the woven System.setProperty records the write with the "
+                            + "locks the thread holds",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_systemProperty_setUnderTheTablesLock", JDK,
+                    "java.lang.System",
+                    DetectorType.SYSTEM_PROPERTY_MUTATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same writes under synchronized (System.getProperties()), so the workers "
+                            + "take turns"),
+
             new RecordingSubject("agent_thread_startedWithNoDaemonDecision", JDK,
                     "java.lang.Thread",
                     DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,
@@ -4800,9 +4968,10 @@ final class Corpus {
      */
     private static final Map<String, String> IDIOM_MANUAL_API_ROWS = Map.ofEntries(
             Map.entry("idiom_synchronizedCheckThenAct_onAConcurrentHashMap",
-                    "no agent-fed detector models a check-then-act: SharedCollectionDetector sees "
-                            + "two atomic calls on a concurrent map and rightly says nothing, so "
-                            + "NonAtomicConcurrentMapUpdateDetector is told the pair happened"),
+                    "the row is the registered VERDICT evidence for the detector and predates its "
+                            + "agent feed: the woven containsKey and put now reach it too, and the "
+                            + "agent-pair lane measures that path, while this row keeps the "
+                            + "recording that made the pair deterministic"),
             Map.entry("idiom_synchronizedCheckThenAct_withoutTheMonitor",
                     "the twin of the row above, recording the same pair the same way"),
             Map.entry("idiom_threadLocalRandom_currentOnEveryThread",

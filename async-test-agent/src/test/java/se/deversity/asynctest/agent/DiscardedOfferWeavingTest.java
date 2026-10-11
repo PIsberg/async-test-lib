@@ -37,6 +37,9 @@ class DiscardedOfferWeavingTest {
     /** How many offers, of either form, went through the stub. */
     static final AtomicInteger OFFERS = new AtomicInteger();
 
+    /** Every root future handed to the static-call discard hook. */
+    static final ConcurrentLinkedQueue<Object> DISCARDED_ROOTS = new ConcurrentLinkedQueue<>();
+
     /**
      * Stands in for {@link AgentConcurrencyUtilHooks}. One method per concurrency-table entry,
      * because the weaver resolves the whole table against this class and throws for a missing one.
@@ -645,6 +648,76 @@ class DiscardedOfferWeavingTest {
             return x.submit(r, result);
         }
 
+        public static void submitResultDiscarded(java.util.concurrent.Future<?> f) {
+            // the discard rows this test never reaches but the table resolves
+        }
+
+        public static void asyncResultDiscarded(java.util.concurrent.CompletableFuture<?> f) {
+            DISCARDED_ROOTS.add(f);
+        }
+
+        public static java.util.concurrent.ExecutorService newFixedThreadPool(int n) {
+            return java.util.concurrent.Executors.newFixedThreadPool(n);
+        }
+
+        public static java.util.concurrent.ExecutorService newFixedThreadPool(int n,
+                java.util.concurrent.ThreadFactory f) {
+            return java.util.concurrent.Executors.newFixedThreadPool(n, f);
+        }
+
+        public static java.util.concurrent.ExecutorService newCachedThreadPool() {
+            return java.util.concurrent.Executors.newCachedThreadPool();
+        }
+
+        public static java.util.concurrent.ExecutorService newCachedThreadPool(
+                java.util.concurrent.ThreadFactory f) {
+            return java.util.concurrent.Executors.newCachedThreadPool(f);
+        }
+
+        public static java.util.concurrent.ExecutorService newSingleThreadExecutor() {
+            return java.util.concurrent.Executors.newSingleThreadExecutor();
+        }
+
+        public static java.util.concurrent.ExecutorService newSingleThreadExecutor(
+                java.util.concurrent.ThreadFactory f) {
+            return java.util.concurrent.Executors.newSingleThreadExecutor(f);
+        }
+
+        public static java.util.concurrent.ScheduledExecutorService newScheduledThreadPool(int n) {
+            return java.util.concurrent.Executors.newScheduledThreadPool(n);
+        }
+
+        public static java.util.concurrent.ScheduledExecutorService newScheduledThreadPool(int n,
+                java.util.concurrent.ThreadFactory f) {
+            return java.util.concurrent.Executors.newScheduledThreadPool(n, f);
+        }
+
+        public static java.util.concurrent.ScheduledExecutorService newSingleThreadScheduledExecutor() {
+            return java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+        }
+
+        public static java.util.concurrent.ScheduledExecutorService newSingleThreadScheduledExecutor(
+                java.util.concurrent.ThreadFactory f) {
+            return java.util.concurrent.Executors.newSingleThreadScheduledExecutor(f);
+        }
+
+        public static java.util.concurrent.ExecutorService newWorkStealingPool() {
+            return java.util.concurrent.Executors.newWorkStealingPool();
+        }
+
+        public static java.util.concurrent.ExecutorService newWorkStealingPool(int n) {
+            return java.util.concurrent.Executors.newWorkStealingPool(n);
+        }
+
+        public static java.util.concurrent.ExecutorService newVirtualThreadPerTaskExecutor() {
+            return java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+        }
+
+        public static java.util.concurrent.ExecutorService newThreadPerTaskExecutor(
+                java.util.concurrent.ThreadFactory f) {
+            return java.util.concurrent.Executors.newThreadPerTaskExecutor(f);
+        }
+
         public static Object exchange(java.util.concurrent.Exchanger<Object> x, Object item)
                 throws InterruptedException {
             return x.exchange(item);
@@ -664,6 +737,33 @@ class DiscardedOfferWeavingTest {
         assertEquals(1, CollectionAccessWeaver.concurrencySubstitutions(
                         AgentConcurrencyUtilHooks.class).size(),
                 "one visitor carries the whole concurrency table, discard hook included");
+    }
+
+    @Test
+    @DisplayName("a static call's popped result reaches its discard hook, and no other POP does")
+    void aDroppedRootFutureReachesTheDiscardHook() throws Exception {
+        DISCARDED_ROOTS.clear();
+        Class<?> woven = new ByteBuddy()
+                .redefine(com.example.agentfixture.AsyncRootShapesSample.class)
+                .visit(CollectionAccessWeaver.concurrencySubstitutions(StubConcurrencyHooks.class)
+                        .get(0))
+                .make()
+                .load(getClass().getClassLoader(), ClassLoadingStrategy.Default.CHILD_FIRST)
+                .getLoaded();
+        Object sample = woven.getConstructor().newInstance();
+
+        woven.getMethod("discarded", Runnable.class).invoke(sample, (Runnable) () -> { });
+        assertEquals(1, DISCARDED_ROOTS.size(),
+                "the POP after a woven CompletableFuture.runAsync is the dropped root; the static "
+                        + "path must arm the lookahead the virtual one does");
+
+        Object kept = woven.getMethod("kept", Runnable.class).invoke(sample, (Runnable) () -> { });
+        woven.getMethod("unrelatedStaticPopped").invoke(sample);
+        assertEquals(1, DISCARDED_ROOTS.size(),
+                "a returned root is kept, and a POP after a static call the table does not list "
+                        + "must stay a POP. Got " + DISCARDED_ROOTS);
+        assertTrue(kept instanceof java.util.concurrent.CompletableFuture,
+                "the kept call still returns the future");
     }
 
     @Test

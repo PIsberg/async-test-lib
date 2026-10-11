@@ -12,6 +12,8 @@ import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 
 import se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector;
+import se.deversity.asynctest.diagnostics.InterruptMonitor;
+import se.deversity.asynctest.diagnostics.InterruptSwallowingDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.vibetags.annotations.AIContract;
@@ -67,7 +69,7 @@ import se.deversity.vibetags.annotations.AIContract;
  * @since 1.12.3
  */
 @API(status = Status.INTERNAL)
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures of the hooks CollectionAccessWeaver.THREAD_ENTRIES substitutes (threadStart, threadJoin, threadIsAlive, threadSetDaemon, threadStartVirtual and the builder's threadBuilderStart, threadBuilderDaemon, threadBuilderUnstarted and threadBuilderFactory, and threadFactoryNewThread) and of threadConstructed, which ThreadConstructionWeaver inserts after each thread a woven class constructs, are matched at weave time, and threadWeavingInstalled is invoked by name from AsyncTestAgent after the transformer is installed; none of them can change independently of the agent. Every substituting hook must perform the original call on the receiver, or what the JDK does for it (a builder's start is unstarted then start), and propagate what it throws unchanged; threadFactoryNewThread returns what the factory returned, null included. threadConstructed replaces nothing and runs inside user constructors, so it performs no call and must not throw. threadSetDaemon records the decision only after setDaemon returned, so a call that throws (an already started thread) records nothing.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures of the hooks CollectionAccessWeaver.THREAD_ENTRIES substitutes (threadStart, threadJoin, threadIsAlive, threadSetDaemon, threadStartVirtual and the builder's threadBuilderStart, threadBuilderDaemon, threadBuilderUnstarted and threadBuilderFactory, and threadFactoryNewThread) and of threadConstructed, which ThreadConstructionWeaver inserts after each thread a woven class constructs, and of interruptSwallowingMethodEntered, which InterruptHandlerWeaver inserts at the start of a method holding an InterruptedException handler that neither rethrows nor restores the flag, are matched at weave time, and threadWeavingInstalled is invoked by name from AsyncTestAgent after the transformer is installed; none of them can change independently of the agent. Every substituting hook must perform the original call on the receiver, or what the JDK does for it (a builder's start is unstarted then start), and propagate what it throws unchanged; threadFactoryNewThread returns what the factory returned, null included. threadConstructed replaces nothing and runs inside user constructors, so it performs no call and must not throw; interruptSwallowingMethodEntered replaces nothing either, runs on every entry of the method it was inserted into, and must cost one set lookup once a run has seen its locations. threadSetDaemon records the decision only after setDaemon returned, so a call that throws (an already started thread) records nothing.")
 public final class AgentThreadHooks {
 
     /** Explicit {@code setDaemon} decisions seen by a woven call site, by thread identity. */
@@ -424,5 +426,28 @@ public final class AgentThreadHooks {
      */
     public static @Nullable Boolean explicitDaemonSetting(Thread thread) {
         return EXPLICIT_DAEMON.get(thread);
+    }
+
+    /**
+     * Inserted by the agent at the start of a method holding a {@code catch (InterruptedException
+     * e)} that neither rethrows nor restores the interrupt flag: the method ran on a thread working
+     * for a run, so the run exercised code that loses an interrupt if one arrives.
+     *
+     * <p>The handler's shape was judged from the bytecode when the class was woven; a test seldom
+     * delivers the interrupt that would run it. Each detector keeps the locations it has seen, so
+     * after the first entry of a run this costs one set lookup of the constant the weaver passed.
+     *
+     * @param locations the swallowing handlers, {@code Owner.method:line} joined by commas
+     * @since 1.13.2
+     */
+    public static void interruptSwallowingMethodEntered(String locations) {
+        InterruptSwallowingDetector swallowing = AsyncTestContext.currentInterruptSwallowingDetector();
+        if (swallowing != null) {
+            swallowing.recordSwallowingHandlers(locations, Thread.currentThread());
+        }
+        InterruptMonitor mishandling = AsyncTestContext.currentInterruptMonitor();
+        if (mishandling != null) {
+            mishandling.recordSwallowingHandlers(locations);
+        }
     }
 }

@@ -9,6 +9,108 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`SYSTEM_PROPERTY_MUTATION` is fed by the agent, and covers the JVM's default Locale and
+  TimeZone.** `System.setProperty` and `clearProperty` from several threads with no lock held race
+  on state every thread reads, and the detector heard only writes a body recorded. With
+  `collections=true` the static path now substitutes both, and `Locale.setDefault` and
+  `TimeZone.setDefault`, which change what every `String.format`, `DateFormat` and `Calendar`
+  without an explicit argument reads and which no detector covered, are recorded under the keys
+  `default Locale` and `default TimeZone`. Writes under `synchronized (System.getProperties())`
+  take turns and are not reported. `AgentGlobalStateHooksTest` did not compile against the old
+  hooks and is green, and the corpus gains an agent pair. The detector moves to the agent-fed feed
+  (36 of the detectors can see unmodified code, 110 remain recording-only).
+
+- **`SYNCHRONIZED_COLLECTION_ITERATION` is fed by the agent.** Iterating a
+  `Collections.synchronized*` wrapper without holding its monitor is the one rule those wrappers'
+  javadoc leaves to the caller, and the detector heard only what a body recorded about itself. With
+  `collections=true` the weaver now substitutes `Iterable.iterator()`, the call a for-each loop
+  compiles to, `Collection.stream()` and `Map.keySet()`, `values()` and `entrySet()`, and the hook
+  asks `Thread.holdsLock` of the monitor the wrapper really uses: a synchronized list's own, a map
+  view's map, recorded when the woven call returned the view. A synchronized set the run did not see
+  come out of a map is not judged, since it may be such a view. The detector now describes the first
+  ten unguarded iterations of a wrapper and counts the rest, where it appended a line per iteration
+  to a copy-on-write list. `AgentSynchronizedIterationHooksTest` did not compile against the old
+  hooks and is green, and the corpus gains an agent pair. The detector moves to the agent-fed feed
+  (35 of the detectors can see unmodified code, 111 remain recording-only).
+
+- **A swallowed `InterruptedException` is found in unmodified code.** `catch (InterruptedException
+  e)` that neither rethrows nor restores the flag is the most common concurrency defect static
+  analysers report, and `INTERRUPT_SWALLOWING` and `INTERRUPT_MISHANDLING` fired only when a body
+  recorded the catch itself. A handler also runs only when an interrupt arrives, which a test seldom
+  delivers, so waiting for one would almost never report. With `collections=true` the new
+  `InterruptHandlerWeaver` reads each method that declares such a handler, follows the handler
+  through the method's control flow, ordinary code included, and calls it swallowing when a path
+  reaches a return and no call that restores the flag (a method named `interrupt`, or a helper
+  whose name says it restores one) is reachable from the handler; a path ending in an `ATHROW`
+  hands the exception on. Following ordinary code keeps Guava's `Uninterruptibles` silent, which
+  notes the interrupt, goes on waiting and restores it in a `finally`: the first corpus run named
+  it on three Guava subjects until the rule did. A `run()` that
+  returns on interrupt is a thread's own policy and is not named. A swallowing method's entry hands
+  its handlers' `Owner.method:line` locations to both detectors, once per run, so the default
+  preset, which runs `INTERRUPT_MISHANDLING`, reports them. `InterruptHandlerWeaverTest` pins ten
+  shapes against the bytecode and loads every woven class through the verifier, which caught a
+  buffered frame replaying the class reader's reused arrays,
+  `AgentInterruptHooksTest` and `InterruptFeedWeavingTest` go through the hook and the real agent,
+  and the corpus gains two agent pairs. Both detectors move to the agent-fed feed (34 of the
+  detectors can see unmodified code, 112 remain recording-only).
+
+- **The three `CompletableFuture` misuses that lose work or a thread are fed by the agent.** The
+  agent has substituted `supplyAsync`, `runAsync`, every dependent stage, `join` and `get` since
+  #741, for the happens-before model, and fed none of it to `COMPLETABLE_FUTURE_EXCEPTIONS`,
+  `COMPLETABLE_FUTURE_BLOCKING_CALLBACK` or `CF_COMMON_POOL_BLOCKING`. A root future whose caller
+  pops it can never be handled, joined or read; the static-call path now arms the same `POP`
+  lookahead a `submit` uses, and `CompletableFutureExceptionDetector` reports such a future when its
+  own state at analysis says its task failed. A woven stage marks its callback's entry and exit,
+  and a woven `join` or `get` of a future not yet done, `Thread.sleep`, `CountDownLatch.await`,
+  `Object.wait` or `take` from an empty queue inside it is recorded as blocking in a callback;
+  `allOf(a, b).thenApply(v -> a.join() + b.join())` joins finished futures and stays silent. The
+  same calls inside a task on the common `ForkJoinPool` are recorded as blocking that pool, except a
+  `CompletableFuture` join or get, which the pool compensates for. `AgentCompletableFutureHooksTest`
+  did not compile against the old hooks and is green, with the no-executor case assumed only where
+  the common pool's parallelism exceeds 1 (below that the JDK runs such a task on a thread of its
+  own); the corpus gains three agent pairs. The three move to the agent-fed feed (32 of the
+  detectors can see unmodified code, 114 remain recording-only).
+
+- **`EXECUTOR_SHUTDOWN` and `FUTURE_IGNORED` are fed by the agent.** The shutdown detector reports
+  only an executor it was told the code created, which is what keeps a shared or injected pool
+  silent, and the agent could not tell it because the `Executors` factories are static calls
+  (#387). With `collections=true` the static path now weaves all fourteen `Executors` factories:
+  an executor a run thread creates is declared as the run's own, one built in a static initializer
+  is not, since a static pool lives as long as its class, and the woven `submit` and `execute`
+  count its tasks. A pool created and closed in the body stays silent; one closed in `@AfterEach`
+  still reads as leaked, because analysis runs first. For `FUTURE_IGNORED` the weaver turns the
+  `POP` after a `submit` whose future the caller never kept into `submitResultDiscarded`, and the
+  detector reports that future only when its own state at analysis says its task failed, naming
+  the exception: fire-and-forget of a task that succeeded, or that is still running, draws nothing.
+  `AgentExecutorHooksTest` did not compile against the old hooks and is 8/8 green, the
+  `ExecutorFeedWeavingTest` and `ExecutorFeedSparesCorrectUseTest` pair runs the real weaver over
+  a fixture in both directions, and the corpus gains the agent pairs
+  `agent_executor_createdAndLeftRunning` and `agent_future_failingSubmitDiscarded` with their
+  silent twins. Both detectors move to the agent-fed feed (29 of the detectors can see unmodified
+  code, 117 remain recording-only).
+
+- **`CONCURRENT_MAP_CHECK_THEN_ACT` is fed by the agent.** `if (!map.containsKey(k)) map.put(k, v)`
+  on a `ConcurrentHashMap` is the most common misuse of the most used concurrent class, and the
+  detector for it fired only when the code under test called `recordCheckThenAct` about itself,
+  which code that makes the mistake does not do. With `collections=true` the agent already
+  substituted every `Map.get`, `containsKey`, `put` and `remove`, and the hooks dropped a
+  `ConcurrentMap`, `Hashtable` or `Collections.synchronized*` receiver because each call is atomic
+  on its own. The hooks now hand the detector a `containsKey` that found the key absent, or any
+  `get`, as the calling thread's pending check, and a `put` or `remove` on the same map and key in
+  the same round completes the pair. A plain `HashMap` stays with `SharedCollectionDetector`, a
+  `containsKey` that found the key starts no pair, and a round whose callers all put one instance
+  is excused, so installing one shared object after a `get` is not reported; the documented cost is
+  that racers putting one cached box (`Integer.valueOf(1)`) or one enum constant are excused too.
+  `AgentMapCheckThenActHooksTest` went red on the four racing shapes before the change and is green
+  with it, `CheckThenActWeavingEndToEndTest` runs the real weaver over a fixture and its monitor
+  twin, and the corpus gains the agent pair `agent_concurrentMap_containsKeyThenPutRacing` (fires,
+  HIGH) and its monitor twin (silent); the agent-on lane still shows 0 findings on its 100
+  documented-safe subjects. The detector moves from the recording-only feed to agent-fed
+  (`DetectorFeeds`, catalog, README: 27 of the detectors can see unmodified code, 119 remain
+  recording-only). `DetectorFeedCoverageTest` now discovers every `AsyncTestContext.current*()`
+  call in the `Agent*Hooks` sources instead of checking a hand-kept list, which had stayed green
+  while the map hooks were rewired into this detector.
+
 - **`VIRTUAL_THREAD_PINNING` reads the JVM's own `jdk.VirtualThreadPinned` JFR event.** The
   detector reported only pins a body passed to `recordPinningEvent`, which are the pins its author
   already knew about, and nothing in the harness fed it. On a run with virtual workers the runner
@@ -43,6 +145,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that a run of every detector does not trigger it.
 
 ### Changed
+
+- **`SYSTEM_PROPERTY_MUTATION` names the property it saw written, never the value.** Its warning
+  for a single-thread write read `Property 'k' set to 'v'`. Once the agent feeds every
+  `System.setProperty` a run makes, that is any property the code under test sets, including one
+  holding a credential such as `javax.net.ssl.keyStorePassword`, and the report ends up in CI logs.
+  The detector no longer keeps the value at all; the line reads `Property 'k' set by thread 't'`.
+  `SystemPropertyMutationDetectorTest.reportNamesThePropertyButNeverItsValue` failed on the old
+  text and passes.
 
 - **`VIRTUAL_THREAD_CONTEXT_LEAKS` reports set-without-remove at `MEDIUM`, not `HIGH` (#942).**
   The finding fires only on virtual threads, which are never pooled, so the value it names dies

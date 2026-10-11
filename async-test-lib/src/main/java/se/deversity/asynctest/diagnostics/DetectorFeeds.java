@@ -106,7 +106,38 @@ public final class DetectorFeeds {
             // synchronized (owner.field) (#793). Recorded without the owner, one instance whose
             // lock was reassigned and several instances with a lock each record the same thing.
             // The woven MONITORENTER passes the owner it was read from, which decides it.
-            DetectorType.SYNCHRONIZED_NON_FINAL);
+            DetectorType.SYNCHRONIZED_NON_FINAL,
+            // containsKey or get, then put or remove, on a map whose calls are each atomic. The
+            // map hooks saw every one of those calls and dropped a ConcurrentMap receiver, because
+            // each call alone is safe; the pair is what is not, and the hooks now hand both halves
+            // to the detector, which pairs them per thread, map and key.
+            DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT,
+            // The Executors factories (#387). The shutdown detector reports only an executor it
+            // was told the code created, and a static factory call is the one place that is
+            // known; a pool built in a static initializer is not declared. The woven submit and
+            // execute count its tasks.
+            DetectorType.EXECUTOR_SHUTDOWN,
+            // A submit whose future the caller pops. Nothing can inspect it afterwards, so the
+            // detector reports it when the future says its task failed.
+            DetectorType.FUTURE_IGNORED,
+            // The CompletableFuture hooks of the happens-before model (#741). A root future the
+            // caller pops is judged by whether its task failed; a woven stage marks its callback's
+            // entry and exit, and a woven blocking call inside it, or inside a common-pool task,
+            // is recorded where it happens.
+            DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS,
+            DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK,
+            DetectorType.CF_COMMON_POOL_BLOCKING,
+            // A catch of InterruptedException that neither rethrows nor restores the flag. A
+            // handler runs only when an interrupt arrives, which a test seldom delivers, so the
+            // weaver reads the handler's bytecode instead and names it when its method runs.
+            DetectorType.INTERRUPT_SWALLOWING,
+            DetectorType.INTERRUPT_MISHANDLING,
+            // Iterating a Collections.synchronized* wrapper: the woven iterator() and stream() ask
+            // Thread.holdsLock of the monitor the wrapper uses, the map's for a view of a map.
+            DetectorType.SYNCHRONIZED_COLLECTION_ITERATION,
+            // System.setProperty and clearProperty, and the JVM's default Locale and TimeZone,
+            // which every thread reads and nothing else in the library covered.
+            DetectorType.SYSTEM_PROPERTY_MUTATION);
 
     /**
      * Fed by the JVM and the harness with no recording call.

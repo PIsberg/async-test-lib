@@ -117,6 +117,32 @@ and the `Deque` end-specific offers and takes. Each call becomes a
 call to a hook that records and then performs the original operation, so behaviour is unchanged;
 `CollectionWeavingEndToEndTest` pins that a woven program still computes the same values.
 
+A map whose calls are each atomic, a `ConcurrentHashMap`, a `Hashtable` or a
+`Collections.synchronizedMap` wrapper, is not a data race on any one call, so
+`SharedCollectionDetector` leaves it alone. What goes wrong on such a map is the pair:
+`if (!map.containsKey(k)) map.put(k, v)` or `v = map.get(k); map.put(k, v + 1)` from two threads
+loses an update. The map hooks hand those pairs to `NonAtomicConcurrentMapUpdateDetector` with no
+recording call: a `containsKey` that found the key absent, or any `get`, is held as the calling
+thread's pending check, and a `put` or `remove` on the same map and key in the same round completes
+it. The pair is reported when two threads complete it in one round with no lock held across both
+calls; under the map's own monitor it is atomic and stays silent
+(`CheckThenActWeavingEndToEndTest`). A round whose callers all put one instance is excused, which
+also excuses racers that all put one cached box such as `Integer.valueOf(1)`: the hook cannot tell
+a value derived from the read from one chosen without it.
+
+Executors are watched the same way. The fourteen `Executors` factories are woven, and an executor a
+run thread creates through one of them is declared to `ExecutorShutdownDetector` as the run's own,
+which is the detector's whole rule: an executor handed in from outside the run, or built in a
+static initializer, is never declared, so leaving it running is not reported (#387). A
+`submit` whose future the caller never kept is seen as the `POP` after the call, and
+`FutureIgnoredDetector` reports that future when its task failed, because nothing can ever read
+the exception it holds. A `supplyAsync` or `runAsync` whose future the caller drops is handed to
+`CompletableFutureExceptionDetector` the same way. The stage functions the agent already wraps
+for the happens-before model mark a callback's entry and exit, so a woven `join` or `get` of a
+future that is not done, or a sleep, latch await, `Object.wait` or take from an empty queue, is
+reported when it happens inside a callback, and the same calls inside a task on the common
+`ForkJoinPool` are reported as blocking that pool.
+
 The same option substitutes `Object.wait`, `notify` and `notifyAll` (#694), which is what feeds
 `MissedSignalDetector` without a recorded call: the hooks run with the monitor held, so a notify is
 judged against the threads really inside `wait()`. The weaver also inserts one call in front of
