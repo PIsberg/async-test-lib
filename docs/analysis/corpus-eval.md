@@ -2322,8 +2322,8 @@ mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair 
 the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
-added below, and the Guava service pair (#736), 18 of the 31 agent-fed detectors are measured in
-both directions on call sites inside a library. `LibraryReach` records why the other thirteen are not,
+added below, and the Guava service pair (#736), 18 of the 32 agent-fed detectors are measured in
+both directions on call sites inside a library. `LibraryReach` records why the other fourteen are not,
 and `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:
 
@@ -2342,6 +2342,7 @@ arrangement `DetectorCoverage` uses for refusals:
 | `INTERRUPT_SWALLOWING` | agent-fed since 2026-10-11, through the handler weaver. A firing library row needs a documented-unsafe library method whose InterruptedException handler swallows the interrupt on a path a subject runs, and no corpus library ships that defect; `agent_interrupt_swallowedByAHandler` and its restoring twin pair it in the test file |
 | `INTERRUPT_MISHANDLING` | agent-fed since 2026-10-11, through the same handler weaver; `agent_interrupt_mishandledByAHandler` and its rethrowing twin pair it in the test file |
 | `SYNCHRONIZED_COLLECTION_ITERATION` | agent-fed since 2026-10-11, through the woven `iterator()`, `stream()` and map views. A firing library row needs a documented-unsafe library method that iterates a synchronized wrapper unguarded, and no corpus library ships that defect; `agent_synchronizedList_iteratedWithoutItsLock` and its guarded twin pair it in the test file |
+| `SYSTEM_PROPERTY_MUTATION` | agent-fed since 2026-10-11, through the woven `System.setProperty`, `clearProperty`, `Locale.setDefault` and `TimeZone.setDefault`. A firing library row needs a library method that writes a system property from several threads unguarded, and no corpus library ships that defect; `agent_systemProperty_setByEveryWorker` and its guarded twin pair it in the test file |
 
 **A library type reached from the test body (#692).** `agent_jctoolsHandOff_offererWritesAfterTheOffer`
 and its twin hand an object from one worker to another through the real JCTools `MpscArrayQueue`,

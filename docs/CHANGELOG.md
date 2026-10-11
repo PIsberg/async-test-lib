@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`SYSTEM_PROPERTY_MUTATION` is fed by the agent, and covers the JVM's default Locale and
+  TimeZone.** `System.setProperty` and `clearProperty` from several threads with no lock held race
+  on state every thread reads, and the detector heard only writes a body recorded. With
+  `collections=true` the static path now substitutes both, and `Locale.setDefault` and
+  `TimeZone.setDefault`, which change what every `String.format`, `DateFormat` and `Calendar`
+  without an explicit argument reads and which no detector covered, are recorded under the keys
+  `default Locale` and `default TimeZone`. Writes under `synchronized (System.getProperties())`
+  take turns and are not reported. `AgentGlobalStateHooksTest` did not compile against the old
+  hooks and is green, and the corpus gains an agent pair. The detector moves to the agent-fed feed
+  (36 of the detectors can see unmodified code, 110 remain recording-only).
+
 - **`SYNCHRONIZED_COLLECTION_ITERATION` is fed by the agent.** Iterating a
   `Collections.synchronized*` wrapper without holding its monitor is the one rule those wrappers'
   javadoc leaves to the caller, and the detector heard only what a body recorded about itself. With

@@ -1399,6 +1399,23 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
                     "the same walk inside synchronized (list), as the javadoc requires"),
 
+            new RecordingSubject("agent_systemProperty_setByEveryWorker", JDK,
+                    "java.lang.System",
+                    DetectorType.SYSTEM_PROPERTY_MUTATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker writes one system property with no lock held, so what any "
+                            + "thread in the JVM reads for it depends on the schedule. Nothing is "
+                            + "recorded: the woven System.setProperty records the write with the "
+                            + "locks the thread holds",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_systemProperty_setUnderTheTablesLock", JDK,
+                    "java.lang.System",
+                    DetectorType.SYSTEM_PROPERTY_MUTATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same writes under synchronized (System.getProperties()), so the workers "
+                            + "take turns"),
+
             new RecordingSubject("agent_thread_startedWithNoDaemonDecision", JDK,
                     "java.lang.Thread",
                     DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,

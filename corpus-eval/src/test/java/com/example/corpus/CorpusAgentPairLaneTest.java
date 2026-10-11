@@ -164,6 +164,7 @@ class CorpusAgentPairLaneTest {
         LANE_OVER.countDown();
         SERVICE_LEFT_RUNNING.stopAsync();
         LEFT_RUNNING.forEach(ExecutorService::shutdownNow);
+        System.clearProperty(PROPERTY);
         SHARED_POOL.shutdownNow();
         CorpusRecorder.uninstall();
         SHARED_FORMATTER.close();
@@ -1147,6 +1148,34 @@ class CorpusAgentPairLaneTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_synchronizedList_iteratedUnderItsLock() {
         counted(() -> walkTheSynchronizedList(true));
+    }
+
+    // --- A system property written from every worker ------------------------------------------
+
+    /** The property the two rows write; cleared when the lane ends. */
+    private static final String PROPERTY = "corpus-eval.agent-pair.property";
+
+    /** Sets the property to the worker's name, under the properties table's monitor or not. */
+    private static void setTheProperty(boolean underTheTablesMonitor) {
+        if (underTheTablesMonitor) {
+            synchronized (System.getProperties()) {
+                System.setProperty(PROPERTY, Thread.currentThread().getName());
+            }
+            return;
+        }
+        System.setProperty(PROPERTY, Thread.currentThread().getName());
+    }
+
+    /** Every worker sets one system property with no lock held. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_systemProperty_setByEveryWorker() {
+        counted(() -> setTheProperty(false));
+    }
+
+    /** The same writes under the properties table's own monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_systemProperty_setUnderTheTablesLock() {
+        counted(() -> setTheProperty(true));
     }
 
     // --- Thread daemon flag, left running (#736) ----------------------------------------------

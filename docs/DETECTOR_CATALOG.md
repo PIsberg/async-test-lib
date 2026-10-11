@@ -332,7 +332,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (31)
+### Agent-fed (32)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -449,6 +449,13 @@ returned the view records. A synchronized set or collection the run did not see 
 is not judged, because it may be such a view, and judging it against its own monitor would report
 the documented `synchronized (map)` idiom.
 
+`SystemPropertyMutationDetector` hears the woven `System.setProperty` and `clearProperty`, and the
+two JVM defaults no detector covered before: `Locale.setDefault`, recorded under the key
+`default Locale` (or `default Locale (DISPLAY)` and `(FORMAT)` for a category), and
+`TimeZone.setDefault`, under `default TimeZone`. Each is process-global state every thread reads,
+and a key written from two threads with no lock held across the writes is reported; writes under
+`synchronized (System.getProperties())` take turns and are not.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
@@ -458,7 +465,8 @@ the documented `synchronized (map)` idiom.
 `SynchronizedNonFinalDetector`, `NonAtomicConcurrentMapUpdateDetector`, `ExecutorShutdownDetector`,
 `FutureIgnoredDetector`, `CompletableFutureExceptionDetector`,
 `CompletableFutureBlockingCallbackDetector`, `CompletableFutureCommonPoolBlockingDetector`,
-`InterruptSwallowingDetector`, `InterruptMonitor`, `SynchronizedCollectionIterationDetector`
+`InterruptSwallowingDetector`, `InterruptMonitor`, `SynchronizedCollectionIterationDetector`,
+`SystemPropertyMutationDetector`
 
 ### Zero-config (4)
 
@@ -502,7 +510,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (111)
+### Recording-only (110)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -535,7 +543,7 @@ recording is the feed:
 `OptimisticReadValidationDetector`,
 `WeakReferenceRaceDetector`,
 `StatefulLambdaDetector`,
-`MdcContextLeakDetector`, `SystemPropertyMutationDetector`,
+`MdcContextLeakDetector`,
 `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`,
 `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`,
 `NotifyWithoutMonitorDetector`, `SharedSecureRandomDetector`,

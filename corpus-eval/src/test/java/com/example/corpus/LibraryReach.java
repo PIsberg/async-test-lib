@@ -88,6 +88,10 @@ final class LibraryReach {
                 "agent-fed through the woven iterator(), stream() and map views; a firing library "
                         + "row needs a documented-unsafe library method that iterates a "
                         + "synchronized wrapper unguarded, and no corpus library ships that defect");
+        unreached(DetectorType.SYSTEM_PROPERTY_MUTATION,
+                "agent-fed through the woven System.setProperty and the JVM-default setters; a "
+                        + "firing library row needs a library method that writes one from several "
+                        + "threads unguarded, and no corpus library ships that defect");
     }
 
     private static void unreached(DetectorType type, String reason) {

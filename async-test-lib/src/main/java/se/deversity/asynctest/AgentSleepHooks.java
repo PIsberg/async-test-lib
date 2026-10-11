@@ -1,11 +1,14 @@
 package se.deversity.asynctest;
 
 import java.time.Duration;
+import java.util.Locale;
+import java.util.TimeZone;
 
 import org.jspecify.annotations.Nullable;
 
 import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.diagnostics.SleepInLockDetector;
+import se.deversity.asynctest.diagnostics.SystemPropertyMutationDetector;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
@@ -32,7 +35,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.10.0
  */
-@AIContract(reason = "Called from bytecode the agent rewrites, through the static substitution path: the method name and erased signature here are matched by CollectionAccessWeaver.STATIC_ENTRIES and cannot change independently of it. The guard is the point - recording only when the thread's lockset holds a lock the detector can confirm is what separates the bug from rate limiting, back-off and polling, which are ordinary uses of Thread.sleep and vastly more common. Record before sleeping, not after: a sleep interrupted mid-way still held the lock for as long as it lasted, and the finding is about the holding rather than the completing. The hook must perform the original sleep and propagate InterruptedException unchanged. It must never call the single-argument recordSleep: that one resolves the held monitors through ThreadMXBean, which does not report virtual threads, so on the runner's default workers it answers none and the detector never fires. The plain forms must hand the detector the whole lockset (recordSleepUnderHeldLocks) rather than its top entry, which dropped a StampedLock on top and a confirmable lock below an unconfirmable one (#543). A sub-millisecond sleep must round up to one rather than truncate to zero: the detector drops anything at or below zero, so truncating turns a real lock-holding pause into the same silence an unwoven call site produces.")
+@AIContract(reason = "Called from bytecode the agent rewrites, through the static substitution path: the method name and erased signature here are matched by CollectionAccessWeaver.STATIC_ENTRIES and cannot change independently of it. The guard is the point - recording only when the thread's lockset holds a lock the detector can confirm is what separates the bug from rate limiting, back-off and polling, which are ordinary uses of Thread.sleep and vastly more common. Record before sleeping, not after: a sleep interrupted mid-way still held the lock for as long as it lasted, and the finding is about the holding rather than the completing. The hook must perform the original sleep and propagate InterruptedException unchanged. It must never call the single-argument recordSleep: that one resolves the held monitors through ThreadMXBean, which does not report virtual threads, so on the runner's default workers it answers none and the detector never fires. The plain forms must hand the detector the whole lockset (recordSleepUnderHeldLocks) rather than its top entry, which dropped a StampedLock on top and a confirmable lock below an unconfirmable one (#543). A sub-millisecond sleep must round up to one rather than truncate to zero: the detector drops anything at or below zero, so truncating turns a real lock-holding pause into the same silence an unwoven call site produces. The process-global writes (System.setProperty and clearProperty, Locale.setDefault, TimeZone.setDefault) are the same kind of static substitution: each records the write before performing it, so the lockset the detector probes is the one the write ran under, and returns what the JDK method returned.")
 public final class AgentSleepHooks {
 
     private AgentSleepHooks() {
@@ -145,6 +148,102 @@ public final class AgentSleepHooks {
         AgentConcurrencyUtilHooks.blocking("Thread.sleep", false);
         recordHeld(recordableMillis(millis, nanos), monitor);
         Thread.sleep(millis, nanos);
+    }
+
+    /**
+     * Weaves {@code System.setProperty(String, String)}: the write is recorded with the locks the
+     * thread holds, then performed.
+     *
+     * @param key   the property key
+     * @param value the new value
+     * @return the previous value
+     * @since 1.13.2
+     */
+    public static @Nullable String systemSetProperty(String key, String value) {
+        SystemPropertyMutationDetector detector = AsyncTestContext.currentSystemPropertyMutationDetector();
+        if (detector != null) {
+            detector.recordSet(key, value, Thread.currentThread());
+        }
+        return System.setProperty(key, value);
+    }
+
+    /**
+     * Weaves {@code System.clearProperty(String)}, as {@link #systemSetProperty}.
+     *
+     * @param key the property key
+     * @return the removed value
+     * @since 1.13.2
+     */
+    public static @Nullable String systemClearProperty(String key) {
+        SystemPropertyMutationDetector detector = AsyncTestContext.currentSystemPropertyMutationDetector();
+        if (detector != null) {
+            detector.recordClear(key, Thread.currentThread());
+        }
+        return System.clearProperty(key);
+    }
+
+    /**
+     * Weaves {@code Locale.setDefault(Locale)}: the JVM's default locale, which every
+     * {@code String.format}, {@code DateFormat} and {@code NumberFormat} without an explicit one
+     * reads, recorded as a write of the key {@code default Locale}.
+     *
+     * @param locale the new default
+     * @since 1.13.2
+     */
+    public static void localeSetDefault(Locale locale) {
+        recordDefault(DEFAULT_LOCALE, String.valueOf(locale));
+        Locale.setDefault(locale);
+    }
+
+    /**
+     * Weaves {@code Locale.setDefault(Locale.Category, Locale)}, as {@link #localeSetDefault(Locale)},
+     * keyed by the category.
+     *
+     * @param category the category whose default changes
+     * @param locale   the new default
+     * @since 1.13.2
+     */
+    public static void localeSetDefault(Locale.Category category, Locale locale) {
+        recordDefault(category == Locale.Category.DISPLAY ? DEFAULT_LOCALE_DISPLAY : DEFAULT_LOCALE_FORMAT,
+                String.valueOf(locale));
+        Locale.setDefault(category, locale);
+    }
+
+    /**
+     * Weaves {@code TimeZone.setDefault(TimeZone)}, recorded as a write of the key
+     * {@code default TimeZone}; {@code null}, which restores the zone the JVM started with, is a
+     * clear.
+     *
+     * @param zone the new default, or {@code null}
+     * @since 1.13.2
+     */
+    public static void timeZoneSetDefault(@Nullable TimeZone zone) {
+        recordDefault(DEFAULT_TIME_ZONE, zone == null ? null : zone.getID());
+        TimeZone.setDefault(zone);
+    }
+
+    /** The key a write of the JVM's default locale is recorded under. */
+    static final String DEFAULT_LOCALE = "default Locale";
+
+    /** The key a write of the default display locale is recorded under. */
+    static final String DEFAULT_LOCALE_DISPLAY = "default Locale (DISPLAY)";
+
+    /** The key a write of the default format locale is recorded under. */
+    static final String DEFAULT_LOCALE_FORMAT = "default Locale (FORMAT)";
+
+    /** The key a write of the JVM's default time zone is recorded under. */
+    static final String DEFAULT_TIME_ZONE = "default TimeZone";
+
+    private static void recordDefault(String key, @Nullable String value) {
+        SystemPropertyMutationDetector detector = AsyncTestContext.currentSystemPropertyMutationDetector();
+        if (detector == null) {
+            return;
+        }
+        if (value == null) {
+            detector.recordClear(key, Thread.currentThread());
+        } else {
+            detector.recordSet(key, value, Thread.currentThread());
+        }
     }
 
     /**

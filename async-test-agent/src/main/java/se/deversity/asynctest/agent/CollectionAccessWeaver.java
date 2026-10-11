@@ -817,7 +817,18 @@ final class CollectionAccessWeaver {
             Entry.staticCall(Thread.class, "sleep", "sleep", Duration.class)
                     .whenSynchronized("sleepHoldingMonitor"),
             Entry.staticCall(Thread.class, "sleep", "sleep", long.class, int.class)
-                    .whenSynchronized("sleepHoldingMonitor"));
+                    .whenSynchronized("sleepHoldingMonitor"),
+            // Process-global state every thread reads: a system property and the two JVM
+            // defaults, which nothing else in the library covered. Each hook records the write
+            // with the locks the thread holds, then performs it.
+            Entry.staticCall(System.class, "setProperty", "systemSetProperty", String.class,
+                    String.class),
+            Entry.staticCall(System.class, "clearProperty", "systemClearProperty", String.class),
+            Entry.staticCall(Locale.class, "setDefault", "localeSetDefault", Locale.class),
+            Entry.staticCall(Locale.class, "setDefault", "localeSetDefault", Locale.Category.class,
+                    Locale.class),
+            Entry.staticCall(java.util.TimeZone.class, "setDefault", "timeZoneSetDefault",
+                    java.util.TimeZone.class));
 
     /**
      * The explicit-GC table.

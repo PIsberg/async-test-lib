@@ -134,7 +134,10 @@ public final class DetectorFeeds {
             DetectorType.INTERRUPT_MISHANDLING,
             // Iterating a Collections.synchronized* wrapper: the woven iterator() and stream() ask
             // Thread.holdsLock of the monitor the wrapper uses, the map's for a view of a map.
-            DetectorType.SYNCHRONIZED_COLLECTION_ITERATION);
+            DetectorType.SYNCHRONIZED_COLLECTION_ITERATION,
+            // System.setProperty and clearProperty, and the JVM's default Locale and TimeZone,
+            // which every thread reads and nothing else in the library covered.
+            DetectorType.SYSTEM_PROPERTY_MUTATION);
 
     /**
      * Fed by the JVM and the harness with no recording call.

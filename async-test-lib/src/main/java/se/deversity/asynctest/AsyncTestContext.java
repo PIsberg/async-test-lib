@@ -2030,6 +2030,16 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link SystemPropertyMutationDetector} for the run the calling thread works for,
+     * or {@code null}}: the woven {@code System.setProperty}, {@code clearProperty},
+     * {@code Locale.setDefault} and {@code TimeZone.setDefault} record their writes here.
+     */
+    static @Nullable SystemPropertyMutationDetector currentSystemPropertyMutationDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.systemPropertyMutationDetector;
+    }
+
+    /**
      * {@return the {@link SynchronizedCollectionIterationDetector} for the run the calling thread
      * works for, or {@code null}}: a woven {@code iterator()} or {@code stream()} on a synchronized
      * wrapper, and a woven view of a synchronized map, are handed to it.
