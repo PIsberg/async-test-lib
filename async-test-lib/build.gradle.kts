@@ -5,6 +5,7 @@ val jazzerVersion = rootProject.extra["jazzerVersion"] as String
 val slf4jVersion = rootProject.extra["slf4jVersion"] as String
 val commonLicenseLibVersion = rootProject.extra["commonLicenseLibVersion"] as String
 val archunitVersion = rootProject.extra["archunitVersion"] as String
+val jakartaPersistenceVersion = rootProject.extra["jakartaPersistenceVersion"] as String
 val logbackVersion = rootProject.extra["logbackVersion"] as String
 
 dependencies {
@@ -17,6 +18,7 @@ dependencies {
     testImplementation("org.junit.platform:junit-platform-testkit:$junitVersion")
     testImplementation("com.code-intelligence:jazzer-api:$jazzerVersion")
     testImplementation("com.tngtech.archunit:archunit-junit5:$archunitVersion")
+    testImplementation("jakarta.persistence:jakarta.persistence-api:$jakartaPersistenceVersion")
     // Test-only SLF4J backend: the library ships slf4j-api and no binding on purpose, but the
     // suite needs a real one to assert the DEBUG narrative (ConcurrencyRunnerLogContractTest).
     // src/test/resources/logback-test.xml keeps the root at WARN so this stays quiet.
@@ -40,7 +42,7 @@ mavenPublishing {
     )
     pom {
         name = "Async Test Library"
-        description = "Enterprise-grade JUnit 5 concurrency testing library with 147 problem detectors " +
+        description = "Enterprise-grade JUnit 5 concurrency testing library with 148 problem detectors " +
                 "for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs."
     }
 }

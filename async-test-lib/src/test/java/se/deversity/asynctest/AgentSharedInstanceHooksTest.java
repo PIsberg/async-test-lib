@@ -394,6 +394,10 @@ class AgentSharedInstanceHooksTest {
         StringBuilder out = new StringBuilder();
         AgentSharedInstanceHooks.format(new Formatter(out), "%d", 7);
         assertEquals("7", out.toString());
+        // The persistence-handle hooks only record; with no context they do nothing (#992).
+        Object handle = new Object();
+        AgentSharedInstanceHooks.persistenceHandleUsed(handle);
+        AgentSharedInstanceHooks.persistenceHandleClosed(handle);
     }
 
     @Test
@@ -403,7 +407,7 @@ class AgentSharedInstanceHooksTest {
                 .filter(m -> Modifier.isStatic(m.getModifiers()))
                 .filter(m -> m.getDeclaringClass() == AgentSharedInstanceHooks.class)
                 .count();
-        assertEquals(49, hooks,
+        assertEquals(51, hooks,
                 "the shared-instance hooks and the calls in this class are one list, written by "
                         + "hand because each family needs its own receiver and arguments. If this "
                         + "count moved, the new hook belongs in the family test above, or it is "

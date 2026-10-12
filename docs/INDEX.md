@@ -44,7 +44,7 @@ Three paths, depending on why you came.
 |----------|---------|
 | [BEST_PRACTICES.md](BEST_PRACTICES.md) | How to write an `@AsyncTest` that actually finds bugs |
 | [CONFIGURATION.md](CONFIGURATION.md) | Configuration options in depth |
-| [DETECTOR_CATALOG.md](DETECTOR_CATALOG.md) | All 147 detectors with buggy-vs-fixed examples, their trust tiers and what feeds each. Hub for the rows below |
+| [DETECTOR_CATALOG.md](DETECTOR_CATALOG.md) | All 148 detectors with buggy-vs-fixed examples, their trust tiers and what feeds each. Hub for the rows below |
 | [detector-catalog/01-foundations.md](detector-catalog/01-foundations.md) | Entries 1 to 8. Phases 1 to 3: deadlock, visibility, carrier pinning, pool deadlock, lock and ThreadLocal leaks, non-atomic collection updates, livelock |
 | [detector-catalog/02-phase-2-core-and-monitors.md](detector-catalog/02-phase-2-core-and-monitors.md) | Entries 9 to 28. Phase 2 core and monitors: false sharing, ABA, lock order, memory ordering, semaphores, CompletableFuture, SimpleDateFormat, parallel streams |
 | [detector-catalog/03-phase-2-additional-and-utilities.md](detector-catalog/03-phase-2-additional-and-utilities.md) | Entries 29 to 44. Phase 2 additional concurrency and utilities: latches, barriers, locks, double-checked locking, Phaser, StampedLock, ForkJoinPool |
@@ -56,7 +56,7 @@ Three paths, depending on why you came.
 | [detector-catalog/09-stateful-jdk-and-coordination.md](detector-catalog/09-stateful-jdk-and-coordination.md) | Entries 111 to 120. Phases 17 and 19: ByteBuffer, charset coders, checksums, FileChannel position, iterators, contended atomics, JSON mappers, latches, executors, futures |
 | [detector-catalog/10-jdk-25-26.md](detector-catalog/10-jdk-25-26.md) | Entries 121 to 126. Phases 16 and 18: StableValue, StructuredTaskScope, Gatherer, LazyConstant, final-field mutation and KDF, wired into `detectAll` |
 | [detector-catalog/11-flow-and-ffm.md](detector-catalog/11-flow-and-ffm.md) | Entries 127 to 135. Phases 19 and 20: Flow publishers, confined arenas, memory segments, VarHandle, records, static-init deadlock, virtual-thread pooling, thread-per-task, SplittableRandom |
-| [detector-catalog/12-futures-scale-structured.md](detector-catalog/12-futures-scale-structured.md) | Entries 136 to 147. Phases 22 to 24: CompletableFuture publication, lambda capture, virtual-thread scale, JDK 26 scopes and lazy constants |
+| [detector-catalog/12-futures-scale-structured.md](detector-catalog/12-futures-scale-structured.md) | Entries 136 to 148. Phases 22 to 24: CompletableFuture publication, lambda capture, virtual-thread scale, JDK 26 scopes and lazy constants |
 | [ASYNC_ASSERT.md](ASYNC_ASSERT.md) | `AsyncAssert` — polling for side effects that land asynchronously — `AsyncFindings`, for asserting on what the detectors reported, `AsyncTestContext.rendezvous()`, for making a round's workers meet mid-body, `RunOutcomes`, for asserting that something happened exactly once, at most once, or with distinct values, and `OperationHistory`, for asserting that every round's results are linearizable |
 | [MIGRATION.md](MIGRATION.md) | Moving an existing test suite onto `@AsyncTest` |
 | [migration/1.13.0.md](migration/1.13.0.md) | Upgrading from 1.12 to 1.13.0: the breaking changes, which ones compile and still change what runs, and the exact rewrite for each |

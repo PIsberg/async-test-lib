@@ -113,6 +113,13 @@ class AgentSharedInstanceHooksEachAloneTest {
         if (type == Formatter.class) {
             return new Formatter(new StringBuilder());
         }
+        if (type == Object.class) {
+            // The persistence-handle hooks take Object, the library cannot name JPA (#992).
+            return java.lang.reflect.Proxy.newProxyInstance(jakarta.persistence.EntityManager.class.getClassLoader(),
+                    new Class<?>[] {jakarta.persistence.EntityManager.class},
+                    (proxy, method, a) -> "hashCode".equals(method.getName()) ? System.identityHashCode(proxy)
+                            : "equals".equals(method.getName()) ? (Object) (proxy == a[0]) : null);
+        }
         throw new IllegalArgumentException("no receiver for " + type + ": a new hook family needs one here");
     }
 
@@ -214,6 +221,9 @@ class AgentSharedInstanceHooksEachAloneTest {
             if (receiver instanceof Formatter) {
                 return AsyncTestContext.sharedFormatterDetector().analyze().hasIssues();
             }
+            if (receiver instanceof jakarta.persistence.EntityManager) {
+                return AsyncTestContext.jdbcConnectionSharedDetector().analyze().hasIssues();
+            }
             throw new IllegalArgumentException("no detector for " + receiver.getClass());
         });
     }
@@ -222,6 +232,10 @@ class AgentSharedInstanceHooksEachAloneTest {
         return Arrays.stream(AgentSharedInstanceHooks.class.getMethods())
                 .filter(m -> Modifier.isStatic(m.getModifiers()))
                 .filter(m -> m.getDeclaringClass() == AgentSharedInstanceHooks.class)
+                // A close releases the handle after each use, so two threads that only close it
+                // may never hold it at once, which the hand-off rule rightly excuses (#992). It is
+                // covered by PersistenceHandleWeavingTest and entityManagerHandedOverIsSilent.
+                .filter(m -> !"persistenceHandleClosed".equals(m.getName()))
                 .sorted(Comparator.comparing(Method::toString))
                 .toList();
     }

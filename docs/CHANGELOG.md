@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`BLOCKING_ON_NON_BLOCKING_THREAD`, detector 148: a blocking call on a thread that must not
+  block (#991, #993).** An event loop runs every task queued for it in turn, so a sleep, a `join`
+  or `get` of a pending future, a latch await or a take on it stalls all of them; BlockHound exists
+  for this, and nothing here covered it. The thread is classified by its class's names, as
+  BlockHound does: a Reactor `NonBlocking` scheduler thread, a Vert.x `VertxThread` that is not a
+  worker, a Netty `FastThreadLocalThread` whose `permitBlockingCalls()` is false, and, as the first
+  coroutine rule (#993), a Kotlin `CoroutineScheduler$Worker` in state `CPU_ACQUIRED`
+  (`Dispatchers.Default`; the same worker on `Dispatchers.IO` is `BLOCKING` and not reported).
+  `HIGH`, tier `PROMPT`, evidence `OBSERVED`. With `collections=true` every woven blocking call
+  feeds it; by the owner's choice the run claims an event-loop thread only when the framework's
+  scheduler packages are in the agent's `includes=`, so the woven start or submission inside the
+  framework carries the run to it, and a thread the run never saw reports nothing (41 detectors
+  now see unmodified code). The rest of #993, the coroutine owner model, is #1007. New: example
+  151, consumer-fixture `Phase26NonBlockingThreadFixtureTest`, catalog entry 148, a corpus agent-lane
+  pair on Netty's real `FastThreadLocalThread`. Tests: the detector test was red with the
+  classification stubbed; `BlockingOnNonBlockingThreadWeavingTest` fires through the real weaver
+  and went red with the hook call removed; `BlockingOnNonBlockingThreadSparesTest` (an ordinary
+  thread, and a non-blocking thread started by no worker) stays silent and went red with every
+  thread classified as non-blocking on purpose.
+
 - **`PROCESS_STREAM_STARVATION`, detector 147: `Process.waitFor()` on a child whose output nobody
   drains.** A child writes stdout and stderr into pipes of a few kilobytes and blocks once one is
   full, so a parent that waits before reading waits for a child that is waiting for it. It hangs
@@ -201,6 +221,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`THREAD_LOCAL_LEAKS` and `MDC_CONTEXT_LEAK` are fed by the agent, and the per-thread cache idiom
+  stays silent (#995).** Both fired only on recorded calls. With `collections=true` the task wrapper
+  a woven `submit` hands the pool now snapshots `MDC.getCopyOfContextMap()` at each task's start and
+  end into the MDC detector (the library already depends on `slf4j-api`, so nothing about MDC is
+  woven), and gives each task an id. `ThreadLocal.get`, `set` and `remove` are woven, and
+  `ThreadLocalMonitor` judges contamination rather than absence: a read in a pooled task of a value
+  an earlier task on that thread set and never removed, reported only for a `ThreadLocal` two tasks
+  on one thread both set. A formatter or buffer set once per thread and reused is the cache idiom
+  the issue named and is not reported. 40 detectors now see unmodified code, 107 stay
+  recording-only. Tests: `ThreadLocalTaskLeakWeavingTest` and `MdcTaskLeakWeavingTest` were red
+  before the feeds; the removal, cache and MDC-cleared twins stay silent, and the removal and cache
+  twins went red with the remove made a no-op and every thread-local made per-task on purpose. (An
+  earlier draft of those twins passed for nothing: it filtered on a detector name the violations do
+  not carry.) Agent module (417) and the full corpus module, whose libraries now run through the
+  woven `ThreadLocal` calls, are green.
+- **A JPA `EntityManager` or Hibernate `Session` shared across threads is reported (#992).** Both
+  are documented as one thread at a time, and the typical misuse (an `@Async` method or a parallel
+  stream inside a transaction) had no coverage. By the owner's choice it extends
+  `JDBC_CONNECTION_SHARED` into one "persistence handle shared" detector rather than adding a 148th:
+  the detector recognises `jakarta`/`javax` `EntityManager` and Hibernate `Session`/`StatelessSession`
+  by interface name, with handle-specific report text. With `collections=true` the new
+  `PersistenceHandleWeaver` makes it agent-fed (38 detectors can now see unmodified code, 109 stay
+  recording-only): the persistence types cannot be `Class`-literal rows and a hook could not call
+  them, so before a call on one of those owners, matched by name, it copies the receiver with a
+  stack-neutral `DUP` / `SWAP, DUP_X1` / `DUP2_X1, POP2, DUP_X2` and calls `persistenceHandleUsed`,
+  or `persistenceHandleClosed` before a `close()`, the per-transaction hand-off. Calls with more than
+  two or wider arguments are left alone. New test dependency `jakarta.persistence-api` 3.1.0 (EPL-2.0,
+  interfaces only, a `docs/DEPENDENCIES.md` row) replaces the Hibernate corpus library the option
+  named: a `Proxy` handle needs no provider or database. Tests: `sharedEntityManagerIsFlagged` was
+  red before the type check; `PersistenceHandleWeavingTest` fires through the real weaver and went
+  red with the weaver unregistered; the one-per-thread and handed-over twins stay silent. Agent
+  module (412), library gates and the full corpus module are green.
 - **A piped stream pair used from one thread is reported (#994).** The `PipedInputStream` javadoc
   warns that using both ends from one thread may deadlock it: once the 1024-byte buffer fills, the
   write waits for a read that thread never makes. Nothing covered it. It is a second rule in

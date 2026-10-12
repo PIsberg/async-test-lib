@@ -140,7 +140,17 @@ public final class DetectorFeeds {
             DetectorType.SYSTEM_PROPERTY_MUTATION,
             // Process.waitFor, and the getters that take a child's stdout or stderr pipe: a wait
             // no other thread drains for is a hang once the child writes a pipe's worth.
-            DetectorType.PROCESS_STREAM_STARVATION);
+            DetectorType.PROCESS_STREAM_STARVATION,
+            // Every call on a JPA EntityManager or Hibernate Session, matched by name, since
+            // neither may be on the agent's class path (#992).
+            DetectorType.JDBC_CONNECTION_SHARED,
+            // ThreadLocal get, set and remove inside the pooled tasks a woven submit hands over:
+            // a value an earlier task left on the thread, read by the next (#995).
+            DetectorType.THREAD_LOCAL_LEAKS,
+            // The MDC at the start and end of each pooled task the woven submit hands over (#995).
+            DetectorType.MDC_CONTEXT_LEAK,
+            // Every woven blocking call, on a thread a framework made for not blocking (#991, #993).
+            DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD);
 
     /**
      * Fed by the JVM and the harness with no recording call.

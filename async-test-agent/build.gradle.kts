@@ -2,6 +2,7 @@
 val junitVersion = rootProject.extra["junitVersion"] as String
 val byteBuddyVersion = rootProject.extra["byteBuddyVersion"] as String
 val ecjVersion = rootProject.extra["ecjVersion"] as String
+val jakartaPersistenceVersion = rootProject.extra["jakartaPersistenceVersion"] as String
 
 dependencies {
     api(project(":async-test-lib"))
@@ -15,6 +16,7 @@ dependencies {
     // ECJ: MissedSignalRotatedLoopWeavingTest compiles the wait-loop shapes with a
     // loop-rotating compiler, which javac is not (#710).
     testImplementation("org.eclipse.jdt:ecj:$ecjVersion")
+    testImplementation("jakarta.persistence:jakarta.persistence-api:$jakartaPersistenceVersion")
 }
 
 // The agent manifest. It moved here from the library JAR when the modules were split:

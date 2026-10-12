@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p><strong>The failure this prevents, measured rather than imagined.</strong> The package holds
  * 150 public classes whose names end in {@code Detector}, {@code Validator} or {@code Monitor}.
- * 147 are a {@link se.deversity.asynctest.DetectorType}, are built by {@code DetectorRegistry},
+ * 148 are a {@link se.deversity.asynctest.DetectorType}, are built by {@code DetectorRegistry},
  * are analyzed on every run and can fail a test through {@code failOn}. The rest have the same
  * shape - a {@code record*} API and an {@code analyze()} returning a report with
  * {@code hasIssues()} - and the runner never calls {@code analyze()} on them.
@@ -36,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>The existing coverage gates cannot catch this. {@code DetectorFeedCoverageTest},
  * {@code DetectorTrustCoverageTest} and {@code DetectorCatalogCoverageTest} all iterate
  * {@code DetectorType.values()}, so a class with no {@code DetectorType} is invisible to every one
- * of them: they check that each of the 147 is complete, not that nothing else is pretending to be
+ * of them: they check that each of the 148 is complete, not that nothing else is pretending to be
  * one.
  */
 class DetectorShapedClassesAreReachableTest {

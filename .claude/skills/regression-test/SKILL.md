@@ -82,7 +82,7 @@ you are on a clean branch.
 Anything it prints that section 3 does not describe is a new consumer. Add it there.
 
 Most of its output is not consumers. It also lists every checkout under `/c/dev/private`,
-including this repo's own worktrees (the fixtures, corpus-eval and 149 examples each, repeated
+including this repo's own worktrees (the fixtures, corpus-eval and 150 examples each, repeated
 per worktree) and stale worktrees of consumers such as `vibetags-cov`, which still pin old
 versions. Filter to the repo names in section 3 before reading versions.
 

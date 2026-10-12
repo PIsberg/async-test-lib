@@ -19,7 +19,7 @@ updates:
 
   # The Maven builds outside the reactor. The entry above reads only the reactor's modules, so
   # corpus-eval's jackson-databind sat on two high advisories for a week with no PR (#958). One
-  # grouped PR per directory keeps the 149 example modules from opening one PR each. The library's
+  # grouped PR per directory keeps the 150 example modules from opening one PR each. The library's
   # own version is left to the release skill, which bumps every pin in one commit. A corpus subject
   # bump can move the measured numbers: rerun the corpus lanes before merging one.
   - package-ecosystem: maven

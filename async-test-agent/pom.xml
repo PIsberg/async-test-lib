@@ -57,6 +57,12 @@
             <artifactId>ecj</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- The EntityManager interface for the persistence-handle weaving tests (#992); test scope. -->
+        <dependency>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

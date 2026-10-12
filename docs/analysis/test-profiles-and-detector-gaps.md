@@ -28,7 +28,7 @@ The skew that makes a split worthwhile: 22 classes drive the whole engine throug
 `EngineTestKit` (spinning up the JUnit Platform against nested `@AsyncTest` dummy classes, so
 each runs `ConcurrencyRunner` plus the full detector sweep). Those 22 classes are 69.5 s of
 the 143.1 s in-test time (48.5%) but only 85 of the 1723 tests (4.9%). The slowest single
-class, `Phase2AsyncIntegrationTest`, is 16.2 s on its own. By contrast the 147
+class, `Phase2AsyncIntegrationTest`, is 16.2 s on its own. By contrast the 148
 `diagnostics/*Test` classes, the plain-JUnit bulk that a detector change actually needs, total
 38.5 s.
 

@@ -117,6 +117,12 @@ final class PairEvidence {
 
         // Read 2026-09-14: each pair's two bodies and its detector's source, by a reviewer asked
         // to argue against promotion. The reason is the model property that decided it.
+        // Read 2026-10-12, when #991 added the detector with this pair.
+        HELD_ON_MODEL.put(DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD, "the thread is classified by "
+                + "its class's names, so a project thread that implements Reactor's marker or extends "
+                + "Netty's thread for another reason draws the same finding as an event loop; the pair "
+                + "separates on permitBlockingCalls() of one Netty class and blocks in the test body, "
+                + "not in a framework's own loop");
         HELD_ON_MODEL.put(DetectorType.STREAM_CLOSING, "reports any stream still open when "
                 + "analysis runs and any close from a thread other than the opener, so a stream "
                 + "scoped to the class and closed in teardown, or handed to a consumer thread that "

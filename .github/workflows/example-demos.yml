@@ -116,7 +116,7 @@ jobs:
           echo "RUNS=$RUNS" >> "$GITHUB_ENV"
           for i in $(seq 1 "$RUNS"); do
             echo "::group::Reactor run $i of $RUNS"
-            # -fae so one failing module does not stop the other 147; the failures are the
+            # -fae so one failing module does not stop the other 149; the failures are the
             # expected outcome here, so the exit code is deliberately not the signal. The
             # report script is.
             mvn -B -f examples/pom.xml test -fae -T 1C \

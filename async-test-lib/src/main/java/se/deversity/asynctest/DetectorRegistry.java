@@ -148,6 +148,7 @@ import se.deversity.asynctest.diagnostics.ScopeConfigurationMisuseDetector;
 import se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector;
 import se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector;
 import se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector;
+import se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -370,6 +371,7 @@ final class DetectorRegistry {
     final @Nullable ScopeResultEscapeDetector scopeResultEscapeDetector;
     final @Nullable LazyCollectionMisuseDetector lazyCollectionMisuseDetector;
     final @Nullable ProcessStreamStarvationDetector processStreamStarvationDetector;
+    final @Nullable BlockingOnNonBlockingThreadDetector blockingOnNonBlockingThreadDetector;
 
     /** The run's selection, read by {@link #create} while the constructor runs. */
     private final Set<DetectorType> enabled;
@@ -600,6 +602,7 @@ final class DetectorRegistry {
         scopeResultEscapeDetector = create(DetectorType.SCOPE_RESULT_ESCAPE, ScopeResultEscapeDetector::new);
         lazyCollectionMisuseDetector = create(DetectorType.LAZY_COLLECTION_MISUSE, LazyCollectionMisuseDetector::new);
         processStreamStarvationDetector = create(DetectorType.PROCESS_STREAM_STARVATION, ProcessStreamStarvationDetector::new);
+        blockingOnNonBlockingThreadDetector = create(DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD, BlockingOnNonBlockingThreadDetector::new);
     }
 
     /**
@@ -1162,6 +1165,9 @@ final class DetectorRegistry {
         ifIssue(processStreamStarvationDetector,
                 ProcessStreamStarvationDetector::analyze,
                 ProcessStreamStarvationDetector.Report::hasIssues, out);
+        ifIssue(blockingOnNonBlockingThreadDetector,
+                BlockingOnNonBlockingThreadDetector::analyze,
+                BlockingOnNonBlockingThreadDetector.Report::hasIssues, out);
 
         lastGrades = out.grades();
         lastSeverities = out.severities();

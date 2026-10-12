@@ -47,6 +47,37 @@ class JdbcConnectionSharedDetectorTest {
     }
 
     @Test
+    void sharedEntityManagerIsFlagged() throws Exception {
+        // A JPA EntityManager is documented as not thread-safe, like a Connection, and is the
+        // handle a parallel stream or an @Async method inside a transaction shares (#992).
+        var d = new JdbcConnectionSharedDetector();
+        jakarta.persistence.EntityManager em = proxy(jakarta.persistence.EntityManager.class);
+        d.recordAccess(em, "orders-em", Thread.currentThread());
+        Thread t = new Thread(() -> d.recordAccess(em, "orders-em", Thread.currentThread()));
+        t.start();
+        t.join();
+        var report = d.analyze();
+        assertTrue(report.hasIssues(), "an EntityManager two threads used must be reported: " + report);
+        assertTrue(report.violations.get(0).contains("EntityManager"), report.violations.get(0));
+    }
+
+    @Test
+    void entityManagerHandedOverIsSilent() throws Exception {
+        // The per-transaction hand-off: one thread at a time, released before the next takes it.
+        var d = new JdbcConnectionSharedDetector();
+        jakarta.persistence.EntityManager em = proxy(jakarta.persistence.EntityManager.class);
+        d.recordAccess(em, "orders-em", Thread.currentThread());
+        d.recordRelease(em, Thread.currentThread());
+        Thread t = new Thread(() -> {
+            d.recordAccess(em, "orders-em", Thread.currentThread());
+            d.recordRelease(em, Thread.currentThread());
+        });
+        t.start();
+        t.join();
+        assertFalse(d.analyze().hasIssues(), d.analyze().toString());
+    }
+
+    @Test
     void sharedPreparedStatementIsFlagged() throws Exception {
         var d = new JdbcConnectionSharedDetector();
         PreparedStatement ps = proxy(PreparedStatement.class);

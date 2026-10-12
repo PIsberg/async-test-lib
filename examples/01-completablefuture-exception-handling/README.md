@@ -174,5 +174,5 @@ default to no-ops, so the production path never touches the test library.
 The service has other problems - `InventoryService.callCount` is an unsynchronized `int`
 incremented from every thread, which is a lost-update race - and switching on
 `detectRaceConditions` and recording those accesses would report them. This example does not,
-because a demonstration that names one detector and switches on all 147 cannot say which one
+because a demonstration that names one detector and switches on all 148 cannot say which one
 found what.

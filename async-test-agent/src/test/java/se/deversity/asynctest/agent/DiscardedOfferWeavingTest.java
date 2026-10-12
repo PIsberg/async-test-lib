@@ -800,6 +800,19 @@ class DiscardedOfferWeavingTest {
         public static int pipedRead(java.io.PipedInputStream in, byte[] b) throws java.io.IOException {
             return in.read(b);
         }
+
+        public static Object threadLocalGet(ThreadLocal<?> local) {
+            return local.get();
+        }
+
+        @SuppressWarnings("unchecked")
+        public static void threadLocalSet(ThreadLocal<?> local, Object value) {
+            ((ThreadLocal<Object>) local).set(value);
+        }
+
+        public static void threadLocalRemove(ThreadLocal<?> local) {
+            local.remove();
+        }
     }
 
     @Test

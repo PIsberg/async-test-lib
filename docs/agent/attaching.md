@@ -130,6 +130,33 @@ calls; under the map's own monitor it is atomic and stays silent
 a boxed primitive such as `Integer.valueOf(1)` or an enum constant is not, since it is the same
 instance only because its value is (#996).
 
+Blocking calls are classified by thread too (#991, #993). Every woven blocking call (a sleep, a
+`join` or `get` of a pending future, a latch await, a take) also reaches
+`BlockingOnNonBlockingThreadDetector`, which reports it on a thread that must not block: a Reactor
+`NonBlocking` scheduler thread, a Netty or Vert.x event loop, or a Kotlin `Dispatchers.Default`
+worker. Those threads are started inside the framework, so the run claims one only when the
+framework's own code is woven: add its scheduler packages to `includes=`
+(`reactor.core.scheduler`, `io.netty.util.concurrent`, `io.vertx.core`, `kotlinx.coroutines`), and the
+woven start or submission inside it carries the run to the thread
+(`BlockingOnNonBlockingThreadWeavingTest`, `BlockingOnNonBlockingThreadSparesTest`).
+
+Pooled tasks carry two more feeds (#995). The task wrapper a woven `submit` hands the pool snapshots
+the MDC at the task's start and end for `MdcContextLeakDetector`, and gives the task an id, so the
+woven `ThreadLocal.get`, `set` and `remove` can tell `ThreadLocalMonitor` which task set a value: a
+task that reads a value an earlier task on its thread set and left behind is reported, if two tasks
+on that thread both set it, which a set-once per-thread cache never does
+(`ThreadLocalTaskLeakWeavingTest`, `ThreadLocalTaskLeakSparesRemovalTest`,
+`ThreadLocalTaskLeakSparesCacheTest`, `MdcTaskLeakWeavingTest`, `MdcTaskLeakSparesClearedTest`).
+
+Persistence handles are watched by name (#992). A JPA `EntityManager` or Hibernate `Session` is not on
+the agent's class path and must not be, so `PersistenceHandleWeaver` substitutes nothing: before a
+call whose owner, as written at the call site, is `jakarta.persistence.EntityManager`,
+`javax.persistence.EntityManager`, `org.hibernate.Session` or `org.hibernate.StatelessSession`, it
+copies the receiver off the stack and hands it to `JdbcConnectionSharedDetector`, which reports a
+handle two threads held at once; a `close()` lets it go. Calls with more than two arguments, or a
+`long` or `double` one, are left alone (`PersistenceHandleWeavingTest`,
+`PersistenceHandleSparesOnePerThreadTest`).
+
 Executors are watched the same way. The fourteen `Executors` factories are woven, and an executor a
 run thread creates through one of them is declared to `ExecutorShutdownDetector` as the run's own,
 which is the detector's whole rule: an executor handed in from outside the run, or built in a

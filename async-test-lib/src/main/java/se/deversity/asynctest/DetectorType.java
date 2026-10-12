@@ -374,5 +374,7 @@ public enum DetectorType {
     /** Detects misuse of the JEP 526 lazy collections List.ofLazy and Map.ofLazy - circular element dependencies, a non-deterministic or null-producing mapping function. */
     LAZY_COLLECTION_MISUSE,
     /** Detects Process.waitFor() on a child whose stdout or stderr is a pipe no other thread drains - the child blocks once the pipe fills, and the wait never returns. */
-    PROCESS_STREAM_STARVATION
+    PROCESS_STREAM_STARVATION,
+    /** Detects a blocking call (a sleep, a join or get of a pending future, a latch await, a take) on a thread that must not block: a Reactor non-blocking scheduler thread, a Netty or Vert.x event loop, or a Kotlin Dispatchers.Default worker. */
+    BLOCKING_ON_NON_BLOCKING_THREAD
 }

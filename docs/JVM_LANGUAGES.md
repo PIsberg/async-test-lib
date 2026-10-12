@@ -29,7 +29,12 @@ Nothing to configure. Attributes are named arguments. `@BeforeAll` / `@AfterAll`
 `companion object` with `@JvmStatic`. Kotlin properties compile to `getX`/`setX`, so the
 [agent](AGENT.md)'s default accessor weaving sees them. A `suspend fun` is not JUnit-invokable:
 wrap a coroutine body in `runBlocking`. `by lazy` is `SYNCHRONIZED` by default, so it is not a
-lazy-init race subject unless you choose `LazyThreadSafetyMode.NONE`. Fixture:
+lazy-init race subject unless you choose `LazyThreadSafetyMode.NONE`. Coroutine misuse has one rule
+so far (#993): a blocking call on a `Dispatchers.Default` worker is reported by
+`BLOCKING_ON_NON_BLOCKING_THREAD` when the agent is attached with `kotlinx.coroutines` in its
+`includes=`; the same worker running `Dispatchers.IO` work is not. `runBlocking` on a dispatcher, a
+`Mutex` treated as reentrant and races across suspensions need a coroutine owner model and are
+[#1007](https://github.com/PIsberg/async-test-lib/issues/1007). Fixture:
 [`consumer-fixture-langs/kotlin`](../consumer-fixture-langs/kotlin); a fuller example with a
 buggy and a fixed twin: [`examples/128-kotlin-lost-update`](../examples/128-kotlin-lost-update).
 

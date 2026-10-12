@@ -296,7 +296,7 @@ jobs:
 
           # 2. A library change edits no examples/** path, but every example consumes the built
           #    artifact, so one can break all of them while this filter sees nothing. Run a
-          #    deterministic every-4th sample, 38 of the 149 examples: enough to catch a
+          #    deterministic every-4th sample, 38 of the 150 examples: enough to catch a
           #    systemic break at PR time, cheap enough to afford on every library PR. The full
           #    reactor still runs on push and nightly, so this moves discovery earlier rather
           #    than adding coverage.

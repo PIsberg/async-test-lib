@@ -35,6 +35,14 @@
 #   also consults no lock at all, so a HashMap correctly guarded by the caller's own lock draws the
 #   same finding as a raced one. That is the definition of PROMPT.
 #
+# held: BLOCKING_ON_NON_BLOCKING_THREAD
+#   BLOCKING_ON_NON_BLOCKING_THREAD classifies a thread by its class's names (Reactor's marker,
+#   Netty's and Vert.x's thread classes, kotlinx's worker), so a project thread that implements the
+#   marker or extends Netty's thread for another reason draws the same finding as an event loop.
+#   Its pair (#991) separates the halves by permitBlockingCalls() on one Netty class, and the firing
+#   half blocks in the test body rather than in a framework's own loop. PROMPT until a pair through
+#   a framework blocking on its own event loop exists.
+#
 # FILE_CHANNEL_POSITION_RACE was held here from #755 until 2026-09-26, when #819 made the detector
 # judge the seek-then-I/O sequence rather than single accesses; it is registered below, and its
 # line says how.

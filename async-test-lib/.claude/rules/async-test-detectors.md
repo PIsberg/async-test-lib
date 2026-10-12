@@ -4,7 +4,7 @@ paths: ["**/diagnostics/**"]
 
 ## Conventions for every detector in this package
 
-These hold for all 147 detectors and are therefore stated once here rather than restated as a
+These hold for all 148 detectors and are therefore stated once here rather than restated as a
 per-class `@AITestDriven` annotation — one annotation per detector cost one `<element>` line each
 in the always-loaded `<scoped_rules>` index of `CLAUDE.md`.
 
@@ -35,6 +35,9 @@ a performance budget) are annotated individually and appear below.
 - **Rule**: Changes MUST be accompanied by a matching test update.
 - **Coverage Goal**: 80%
 - **Frameworks**: JUNIT_5
+
+### se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/BlockingOnNonBlockingThreadDetectorTest.java
 
 ### se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureBlockingCallbackDetectorTest.java
@@ -178,6 +181,10 @@ a performance budget) are annotated individually and appear below.
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/WeakHashMapSharedDetectorTest.java
 
 ## Thread-Safety Guarantee
+
+### se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector
+- **Strategy**: OTHER
+- **Note**: Findings in a concurrent set keyed by thread, kind and operation; classification reads the calling thread's own object only.
 
 ### se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector
 - **Strategy**: OTHER

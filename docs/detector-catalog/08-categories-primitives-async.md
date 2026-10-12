@@ -92,7 +92,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 101. Shared JDBC Connection Detector
 * **Severity**: `HIGH`
-* **Description**: Detects `Connection`, `Statement`, `PreparedStatement`, or `ResultSet` instances accessed from more than one thread. The JDBC spec does not require any of these to be thread-safe, and production drivers document a single `Connection` as usable by at most one thread at a time — concurrent access can mix result-set cursors, corrupt the wire protocol, or leak transaction state between threads.
+* **Description**: Detects `Connection`, `Statement`, `PreparedStatement`, or `ResultSet` instances accessed from more than one thread. The JDBC spec does not require any of these to be thread-safe, and production drivers document a single `Connection` as usable by at most one thread at a time — concurrent access can mix result-set cursors, corrupt the wire protocol, or leak transaction state between threads. Since #992 it covers the persistence handles documented the same way, a JPA `EntityManager` (`jakarta` or `javax`) and a Hibernate `Session` or `StatelessSession`, recognised by interface name since the library cannot depend on JPA: a recording body passes one to `recordAccess`, and with `collections=true` the agent weaves every call whose owner at the call site is one of those interfaces, by name, and records the handle before the call (a `close()` also releases it, the per-transaction hand-off). A call through a project's own subtype, or with more than two arguments or a `long`/`double` one, is not woven.
 * **Buggy Code**:
   ```java
   private final Connection sharedConnection = dataSource.getConnection();

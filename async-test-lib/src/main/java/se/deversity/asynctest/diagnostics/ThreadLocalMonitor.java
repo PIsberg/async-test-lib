@@ -128,6 +128,90 @@ public class ThreadLocalMonitor {
         }
     }
 
+    /**
+     * Per thread-local, what pooled tasks did with it (#995): the task that last set it on each
+     * thread, which threads two tasks both set it on, and the reads of another task's value.
+     */
+    private static final class TaskUse {
+        final String label;
+        /** Thread id to the id of the task that last set the thread-local there. */
+        final Map<Long, Long> lastSetter = new ConcurrentHashMap<>();
+        /** Whether two tasks on one thread both set it: per-task state, not a per-thread cache. */
+        volatile boolean perTask;
+        /** Reads in one task of a value another task on that thread set, as report lines. */
+        final Set<String> staleReads = ConcurrentHashMap.newKeySet();
+
+        TaskUse(String label) {
+            this.label = label;
+        }
+    }
+
+    private final Map<ThreadLocal<?>, TaskUse> taskUses = Collections.synchronizedMap(new IdentityHashMap<>());
+
+    private TaskUse taskUseOf(ThreadLocal<?> threadLocal) {
+        synchronized (taskUses) {
+            return taskUses.computeIfAbsent(threadLocal, ignored -> new TaskUse(unnamedLabels.next("ThreadLocal")));
+        }
+    }
+
+    /**
+     * Records a set the agent saw inside a pooled task the run handed over (#995). A thread-local
+     * two tasks on one thread both set is per-task state, a request context; one set once per
+     * thread and reused is a per-thread cache, which is why a set alone reports nothing.
+     *
+     * @param threadLocal the thread-local set
+     * @param task        the id of the task running on the calling thread
+     * @since 1.13.2
+     */
+    public void agentTaskSet(ThreadLocal<?> threadLocal, long task) {
+        if (!enabled || threadLocal == null) return;
+        TaskUse use = taskUseOf(threadLocal);
+        Long previous = use.lastSetter.put(Thread.currentThread().threadId(), task);
+        if (previous != null && previous != task) {
+            use.perTask = true;
+        }
+    }
+
+    /**
+     * Records a get the agent saw inside a pooled task (#995): a value an earlier task on this
+     * thread set and never removed is a stale read, reported at analysis if the thread-local turns
+     * out to be per-task state.
+     *
+     * @param threadLocal the thread-local read
+     * @param task        the id of the task running on the calling thread
+     * @since 1.13.2
+     */
+    public void agentTaskRead(ThreadLocal<?> threadLocal, long task) {
+        if (!enabled || threadLocal == null) return;
+        TaskUse use;
+        synchronized (taskUses) {
+            use = taskUses.get(threadLocal);
+        }
+        if (use == null) return;
+        Thread thread = Thread.currentThread();
+        Long setter = use.lastSetter.get(thread.threadId());
+        if (setter != null && setter != task) {
+            use.staleReads.add(thread.getName().isEmpty() ? "#" + thread.threadId() : thread.getName());
+        }
+    }
+
+    /**
+     * Records a remove the agent saw (#995): the next task on this thread starts clean.
+     *
+     * @param threadLocal the thread-local removed
+     * @since 1.13.2
+     */
+    public void agentRemove(ThreadLocal<?> threadLocal) {
+        if (!enabled || threadLocal == null) return;
+        TaskUse use;
+        synchronized (taskUses) {
+            use = taskUses.get(threadLocal);
+        }
+        if (use != null) {
+            use.lastSetter.remove(Thread.currentThread().threadId());
+        }
+    }
+
     private void recordThreadUsage(ThreadLocalState state, long threadId) {
         state.threadsThatUsed.add(threadId);
         state.holding.add(threadId);
@@ -192,6 +276,20 @@ public class ThreadLocalMonitor {
             }
         }
 
+        List<TaskUse> uses;
+        synchronized (taskUses) {
+            uses = new ArrayList<>(taskUses.values());
+        }
+        for (TaskUse use : uses) {
+            if (use.perTask && !use.staleReads.isEmpty()) {
+                report.staleReads.add(String.format(
+                    "%s: read in a pooled task on %s holding the value an earlier task on that "
+                    + "thread set and never removed; tasks set it per request, so the reader "
+                    + "acted on another request's state",
+                    use.label, String.join(", ", new java.util.TreeSet<>(use.staleReads))));
+            }
+        }
+
         for (Map.Entry<Long, Set<ThreadLocalState>> entry : threadLocalsByThread.entrySet()) {
             if (entry.getValue().size() > RETAINED_VALUES_THRESHOLD) {
                 report.threadLocalAccumulation.add(String.format(
@@ -219,6 +317,10 @@ public class ThreadLocalMonitor {
                 report.structuredViolations.add(new Violation("ThreadLocalMonitor", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
+            for (String finding : report.staleReads) {
+                report.structuredViolations.add(new Violation("ThreadLocalMonitor", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
         }
         return DetectorFailurePolicy.checkedReport(this, report);
     }
@@ -237,6 +339,7 @@ public class ThreadLocalMonitor {
     public void reset() {
         threadLocals.clear();
         threadLocalsByThread.clear();
+        taskUses.clear();
     }
     /**
      * Disable.
@@ -260,6 +363,8 @@ public class ThreadLocalMonitor {
         public final Set<String> likelyLeaks = new HashSet<>();
         /** Thread-locals whose stored value grew across reused threads. */
         public final Set<String> threadLocalAccumulation = new HashSet<>();
+        /** Per-task thread-locals a pooled task read while they held another task's value (#995). */
+        public final Set<String> staleReads = new HashSet<>();
 
         /**
          * {@return whether there are issues}
@@ -267,7 +372,8 @@ public class ThreadLocalMonitor {
         public boolean hasIssues() {
             return !uncleanedThreadLocals.isEmpty()
                 || !likelyLeaks.isEmpty()
-                || !threadLocalAccumulation.isEmpty();
+                || !threadLocalAccumulation.isEmpty()
+                || !staleReads.isEmpty();
         }
 
         @Override
@@ -277,6 +383,12 @@ public class ThreadLocalMonitor {
             }
 
             StringBuilder sb = new StringBuilder("THREADLOCAL LEAK RISKS DETECTED:\n");
+            if (!staleReads.isEmpty()) {
+                sb.append("\nRead by the next task on a pooled thread:\n");
+                for (String read : staleReads) {
+                    sb.append("  - ").append(read).append('\n');
+                }
+            }
             if (!likelyLeaks.isEmpty()) {
                 sb.append("\nSet without remove(), on more than one thread:\n");
                 for (String leak : likelyLeaks) {
