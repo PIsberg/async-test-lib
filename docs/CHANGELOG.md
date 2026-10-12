@@ -201,6 +201,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`PROCESS_STREAM_STARVATION` says how to make an unwoven drain visible (#996, item 5).** A pump
+  thread in a process library outside the agent's `includes` (commons-exec, zt-exec) takes its pipe
+  unseen, so a correct wait is reported. A stream the woven getter handed out and that pump then
+  reads is already seen since #998, wherever the pump's code lives. For a pipe no thread was seen
+  taking at all, the finding now ends with a hint to add that library's package to `includes=`.
+  A library taking the pipe itself in unwoven code stays unobservable without weaving the JDK's own
+  pipe classes, which the agent never does. `waitForWithUntakenPipesIsReported` asserts the hint and
+  was red before it.
 - **`NON_ATOMIC_CONCURRENT_MAP_UPDATE`: racers that put one cached box or one enum constant are
   reported (#996, item 1).** The agent-fed check-then-act excused a round whose callers all put the
   same instance, for the idiom of installing one shared object after a `get`. That also excused

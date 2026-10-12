@@ -55,6 +55,10 @@ class ProcessStreamStarvationDetectorTest {
         assertTrue(report.toString().contains("stdout") && report.toString().contains("stderr"),
                 report.toString());
         assertEquals(1, report.structuredViolations.size());
+        assertTrue(report.violations.get(0).contains("includes="),
+                "a pipe nobody was seen taking may be drained by a library the agent does not "
+                        + "weave, so the finding has to say how to let the take be seen (#996): "
+                        + report.violations.get(0));
     }
 
     @Test

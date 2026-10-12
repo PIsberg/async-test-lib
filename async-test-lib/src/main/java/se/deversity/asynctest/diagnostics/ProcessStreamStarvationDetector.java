@@ -88,6 +88,14 @@ public final class ProcessStreamStarvationDetector {
         }
     }
 
+    /**
+     * Appended when no thread was seen taking a reported pipe at all: a drain in code the agent
+     * does not weave takes it unseen, so the finding says how to let the take be seen (#996).
+     */
+    private static final String NOBODY_SEEN_TAKING = ". No thread was seen taking it: if a library "
+            + "drains it in code the agent does not weave (commons-exec, zt-exec), add that library's "
+            + "package to the agent's includes= so its take is seen";
+
     /** The JDK's stream for an output the builder redirected: there is no pipe behind it. */
     private static final String NULL_STREAM = "java.lang.ProcessBuilder$NullInputStream";
 
@@ -270,11 +278,13 @@ public final class ProcessStreamStarvationDetector {
             Wait wait = state.firstWait.get();
             if (wait == null) continue;
             List<String> undrained = new ArrayList<>();
+            boolean nobodyTookOne = false;
             for (Stream stream : wait.untaken()) {
                 if (onlyTheWaiter(state.takers.getOrDefault(stream, Set.of()), wait)
                         && onlyTheWaiter(state.observedTakers.getOrDefault(stream, Set.of()), wait)
                         && onlyTheWaiter(readersOf(state, stream), wait)) {
                     undrained.add(stream.label);
+                    nobodyTookOne |= !state.takers.containsKey(stream) && !state.observedTakers.containsKey(stream);
                 }
             }
             if (undrained.isEmpty()) continue;
@@ -282,7 +292,8 @@ public final class ProcessStreamStarvationDetector {
                     "Thread '%s' waited for %s while no other thread drained its %s - once the "
                             + "child fills the pipe it blocks writing and the wait never returns. "
                             + "Drain the output on another thread, or redirect what is not needed",
-                    wait.waiterName(), wait.process(), String.join(" or ", undrained));
+                    wait.waiterName(), wait.process(), String.join(" or ", undrained))
+                    + (nobodyTookOne ? NOBODY_SEEN_TAKING : "");
             r.violations.add(finding);
             r.structuredViolations.add(new Violation(
                     "ProcessStreamStarvation",
