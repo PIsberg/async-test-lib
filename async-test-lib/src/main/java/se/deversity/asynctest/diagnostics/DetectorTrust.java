@@ -224,7 +224,7 @@ public final class DetectorTrust {
             row(DetectorType.SEMAPHORE, "SemaphoreMisuseDetector", "Semaphore", TrustTier.VERDICT, Evidence.OBSERVED),
             row(DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, "CompletableFutureExceptionDetector", "CompletableFutureExceptions", TrustTier.PROMPT, Evidence.HEURISTIC),
             row(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, "CompletableFutureCompletionLeakDetector", "CompletableFutureCompletionLeaks", TrustTier.VERDICT, Evidence.OBSERVED),
-            row(DetectorType.VIRTUAL_THREAD_PINNING, "VirtualThreadPinningDetector", "VirtualThreadPinning", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.VIRTUAL_THREAD_PINNING, "VirtualThreadPinningDetector", "VirtualThreadPinning", TrustTier.PROMPT, Evidence.OBSERVED),
             row(DetectorType.THREAD_POOL_DEADLOCK, "ThreadPoolDeadlockDetector", "ThreadPoolDeadlock", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.CONCURRENT_MODIFICATIONS, "ConcurrentModificationDetector", "ConcurrentModifications", TrustTier.FACT, Evidence.ASSERTED),
             row(DetectorType.LOCK_LEAKS, "LockLeakDetector", "LockLeaks", TrustTier.PROMPT, Evidence.OBSERVED),

@@ -128,11 +128,10 @@ class DetectorRefusalThresholdsTest {
     }
 
     @Test
-    @DisplayName("all six single-direction detectors have documented no-innocent-twin rationale")
+    @DisplayName("all five single-direction detectors have documented no-innocent-twin rationale")
     void allSingleDirectionDetectorsHaveDocumentedRationale() {
         Set<DetectorType> singleDirection = Set.of(
                 DetectorType.EXPLICIT_GC,
-                DetectorType.VIRTUAL_THREAD_PINNING,
                 DetectorType.THREAD_POOL_DEADLOCK,
                 DetectorType.THIS_ESCAPE,
                 DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE,

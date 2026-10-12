@@ -1532,7 +1532,7 @@ shape to add back:
 
 | Detector | Why no correct twin exists |
 |---|---|
-| `VIRTUAL_THREAD_PINNING` | every recorded pinning event is a finding; the platform-thread variant records nothing |
+| `VIRTUAL_THREAD_PINNING` | every recorded pinning event is a finding; the platform-thread variant records nothing. Since the JVM feeds it (`jdk.VirtualThreadPinned`, #988) it is paired in the agent lane (#984) |
 | `THREAD_POOL_DEADLOCK` | any `nestedSubmissionCount > 0` fires, whatever the pool size |
 | `THIS_ESCAPE` | reports every instance with a non-empty escape set; the correct twin's calls are no-ops |
 | `THREAD_LOCAL_RANDOM_MISUSE` | `ThreadLocalRandom.current()` is a JVM-wide singleton, and the detector keyed on the instance, so every thread's correct `current()` fired. It now asks which threads recorded an obtain, and is paired further down (#761) |
@@ -1558,8 +1558,8 @@ expectations are structural:
 agent-fed, 3 zero-config, leaving 125 recording-fed - and split into five refused for want of any
 documented contract plus the thirteen the triage rejected.
 
-Twelve of the thirteen still stand and are tabulated above; `THREAD_LOCAL_RANDOM_MISUSE` was
-paired later (#761). The five did not. They were refused because no
+Eleven of the thirteen still stand and are tabulated above; `THREAD_LOCAL_RANDOM_MISUSE` (#761)
+and `VIRTUAL_THREAD_PINNING` (#984) were paired later. The five did not. They were refused because no
 *corpus library* class documents a contract that reaches them, which is true and is the wrong
 question: `SHARED_CHECKSUM`, `SHARED_DEFLATER`, `SHARED_KDF`, `SHARED_TIMEZONE` and
 `SHARED_XML_PARSER` all key their state on instance identity, and the subject they want is the JDK
@@ -1766,6 +1766,24 @@ guaranteed silent. Worse, the detector is inert altogether under the default
 announces this once per JVM as `runner.detector.inert`. Any row that did fire it would be an
 artifact of the harness rather than a property of a subject.
 
+**`VIRTUAL_THREAD_PINNING` became a fourth, and is paired here (#984).** Since #988 the runner
+feeds it the JVM's own `jdk.VirtualThreadPinned` events for the workers, and reports a call site
+only when it pinned in two rounds, so a class initializer, which runs once, can only fire it from a
+fresh copy of the class in every round. The firing row initializes a fresh copy of a class whose
+initializer sleeps 20 ms; the twin initializes a fresh copy of a class with no initializer and
+sleeps the same 20 ms afterwards, where a virtual thread unmounts. The first run fired both, and
+the twin's 235 pins were the instrumentation, not the code: the agent's per-loader bookkeeping
+(`UpdaterAccess.openTo`) takes a contended monitor inside the class-file transformer, under the
+native `defineClass` frame, and Byte Buddy's default self-injection gave every class woven at load
+a `<clinit>` that loads `net.bytebuddy.dynamic.Nexus` through the system class loader. The agent
+now installs with `InitializationStrategy.NoOp`, which its dynamic-attach path always had, and
+the feed drops a pin whose first frame outside the JDK is the agent's own code
+(`runner.pinning.instrumentation`, DEBUG). The rest was the fixture's: six fresh loaders
+delegating to one parent at once contend on its per-name locks, so the lane's loader serves what
+it delegated from a map after the first round. A pin in the hook a woven call goes through
+(`AgentSleepHooks.sleep`) also used to be every such pin's site, which merged call sites under the
+two-round rule; the site now skips the hooks.
+
 ### Reopening the refusals, and what seven of them were hiding
 
 The accounting above was arithmetically right and wrong underneath, in two places. Both were
@@ -1854,11 +1872,11 @@ silence, so a refusal cannot outlive a pair in that lane either.
 | | Detectors |
 |---|---|
 | Paired in the recording lane | 117 |
-| Paired in the agent-pair lane | 17 |
+| Paired in the agent-pair lane | 18 |
 | ...less `SHARED_MESSAGE_DIGEST`, `LATCH_MISUSE` and `BLOCKING_QUEUE`, which are paired in both | -3 |
 | Paired by lane one over 139 subjects (`ATOMICITY_VIOLATIONS`, `SHARED_COLLECTIONS`) | +2 |
-| **Total paired** | **133** |
-| Refused: every recorded event is a finding, so no silent twin can exist | 6 |
+| **Total paired** | **134** |
+| Refused: every recorded event is a finding, so no silent twin can exist | 5 |
 | Refused: the outcome is a threshold or a clock, not the recorded calls | 8 |
 | **Total** | **147** |
 
@@ -1876,15 +1894,15 @@ That is the property worth keeping, and it is no longer one this document assert
 detector that appears in no report and on no refusal list is a gap, and the build finds it - twice
 over, since a refusal that outlives its pair fails too.
 
-**What the fourteen refusals actually cost, which is less than the number suggests.** The library's
+**What the thirteen refusals actually cost, which is less than the number suggests.** The library's
 own `DetectorFiringContractTest` already requires every detector to have a test asserting a
 positive finding, so "can it fire" is gated for all 146 whether or not this corpus pairs them.
 What a corpus pair adds on top is the *other* direction: a case that goes through the same calls
 and must stay silent. That is the false-positive half, and it is the one no unit test tends to
 write, which is why it is worth a corpus at all.
 
-So the fourteen are not fourteen untested detectors. They are fourteen detectors whose
-false-positive half either provably cannot exist - six whose every recorded event is a finding
+So the thirteen are not thirteen untested detectors. They are thirteen detectors whose
+false-positive half either provably cannot exist - five whose every recorded event is a finding
 by construction - or exists but cannot be asserted without the assertion resting on a clock, a
 core count or a GC pause. A row like that does not measure a detector; it measures the machine
 the build happened to run on, and it fails on somebody else's.

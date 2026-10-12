@@ -693,6 +693,11 @@ public class ConcurrencyRunner {
                             + "reported, or read a clean pinning report as covering the workers only\"",
                         testMethod.getName(), unattributedPins);
                 }
+                // DEBUG: a pin inside the agent's transformer, on a class the body defined (#984).
+                if (pinningStream.instrumentationEvents() > 0) {
+                    log.debug("runner.pinning.instrumentation test={} events={}",
+                        testMethod.getName(), pinningStream.instrumentationEvents());
+                }
                 // DEBUG, not INFO: nearly every run has some, from class loading on first use.
                 if (pinningStream.singleRoundSites() > 0) {
                     log.debug("runner.pinning.single-round test={} sites={}",

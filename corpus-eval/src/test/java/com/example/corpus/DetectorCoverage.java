@@ -57,9 +57,6 @@ final class DetectorCoverage {
                 "AgentGcHooks records every System.gc() and analyze() turns every event into a "
                         + "violation, deliberately and with no lock guard. Its own javadoc says "
                         + "System.gc() has no innocent twin");
-        refuse(DetectorType.VIRTUAL_THREAD_PINNING,
-                "every recorded pinning event is a finding, and the platform-thread variant "
-                        + "records nothing at all, so the twin would make no call");
         refuse(DetectorType.THREAD_POOL_DEADLOCK,
                 "any nestedSubmissionCount above zero fires, whatever the pool size, so no "
                         + "recorded nesting is correct");

@@ -201,6 +201,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`VIRTUAL_THREAD_PINNING` grades observed pins apart from recorded ones, is paired in the
+  corpus, and stopped reporting the agent's own pins (#984).** `PinningReport` implements
+  `GradedFindings`: a pin the JVM reported through `jdk.VirtualThreadPinned` is `FACT` on
+  `OBSERVED` evidence, one described through `recordPinningEvent` stays `PROMPT` on `ASSERTED`,
+  and `PinningEventSnapshot.isObserved()` says which. The `DetectorTrust` row moves from `ASSERTED`
+  to `OBSERVED` evidence (tier `PROMPT`, its weaker path) and leaves `FED_BELOW_OBSERVED`. A new
+  agent-lane corpus pair fires on a worker that initializes a fresh copy of a class whose
+  initializer sleeps, and stays silent on the same load followed by the same sleep outside it.
+  Its first run fired the silent twin 235 times, on three causes, each fixed:
+  - **The agent pinned virtual threads itself.** Byte Buddy's default self-injection gave every
+    class woven at load a `<clinit>` that loads `net.bytebuddy.dynamic.Nexus` through the system
+    class loader, and threads initializing woven classes at once contended on its lock under the
+    JVM's initializer frame. `AsyncTestAgent` now installs with `InitializationStrategy.NoOp`, which
+    the dynamic-attach path always used, since no weaver registers a loaded-type initializer.
+  - **Pins inside the agent's transformer were reported as the code's.** Its per-loader
+    bookkeeping (`UpdaterAccess.openTo`) takes a contended monitor under `defineClass`.
+    `JfrPinningStream` now drops a pin whose first frame outside the JDK is the agent's package,
+    which runs only in the transformer and install, and counts it in
+    `runner.pinning.instrumentation` (DEBUG).
+  - **Under the agent every woven pin had the hook as its site** (`AgentSleepHooks.sleep`), so two
+    call sites pinning in different rounds passed the two-round rule as one. The site skips the
+    library's `Agent*Hooks` and telemetry frames.
+
+  The lane's fresh loaders also serve the classes they delegated from a map after the first round,
+  since six of them asking one parent at once pin on its per-name locks. The agent-pair lane is
+  green locally on JDK 26 (104 tests); paired detectors 133 to 134, refusals 14 to 13.
 - **`VIRTUAL_THREAD_PINNING` dropped a recorded pin inside a class initializer on JDK 26
   (#985).** `classifyOperation` mapped every description naming `<clinit>` or a static
   initializer to `PinningCause.CLASS_INIT`, which `stillPinsOn` calls obsolete on JDK 26. That

@@ -45,6 +45,15 @@ import java.util.concurrent.atomic.AtomicLong;
  * The site is the first frame outside the JDK. A run of one round therefore gets no observed
  * finding, only {@link #singleRoundSites()}.
  *
+ * <p><strong>A pin inside the agent's own transformer is not the code's.</strong> With the agent
+ * attached, every class definition runs its transformer under the native {@code defineClass} frame,
+ * and a contended monitor there (the agent's per-loader bookkeeping) pins the virtual thread that
+ * is defining the class. The first corpus pair for this detector saw 235 such pins on a body that
+ * defines a fresh class in every round, all with the agent's {@code UpdaterAccess.openTo} as the
+ * first frame outside the JDK. Code in the agent's package runs only inside its transformer and
+ * install (the woven hooks live in the library), so a pin whose site is there would not exist
+ * without the agent; it is counted in {@link #instrumentationEvents()} and not reported (#984).
+ *
  * <p>JFR hands every event to every open stream, so two runs in parallel each see the other's
  * pins. Only events on a thread in the run's worker set are kept; the rest are counted in
  * {@link #unattributedEvents()}. The events arrive in batches, and none had arrived before
@@ -104,6 +113,11 @@ public final class JfrPinningStream implements AutoCloseable {
         return live.unattributed.get();
     }
 
+    /** {@return how many pinning events on this run's workers had the agent's transformer as their site} */
+    public long instrumentationEvents() {
+        return live.instrumentation.get();
+    }
+
     /** {@return how many call sites pinned a worker in one round only, and so were not reported} */
     public int singleRoundSites() {
         return live.singleRoundSites;
@@ -130,6 +144,7 @@ public final class JfrPinningStream implements AutoCloseable {
         private final Set<Long> workers;
         private final String testName;
         private final AtomicLong unattributed = new AtomicLong();
+        private final AtomicLong instrumentation = new AtomicLong();
         private final AtomicBoolean closed = new AtomicBoolean();
         /** The round each worker ran in, filled in at each {@link #markRound()} and at close. */
         private final Map<Long, Integer> roundOf = new ConcurrentHashMap<>();
@@ -191,8 +206,13 @@ public final class JfrPinningStream implements AutoCloseable {
                     return;
                 }
                 StackTraceElement[] frames = frames(event.getStackTrace());
+                String site = site(frames);
+                if (insideTheTransformer(frames)) {
+                    instrumentation.incrementAndGet();
+                    return;
+                }
                 String reason = reason(event, frames);
-                pins.add(new Pin(threadId, String.valueOf(thread.getJavaName()), site(frames),
+                pins.add(new Pin(threadId, String.valueOf(thread.getJavaName()), site,
                         "JFR jdk.VirtualThreadPinned: " + reason, cause(reason),
                         event.getDuration().toMillis(), frames));
             } catch (RuntimeException e) { // NOPMD - an exception here would end the stream's dispatch
@@ -264,15 +284,56 @@ public final class JfrPinningStream implements AutoCloseable {
             return out.toArray(new StackTraceElement[0]);
         }
 
-        /** The first frame outside the JDK, where the user's code made the blocking call. */
+        /** The agent's package, whose code runs only inside its transformer and install. */
+        private static final String AGENT_PACKAGE = "se.deversity.asynctest.agent.";
+
+        /**
+         * The prefixes of the library classes a woven call site calls instead of the JDK method:
+         * the {@code Agent*Hooks} and the telemetry registry. A blocking call the agent wove passes
+         * through one of them, so as a site it would name the hook every such call shares.
+         */
+        private static final String[] WOVEN_HOOKS = {
+            "se.deversity.asynctest.Agent", "se.deversity.asynctest.telemetry."
+        };
+
+        /** {@return whether the first frame outside the JDK is the agent's own code} */
+        private static boolean insideTheTransformer(StackTraceElement[] frames) {
+            for (StackTraceElement frame : frames) {
+                String type = frame.getClassName();
+                if (!isJdk(type)) {
+                    return type.startsWith(AGENT_PACKAGE);
+                }
+            }
+            return false;
+        }
+
+        /**
+         * The first frame outside the JDK and the woven hooks, where the user's code made the
+         * blocking call. Without skipping the hooks, every pin under the agent had the sleep hook as
+         * its site, so two different call sites pinning in two different rounds read as one site
+         * pinning in two (#984).
+         */
         private static String site(StackTraceElement[] frames) {
             for (StackTraceElement frame : frames) {
                 String type = frame.getClassName();
-                if (!type.startsWith("java.") && !type.startsWith("jdk.") && !type.startsWith("sun.")) {
+                if (!isJdk(type) && !isWovenHook(type)) {
                     return frame.toString();
                 }
             }
             return frames.length == 0 ? "" : frames[0].toString();
+        }
+
+        private static boolean isJdk(String type) {
+            return type.startsWith("java.") || type.startsWith("jdk.") || type.startsWith("sun.");
+        }
+
+        private static boolean isWovenHook(String type) {
+            for (String prefix : WOVEN_HOOKS) {
+                if (type.startsWith(prefix)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /** JDK 24+ records why; JDK 21-23 record no reason, so the stack is all there is. */

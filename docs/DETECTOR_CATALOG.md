@@ -254,6 +254,11 @@ keep their VERDICT grades, and since #837 name their evidence too: the lost upda
 plain-mode note `CONTEXTUAL`, since both are decided after the lockset; the observed mutation and
 the probed executor `OBSERVED`; the structural note `CONTEXT_FREE` and the churn count `HEURISTIC`.
 `DetectorEvidenceMatchesCodeTest` fails the build on a built-in grade that names none.
+`VIRTUAL_THREAD_PINNING` grades the same way since #984: a pin the JVM reported through
+`jdk.VirtualThreadPinned`, in at least two rounds, is FACT on `OBSERVED` evidence, and a pin
+described through `recordPinningEvent` is PROMPT on `ASSERTED`; the row is PROMPT, its weaker path,
+on `OBSERVED`. The observed pin stops at FACT because the JVM says the thread could not unmount,
+not that the cost matters. Its corpus pair is in the agent lane.
 
 **Advisory tier:** `SHARED_RANDOM` and `SHARED_SECURE_RANDOM`. `Random` and `SecureRandom` are
 thread-safe, so their finding is about contention on one instance rather than corruption of it,
@@ -490,7 +495,11 @@ pin on a thread the body started, or in a test running in parallel, is counted i
 `runner.pinning.unattributed` and not reported. A call site is reported only when it pinned in at
 least two rounds: workers contending on `ClassLoader.loadClass` or a library's first use pin for a
 few milliseconds once per JVM, which is warm-up and not the code, so a run of one round gets no
-observed finding. The event is the running JDK's own verdict, so it
+observed finding. A pin whose first frame outside the JDK is the agent's own code happened inside
+its class-file transformer and is the instrumentation's, so it is counted at DEBUG in
+`runner.pinning.instrumentation` and not reported; and the site skips the library hooks a woven
+call goes through, so two call sites do not merge into one under the agent (#984). The event is
+the running JDK's own verdict, so it
 fires for a blocking `synchronized` block up to JDK 23 and not from 24 (JEP 491), and for blocking
 inside a class initializer or under a native frame on every JDK. Without a usable JFR (a runtime
 image without `jdk.jfr`) the detector keeps its recording feed. The four:

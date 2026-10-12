@@ -424,6 +424,48 @@ class VirtualThreadPinningDetectorTest {
     // ---- pins the JVM observed (JfrPinningStream) ----
 
     @Test
+    void observedAndRecordedPinsAreGradedApart() throws Exception {
+        // The JVM's own event is OBSERVED evidence; a pin the caller describes is ASSERTED and
+        // classified by its wording, so it must not ride on the observed one's grade (#984).
+        VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
+        detector.startMonitoring();
+        detector.recordObservedPinning(42L, "worker-1",
+                "JFR jdk.VirtualThreadPinned: VM call to Foo.<clinit> on stack (LockSupport.park)",
+                VirtualThreadPinningDetector.PinningCause.CLASS_INIT_EXECUTING, 50L,
+                new StackTraceElement[] {new StackTraceElement("Foo", "<clinit>", null, 3)});
+        Thread.ofVirtual().name("vt-graded").start(() ->
+                detector.recordPinningEvent(Thread.currentThread(), "blocking JNI call")
+        ).join();
+
+        var report = detector.analyzePinning();
+        GradedFindings graded = assertInstanceOf(GradedFindings.class, report);
+        var grades = graded.grades();
+        assertEquals(report.structuredViolations.size(), grades.size(), "one grade per finding");
+        assertEquals(2, grades.size());
+        assertEquals(DetectorTrust.Evidence.OBSERVED, grades.get(0).evidence());
+        assertEquals(TrustTier.FACT, grades.get(0).tier());
+        assertEquals(DetectorTrust.Evidence.ASSERTED, grades.get(1).evidence());
+        assertEquals(TrustTier.PROMPT, grades.get(1).tier());
+        assertTrue(report.getEvents().get(0).isObserved());
+        assertFalse(report.getEvents().get(1).isObserved());
+    }
+
+    @Test
+    void anObsoleteRecordedPinHasNoGrade() throws Exception {
+        VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
+        detector.startMonitoring();
+        Thread.ofVirtual().name("vt-graded-obsolete").start(() -> {
+            detector.recordPinningEvent(Thread.currentThread(), "synchronized block");
+            detector.recordPinningEvent(Thread.currentThread(), "blocking JNI call");
+        }).join();
+
+        var report = detector.analyzePinning();
+        boolean monitorObsolete = Runtime.version().feature() >= 24;
+        assertEquals(monitorObsolete ? 1 : 2, ((GradedFindings) report).grades().size());
+        assertEquals(report.structuredViolations.size(), ((GradedFindings) report).grades().size());
+    }
+
+    @Test
     void observedPin_isAFindingEvenWhereItsCauseIsObsoleteOnPaper() {
         VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
         detector.startMonitoring();
