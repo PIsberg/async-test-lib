@@ -201,6 +201,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`VIRTUAL_THREAD_CARRIER_EXHAUSTION`: `jdk.VirtualThreadSubmitFailed` measured and not used
+  (#986).** A probe on JDK 21.0.9 and 26 saturated a one-carrier scheduler with pinned threads and
+  200,000 virtual-thread starts and saw zero events: the JDK emits it only when the scheduler rejects
+  a submit, which the default one does not do under saturation. The catalog entry records the
+  measurement; the detector keeps its record-call feed. JDK 24 and 25 were not probed.
 - **`PROCESS_STREAM_STARVATION` says how to make an unwoven drain visible (#996, item 5).** A pump
   thread in a process library outside the agent's `includes` (commons-exec, zt-exec) takes its pipe
   unseen, so a correct wait is reported. A stream the woven getter handed out and that pump then
