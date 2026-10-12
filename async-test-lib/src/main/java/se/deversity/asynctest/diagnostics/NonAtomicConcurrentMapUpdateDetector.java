@@ -260,7 +260,8 @@ public final class NonAtomicConcurrentMapUpdateDetector {
      * the same key, by the key's equality, in the same round; the check is consumed either way.
      * A completed pair is recorded with the value put, so a round whose callers all put one
      * instance is excused exactly as {@link #recordCheckThenAct(ConcurrentMap, Object, Object,
-     * String, Thread)} excuses it.
+     * String, Thread)} excuses it, unless the value is a boxed primitive or an enum constant,
+     * which is one instance only because its value is (#996).
      *
      * @param map    the map acted on
      * @param key    the key acted on
@@ -284,14 +285,22 @@ public final class NonAtomicConcurrentMapUpdateDetector {
                 || round != SelfGuard.RoundThreads.roundNow()) {
             return;
         }
-        // The put value always goes along, so a round whose callers all put one instance is
-        // excused, as a hand-recorded absent check is. The hook cannot tell a value chosen without
-        // reading the map from one derived from the read, and of the two mistakes that leaves the
-        // false negative: callers that install a shared object after a get are correct, and
-        // reporting them would be a false positive on an idiom. What it costs is racers that all
-        // put one cached box (an Integer up to 127) or one enum constant, which are excused even
-        // where the check decided other work. A remove carries no value and is never excused.
-        record(map, key, remove ? null : value, label(read, remove), Thread.currentThread());
+        // The put value goes along, so a round whose callers all put one instance is excused, as a
+        // hand-recorded absent check is: callers that install a shared object after a get are
+        // correct, and reporting them would be a false positive on an idiom. A boxed primitive or
+        // an enum constant is not such a choice. It is one instance because the JVM caches small
+        // boxes and an enum has one constant per value, so racers that read 0 and put 1, or saw
+        // IDLE and put STARTED, look like they agreed on an object while an increment was lost or
+        // both believe they started the job (#996). Those carry no value, like a remove, and are
+        // never excused.
+        record(map, key, remove || isValueConstant(value) ? null : value, label(read, remove),
+                Thread.currentThread());
+    }
+
+    /** {@return whether {@code value} is a box or an enum constant, whose identity is its value's} */
+    private static boolean isValueConstant(@Nullable Object value) {
+        return value instanceof Number || value instanceof Boolean || value instanceof Character
+                || value instanceof Enum<?>;
     }
 
     /** {@return the report label for a check by get or containsKey and an act by put or remove} */

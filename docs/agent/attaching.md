@@ -126,9 +126,9 @@ recording call: a `containsKey` that found the key absent, or any `get`, is held
 thread's pending check, and a `put` or `remove` on the same map and key in the same round completes
 it. The pair is reported when two threads complete it in one round with no lock held across both
 calls; under the map's own monitor it is atomic and stays silent
-(`CheckThenActWeavingEndToEndTest`). A round whose callers all put one instance is excused, which
-also excuses racers that all put one cached box such as `Integer.valueOf(1)`: the hook cannot tell
-a value derived from the read from one chosen without it.
+(`CheckThenActWeavingEndToEndTest`). A round whose callers all put one shared object is excused;
+a boxed primitive such as `Integer.valueOf(1)` or an enum constant is not, since it is the same
+instance only because its value is (#996).
 
 Executors are watched the same way. The fourteen `Executors` factories are woven, and an executor a
 run thread creates through one of them is declared to `ExecutorShutdownDetector` as the run's own,

@@ -201,6 +201,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`NON_ATOMIC_CONCURRENT_MAP_UPDATE`: racers that put one cached box or one enum constant are
+  reported (#996, item 1).** The agent-fed check-then-act excused a round whose callers all put the
+  same instance, for the idiom of installing one shared object after a `get`. That also excused
+  `put(k, get(k) + 1)` when every racer computed `Integer.valueOf(1)`, and `IDLE` to `STARTED`
+  transitions, because the JVM hands out one instance per small box and one per enum constant. A
+  boxed primitive (`Number`, `Boolean`, `Character`) or enum constant now carries no value into the
+  excuse, like a remove; a shared object still does. The issue proposed a data-flow mark in the
+  weaver; telling a value from a chosen object was enough for both cases it named.
+  `AgentMapCheckThenActHooksTest.cachedBoxIncrementIsReported` (formerly the pinned false negative)
+  and the new `enumConstantTransitionIsReported` were red before the change; the shared-generation
+  idiom stays silent; the full corpus module stays green.
 - **`EXECUTOR_SHUTDOWN` no longer reports a pool the test class closes in `@AfterEach` (#996,
   item 3).** Analysis runs inside the test method, before JUnit calls `@AfterEach`, so a pool the
   run declared and teardown shut down read as never shut down. In a class that declares an

@@ -400,10 +400,10 @@ on the calling thread, and a `put` or `remove` on the same map and key in the sa
 it. A `containsKey` that found the key decides an overwrite and starts no pair, and a plain
 `HashMap` is left to `SharedCollectionDetector`, which already reports every call on it. The put
 value goes along, so a round whose callers all put one instance is excused, as a hand-recorded
-absent check is: the hook cannot tell a value chosen without reading the map from one derived from
-the read, and callers that install one shared object after a `get` are correct. The cost is a
-known false negative: racers that all put one cached box (an `Integer` up to 127) or one enum
-constant are excused even where the check decided other work.
+absent check is: callers that install one shared object after a `get` are correct. A boxed
+primitive or an enum constant is not excused that way (#996): it is one instance because the JVM
+caches small boxes and an enum has one constant per value, so racers that read 0 and put 1, or saw
+`IDLE` and put `STARTED`, lost an increment or both believe they started the job.
 
 `ExecutorShutdownDetector` and `FutureIgnoredDetector` joined in the same change.
 `ExecutorShutdownDetector` reports only an executor it was told the code created, which is what
