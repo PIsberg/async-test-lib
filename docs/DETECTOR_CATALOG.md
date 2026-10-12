@@ -503,8 +503,9 @@ not weave, or in a test running in parallel, is counted in `runner.pinning.unatt
 reported. A call site is reported only when it pinned in at
 least two rounds: workers contending on `ClassLoader.loadClass` or a library's first use pin for a
 few milliseconds once per JVM, which is warm-up and not the code, so a run of one round gets no
-observed finding. A pin whose first frame outside the JDK is the agent's own code happened inside
-its class-file transformer and is the instrumentation's, so it is counted at DEBUG in
+observed finding. A pin whose first frame outside the JDK is the agent's own code (its class-file
+transformer), or library code other than a woven hook (the lockset bookkeeping of a woven monitor
+enter), is the instrumentation's, so it is counted at DEBUG in
 `runner.pinning.instrumentation` and not reported; and the site skips the library hooks a woven
 call goes through, so two call sites do not merge into one under the agent (#984). The event is
 the running JDK's own verdict, so it

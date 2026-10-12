@@ -52,7 +52,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * defines a fresh class in every round, all with the agent's {@code UpdaterAccess.openTo} as the
  * first frame outside the JDK. Code in the agent's package runs only inside its transformer and
  * install (the woven hooks live in the library), so a pin whose site is there would not exist
- * without the agent; it is counted in {@link #instrumentationEvents()} and not reported (#984).
+ * without the agent; nor would one whose first frame outside the JDK is library code other than a
+ * woven hook, such as the lockset bookkeeping of a woven monitor enter, which the corpus also met.
+ * Both are counted in {@link #instrumentationEvents()} and not reported (#984).
  *
  * <p>JFR hands every event to every open stream, so two runs in parallel each see the other's
  * pins. Only events on a thread in the run's worker set, or on a thread one of the run's threads
@@ -232,7 +234,7 @@ public final class JfrPinningStream implements AutoCloseable {
                 }
                 StackTraceElement[] frames = frames(event.getStackTrace());
                 String site = site(frames);
-                if (insideTheTransformer(frames)) {
+                if (instrumentation(frames)) {
                     instrumentation.incrementAndGet();
                     return;
                 }
@@ -318,18 +320,52 @@ public final class JfrPinningStream implements AutoCloseable {
          * through one of them, so as a site it would name the hook every such call shares.
          */
         private static final String[] WOVEN_HOOKS = {
-            "se.deversity.asynctest.Agent", "se.deversity.asynctest.telemetry."
+            "se.deversity.asynctest.Agent", "se.deversity.asynctest.telemetry.TelemetryRegistry"
         };
 
-        /** {@return whether the first frame outside the JDK is the agent's own code} */
-        private static boolean insideTheTransformer(StackTraceElement[] frames) {
+        /** Per class name, whether it is this library's own code; see {@link #isLibraryCode}. */
+        private static final Map<String, Boolean> LIBRARY_CODE = new ConcurrentHashMap<>();
+
+        /**
+         * {@return whether the pin happened in the instrumentation rather than the code under test}:
+         * the first frame outside the JDK is the agent's own code, which runs only in its transformer
+         * and install, or library code other than a woven hook, such as the lockset bookkeeping a
+         * woven monitor enter does. A woven hook only delegates the user's own call (a sleep, a
+         * lock), so a pin under one is the user's. The corpus pair met both: the agent's per-loader
+         * bookkeeping and {@code LocksetRegistry.register} contended on a monitor while a class was
+         * being defined, a native frame below them (#984).
+         */
+        private static boolean instrumentation(StackTraceElement[] frames) {
             for (StackTraceElement frame : frames) {
                 String type = frame.getClassName();
-                if (!isJdk(type)) {
-                    return type.startsWith(AGENT_PACKAGE);
+                if (isJdk(type)) {
+                    continue;
                 }
+                return type.startsWith(AGENT_PACKAGE) || !isWovenHook(type) && isLibraryCode(type);
             }
             return false;
+        }
+
+        /**
+         * {@return whether {@code type} comes from the same jar or class directory as this class},
+         * which tells the library's code from the user's even where the user's code shares the
+         * library's package names, as this project's own tests do.
+         */
+        private static boolean isLibraryCode(String type) {
+            return type.startsWith("se.deversity.asynctest.")
+                    && LIBRARY_CODE.computeIfAbsent(type, Live::sharesThisCodeSource);
+        }
+
+        private static boolean sharesThisCodeSource(String type) {
+            try {
+                Class<?> found = Class.forName(type, false, JfrPinningStream.class.getClassLoader());
+                java.security.CodeSource ours = JfrPinningStream.class.getProtectionDomain().getCodeSource();
+                java.security.CodeSource theirs = found.getProtectionDomain().getCodeSource();
+                return ours != null && theirs != null
+                        && java.util.Objects.equals(ours.getLocation(), theirs.getLocation());
+            } catch (ClassNotFoundException | LinkageError | RuntimeException e) { // NOPMD - unknown is the user's
+                return false;
+            }
         }
 
         /**

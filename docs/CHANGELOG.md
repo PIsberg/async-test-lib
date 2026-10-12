@@ -251,10 +251,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     class loader, and threads initializing woven classes at once contended on its lock under the
     JVM's initializer frame. `AsyncTestAgent` now installs with `InitializationStrategy.NoOp`, which
     the dynamic-attach path always used, since no weaver registers a loaded-type initializer.
-  - **Pins inside the agent's transformer were reported as the code's.** Its per-loader
-    bookkeeping (`UpdaterAccess.openTo`) takes a contended monitor under `defineClass`.
-    `JfrPinningStream` now drops a pin whose first frame outside the JDK is the agent's package,
-    which runs only in the transformer and install, and counts it in
+  - **Pins inside the agent's transformer and the library's bookkeeping were reported as the
+    code's.** The agent's per-loader bookkeeping (`UpdaterAccess.openTo`) takes a contended monitor
+    under `defineClass`, and so, once in four lane runs, did `LocksetRegistry.register` behind a
+    woven monitor enter. `JfrPinningStream` now drops a pin whose first frame outside the JDK is the
+    agent's package, or library code other than a woven `Agent*Hooks`/`TelemetryRegistry` hook (told
+    apart from user code sharing the package names by its code source), and counts it in
     `runner.pinning.instrumentation` (DEBUG).
   - **Under the agent every woven pin had the hook as its site** (`AgentSleepHooks.sleep`), so two
     call sites pinning in different rounds passed the two-round rule as one. The site skips the

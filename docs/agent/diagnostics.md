@@ -63,8 +63,8 @@ is attributed (#983). Otherwise pin in the `@AsyncTest` workers themselves to ha
 reported. A call site that pinned in one round only is not reported
 either (class loading on first use is the usual cause), and is counted at DEBUG in
 `runner.pinning.single-round test=... sites=<n>`. A pin inside the agent's own class-file
-transformer, on a class the body defined, is the instrumentation's rather than the code's and is
-counted at DEBUG in `runner.pinning.instrumentation test=... events=<n>`. A JVM without a usable JFR logs
+transformer, or inside the library's own bookkeeping rather than a woven hook delegating the body's
+call, is the instrumentation's rather than the code's and is counted at DEBUG in `runner.pinning.instrumentation test=... events=<n>`. A JVM without a usable JFR logs
 `pinning.jfr.unavailable` once at DEBUG, and the detector keeps its recording feed.
 
 ### When a detector leaves a note
