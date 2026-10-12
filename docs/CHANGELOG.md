@@ -201,6 +201,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`INTERRUPT_SWALLOWING`/`INTERRUPT_MISHANDLING`: a restoring call answers only for its own path
+  (#996, item 4).** `InterruptHandlerWeaver` treated an `interrupt()` call reachable on any path
+  from the handler as handling the whole handler, and counted any call whose name mentions an
+  interrupt, `acquireUninterruptibly` and `lockInterruptibly` included, as a restore. The walk now
+  reports a handler when some path reaches a return without passing a restore, `*Interruptibly`
+  names restore nothing, and the walk tracks the `int` locals a constant made non-zero so Guava's
+  `if (interrupted) interrupt()` in a `finally` stays handled. `InterruptHandlerWeaverTest` was red
+  on the two new shapes (`restoreOnOnePathOnly`, `callAnUninterruptibleMethod`) before the change;
+  the six handled shapes, Guava's idiom among them, stay silent, and the corpus idiom, agent-pair
+  and library-excluded lanes, which drive real Guava `Uninterruptibles` bytecode, stay green.
 - **`PROCESS_STREAM_STARVATION` reports a pipe the waiter took before `waitFor` but read only
   after it (#998).** A take used to count as a drain, so `InputStream out = p.getInputStream();
   p.waitFor(); out.readAllBytes()` was silent, although it hangs a verbose child exactly like an

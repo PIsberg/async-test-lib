@@ -71,6 +71,35 @@ public class InterruptHandlingShapes {
         Thread.sleep(0);
     }
 
+    /**
+     * Swallows on one path: the flag is restored only when {@code calls} is negative, which it
+     * never is, and the other path returns with the interrupt lost (#996).
+     */
+    public void restoreOnOnePathOnly() {
+        try {
+            Thread.sleep(0);
+        } catch (InterruptedException e) {
+            if (calls < 0) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    /**
+     * Swallows: the only call in the handler names an interrupt, {@code acquireUninterruptibly},
+     * and sets no flag (#996).
+     */
+    public void callAnUninterruptibleMethod() {
+        try {
+            Thread.sleep(0);
+        } catch (InterruptedException e) {
+            PERMITS.acquireUninterruptibly();
+            PERMITS.release();
+        }
+    }
+
+    private static final java.util.concurrent.Semaphore PERMITS = new java.util.concurrent.Semaphore(1);
+
     /** Handled: restores the flag. */
     public void restoreTheFlag() {
         try {

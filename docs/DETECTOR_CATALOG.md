@@ -436,11 +436,15 @@ than a call. A `catch (InterruptedException e)` that neither rethrows nor restor
 the one cancellation signal a thread gets, and its handler runs only when an interrupt arrives,
 which a test seldom delivers. So `InterruptHandlerWeaver` buffers a method that declares such a
 handler, follows the handler through the method's control flow, ordinary code included, and calls
-it swallowing when a path reaches a return and no call that restores the flag is reachable from
-the handler at all; a path ending in an `ATHROW` hands the exception on. The walk goes past the
-handler because a handler may only note the interrupt: Guava's `Uninterruptibles` sets a flag,
-goes on waiting, and restores the interrupt in a `finally`, which an earlier version of the rule
-named on three Guava subjects of the corpus. A `run()` that returns on interrupt is a thread's own
+it swallowing when some path from the handler reaches a return without passing a call that
+restores the flag; a path ending in an `ATHROW` hands the exception on. Until #996 one restoring
+call anywhere on any path answered for the whole handler, and so did a call that merely named an
+interrupt (`acquireUninterruptibly`); now a restore covers only its own path and an
+`*Interruptibly` name restores nothing. The walk goes past the handler because a handler may only
+note the interrupt: Guava's `Uninterruptibles` sets a flag, goes on waiting, and restores the
+interrupt in a `finally`, which an earlier version of the rule named on three Guava subjects of
+the corpus. The walk carries which `int` locals a constant made non-zero, so the `finally`'s
+`if (interrupted)` takes only its restoring branch on the paths from the handler. A `run()` that returns on interrupt is a thread's own
 policy and is not named. When a method holding a swallowing handler runs on a run's thread, its
 entry names the handler's location to both detectors, once per run; `INTERRUPT_MISHANDLING` is the
 one the default preset runs.
