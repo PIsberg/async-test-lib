@@ -209,4 +209,40 @@ public class ThreadLocalMonitorTest {
                 "two thread-locals set and never removed are two leaks, even when their identity "
                         + "hashes collide (#854): " + report.uncleanedThreadLocals);
     }
+
+    @Test
+    void aPerTaskValueReadByTheNextTaskIsReported() {
+        // #995: two tasks on one thread set it (per-request state), a third reads what the second
+        // left behind.
+        ThreadLocalMonitor monitor = new ThreadLocalMonitor();
+        ThreadLocal<String> user = new ThreadLocal<>();
+        monitor.agentTaskSet(user, 1);
+        monitor.agentTaskSet(user, 2);
+        monitor.agentTaskRead(user, 3);
+        ThreadLocalMonitor.ThreadLocalReport report = monitor.analyze();
+        assertTrue(report.staleReads.size() == 1, report.toString());
+    }
+
+    @Test
+    void aValueSetOncePerThreadAndReusedIsACache() {
+        // #995: set by the first task only, then read by later ones: the per-thread cache idiom.
+        ThreadLocalMonitor monitor = new ThreadLocalMonitor();
+        ThreadLocal<StringBuilder> buffer = new ThreadLocal<>();
+        monitor.agentTaskSet(buffer, 1);
+        monitor.agentTaskRead(buffer, 2);
+        monitor.agentTaskRead(buffer, 3);
+        assertTrue(monitor.analyze().staleReads.isEmpty(), monitor.analyze().toString());
+    }
+
+    @Test
+    void aRemovedValueIsNotReadByTheNextTask() {
+        ThreadLocalMonitor monitor = new ThreadLocalMonitor();
+        ThreadLocal<String> user = new ThreadLocal<>();
+        monitor.agentTaskSet(user, 1);
+        monitor.agentRemove(user);
+        monitor.agentTaskSet(user, 2);
+        monitor.agentRemove(user);
+        monitor.agentTaskRead(user, 3);
+        assertTrue(monitor.analyze().staleReads.isEmpty(), monitor.analyze().toString());
+    }
 }

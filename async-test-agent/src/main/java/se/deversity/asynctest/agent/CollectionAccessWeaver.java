@@ -807,7 +807,13 @@ final class CollectionAccessWeaver {
             Entry.call(java.io.PipedInputStream.class, "read", "pipedRead"),
             Entry.call(java.io.PipedInputStream.class, "read", "pipedRead", byte[].class, int.class,
                     int.class),
-            Entry.call(java.io.PipedInputStream.class, "read", "pipedRead", byte[].class));
+            Entry.call(java.io.PipedInputStream.class, "read", "pipedRead", byte[].class),
+            // Thread-locals used from pooled tasks (#995): each get and set inside a handed task is
+            // recorded with the task, so a value an earlier task left behind is told from the
+            // task's own, and a remove clears it. A subclass's own overrides still run.
+            Entry.call(ThreadLocal.class, "get", "threadLocalGet"),
+            Entry.call(ThreadLocal.class, "set", "threadLocalSet", Object.class),
+            Entry.call(ThreadLocal.class, "remove", "threadLocalRemove"));
 
     /**
      * The monitor table: {@code Object.wait}, {@code notify} and {@code notifyAll} (#694).

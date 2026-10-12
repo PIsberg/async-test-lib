@@ -76,7 +76,7 @@ public class MdcContextLeakDetector {
      * @param thread      the task's thread (null-safe)
      * @param mdcSnapshot {@code MDC.getCopyOfContextMap()} result; may be {@code null} (treated as empty)
      */
-    public void recordTaskStart(Thread thread, Map<String, String> mdcSnapshot) {
+    public void recordTaskStart(Thread thread, @Nullable Map<String, String> mdcSnapshot) {
         if (thread == null) return;
         snapshots.put(thread.threadId(), new TaskSnapshot(mdcSnapshot));
     }
@@ -87,7 +87,7 @@ public class MdcContextLeakDetector {
      * @param thread      the task's thread (null-safe)
      * @param mdcSnapshot {@code MDC.getCopyOfContextMap()} result; may be {@code null} (treated as empty)
      */
-    public void recordTaskEnd(Thread thread, Map<String, String> mdcSnapshot) {
+    public void recordTaskEnd(Thread thread, @Nullable Map<String, String> mdcSnapshot) {
         if (thread == null) return;
         TaskSnapshot snap = snapshots.remove(thread.threadId());
         if (snap == null || mdcSnapshot == null) return;

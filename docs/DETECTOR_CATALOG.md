@@ -337,7 +337,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (34)
+### Agent-fed (36)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -494,7 +494,8 @@ which the `PipedInputStream` javadoc warns may deadlock.
 `FutureIgnoredDetector`, `CompletableFutureExceptionDetector`,
 `CompletableFutureBlockingCallbackDetector`, `CompletableFutureCommonPoolBlockingDetector`,
 `InterruptSwallowingDetector`, `InterruptMonitor`, `SynchronizedCollectionIterationDetector`,
-`SystemPropertyMutationDetector`, `ProcessStreamStarvationDetector`, `JdbcConnectionSharedDetector`
+`SystemPropertyMutationDetector`, `ProcessStreamStarvationDetector`, `JdbcConnectionSharedDetector`,
+`ThreadLocalMonitor`, `MdcContextLeakDetector`
 
 ### Zero-config (4)
 
@@ -547,7 +548,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (109)
+### Recording-only (107)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -565,7 +566,7 @@ recording is the feed:
 `LockContentionDetector`,
 `LazyInitRaceDetector`, `PhaserDetector`, `StampedLockDetector`, `ExchangerDetector`,
 `ScheduledExecutorDetector`, `ForkJoinPoolDetector`, `ThreadFactoryDetector`,
-`RaceConditionDetector`, `ThreadLocalMonitor`, `BusyWaitDetector`,
+`RaceConditionDetector`, `BusyWaitDetector`,
 `ThreadLeakDetector`, `UnboundedQueueDetector`, `ThreadStarvationDetector`,
 `TimerDetector`, `CopyOnWriteCollectionDetector`,
 `StructuredConcurrencyMisuseDetector`, `VirtualThreadContextLeakDetector`,
@@ -580,7 +581,6 @@ recording is the feed:
 `OptimisticReadValidationDetector`,
 `WeakReferenceRaceDetector`,
 `StatefulLambdaDetector`,
-`MdcContextLeakDetector`,
 `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`,
 `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`,
 `NotifyWithoutMonitorDetector`, `SharedSecureRandomDetector`,

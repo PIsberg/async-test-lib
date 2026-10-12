@@ -136,7 +136,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 88. MDC Context Leak Detector
 * **Severity**: `MEDIUM`
-* **Description**: Detects SLF4J MDC (Mapped Diagnostic Context) entries not cleared at task end. When a thread pool reuses a thread, diagnostic context (request ID, user, trace ID) set by one task leaks into the next task run on that thread, making unrelated log lines look correlated.
+* **Description**: Detects SLF4J MDC (Mapped Diagnostic Context) entries not cleared at task end. When a thread pool reuses a thread, diagnostic context (request ID, user, trace ID) set by one task leaks into the next task run on that thread, making unrelated log lines look correlated. With `collections=true` (#995) no recording call is needed: the woven `submit` wraps each pooled task, and the wrapper snapshots `MDC.getCopyOfContextMap()` at the task's start and end, so a key the task leaves behind is reported. The library already depends on `slf4j-api`, so nothing about MDC is woven.
 * **Buggy Code**:
   ```java
   void handleRequest(String requestId) {

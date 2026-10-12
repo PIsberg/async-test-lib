@@ -175,6 +175,14 @@ class DetectorEvidenceMatchesCodeTest {
             entry(DetectorType.STATIC_INIT_DEADLOCK, "the live stack sample is graded FACT on OBSERVED "
                     + "evidence, since one slow initializer looks the same, and the cycle of recorded "
                     + "init requests is FACT on ASSERTED; with no grade above FACT it keeps ASSERTED"),
+            entry(DetectorType.THREAD_LOCAL_LEAKS, "the woven get and set inside a handed task "
+                    + "see a stale read of another task's value, but the round-based findings "
+                    + "are a thread count and a retained-values threshold over recorded calls, "
+                    + "and the report does not grade the two apart"),
+            entry(DetectorType.MDC_CONTEXT_LEAK, "the woven task wrapper snapshots the real MDC "
+                    + "at each pooled task's start and end, but recordTaskStart and "
+                    + "recordTaskEnd still take the snapshots a caller passes; the report does "
+                    + "not grade the two apart"),
             entry(DetectorType.EXECUTOR_SHUTDOWN, "the woven Executors factories declare what the "
                     + "run created and the executor's own state decides shutdown, but "
                     + "recordExecutorCreated still takes the caller's word for ownership, which "
@@ -208,7 +216,7 @@ class DetectorEvidenceMatchesCodeTest {
                     + "recordStreamTaken takes the caller's word for the take itself"));
 
     /** How many entries {@link #FED_BELOW_OBSERVED} may hold; lower it when an entry leaves. */
-    private static final int FED_BELOW_OBSERVED_CEILING = 13;
+    private static final int FED_BELOW_OBSERVED_CEILING = 15;
 
     /**
      * Ungraded detectors above the PROMPT cap that name a threshold, each with why the threshold

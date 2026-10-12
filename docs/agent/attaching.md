@@ -130,6 +130,14 @@ calls; under the map's own monitor it is atomic and stays silent
 a boxed primitive such as `Integer.valueOf(1)` or an enum constant is not, since it is the same
 instance only because its value is (#996).
 
+Pooled tasks carry two more feeds (#995). The task wrapper a woven `submit` hands the pool snapshots
+the MDC at the task's start and end for `MdcContextLeakDetector`, and gives the task an id, so the
+woven `ThreadLocal.get`, `set` and `remove` can tell `ThreadLocalMonitor` which task set a value: a
+task that reads a value an earlier task on its thread set and left behind is reported, if two tasks
+on that thread both set it, which a set-once per-thread cache never does
+(`ThreadLocalTaskLeakWeavingTest`, `ThreadLocalTaskLeakSparesRemovalTest`,
+`ThreadLocalTaskLeakSparesCacheTest`, `MdcTaskLeakWeavingTest`, `MdcTaskLeakSparesClearedTest`).
+
 Persistence handles are watched by name (#992). A JPA `EntityManager` or Hibernate `Session` is not on
 the agent's class path and must not be, so `PersistenceHandleWeaver` substitutes nothing: before a
 call whose owner, as written at the call site, is `jakarta.persistence.EntityManager`,

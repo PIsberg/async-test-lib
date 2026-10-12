@@ -100,6 +100,14 @@ final class LibraryReach {
                 "agent-fed since #992 through calls on a JPA EntityManager or Hibernate Session, "
                         + "matched by name; no corpus library calls one, and the JDBC types it also "
                         + "covers are recording-fed, so its recording-lane pair stands");
+        unreached(DetectorType.THREAD_LOCAL_LEAKS,
+                "agent-fed since #995 through ThreadLocal calls inside the pooled tasks a woven "
+                        + "submit hands over; a firing library row needs a library that leaves "
+                        + "per-request state on a pool thread for the next task to read, and no "
+                        + "corpus library ships that defect");
+        unreached(DetectorType.MDC_CONTEXT_LEAK,
+                "agent-fed since #995 through the MDC snapshots around the pooled tasks a woven "
+                        + "submit hands over; no corpus library writes to the MDC");
     }
 
     private static void unreached(DetectorType type, String reason) {

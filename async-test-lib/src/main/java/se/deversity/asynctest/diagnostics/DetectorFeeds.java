@@ -143,7 +143,12 @@ public final class DetectorFeeds {
             DetectorType.PROCESS_STREAM_STARVATION,
             // Every call on a JPA EntityManager or Hibernate Session, matched by name, since
             // neither may be on the agent's class path (#992).
-            DetectorType.JDBC_CONNECTION_SHARED);
+            DetectorType.JDBC_CONNECTION_SHARED,
+            // ThreadLocal get, set and remove inside the pooled tasks a woven submit hands over:
+            // a value an earlier task left on the thread, read by the next (#995).
+            DetectorType.THREAD_LOCAL_LEAKS,
+            // The MDC at the start and end of each pooled task the woven submit hands over (#995).
+            DetectorType.MDC_CONTEXT_LEAK);
 
     /**
      * Fed by the JVM and the harness with no recording call.

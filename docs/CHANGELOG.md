@@ -201,6 +201,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`THREAD_LOCAL_LEAKS` and `MDC_CONTEXT_LEAK` are fed by the agent, and the per-thread cache idiom
+  stays silent (#995).** Both fired only on recorded calls. With `collections=true` the task wrapper
+  a woven `submit` hands the pool now snapshots `MDC.getCopyOfContextMap()` at each task's start and
+  end into the MDC detector (the library already depends on `slf4j-api`, so nothing about MDC is
+  woven), and gives each task an id. `ThreadLocal.get`, `set` and `remove` are woven, and
+  `ThreadLocalMonitor` judges contamination rather than absence: a read in a pooled task of a value
+  an earlier task on that thread set and never removed, reported only for a `ThreadLocal` two tasks
+  on one thread both set. A formatter or buffer set once per thread and reused is the cache idiom
+  the issue named and is not reported. 40 detectors now see unmodified code, 107 stay
+  recording-only. Tests: `ThreadLocalTaskLeakWeavingTest` and `MdcTaskLeakWeavingTest` were red
+  before the feeds; the removal, cache and MDC-cleared twins stay silent, and the removal and cache
+  twins went red with the remove made a no-op and every thread-local made per-task on purpose. (An
+  earlier draft of those twins passed for nothing: it filtered on a detector name the violations do
+  not carry.) Agent module (417) and the full corpus module, whose libraries now run through the
+  woven `ThreadLocal` calls, are green.
 - **A JPA `EntityManager` or Hibernate `Session` shared across threads is reported (#992).** Both
   are documented as one thread at a time, and the typical misuse (an `@Async` method or a parallel
   stream inside a transaction) had no coverage. By the owner's choice it extends

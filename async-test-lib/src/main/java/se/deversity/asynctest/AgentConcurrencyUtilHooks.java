@@ -52,7 +52,9 @@ import se.deversity.asynctest.diagnostics.ExecutorShutdownDetector;
 import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
+import se.deversity.asynctest.diagnostics.MdcContextLeakDetector;
 import se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector;
+import se.deversity.asynctest.diagnostics.ThreadLocalMonitor;
 import se.deversity.asynctest.diagnostics.SemaphoreMisuseDetector;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.vibetags.annotations.AIContract;
@@ -3302,6 +3304,109 @@ public final class AgentConcurrencyUtilHooks {
         }
     }
 
+    /** Ids for the pooled tasks the run hands over, one per task execution (#995). */
+    private static final AtomicLong NEXT_TASK = new AtomicLong();
+
+    /** The id of the handed task running on this thread, or 0 outside one (#995). */
+    private static final ThreadLocal<long[]> RUNNING_TASK = ThreadLocal.withInitial(() -> new long[1]);
+
+    /** {@return the id of the task this thread was running before}, after starting a new one */
+    static long enterTask() {
+        long[] running = RUNNING_TASK.get();
+        long before = running[0];
+        running[0] = NEXT_TASK.incrementAndGet();
+        return before;
+    }
+
+    /** Restores the task id {@link #enterTask()} replaced. */
+    static void leaveTask(long before) {
+        RUNNING_TASK.get()[0] = before;
+    }
+
+    /**
+     * Weaves {@code ThreadLocal.get()}: inside a pooled task the run handed over, the read is
+     * recorded on {@code THREAD_LOCAL_LEAKS} with the task, so a value an earlier task on the thread
+     * set and left behind is told from this task's own (#995).
+     *
+     * @param receiver the thread-local
+     * @return what the get returns
+     * @since 1.13.2
+     */
+    public static @Nullable Object threadLocalGet(ThreadLocal<?> receiver) {
+        Object value = receiver.get();
+        long task = RUNNING_TASK.get()[0];
+        if (task != 0) {
+            ThreadLocalMonitor monitor = AsyncTestContext.currentThreadLocalMonitor();
+            if (monitor != null) {
+                monitor.agentTaskRead(receiver, task);
+            }
+        }
+        return value;
+    }
+
+    /**
+     * Weaves {@code ThreadLocal.set(Object)}, as {@link #threadLocalGet}: inside a pooled task the
+     * set is recorded with the task (#995).
+     *
+     * @param receiver the thread-local
+     * @param value    the value to set
+     * @since 1.13.2
+     */
+    @SuppressWarnings("unchecked")
+    public static void threadLocalSet(ThreadLocal<?> receiver, @Nullable Object value) {
+        ((ThreadLocal<Object>) receiver).set(value);
+        long task = RUNNING_TASK.get()[0];
+        if (task != 0) {
+            ThreadLocalMonitor monitor = AsyncTestContext.currentThreadLocalMonitor();
+            if (monitor != null) {
+                monitor.agentTaskSet(receiver, task);
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code ThreadLocal.remove()}: the next task on this thread starts clean (#995).
+     *
+     * @param receiver the thread-local
+     * @since 1.13.2
+     */
+    public static void threadLocalRemove(ThreadLocal<?> receiver) {
+        receiver.remove();
+        ThreadLocalMonitor monitor = AsyncTestContext.currentThreadLocalMonitor();
+        if (monitor != null) {
+            monitor.agentRemove(receiver);
+        }
+    }
+
+    /**
+     * Snapshots the MDC at the start of a pooled task the run handed over, for
+     * {@code MDC_CONTEXT_LEAK} (#995): a key the task leaves behind is in the end snapshot and not in
+     * this one. Inside the loan, so the detector is the submitting run's.
+     */
+    static void mdcAtTaskStart() {
+        MdcContextLeakDetector detector = AsyncTestContext.currentMdcContextLeakDetector();
+        if (detector != null) {
+            detector.recordTaskStart(Thread.currentThread(), mdcCopy());
+        }
+    }
+
+    /** The end of the task {@link #mdcAtTaskStart()} began, before the loan is returned (#995). */
+    static void mdcAtTaskEnd() {
+        MdcContextLeakDetector detector = AsyncTestContext.currentMdcContextLeakDetector();
+        if (detector != null) {
+            detector.recordTaskEnd(Thread.currentThread(), mdcCopy());
+        }
+    }
+
+    /** {@code MDC.getCopyOfContextMap()}, or {@code null} where the backend refuses. */
+    private static java.util.@Nullable Map<String, String> mdcCopy() {
+        try {
+            return org.slf4j.MDC.getCopyOfContextMap();
+        } catch (RuntimeException | LinkageError e) { // NOPMD - a broken backend must not fail the task
+            return java.util.Map.of();
+        }
+    }
+
     /**
      * A submitted task carrying the submitter's clock to the thread that runs it, and that
      * thread's clock back to whoever gets the result (#741).
@@ -3384,6 +3489,8 @@ public final class AgentConcurrencyUtilHooks {
             HappensBefore.receive(submitted);
             AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
+            mdcAtTaskStart();
+            long taskBefore = enterTask();
             HandedTask outer = COMMON_POOL_TASK.get();
             boolean entered = enterPool();
             try {
@@ -3392,6 +3499,8 @@ public final class AgentConcurrencyUtilHooks {
                 leavePool(entered, outer);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
+                leaveTask(taskBefore);
+                mdcAtTaskEnd();
                 AsyncTestContext.restoreLent(lentBefore);
             }
         }
@@ -3401,6 +3510,8 @@ public final class AgentConcurrencyUtilHooks {
             HappensBefore.receive(submitted);
             AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
+            mdcAtTaskStart();
+            long taskBefore = enterTask();
             HandedTask outer = COMMON_POOL_TASK.get();
             boolean entered = enterPool();
             try {
@@ -3409,6 +3520,8 @@ public final class AgentConcurrencyUtilHooks {
                 leavePool(entered, outer);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
+                leaveTask(taskBefore);
+                mdcAtTaskEnd();
                 AsyncTestContext.restoreLent(lentBefore);
             }
         }
@@ -3418,6 +3531,8 @@ public final class AgentConcurrencyUtilHooks {
             HappensBefore.receive(submitted);
             AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
+            mdcAtTaskStart();
+            long taskBefore = enterTask();
             HandedTask outer = COMMON_POOL_TASK.get();
             boolean entered = enterPool();
             try {
@@ -3426,6 +3541,8 @@ public final class AgentConcurrencyUtilHooks {
                 leavePool(entered, outer);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
+                leaveTask(taskBefore);
+                mdcAtTaskEnd();
                 AsyncTestContext.restoreLent(lentBefore);
             }
         }
