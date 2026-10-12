@@ -201,6 +201,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`VIRTUAL_THREAD_PINNING` reports a pin on a virtual thread the body starts, with the agent
+  attached (#983).** JFR reports every virtual thread in the JVM and names no parent, so the feed
+  kept only the workers' own pins and counted a thread the body started
+  (`Thread.ofVirtual().start(...)`) as unattributed. `AsyncTestContext` now keeps the ids of the
+  threads a run's threads start through the woven `Thread.start` and `Thread.Builder.start`
+  (`spawnedThreadIds()`), and `JfrPinningStream` reads them beside the workers, giving each the
+  round its starter was in. With the agent the feed also opens on platform workers, for the
+  virtual threads their body starts. Without the agent nothing changes. Tests:
+  `BodyStartedPinningOnVirtualWorkersTest` and `BodyStartedPinningOnPlatformWorkersTest` were red
+  before the change; `ForeignPinningIsNotAttributedTest` (fresh pinning threads started each round
+  by a thread that is no worker) stays silent, and went red when the spawned set was made JVM-wide
+  on purpose.
 - **`VIRTUAL_THREAD_PINNING` grades observed pins apart from recorded ones, is paired in the
   corpus, and stopped reporting the agent's own pins (#984).** `PinningReport` implements
   `GradedFindings`: a pin the JVM reported through `jdk.VirtualThreadPinned` is `FACT` on

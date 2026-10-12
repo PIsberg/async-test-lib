@@ -489,10 +489,14 @@ Watch the JVM and the harness themselves (`ThreadMXBean` deadlock scans, per-rou
 snapshots, live `<clinit>` stacks, the JVM's `jdk.VirtualThreadPinned` JFR event) and can fire with
 no agent and no recording call.
 
-The pinning detector takes the JFR feed only for a run on virtual workers (`useVirtualThreads`,
-the default) and only for pins on those workers: JFR reports every virtual thread in the JVM, so a
-pin on a thread the body started, or in a test running in parallel, is counted in
-`runner.pinning.unattributed` and not reported. A call site is reported only when it pinned in at
+The pinning detector takes the JFR feed for a run on virtual workers (`useVirtualThreads`, the
+default), and for pins on those workers or on threads they started. JFR reports every virtual
+thread in the JVM and names no parent, so a thread the body started is attributed only with the
+agent attached (`collections=true`), which records every thread a worker starts through a woven
+`Thread.start` or `Thread.Builder.start`; with the agent the feed also opens on platform workers,
+for the virtual threads their body starts (#983). A pin on a thread started in code the agent does
+not weave, or in a test running in parallel, is counted in `runner.pinning.unattributed` and not
+reported. A call site is reported only when it pinned in at
 least two rounds: workers contending on `ClassLoader.loadClass` or a library's first use pin for a
 few milliseconds once per JVM, which is warm-up and not the code, so a run of one round gets no
 observed finding. A pin whose first frame outside the JDK is the agent's own code happened inside

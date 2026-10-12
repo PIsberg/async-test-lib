@@ -299,11 +299,14 @@ public class ConcurrencyRunner {
         AgentAutoAttach.attachIfRequested();
         AtomicityValidator telemetryTarget = phase2Context.sharedAtomicityValidator();
         boolean telemetryRunning = telemetryTarget != null && TelemetryRegistry.isRunning();
-        // The JVM's jdk.VirtualThreadPinned events are filtered by the same worker set, and
-        // only a virtual worker can pin, so platform workers leave the feed off.
-        @Nullable VirtualThreadPinningDetector pinningTarget = config.useVirtualThreads
-                ? phase2Context.sharedVirtualThreadPinningDetector()
-                : null;
+        // The JVM's jdk.VirtualThreadPinned events are filtered by the same worker set, plus the
+        // threads the workers started when the agent attributes them (#983). Only a virtual thread
+        // can pin, so platform workers leave the feed off unless the agent is there to attribute
+        // a virtual thread the body starts.
+        @Nullable VirtualThreadPinningDetector pinningTarget =
+                config.useVirtualThreads || TelemetryRegistry.isRunning()
+                        ? phase2Context.sharedVirtualThreadPinningDetector()
+                        : null;
         @Nullable Set<Long> workerThreadIds = (telemetryRunning || pinningTarget != null)
                 ? ConcurrentHashMap.newKeySet()
                 : null;
@@ -487,7 +490,8 @@ public class ConcurrencyRunner {
         // between and leave a JFR recording running for the life of the JVM. start() never
         // throws: without a usable JFR it returns null and the detector keeps its recorded feed.
         @Nullable JfrPinningStream pinningStream = (pinningTarget != null && workerThreadIds != null)
-                ? JfrPinningStream.start(pinningTarget, workerThreadIds, testMethod.getName())
+                ? JfrPinningStream.start(pinningTarget, workerThreadIds, phase2Context.spawnedThreadIds(),
+                        testMethod.getName())
                 : null;
         phase2Analysis.drainBeforeAnalysis(pinningStream);
 
@@ -687,10 +691,11 @@ public class ConcurrencyRunner {
                 if (unattributedPins > 0) {
                     log.info("runner.pinning.unattributed test={} events={} "
                             + "reason=\"the JVM reported virtual-thread pins on threads that are not "
-                            + "this run's workers: threads the body started, or a test running in "
+                            + "this run's workers or threads they started through woven code: "
+                            + "threads started in code the agent does not weave, or a test running in "
                             + "parallel, so they are not this run's findings\" "
-                            + "hint=\"pin in the @AsyncTest workers themselves to have the pin "
-                            + "reported, or read a clean pinning report as covering the workers only\"",
+                            + "hint=\"attach the agent with collections=true so threads the body "
+                            + "starts are attributed, or pin in the @AsyncTest workers themselves\"",
                         testMethod.getName(), unattributedPins);
                 }
                 // DEBUG: a pin inside the agent's transformer, on a class the body defined (#984).

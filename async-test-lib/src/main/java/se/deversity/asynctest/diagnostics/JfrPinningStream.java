@@ -55,8 +55,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * without the agent; it is counted in {@link #instrumentationEvents()} and not reported (#984).
  *
  * <p>JFR hands every event to every open stream, so two runs in parallel each see the other's
- * pins. Only events on a thread in the run's worker set are kept; the rest are counted in
- * {@link #unattributedEvents()}. The events arrive in batches, and none had arrived before
+ * pins. Only events on a thread in the run's worker set, or on a thread one of the run's threads
+ * started through a woven {@code Thread.start} (the agent records those, #983), are kept; the rest
+ * are counted in {@link #unattributedEvents()}. The events arrive in batches, and none had arrived before
  * {@code stop()} in the probe while all had when it returned, so {@link #close()} is what makes
  * them visible to an analysis that follows it.
  *
@@ -89,8 +90,25 @@ public final class JfrPinningStream implements AutoCloseable {
      */
     public static @Nullable JfrPinningStream start(VirtualThreadPinningDetector target, Set<Long> workers,
                                                    String testName) {
+        return start(target, workers, Set.of(), testName);
+    }
+
+    /**
+     * {@link #start(VirtualThreadPinningDetector, Set, String)} that also attributes a pin on a
+     * thread in {@code spawned}, the threads the run's own threads started, which the agent records
+     * from a woven {@code Thread.start} (#983). Such a thread takes the round its starter was in,
+     * read at the same round boundaries as the workers.
+     *
+     * @param target   the run's pinning detector
+     * @param workers  the run's worker thread ids, filled as workers start
+     * @param spawned  the ids of threads the run's threads started, filled as they start
+     * @param testName the test method, for log lines
+     * @return the open stream, or {@code null} without a usable JFR
+     */
+    public static @Nullable JfrPinningStream start(VirtualThreadPinningDetector target, Set<Long> workers,
+                                                   Set<Long> spawned, String testName) {
         try {
-            return new JfrPinningStream(Live.start(target, workers, testName));
+            return new JfrPinningStream(Live.start(target, workers, spawned, testName));
         } catch (LinkageError | RuntimeException e) { // NOPMD - any failure to start leaves the recorded feed, never the run
             if (UNAVAILABLE_LOGGED.compareAndSet(false, true)) {
                 log.debug("pinning.jfr.unavailable test={} reason=\"{}\"", testName, e.toString());
@@ -142,6 +160,8 @@ public final class JfrPinningStream implements AutoCloseable {
         private final RecordingStream stream;
         private final VirtualThreadPinningDetector target;
         private final Set<Long> workers;
+        /** Threads the run's threads started through a woven {@code Thread.start} (#983). */
+        private final Set<Long> spawned;
         private final String testName;
         private final AtomicLong unattributed = new AtomicLong();
         private final AtomicLong instrumentation = new AtomicLong();
@@ -156,18 +176,20 @@ public final class JfrPinningStream implements AutoCloseable {
         private int singleRoundSites;
 
         private Live(RecordingStream stream, VirtualThreadPinningDetector target, Set<Long> workers,
-                     String testName) {
+                     Set<Long> spawned, String testName) {
             this.stream = stream;
             this.target = target;
             this.workers = workers;
+            this.spawned = spawned;
             this.testName = testName;
         }
 
-        static Live start(VirtualThreadPinningDetector target, Set<Long> workers, String testName) {
+        static Live start(VirtualThreadPinningDetector target, Set<Long> workers, Set<Long> spawned,
+                          String testName) {
             RecordingStream stream = new RecordingStream();
             try {
                 stream.enable(EVENT).withThreshold(Duration.ZERO).withStackTrace();
-                Live live = new Live(stream, target, workers, testName);
+                Live live = new Live(stream, target, workers, spawned, testName);
                 stream.onEvent(EVENT, live::receive);
                 stream.startAsync();
                 return live;
@@ -189,6 +211,9 @@ public final class JfrPinningStream implements AutoCloseable {
             for (Long id : workers) {
                 roundOf.putIfAbsent(id, completed);
             }
+            for (Long id : spawned) {
+                roundOf.putIfAbsent(id, completed);
+            }
         }
 
         private void receive(RecordedEvent event) {
@@ -198,7 +223,7 @@ public final class JfrPinningStream implements AutoCloseable {
                     return;
                 }
                 long threadId = thread.getJavaThreadId();
-                if (!workers.contains(threadId)) {
+                if (!workers.contains(threadId) && !spawned.contains(threadId)) {
                     unattributed.incrementAndGet();
                     return;
                 }

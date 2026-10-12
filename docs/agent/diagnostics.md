@@ -56,9 +56,11 @@ table above.
 `runner.pinning.unattributed test=... events=<n>` is logged per test rather than per JVM, because
 it is about that test's body. `VirtualThreadPinningDetector` reads the JVM's own
 `jdk.VirtualThreadPinned` JFR event on a run with virtual workers, and JFR reports every virtual
-thread in the JVM: a pin on a thread the body started, or in a test running in parallel, cannot be
-attributed to this run and is counted here instead of reported. Pin in the `@AsyncTest` workers
-themselves to have the pin reported. A call site that pinned in one round only is not reported
+thread in the JVM with no parent: a pin on a thread started in code the agent does not weave, or in
+a test running in parallel, cannot be attributed to this run and is counted here instead of
+reported. With the agent attached (`collections=true`) a thread a worker starts through woven code
+is attributed (#983). Otherwise pin in the `@AsyncTest` workers themselves to have the pin
+reported. A call site that pinned in one round only is not reported
 either (class loading on first use is the usual cause), and is counted at DEBUG in
 `runner.pinning.single-round test=... sites=<n>`. A pin inside the agent's own class-file
 transformer, on a class the body defined, is the instrumentation's rather than the code's and is
