@@ -884,16 +884,17 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
-     * Weaves {@code Process.getInputStream()}: the child's stdout pipe is taken, which the detector
-     * reads as drained.
+     * Weaves {@code Process.getInputStream()}: with {@code PROCESS_STREAM_STARVATION} on, the caller
+     * gets the child's stdout pipe in a stream that notes who reads it and whether it reached its
+     * end, so a pipe taken before a wait but read only after it is told from one read first (#998).
+     * Otherwise the pipe itself.
      *
      * @param receiver the child process
      * @return the stream
      * @since 1.13.2
      */
     public static InputStream processInputStream(Process receiver) {
-        streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDOUT);
-        return receiver.getInputStream();
+        return observed(receiver, ProcessStreamStarvationDetector.Stream.STDOUT, receiver.getInputStream());
     }
 
     /**
@@ -904,8 +905,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static InputStream processErrorStream(Process receiver) {
-        streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDERR);
-        return receiver.getErrorStream();
+        return observed(receiver, ProcessStreamStarvationDetector.Stream.STDERR, receiver.getErrorStream());
     }
 
     /**
@@ -970,6 +970,12 @@ public final class AgentConcurrencyUtilHooks {
         if (detector != null) {
             detector.recordWaitFor(process, Thread.currentThread());
         }
+    }
+
+    private static InputStream observed(Process process, ProcessStreamStarvationDetector.Stream stream,
+                                        InputStream raw) {
+        ProcessStreamStarvationDetector detector = AsyncTestContext.currentProcessStreamStarvationDetector();
+        return detector == null ? raw : detector.observeStream(process, stream, raw);
     }
 
     private static void streamTaken(Process process, ProcessStreamStarvationDetector.Stream stream) {

@@ -201,6 +201,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`PROCESS_STREAM_STARVATION` reports a pipe the waiter took before `waitFor` but read only
+  after it (#998).** A take used to count as a drain, so `InputStream out = p.getInputStream();
+  p.waitFor(); out.readAllBytes()` was silent, although it hangs a verbose child exactly like an
+  untaken pipe. New `ProcessStreamStarvationDetector.observeStream(process, stream, raw)` hands out
+  a `FilterInputStream` over the pipe that notes which threads read it and whether a read reached
+  its end; with the detector on, the woven `getInputStream` and `getErrorStream` return it (the
+  same instance per process and stream). A pipe the waiter took that way counts as drained only if
+  it was read to its end before the wait, or another thread read or took it. `inputReader`,
+  `errorReader` and `recordStreamTaken` keep the old rule. Tests: the unit test and
+  `ProcessTakenBeforeWaitWeavingTest` were red before the change; the twins (read to the end then
+  wait, and take then hand the stream to a drain thread) stay silent in the unit test and in
+  `ProcessFeedSparesCorrectUseTest`. The corpus agent-pair lane's two process rows read through
+  the wrapped stream and stay green; no corpus idiom-lane body uses a process, so that lane says
+  nothing about the wrapper.
 - **`VIRTUAL_THREAD_PINNING` reports a pin on a virtual thread the body starts, with the agent
   attached (#983).** JFR reports every virtual thread in the JVM and names no parent, so the feed
   kept only the workers' own pins and counted a thread the body started

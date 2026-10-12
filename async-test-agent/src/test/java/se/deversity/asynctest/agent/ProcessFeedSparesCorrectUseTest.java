@@ -49,6 +49,11 @@ class ProcessFeedSparesCorrectUseTest {
     }
 
     @AsyncTest(threads = 2, invocations = 1, includes = DetectorType.PROCESS_STREAM_STARVATION)
+    void takeThenHandOffThenWait() throws Exception {
+        BEAN.takeThenHandOffThenWait();
+    }
+
+    @AsyncTest(threads = 2, invocations = 1, includes = DetectorType.PROCESS_STREAM_STARVATION)
     void discardThenWait() throws Exception {
         BEAN.discardThenWait();
     }

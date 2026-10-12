@@ -125,6 +125,69 @@ class ProcessStreamStarvationDetectorTest {
     }
 
     @Test
+    @DisplayName("a pipe the waiter took before its wait but read only after it is reported (#998)")
+    void takenBeforeTheWaitButReadAfterItIsReported() throws Exception {
+        ProcessStreamStarvationDetector detector = new ProcessStreamStarvationDetector();
+        ProcessBuilder merged = javaVersion().redirectErrorStream(true);
+        Process process = java(merged);
+        detector.recordStarted(merged, process);
+
+        java.io.InputStream out = detector.observeStream(process,
+                ProcessStreamStarvationDetector.Stream.STDOUT, process.getInputStream());
+        detector.recordWaitFor(process, Thread.currentThread());
+        assertTrue(process.waitFor(30, TimeUnit.SECONDS));
+        assertTrue(out.readAllBytes().length > 0, "java -version writes its banner");
+
+        ProcessStreamStarvationDetector.Report report = detector.analyze();
+        assertTrue(report.hasIssues(), "the take came first but the read came after the wait, "
+                + "which hangs a verbose child exactly like an untaken pipe: " + report);
+        assertTrue(report.toString().contains("stdout"), report.toString());
+    }
+
+    @Test
+    @DisplayName("a pipe the waiter read to its end before waiting is not reported (#998)")
+    void readToTheEndBeforeTheWaitIsSilent() throws Exception {
+        ProcessStreamStarvationDetector detector = new ProcessStreamStarvationDetector();
+        ProcessBuilder merged = javaVersion().redirectErrorStream(true);
+        Process process = java(merged);
+        detector.recordStarted(merged, process);
+
+        java.io.InputStream out = detector.observeStream(process,
+                ProcessStreamStarvationDetector.Stream.STDOUT, process.getInputStream());
+        assertTrue(out.readAllBytes().length > 0, "java -version writes its banner");
+        detector.recordWaitFor(process, Thread.currentThread());
+        assertTrue(process.waitFor(30, TimeUnit.SECONDS));
+
+        assertFalse(detector.analyze().hasIssues(), detector.analyze().toString());
+    }
+
+    @Test
+    @DisplayName("a pipe the waiter took and another thread reads is not reported (#998)")
+    void takenByTheWaiterAndReadByAnotherThreadIsSilent() throws Exception {
+        ProcessStreamStarvationDetector detector = new ProcessStreamStarvationDetector();
+        ProcessBuilder merged = javaVersion().redirectErrorStream(true);
+        Process process = java(merged);
+        detector.recordStarted(merged, process);
+
+        java.io.InputStream out = detector.observeStream(process,
+                ProcessStreamStarvationDetector.Stream.STDOUT, process.getInputStream());
+        Thread drain = new Thread(() -> {
+            try {
+                out.readAllBytes();
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        });
+        detector.recordWaitFor(process, Thread.currentThread());
+        drain.start();
+        assertTrue(process.waitFor(30, TimeUnit.SECONDS));
+        drain.join();
+
+        assertFalse(detector.analyze().hasIssues(), "the stream was handed to a drain thread, the "
+                + "fix itself: " + detector.analyze());
+    }
+
+    @Test
     @DisplayName("a pipe the waiting thread takes only after its wait is still reported")
     void waiterTakingAfterItsWaitIsReported() throws Exception {
         ProcessStreamStarvationDetector detector = new ProcessStreamStarvationDetector();
