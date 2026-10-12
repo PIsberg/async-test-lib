@@ -722,6 +722,19 @@ public final class AsyncTestContext {
     }
 
     /**
+     * Internal: registry-backed {@link ExecutorShutdownDetector} for this context, or {@code null}
+     * when {@link DetectorType#EXECUTOR_SHUTDOWN} is not enabled. Public only so
+     * {@code ConcurrencyRunner}, in another package, can hold its "never shut down" verdict until
+     * the test's {@code @AfterEach} methods have run (#996); not part of the stable public API.
+     *
+     * @return the shared detector, or {@code null} when it is disabled
+     * @since 1.13.2
+     */
+    public @Nullable ExecutorShutdownDetector sharedExecutorShutdownDetector() {
+        return executorShutdownDetector;
+    }
+
+    /**
      * Internal: registry-backed {@link VirtualThreadPinningDetector} for this context, or
      * {@code null} when {@link DetectorType#VIRTUAL_THREAD_PINNING} is not enabled.
      *

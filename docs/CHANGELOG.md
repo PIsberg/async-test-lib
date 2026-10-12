@@ -201,6 +201,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`EXECUTOR_SHUTDOWN` no longer reports a pool the test class closes in `@AfterEach` (#996,
+  item 3).** Analysis runs inside the test method, before JUnit calls `@AfterEach`, so a pool the
+  run declared and teardown shut down read as never shut down. In a class that declares an
+  `@AfterEach`, the JUnit interceptor now runs the body through
+  `ConcurrencyRunner.executeBeforeTeardown`, the detector holds its "never shut down" verdicts, and
+  the interceptor's new `afterEach` callback, which JUnit calls after the test's own `@AfterEach`
+  methods, reports the pools still open through the same print, listener and failOn path as every
+  other finding (gated only when the run had passed its own gate). Behaviour change for listeners:
+  in such a class that report now arrives after `@AfterEach`. A class without `@AfterEach`, and the
+  programmatic `AsyncTestRunner`, report inline as before. The corpus's subject window moved from
+  `before/afterTestExecution` to `before/afterEach` to keep attributing it. Tests:
+  `ExecutorClosedInTeardownTest.closedInAfterEachIsSilent` was red before the change; a pool a
+  teardown forgets is still reported, and still fails `failOn = MEDIUM` (that case went red with the
+  held verdict's gate disabled on purpose). Full corpus module green.
 - **`SYNCHRONIZED_COLLECTION_ITERATION` judges a synchronized set it did not see being made (#996,
   item 2).** The agent-fed path judged a synchronized list against itself and a map view against
   the map it saw return it, and skipped any other synchronized set or collection, since it might be
