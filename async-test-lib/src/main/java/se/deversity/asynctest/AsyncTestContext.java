@@ -2062,6 +2062,11 @@ public final class AsyncTestContext {
      * <p>The woven {@code submit} hands it a future its caller discarded, which the detector judges
      * from the future itself at analysis.
      */
+    static @Nullable JdbcConnectionSharedDetector currentJdbcConnectionSharedDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.jdbcConnectionSharedDetector;
+    }
+
     static @Nullable FutureIgnoredDetector currentFutureIgnoredDetector() {
         AsyncTestContext context = agentContext();
         return context == null ? null : context.futureIgnoredDetector;

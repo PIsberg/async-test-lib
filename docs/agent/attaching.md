@@ -130,6 +130,15 @@ calls; under the map's own monitor it is atomic and stays silent
 a boxed primitive such as `Integer.valueOf(1)` or an enum constant is not, since it is the same
 instance only because its value is (#996).
 
+Persistence handles are watched by name (#992). A JPA `EntityManager` or Hibernate `Session` is not on
+the agent's class path and must not be, so `PersistenceHandleWeaver` substitutes nothing: before a
+call whose owner, as written at the call site, is `jakarta.persistence.EntityManager`,
+`javax.persistence.EntityManager`, `org.hibernate.Session` or `org.hibernate.StatelessSession`, it
+copies the receiver off the stack and hands it to `JdbcConnectionSharedDetector`, which reports a
+handle two threads held at once; a `close()` lets it go. Calls with more than two arguments, or a
+`long` or `double` one, are left alone (`PersistenceHandleWeavingTest`,
+`PersistenceHandleSparesOnePerThreadTest`).
+
 Executors are watched the same way. The fourteen `Executors` factories are woven, and an executor a
 run thread creates through one of them is declared to `ExecutorShutdownDetector` as the run's own,
 which is the detector's whole rule: an executor handed in from outside the run, or built in a

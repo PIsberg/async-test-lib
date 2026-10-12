@@ -96,6 +96,10 @@ final class LibraryReach {
                 "agent-fed through the woven Process.waitFor and pipe getters; a firing library "
                         + "row needs a library method that starts a child and waits before "
                         + "draining it, and no corpus library starts processes");
+        unreached(DetectorType.JDBC_CONNECTION_SHARED,
+                "agent-fed since #992 through calls on a JPA EntityManager or Hibernate Session, "
+                        + "matched by name; no corpus library calls one, and the JDBC types it also "
+                        + "covers are recording-fed, so its recording-lane pair stands");
     }
 
     private static void unreached(DetectorType type, String reason) {

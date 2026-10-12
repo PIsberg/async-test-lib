@@ -140,7 +140,10 @@ public final class DetectorFeeds {
             DetectorType.SYSTEM_PROPERTY_MUTATION,
             // Process.waitFor, and the getters that take a child's stdout or stderr pipe: a wait
             // no other thread drains for is a hang once the child writes a pipe's worth.
-            DetectorType.PROCESS_STREAM_STARVATION);
+            DetectorType.PROCESS_STREAM_STARVATION,
+            // Every call on a JPA EntityManager or Hibernate Session, matched by name, since
+            // neither may be on the agent's class path (#992).
+            DetectorType.JDBC_CONNECTION_SHARED);
 
     /**
      * Fed by the JVM and the harness with no recording call.

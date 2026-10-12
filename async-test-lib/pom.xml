@@ -64,6 +64,12 @@
             <artifactId>archunit-junit5</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- The EntityManager interface for the persistence-handle tests (#992); interfaces only, test scope. -->
+        <dependency>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

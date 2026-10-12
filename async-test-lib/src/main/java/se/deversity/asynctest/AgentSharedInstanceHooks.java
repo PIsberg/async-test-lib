@@ -19,6 +19,7 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 
 import se.deversity.asynctest.diagnostics.CalendarDetector;
+import se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector;
 import se.deversity.asynctest.diagnostics.SharedDecimalFormatDetector;
 import se.deversity.asynctest.diagnostics.SharedFormatterDetector;
 import se.deversity.asynctest.diagnostics.SharedMatcherDetector;
@@ -858,6 +859,37 @@ public final class AgentSharedInstanceHooks {
                                    Object... args) {
         recordFormatter(receiver);
         return receiver.format(locale, format, args);
+    }
+
+    /**
+     * Called before each call on a JPA {@code EntityManager} or Hibernate {@code Session} the agent
+     * weaves, with the handle: the call's thread uses it (#992). The detector checks the handle's
+     * type by interface name, since the library cannot depend on JPA.
+     *
+     * @param handle the call's receiver
+     * @since 1.13.2
+     */
+    public static void persistenceHandleUsed(Object handle) {
+        JdbcConnectionSharedDetector detector = AsyncTestContext.currentJdbcConnectionSharedDetector();
+        if (detector != null) {
+            detector.recordAccess(handle, null, Thread.currentThread());
+        }
+    }
+
+    /**
+     * Called before a woven {@code close()} on a persistence handle: the thread lets it go, which
+     * is the per-transaction hand-off the detector excuses when no two threads held it at once
+     * (#992).
+     *
+     * @param handle the handle being closed
+     * @since 1.13.2
+     */
+    public static void persistenceHandleClosed(Object handle) {
+        JdbcConnectionSharedDetector detector = AsyncTestContext.currentJdbcConnectionSharedDetector();
+        if (detector != null) {
+            detector.recordAccess(handle, null, Thread.currentThread());
+            detector.recordRelease(handle, Thread.currentThread());
+        }
     }
 
     private static void recordFormatter(Formatter receiver) {

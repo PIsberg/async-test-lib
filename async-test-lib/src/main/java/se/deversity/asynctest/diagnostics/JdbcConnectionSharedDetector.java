@@ -122,7 +122,39 @@ public final class JdbcConnectionSharedDetector extends AbstractInstanceDetector
         if (resource instanceof PreparedStatement) return "PreparedStatement";
         if (resource instanceof Statement)         return "Statement";
         if (resource instanceof ResultSet)         return "ResultSet";
-        return null;
+        return persistenceType(resource.getClass());
+    }
+
+    /**
+     * The persistence handles documented as one thread at a time, by interface name: the library
+     * cannot depend on JPA or Hibernate, so it reads the type's interfaces (#992). A Hibernate 6
+     * {@code Session} is also a {@code jakarta.persistence.EntityManager}, and is named for the
+     * more specific of the two.
+     */
+    private static final Map<String, String> PERSISTENCE_HANDLES = Map.of(
+            "org.hibernate.Session", "Session",
+            "org.hibernate.StatelessSession", "StatelessSession",
+            "jakarta.persistence.EntityManager", "EntityManager",
+            "javax.persistence.EntityManager", "EntityManager");
+
+    /** {@return the persistence handle {@code type} implements, or {@code null}} */
+    private static @Nullable String persistenceType(Class<?> type) {
+        String found = null;
+        java.util.Deque<Class<?>> pending = new java.util.ArrayDeque<>();
+        for (Class<?> c = type; c != null; c = c.getSuperclass()) {
+            pending.addAll(List.of(c.getInterfaces()));
+        }
+        java.util.Set<Class<?>> seen = new java.util.HashSet<>();
+        while (!pending.isEmpty()) {
+            Class<?> iface = pending.poll();
+            if (!seen.add(iface)) continue;
+            String name = PERSISTENCE_HANDLES.get(iface.getName());
+            if (name != null && (found == null || "EntityManager".equals(found))) {
+                found = name;
+            }
+            pending.addAll(List.of(iface.getInterfaces()));
+        }
+        return found;
     }
 
     /**
@@ -133,7 +165,7 @@ public final class JdbcConnectionSharedDetector extends AbstractInstanceDetector
      * @param name     descriptive label (may be {@code null})
      * @param thread   accessing thread
      */
-    public void recordAccess(Object resource, String name, Thread thread) {
+    public void recordAccess(Object resource, @Nullable String name, Thread thread) {
         if (resource == null || thread == null) return;
         String type = typeOf(resource);
         if (type == null) return;
@@ -208,18 +240,26 @@ public final class JdbcConnectionSharedDetector extends AbstractInstanceDetector
                         + "and produce interleaved bytes";
                 case "ResultSet" -> "the cursor position is per-instance; concurrent next()/get*() calls "
                         + "race on the same cursor and produce mixed-row reads";
+                case "EntityManager", "Session", "StatelessSession" -> "the persistence context, its "
+                        + "first-level cache and its transaction are one thread's at a time, and two "
+                        + "threads in one corrupt the cache or flush each other's changes";
                 default -> "JDBC resources are not thread-safe per spec";
             };
+            boolean persistence = PERSISTENCE_HANDLES.containsValue(s.type);
             String msg = String.format(
-                    "'%s' (%s) accessed from %d threads (%s) — JDBC spec does NOT require "
-                            + "thread safety on %s; %s. Use a per-thread Connection (pool checkout)." + SelfGuard.REPORT_NOTE,
+                    "'%s' (%s) accessed from %d threads (%s) — %s; %s. %s" + SelfGuard.REPORT_NOTE,
                     s.label,
                     s.type,
                     s.ownershipModelled ? s.overlappingThreads.size() : s.threadCount(),
                     String.join(", ", s.ownershipModelled
                             ? s.overlappingThreads.values() : s.threadNames()),
-                    s.type,
-                    specificRisk);
+                    persistence
+                            ? "an " + s.type + " is documented as not thread-safe"
+                            : "JDBC spec does NOT require thread safety on " + s.type,
+                    specificRisk,
+                    persistence
+                            ? "Give each thread or transaction its own, and hand one over only after the last use."
+                            : "Use a per-thread Connection (pool checkout).");
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
                     "JdbcConnectionShared",

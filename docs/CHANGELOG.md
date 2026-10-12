@@ -201,6 +201,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A JPA `EntityManager` or Hibernate `Session` shared across threads is reported (#992).** Both
+  are documented as one thread at a time, and the typical misuse (an `@Async` method or a parallel
+  stream inside a transaction) had no coverage. By the owner's choice it extends
+  `JDBC_CONNECTION_SHARED` into one "persistence handle shared" detector rather than adding a 148th:
+  the detector recognises `jakarta`/`javax` `EntityManager` and Hibernate `Session`/`StatelessSession`
+  by interface name, with handle-specific report text. With `collections=true` the new
+  `PersistenceHandleWeaver` makes it agent-fed (38 detectors can now see unmodified code, 109 stay
+  recording-only): the persistence types cannot be `Class`-literal rows and a hook could not call
+  them, so before a call on one of those owners, matched by name, it copies the receiver with a
+  stack-neutral `DUP` / `SWAP, DUP_X1` / `DUP2_X1, POP2, DUP_X2` and calls `persistenceHandleUsed`,
+  or `persistenceHandleClosed` before a `close()`, the per-transaction hand-off. Calls with more than
+  two or wider arguments are left alone. New test dependency `jakarta.persistence-api` 3.1.0 (EPL-2.0,
+  interfaces only, a `docs/DEPENDENCIES.md` row) replaces the Hibernate corpus library the option
+  named: a `Proxy` handle needs no provider or database. Tests: `sharedEntityManagerIsFlagged` was
+  red before the type check; `PersistenceHandleWeavingTest` fires through the real weaver and went
+  red with the weaver unregistered; the one-per-thread and handed-over twins stay silent. Agent
+  module (412), library gates and the full corpus module are green.
 - **A piped stream pair used from one thread is reported (#994).** The `PipedInputStream` javadoc
   warns that using both ends from one thread may deadlock it: once the 1024-byte buffer fills, the
   write waits for a read that thread never makes. Nothing covered it. It is a second rule in
