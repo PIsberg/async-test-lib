@@ -129,6 +129,50 @@ class ProcessStreamStarvationDetectorTest {
     }
 
     @Test
+    @DisplayName("one thread writing and reading one piped stream pair is reported (#994)")
+    void onePipeUsedFromOneThreadIsReported() throws Exception {
+        ProcessStreamStarvationDetector detector = new ProcessStreamStarvationDetector();
+        java.io.PipedInputStream in = new java.io.PipedInputStream();
+        java.io.PipedOutputStream out = new java.io.PipedOutputStream(in);
+
+        detector.recordPipeWrite(in, Thread.currentThread());
+        out.write(42);
+        detector.recordPipeRead(in, Thread.currentThread());
+        assertEquals(42, in.read());
+
+        ProcessStreamStarvationDetector.Report report = detector.analyze();
+        assertTrue(report.hasIssues(), "the PipedInputStream javadoc warns that using both ends "
+                + "from one thread may deadlock it: once the buffer fills, the write waits for a "
+                + "read the same thread can never make: " + report);
+        assertTrue(report.toString().contains("PipedInputStream"), report.toString());
+    }
+
+    @Test
+    @DisplayName("a pipe written on one thread and read on another is not reported (#994)")
+    void onePipeWrittenAndReadOnTwoThreadsIsSilent() throws Exception {
+        ProcessStreamStarvationDetector detector = new ProcessStreamStarvationDetector();
+        java.io.PipedInputStream in = new java.io.PipedInputStream();
+        java.io.PipedOutputStream out = new java.io.PipedOutputStream(in);
+
+        Thread writer = new Thread(() -> {
+            detector.recordPipeWrite(in, Thread.currentThread());
+            try {
+                out.write(42);
+                out.close();
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        });
+        writer.start();
+        detector.recordPipeRead(in, Thread.currentThread());
+        assertEquals(42, in.read());
+        writer.join();
+
+        assertFalse(detector.analyze().hasIssues(), "the javadoc's own pattern, one thread per "
+                + "end: " + detector.analyze());
+    }
+
+    @Test
     @DisplayName("a pipe the waiter took before its wait but read only after it is reported (#998)")
     void takenBeforeTheWaitButReadAfterItIsReported() throws Exception {
         ProcessStreamStarvationDetector detector = new ProcessStreamStarvationDetector();

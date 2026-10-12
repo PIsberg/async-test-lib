@@ -9,6 +9,7 @@ import org.jspecify.annotations.Nullable;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PipedInputStream;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -216,6 +217,64 @@ public final class ProcessStreamStarvationDetector {
     }
 
     /**
+     * Records that {@code thread} wrote into the pipe whose reading end is {@code sink} (#994).
+     *
+     * @param sink   the {@code PipedInputStream} the written {@code PipedOutputStream} is connected to
+     * @param thread the writing thread
+     * @since 1.13.2
+     */
+    public void recordPipeWrite(PipedInputStream sink, Thread thread) {
+        if (sink == null || thread == null) return;
+        pipeOf(sink).writers.putIfAbsent(thread.threadId(), thread.getName());
+    }
+
+    /**
+     * Records a write the agent saw into {@code out}: paired with the reading end its private
+     * {@code sink} names, which the agent's {@code java.io} opening lets the library read (#994).
+     * An unconnected stream, or one whose sink cannot be read, records nothing.
+     *
+     * @param out    the writing end
+     * @param thread the writing thread
+     * @since 1.13.2
+     */
+    public void agentPipeWrite(java.io.PipedOutputStream out, Thread thread) {
+        if (out == null || thread == null) return;
+        PipedInputStream sink = PipeSinks.sinkOf(out);
+        if (sink != null) {
+            recordPipeWrite(sink, thread);
+        }
+    }
+
+    /**
+     * Records that {@code thread} read from {@code source}, a {@code PipedInputStream} (#994).
+     *
+     * @param source the pipe's reading end
+     * @param thread the reading thread
+     * @since 1.13.2
+     */
+    public void recordPipeRead(PipedInputStream source, Thread thread) {
+        if (source == null || thread == null) return;
+        pipeOf(source).readers.add(thread.threadId());
+    }
+
+    /** Who wrote into and who read from one piped stream pair, keyed by its reading end. */
+    private static final class Pipe {
+        /** Writer thread ids, with a name for the report. */
+        final Map<Long, String> writers = new ConcurrentHashMap<>();
+        final Set<Long> readers = ConcurrentHashMap.newKeySet();
+    }
+
+    private final Map<IdentityKey, Pipe> pipes = new ConcurrentHashMap<>();
+
+    private Pipe pipeOf(PipedInputStream sink) {
+        Pipe pipe = pipes.get(IdentityKey.lookup(sink));
+        if (pipe == null) {
+            pipe = pipes.computeIfAbsent(new IdentityKey(sink), k -> new Pipe());
+        }
+        return pipe;
+    }
+
+    /**
      * Records a wait for {@code process}. Only the first wait is kept: the pipes that are real
      * (not redirected by the builder) and that no thread had taken yet. {@link #analyze()} judges
      * them, so a drain task that takes its pipe after the wait began still excuses it.
@@ -302,6 +361,20 @@ public final class ProcessStreamStarvationDetector {
                     List.of(),
                     Map.of(),
                     Instant.now()));
+        }
+        for (Pipe pipe : pipes.values()) {
+            for (Map.Entry<Long, String> writer : pipe.writers.entrySet()) {
+                if (!pipe.readers.contains(writer.getKey())) continue;
+                String finding = String.format(
+                        "Thread '%s' both wrote to and read from one PipedOutputStream/PipedInputStream "
+                                + "pair - once the pipe's buffer fills, the write waits for a read that "
+                                + "thread can never make, and the PipedInputStream javadoc warns it may "
+                                + "deadlock. Read on another thread, or use a queue",
+                        writer.getValue());
+                r.violations.add(finding);
+                r.structuredViolations.add(new Violation("ProcessStreamStarvation", IssueSeverity.MEDIUM,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
         }
         r.violations.sort(null);
         return DetectorFailurePolicy.checkedReport(this, r);

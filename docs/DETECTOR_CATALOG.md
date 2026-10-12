@@ -477,7 +477,12 @@ child writes a pipe's worth it blocks, and the wait never returns. A taken pipe 
 drained, and so is one a drain task takes after the wait began; an output the `ProcessBuilder`
 redirected has no pipe and is not reported. The start tells it which builders merged stderr into
 stdout: on Linux that stderr is still a pipe object, at end of stream, and the stream alone does
-not say so.
+not say so. Since #998 the woven `getInputStream`/`getErrorStream` hand out a stream whose reads
+are seen, so a pipe the waiter took counts as drained only if it read it to the end before the
+wait. A second rule covers the same family in memory (#994): the woven `PipedOutputStream.write`
+and `PipedInputStream.read` calls, paired through the writer's private `sink` (the agent opens
+`java.io` to the library to read it), report a thread that both writes to and reads from one pair,
+which the `PipedInputStream` javadoc warns may deadlock.
 
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,

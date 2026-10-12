@@ -201,6 +201,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A piped stream pair used from one thread is reported (#994).** The `PipedInputStream` javadoc
+  warns that using both ends from one thread may deadlock it: once the 1024-byte buffer fills, the
+  write waits for a read that thread never makes. Nothing covered it. It is a second rule in
+  `PROCESS_STREAM_STARVATION`, the same "a stream nobody drains on another thread" family, rather
+  than a 148th detector: new `recordPipeWrite(sink, thread)` and `recordPipeRead(source, thread)`,
+  and with `collections=true` the agent weaves `PipedOutputStream.write` (three overloads) and
+  `PipedInputStream.read` (three overloads) and pairs each write with its pipe through the writer's
+  private `sink` (new `PipeSinks`; the agent now also opens `java.io` to the library;
+  `JdkPipeShapeCanaryTest` pins the field). A write through a variable typed `OutputStream` is not
+  woven. Tests: `onePipeUsedFromOneThreadIsReported` was red before the rule;
+  `PipedStreamWeavingTest` fires through the real weaver and went red with the `java.io` opening
+  disabled; the one-thread-per-end twins stay silent in the unit test and in
+  `PipedStreamSparesOneThreadPerEndTest`. The agent module (410 tests) and the full corpus module
+  are green.
 - **`VIRTUAL_THREAD_CARRIER_EXHAUSTION`: `jdk.VirtualThreadSubmitFailed` measured and not used
   (#986).** A probe on JDK 21.0.9 and 26 saturated a one-carrier scheduler with pinned threads and
   200,000 virtual-thread starts and saw zero events: the JDK emits it only when the scheduler rejects

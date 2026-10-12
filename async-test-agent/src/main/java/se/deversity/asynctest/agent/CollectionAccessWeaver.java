@@ -796,7 +796,18 @@ final class CollectionAccessWeaver {
             Entry.call(Process.class, "inputReader", "processInputReader"),
             Entry.call(Process.class, "inputReader", "processInputReader", Charset.class),
             Entry.call(Process.class, "errorReader", "processErrorReader"),
-            Entry.call(Process.class, "errorReader", "processErrorReader", Charset.class));
+            Entry.call(Process.class, "errorReader", "processErrorReader", Charset.class),
+            // A piped stream pair used from one thread (#994): each write is recorded against the
+            // reading end its PipedOutputStream is connected to, each read against the pipe. Rows
+            // on the piped types only, so a write through a variable typed OutputStream is not seen.
+            Entry.call(java.io.PipedOutputStream.class, "write", "pipedWrite", int.class),
+            Entry.call(java.io.PipedOutputStream.class, "write", "pipedWrite", byte[].class, int.class,
+                    int.class),
+            Entry.call(java.io.PipedOutputStream.class, "write", "pipedWrite", byte[].class),
+            Entry.call(java.io.PipedInputStream.class, "read", "pipedRead"),
+            Entry.call(java.io.PipedInputStream.class, "read", "pipedRead", byte[].class, int.class,
+                    int.class),
+            Entry.call(java.io.PipedInputStream.class, "read", "pipedRead", byte[].class));
 
     /**
      * The monitor table: {@code Object.wait}, {@code notify} and {@code notifyAll} (#694).

@@ -1434,6 +1434,22 @@ final class Corpus {
                     "the same child, with a thread draining its output started before the wait, "
                             + "as the Process javadoc asks"),
 
+            new RecordingSubject("agent_pipe_bothEndsOnOneThread", JDK,
+                    "java.io.PipedInputStream",
+                    DetectorType.PROCESS_STREAM_STARVATION, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "each worker writes into a pipe and reads it back itself. The PipedInputStream "
+                            + "javadoc warns that using both ends from a single thread may deadlock "
+                            + "it, once a write fills the buffer with no other thread to read (#994)",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("agent_pipe_oneThreadPerEnd", JDK,
+                    "java.io.PipedInputStream",
+                    DetectorType.PROCESS_STREAM_STARVATION, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same pipe, with its writer on a thread of its own, the javadoc's own "
+                            + "pattern"),
+
             new RecordingSubject("agent_thread_startedWithNoDaemonDecision", JDK,
                     "java.lang.Thread",
                     DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,

@@ -774,6 +774,32 @@ class DiscardedOfferWeavingTest {
         public static java.io.BufferedReader processErrorReader(Process p, java.nio.charset.Charset cs) {
             return p.errorReader(cs);
         }
+
+        public static void pipedWrite(java.io.PipedOutputStream out, int b) throws java.io.IOException {
+            out.write(b);
+        }
+
+        public static void pipedWrite(java.io.PipedOutputStream out, byte[] b, int off, int len)
+                throws java.io.IOException {
+            out.write(b, off, len);
+        }
+
+        public static void pipedWrite(java.io.PipedOutputStream out, byte[] b) throws java.io.IOException {
+            out.write(b);
+        }
+
+        public static int pipedRead(java.io.PipedInputStream in) throws java.io.IOException {
+            return in.read();
+        }
+
+        public static int pipedRead(java.io.PipedInputStream in, byte[] b, int off, int len)
+                throws java.io.IOException {
+            return in.read(b, off, len);
+        }
+
+        public static int pipedRead(java.io.PipedInputStream in, byte[] b) throws java.io.IOException {
+            return in.read(b);
+        }
     }
 
     @Test

@@ -153,7 +153,10 @@ child's stdout and stderr are still pipes no thread has taken, and the woven `ge
 writes a pipe's worth blocks, and the wait never returns. A drain thread or task that takes the
 pipe after the wait began excuses it (`ProcessFeedSparesCorrectUseTest`). One that runs in code
 the agent does not weave, a process library's own pump threads for example, takes its pipe
-unseen, and the wait is reported (#996).
+unseen, and the wait is reported with a hint to add that library to `includes=` (#996). The same
+detector hears the woven `PipedOutputStream.write` and `PipedInputStream.read` calls and reports
+one thread on both ends of a pair, paired through the writer's private `sink`; a write through a
+variable typed `OutputStream` is not woven (#994).
 
 The same option substitutes `Object.wait`, `notify` and `notifyAll` (#694), which is what feeds
 `MissedSignalDetector` without a recorded call: the hooks run with the monitor held, so a notify is

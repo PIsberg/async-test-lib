@@ -1229,6 +1229,47 @@ class CorpusAgentPairLaneTest {
         }
     }
 
+    /** Every worker writes one byte into a fresh pipe and reads it back on the same thread. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_pipe_bothEndsOnOneThread() {
+        counted(() -> {
+            try {
+                java.io.PipedInputStream in = new java.io.PipedInputStream();
+                java.io.PipedOutputStream out = new java.io.PipedOutputStream(in);
+                Thread writer = Thread.currentThread();
+                out.write(writer.getName().length());
+                out.close();
+                in.read();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+    }
+
+    /** The same byte through the same pipe, written by a thread of its own. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_pipe_oneThreadPerEnd() {
+        counted(() -> {
+            try {
+                java.io.PipedInputStream in = new java.io.PipedInputStream();
+                java.io.PipedOutputStream out = new java.io.PipedOutputStream(in);
+                Thread writer = new Thread(() -> {
+                    try {
+                        out.write(Thread.currentThread().getName().length());
+                        out.close();
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                });
+                writer.start();
+                in.read();
+                writer.join();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+    }
+
     /** Every worker waits for its child before anything reads the child's output. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 60_000, detectAll = true)
     void agent_process_waitedForBeforeDraining() {
