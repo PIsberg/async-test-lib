@@ -201,6 +201,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`SYNCHRONIZED_COLLECTION_ITERATION` judges a synchronized set it did not see being made (#996,
+  item 2).** The agent-fed path judged a synchronized list against itself and a map view against
+  the map it saw return it, and skipped any other synchronized set or collection, since it might be
+  a view guarded by a map. With `collections=true` the agent now also opens `java.util` to the
+  library's module (beside `java.util.concurrent.locks`, and `atomic` under field weaving), and the
+  detector reads the wrapper's private `mutex` (new `SynchronizedMutexes`), so every wrapper is
+  judged against the monitor it really locks, a `subList` against its parent included. Without the
+  opening the old rule stands. `JdkSynchronizedWrapperShapeCanaryTest` pins the field on every CI
+  JDK. `SynchronizedSetIterationWeavingTest` (a set built in unwoven code, iterated without its
+  lock) was red before the change; `SynchronizedSetIterationSparesTheMutexTest` (the set under its
+  own monitor, and a synchronized map's key set taken in unwoven code under the map's monitor)
+  stays silent. The full corpus module stays green.
 - **`INTERRUPT_SWALLOWING`/`INTERRUPT_MISHANDLING`: a restoring call answers only for its own path
   (#996, item 4).** `InterruptHandlerWeaver` treated an `interrupt()` call reachable on any path
   from the handler as handling the whole handler, and counted any call whose name mentions an

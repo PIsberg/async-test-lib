@@ -109,10 +109,12 @@ public class SynchronizedCollectionIterationDetector extends AbstractInstanceDet
     /**
      * Records an iteration the agent saw start: a woven {@code iterator()} or {@code stream()} on a
      * {@code Collections.synchronized*} wrapper. The wrapper is judged against the monitor it
-     * really synchronizes on: a map view the agent saw handed out against its map, a synchronized
-     * list against itself. A synchronized set or collection the run did not see come out of a map
-     * is not judged, because it may be such a view, and judging it against its own monitor would
-     * report the documented {@code synchronized (map)} idiom.
+     * really synchronizes on: a map view the agent saw handed out against its map; otherwise the
+     * wrapper's private {@code mutex}, which the agent's {@code java.util} opening lets the library
+     * read (#996), so a set or a view the run did not see being made is judged against its real
+     * lock too. Without that opening a synchronized list is judged against itself, and a
+     * synchronized set or collection is not judged, because it may be a map's view and judging it
+     * against its own monitor would report the documented {@code synchronized (map)} idiom.
      *
      * @param collection the wrapper being iterated
      * @param thread     the iterating thread
@@ -121,11 +123,17 @@ public class SynchronizedCollectionIterationDetector extends AbstractInstanceDet
     public void agentIteration(Object collection, Thread thread) {
         if (collection == null || thread == null) return;
         Object owner = viewOwners.get(IdentityKey.lookup(collection));
+        Object mutex = owner == null ? SynchronizedMutexes.mutexOf(collection) : null;
         Object monitor;
         String label;
         if (owner != null) {
             monitor = owner;
             label = owner.getClass().getSimpleName() + " view";
+        } else if (mutex != null) {
+            // The wrapper's own lock, read with java.util opened by the agent (#996): itself for a
+            // plain wrapper, the map for a view, the parent list for a subList.
+            monitor = mutex;
+            label = collection.getClass().getSimpleName();
         } else {
             String type = collection.getClass().getName();
             if (!"java.util.Collections$SynchronizedList".equals(type)

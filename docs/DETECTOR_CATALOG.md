@@ -454,9 +454,13 @@ compiles to, and `stream()`. A `Collections.synchronized*` wrapper takes its mon
 call and releases it before the next, and its javadoc requires the caller to hold it across an
 iteration. The hook asks `Thread.holdsLock` of the monitor the wrapper really uses: a synchronized
 list's own, and for a `keySet`, `values` or `entrySet` view the map's, which the woven call that
-returned the view records. A synchronized set or collection the run did not see come out of a map
-is not judged, because it may be such a view, and judging it against its own monitor would report
-the documented `synchronized (map)` idiom.
+returned the view records. Any other wrapper, a set or a view the run did not see being made
+included, is judged against its private `mutex`, the monitor its methods really lock: the agent
+opens `java.util` to the library under collection weaving so it can be read (#996), and
+`JdkSynchronizedWrapperShapeCanaryTest` fails the build on a JDK that moves the field. Without that
+opening a synchronized list is judged against itself and a synchronized set or collection is not
+judged, because it may be a map's view and judging it against its own monitor would report the
+documented `synchronized (map)` idiom.
 
 `SystemPropertyMutationDetector` hears the woven `System.setProperty` and `clearProperty`, and the
 two JVM defaults no detector covered before: `Locale.setDefault`, recorded under the key

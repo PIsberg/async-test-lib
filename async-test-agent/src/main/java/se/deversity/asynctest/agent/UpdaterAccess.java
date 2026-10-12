@@ -46,6 +46,11 @@ import org.jspecify.annotations.Nullable;
  * {@code ReentrantLock} at analysis instead of judging its holder by name (#855). That read is
  * analysis-time only and needs nothing woven.
  *
+ * <p>Under collection weaving the same module also gets {@code java.util}, so the library can read
+ * the private {@code mutex} a {@code Collections.synchronized*} wrapper locks on, and judge an
+ * iteration of a synchronized set or collection it did not see being made against its real lock,
+ * a map's view guarded by the map included (#996).
+ *
  * <p>Failure is silent, like {@link AtomicFieldRegistry}: without the opening an updater bound
  * before the attach stays unresolved and its spinlock undeclared, and a lock's owner is judged by
  * name, both of which report rather than hide, while an exception here would cost a class its
@@ -56,6 +61,8 @@ final class UpdaterAccess {
     private static final String ATOMIC_PACKAGE = "java.util.concurrent.atomic";
 
     private static final String LOCKS_PACKAGE = "java.util.concurrent.locks";
+
+    private static final String UTIL_PACKAGE = "java.util";
 
     /**
      * The library class every woven hook call goes through. Named, not referenced as a class
@@ -82,7 +89,7 @@ final class UpdaterAccess {
      * @param loader the loader of a class about to be woven; {@code null} (bootstrap) opens nothing
      */
     static void openTo(Instrumentation inst, @Nullable ClassLoader loader) {
-        openTo(inst, loader, null, true);
+        openTo(inst, loader, null, true, true);
     }
 
     /**
@@ -94,9 +101,11 @@ final class UpdaterAccess {
      * @param loader the loader of a class about to be woven; {@code null} (bootstrap) opens nothing
      * @param woven  the module of that class, or {@code null} when not known
      * @param atomic whether field weaving is on, the one mode whose spinlock hooks read updaters
+     * @param util   whether collection weaving is on, the one mode whose iteration hooks read a
+     *               synchronized wrapper's mutex
      */
     static void openTo(Instrumentation inst, @Nullable ClassLoader loader, @Nullable Module woven,
-                       boolean atomic) {
+                       boolean atomic, boolean util) {
         if (loader == null) {
             return;
         }
@@ -119,6 +128,9 @@ final class UpdaterAccess {
             }
             if (atomic && !javaBase.isOpen(ATOMIC_PACKAGE, library)) {
                 opens.put(ATOMIC_PACKAGE, Set.of(library));
+            }
+            if (util && !javaBase.isOpen(UTIL_PACKAGE, library)) {
+                opens.put(UTIL_PACKAGE, Set.of(library));
             }
             if (!opens.isEmpty()) {
                 inst.redefineModule(javaBase, Set.of(), Map.of(), opens, Set.of(), Map.of());
