@@ -34,8 +34,10 @@ import org.jspecify.annotations.Nullable;
  * (<a href="https://github.com/PIsberg/async-test-lib/issues/387">#387</a>). An executor handed in
  * from outside the run is never declared, and neither is one built in a static initializer: a
  * static pool is shared by design and lives as long as its class. The woven {@code submit} and
- * {@code execute} count tasks. A pool the class under test creates during the run and closes in
- * an {@code @AfterEach} still reads as never shut down, because analysis runs first.
+ * {@code execute} count tasks. Analysis runs before the test's {@code @AfterEach} methods, so in a
+ * class that declares one the runner holds the "never shut down" verdict
+ * ({@link #holdUnclosedUntilTeardown()}) and asks again once they have run
+ * ({@link #analyzeAfterTeardown()}): a pool closed in teardown is not reported (#996).
  *
  * <p><strong>Why it stays {@code PROMPT}.</strong> A finding is only as good as the declaration
  * behind it. Where a detector at {@code VERDICT} says the code is wrong, this one says the author
@@ -151,6 +153,53 @@ public class ExecutorShutdownDetector {
     }
 
     /**
+     * Executors whose "never shut down" verdict {@link #analyze()} held back, for
+     * {@link #analyzeAfterTeardown()}. Set and read on the runner's thread only.
+     */
+    private final List<ExecutorState> heldUntilTeardown = new ArrayList<>();
+
+    /** Whether {@link #analyze()} holds "never shut down" verdicts until teardown has run. */
+    private volatile boolean holdUntilTeardown;
+
+    /**
+     * Internal: makes {@link #analyze()} hold back the "never shut down" verdict for
+     * {@link #analyzeAfterTeardown()}, because a test class may close the pool in
+     * {@code @AfterEach}, which JUnit runs after the test method and so after analysis (#996). The
+     * runner calls it only where something will call {@link #analyzeAfterTeardown()}.
+     *
+     * @since 1.13.2
+     */
+    public void holdUnclosedUntilTeardown() {
+        holdUntilTeardown = true;
+    }
+
+    /**
+     * Internal: the "never shut down" findings {@link #analyze()} held back, for the executors
+     * still not shut down now that the test's {@code @AfterEach} methods have run (#996).
+     *
+     * @return report of the executors that teardown did not close either
+     * @since 1.13.2
+     */
+    public ExecutorShutdownReport analyzeAfterTeardown() {
+        ExecutorShutdownReport report = new ExecutorShutdownReport();
+        for (ExecutorState state : heldUntilTeardown) {
+            if (!state.executor.isShutdown()) {
+                report.notShutDown.add(neverShutDown(state)
+                        + ", not in the test's @AfterEach either");
+            }
+        }
+        heldUntilTeardown.clear();
+        holdUntilTeardown = false;
+        report.fillStructuredViolations();
+        return report;
+    }
+
+    private static String neverShutDown(ExecutorState state) {
+        return String.format("%s: %d task(s) submitted but shutdown() never called — threads will leak",
+                state.name, state.tasksSubmitted.get());
+    }
+
+    /**
      * Analyze registered executors for shutdown issues.
      *
      * @return report describing any issues found
@@ -176,9 +225,11 @@ public class ExecutorShutdownDetector {
                             ? " although awaitTermination() was called, so the wait timed out"
                             : ""));
             } else if (state.tasksSubmitted.get() > 0 && !state.shutdownCalled && !reallyShutDown) {
-                report.notShutDown.add(String.format(
-                    "%s: %d task(s) submitted but shutdown() never called — threads will leak",
-                    state.name, state.tasksSubmitted.get()));
+                if (holdUntilTeardown) {
+                    heldUntilTeardown.add(state);
+                } else {
+                    report.notShutDown.add(neverShutDown(state));
+                }
             } else if (state.shutdownCalled && !state.awaitTerminationCalled
                     && !state.executor.isTerminated()) {
                 report.noAwaitTermination.add(String.format(
@@ -187,24 +238,7 @@ public class ExecutorShutdownDetector {
                     state.name));
             }
         }
-        if (report.hasIssues()) {
-            // The severity the failOn gate read from this text before #801: a marker in it,
-            // else the value DetectorDefaultSeverity declared for the detector.
-            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
-                    .orElse(IssueSeverity.MEDIUM);
-            for (String finding : report.notShutDown) {
-                report.structuredViolations.add(new Violation("ExecutorShutdown", severity,
-                        finding, List.of(), Map.of(), Instant.now()));
-            }
-            for (String finding : report.noAwaitTermination) {
-                report.structuredViolations.add(new Violation("ExecutorShutdown", severity,
-                        finding, List.of(), Map.of(), Instant.now()));
-            }
-            for (String finding : report.stillRunning) {
-                report.structuredViolations.add(new Violation("ExecutorShutdown", severity,
-                        finding, List.of(), Map.of(), Instant.now()));
-            }
-        }
+        report.fillStructuredViolations();
         return DetectorFailurePolicy.checkedReport(this, report);
     }
 
@@ -213,8 +247,25 @@ public class ExecutorShutdownDetector {
         final List<String> notShutDown       = new ArrayList<>();
         /** The findings as Violations, at the severity the text resolved to (#801). */
         public final List<Violation> structuredViolations = new ArrayList<>();
+
         final List<String> noAwaitTermination = new ArrayList<>();
         final List<String> stillRunning       = new ArrayList<>();
+
+        /** Adds a Violation per finding, at the severity the text resolves to (#801). */
+        void fillStructuredViolations() {
+            if (!hasIssues()) {
+                return;
+            }
+            // The severity the failOn gate read from this text before #801: a marker in it,
+            // else the value DetectorDefaultSeverity declared for the detector.
+            IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.MEDIUM);
+            for (List<String> findings : List.of(notShutDown, noAwaitTermination, stillRunning)) {
+                for (String finding : findings) {
+                    structuredViolations.add(new Violation("ExecutorShutdown", severity,
+                            finding, List.of(), Map.of(), Instant.now()));
+                }
+            }
+        }
 
         /**
          * {@return whether there are issues}

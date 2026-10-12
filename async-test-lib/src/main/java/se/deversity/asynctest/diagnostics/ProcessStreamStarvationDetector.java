@@ -6,7 +6,10 @@ import se.deversity.vibetags.annotations.AITestDriven;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 import org.jspecify.annotations.Nullable;
 
+import java.io.FilterInputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.PipedInputStream;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -31,16 +34,24 @@ import java.util.concurrent.atomic.AtomicReference;
  * {@code INHERIT}) has no pipe to fill and is the JDK's null stream, which is not reported. A
  * stderr merged into stdout is the null stream on Windows only; on Linux it is a pipe object at end
  * of stream, so it is recognised from the builder, through {@link #recordStarted}. A pipe taken
- * before the wait is assumed to be drained, and so is one a
+ * before the wait through {@link #recordStreamTaken} is assumed to be drained, and so is one a
  * thread other than the waiter took at any point, the drain task that may start after the wait.
  * Both err toward silence. The waiter reading the pipe itself after its wait returned is the
  * defect, and is reported. Reading the output on another thread is the usual fix, or redirecting
  * what is not needed.
  *
+ * <p>A pipe handed out by {@link #observeStream} is not taken at its word (#998): the stream notes
+ * who reads it and whether it reached its end. Taken by the waiter before the wait, it counts as
+ * drained only if a read had reached the end by then; read by another thread at any time, it counts
+ * as drained. Take, wait, then read hangs a verbose child exactly like an untaken pipe and is
+ * reported.
+ *
  * <p>With the agent attached ({@code collections=true}) the woven {@code ProcessBuilder.start} and
  * {@code startPipeline}, the woven {@code waitFor}, and the woven {@code getInputStream},
  * {@code getErrorStream}, {@code inputReader} and {@code errorReader} that take a pipe, feed this
- * detector with no recording call.
+ * detector with no recording call. The woven {@code getInputStream} and {@code getErrorStream} go
+ * through {@link #observeStream}, so their caller reads a {@code FilterInputStream} over the pipe
+ * rather than the JDK's pipe class; the readers keep the JDK's own.
  *
  * <p>Usage inside {@code @AsyncTest(includes = DetectorType.PROCESS_STREAM_STARVATION)}:
  * <pre>{@code
@@ -78,6 +89,14 @@ public final class ProcessStreamStarvationDetector {
         }
     }
 
+    /**
+     * Appended when no thread was seen taking a reported pipe at all: a drain in code the agent
+     * does not weave takes it unseen, so the finding says how to let the take be seen (#996).
+     */
+    private static final String NOBODY_SEEN_TAKING = ". No thread was seen taking it: if a library "
+            + "drains it in code the agent does not weave (commons-exec, zt-exec), add that library's "
+            + "package to the agent's includes= so its take is seen";
+
     /** The JDK's stream for an output the builder redirected: there is no pipe behind it. */
     private static final String NULL_STREAM = "java.lang.ProcessBuilder$NullInputStream";
 
@@ -85,9 +104,53 @@ public final class ProcessStreamStarvationDetector {
     private record Wait(long waiterId, String waiterName, String process, Set<Stream> untaken) {
     }
 
+    /**
+     * A pipe handed out by {@link #observeStream}: the stream itself, which notes who reads it and
+     * whether it reached its end. Every read through a reader or a {@code readAllBytes} ends in
+     * one of the two {@code read} methods here.
+     */
+    private static final class ObservedPipe extends FilterInputStream {
+        /** Ids of the threads that read from it. */
+        final Set<Long> readers = ConcurrentHashMap.newKeySet();
+        /** Whether a read returned end of stream. */
+        volatile boolean ended;
+
+        ObservedPipe(InputStream in) {
+            super(in);
+        }
+
+        @Override
+        public int read() throws IOException {
+            int b = super.read();
+            noteRead(b < 0);
+            return b;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            int n = in.read(b, off, len);
+            noteRead(n < 0);
+            return n;
+        }
+
+        private void noteRead(boolean atEnd) {
+            long reader = Thread.currentThread().threadId();
+            if (!readers.contains(reader)) {
+                readers.add(reader);
+            }
+            if (atEnd) {
+                ended = true;
+            }
+        }
+    }
+
     private static final class State {
-        /** Per stream, the ids of the threads that took it. */
+        /** Per stream, the ids of the threads that took it through {@link #recordStreamTaken}. */
         final Map<Stream, Set<Long>> takers = new ConcurrentHashMap<>();
+        /** Per stream, the pipe {@link #observeStream} handed out, whose reads are seen. */
+        final Map<Stream, ObservedPipe> observed = new ConcurrentHashMap<>();
+        /** Per stream, the ids of the threads that took it through {@link #observeStream}. */
+        final Map<Stream, Set<Long>> observedTakers = new ConcurrentHashMap<>();
         final AtomicReference<@Nullable Wait> firstWait = new AtomicReference<>();
         /** Whether the builder merged stderr into stdout, from {@link #recordStarted}. */
         volatile boolean stderrMerged;
@@ -134,6 +197,84 @@ public final class ProcessStreamStarvationDetector {
     }
 
     /**
+     * Records that the calling thread took {@code raw}, one of the child's output streams, and
+     * returns it for the caller to read.
+     *
+     * @param process the child process
+     * @param stream  which output {@code raw} is
+     * @param raw     the stream the process returned
+     * @return the stream to read
+     * @since 1.13.2
+     */
+    public InputStream observeStream(Process process, Stream stream, InputStream raw) {
+        if (process == null || stream == null || !isPipe(raw)) {
+            return raw;
+        }
+        State state = stateOf(process);
+        state.observedTakers.computeIfAbsent(stream, s -> ConcurrentHashMap.newKeySet())
+                .add(Thread.currentThread().threadId());
+        return state.observed.computeIfAbsent(stream, s -> new ObservedPipe(raw));
+    }
+
+    /**
+     * Records that {@code thread} wrote into the pipe whose reading end is {@code sink} (#994).
+     *
+     * @param sink   the {@code PipedInputStream} the written {@code PipedOutputStream} is connected to
+     * @param thread the writing thread
+     * @since 1.13.2
+     */
+    public void recordPipeWrite(PipedInputStream sink, Thread thread) {
+        if (sink == null || thread == null) return;
+        pipeOf(sink).writers.putIfAbsent(thread.threadId(), thread.getName());
+    }
+
+    /**
+     * Records a write the agent saw into {@code out}: paired with the reading end its private
+     * {@code sink} names, which the agent's {@code java.io} opening lets the library read (#994).
+     * An unconnected stream, or one whose sink cannot be read, records nothing.
+     *
+     * @param out    the writing end
+     * @param thread the writing thread
+     * @since 1.13.2
+     */
+    public void agentPipeWrite(java.io.PipedOutputStream out, Thread thread) {
+        if (out == null || thread == null) return;
+        PipedInputStream sink = PipeSinks.sinkOf(out);
+        if (sink != null) {
+            recordPipeWrite(sink, thread);
+        }
+    }
+
+    /**
+     * Records that {@code thread} read from {@code source}, a {@code PipedInputStream} (#994).
+     *
+     * @param source the pipe's reading end
+     * @param thread the reading thread
+     * @since 1.13.2
+     */
+    public void recordPipeRead(PipedInputStream source, Thread thread) {
+        if (source == null || thread == null) return;
+        pipeOf(source).readers.add(thread.threadId());
+    }
+
+    /** Who wrote into and who read from one piped stream pair, keyed by its reading end. */
+    private static final class Pipe {
+        /** Writer thread ids, with a name for the report. */
+        final Map<Long, String> writers = new ConcurrentHashMap<>();
+        final Set<Long> readers = ConcurrentHashMap.newKeySet();
+    }
+
+    private final Map<IdentityKey, Pipe> pipes = new ConcurrentHashMap<>();
+
+    private Pipe pipeOf(PipedInputStream sink) {
+        Pipe pipe = pipes.get(IdentityKey.lookup(sink));
+        if (pipe == null) {
+            pipe = pipes.computeIfAbsent(new IdentityKey(sink), k -> new Pipe());
+        }
+        return pipe;
+    }
+
+    /**
      * Records a wait for {@code process}. Only the first wait is kept: the pipes that are real
      * (not redirected by the builder) and that no thread had taken yet. {@link #analyze()} judges
      * them, so a drain task that takes its pipe after the wait began still excuses it.
@@ -146,15 +287,27 @@ public final class ProcessStreamStarvationDetector {
         State state = stateOf(process);
         if (state.firstWait.get() != null) return;
         Set<Stream> untaken = EnumSet.noneOf(Stream.class);
-        if (!state.takers.containsKey(Stream.STDOUT) && isPipe(process.getInputStream())) {
+        if (undrained(state, Stream.STDOUT) && isPipe(process.getInputStream())) {
             untaken.add(Stream.STDOUT);
         }
-        if (!state.stderrMerged && !state.takers.containsKey(Stream.STDERR)
-                && isPipe(process.getErrorStream())) {
+        if (!state.stderrMerged && undrained(state, Stream.STDERR) && isPipe(process.getErrorStream())) {
             untaken.add(Stream.STDERR);
         }
         state.firstWait.compareAndSet(null,
                 new Wait(thread.threadId(), thread.getName(), describe(process), untaken));
+    }
+
+    /**
+     * {@return whether {@code stream} counts as not yet drained when the wait begins}: nobody took
+     * it through {@link #recordStreamTaken}, and if it was taken through {@link #observeStream},
+     * no read had reached its end (#998). A recorded take is still taken at its word.
+     */
+    private static boolean undrained(State state, Stream stream) {
+        if (state.takers.containsKey(stream)) {
+            return false;
+        }
+        ObservedPipe pipe = state.observed.get(stream);
+        return pipe == null || !pipe.ended;
     }
 
     private static boolean isPipe(@Nullable InputStream stream) {
@@ -184,10 +337,13 @@ public final class ProcessStreamStarvationDetector {
             Wait wait = state.firstWait.get();
             if (wait == null) continue;
             List<String> undrained = new ArrayList<>();
+            boolean nobodyTookOne = false;
             for (Stream stream : wait.untaken()) {
-                Set<Long> takers = state.takers.getOrDefault(stream, Set.of());
-                if (takers.stream().allMatch(id -> id == wait.waiterId())) {
+                if (onlyTheWaiter(state.takers.getOrDefault(stream, Set.of()), wait)
+                        && onlyTheWaiter(state.observedTakers.getOrDefault(stream, Set.of()), wait)
+                        && onlyTheWaiter(readersOf(state, stream), wait)) {
                     undrained.add(stream.label);
+                    nobodyTookOne |= !state.takers.containsKey(stream) && !state.observedTakers.containsKey(stream);
                 }
             }
             if (undrained.isEmpty()) continue;
@@ -195,7 +351,8 @@ public final class ProcessStreamStarvationDetector {
                     "Thread '%s' waited for %s while no other thread drained its %s - once the "
                             + "child fills the pipe it blocks writing and the wait never returns. "
                             + "Drain the output on another thread, or redirect what is not needed",
-                    wait.waiterName(), wait.process(), String.join(" or ", undrained));
+                    wait.waiterName(), wait.process(), String.join(" or ", undrained))
+                    + (nobodyTookOne ? NOBODY_SEEN_TAKING : "");
             r.violations.add(finding);
             r.structuredViolations.add(new Violation(
                     "ProcessStreamStarvation",
@@ -205,8 +362,31 @@ public final class ProcessStreamStarvationDetector {
                     Map.of(),
                     Instant.now()));
         }
+        for (Pipe pipe : pipes.values()) {
+            for (Map.Entry<Long, String> writer : pipe.writers.entrySet()) {
+                if (!pipe.readers.contains(writer.getKey())) continue;
+                String finding = String.format(
+                        "Thread '%s' both wrote to and read from one PipedOutputStream/PipedInputStream "
+                                + "pair - once the pipe's buffer fills, the write waits for a read that "
+                                + "thread can never make, and the PipedInputStream javadoc warns it may "
+                                + "deadlock. Read on another thread, or use a queue",
+                        writer.getValue());
+                r.violations.add(finding);
+                r.structuredViolations.add(new Violation("ProcessStreamStarvation", IssueSeverity.MEDIUM,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+        }
         r.violations.sort(null);
         return DetectorFailurePolicy.checkedReport(this, r);
+    }
+
+    private static boolean onlyTheWaiter(Set<Long> threads, Wait wait) {
+        return threads.stream().allMatch(id -> id == wait.waiterId());
+    }
+
+    private static Set<Long> readersOf(State state, Stream stream) {
+        ObservedPipe pipe = state.observed.get(stream);
+        return pipe == null ? Set.of() : pipe.readers;
     }
 
     /** Report produced by {@link #analyze()}. */

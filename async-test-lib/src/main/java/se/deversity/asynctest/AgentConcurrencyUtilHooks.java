@@ -884,16 +884,17 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
-     * Weaves {@code Process.getInputStream()}: the child's stdout pipe is taken, which the detector
-     * reads as drained.
+     * Weaves {@code Process.getInputStream()}: with {@code PROCESS_STREAM_STARVATION} on, the caller
+     * gets the child's stdout pipe in a stream that notes who reads it and whether it reached its
+     * end, so a pipe taken before a wait but read only after it is told from one read first (#998).
+     * Otherwise the pipe itself.
      *
      * @param receiver the child process
      * @return the stream
      * @since 1.13.2
      */
     public static InputStream processInputStream(Process receiver) {
-        streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDOUT);
-        return receiver.getInputStream();
+        return observed(receiver, ProcessStreamStarvationDetector.Stream.STDOUT, receiver.getInputStream());
     }
 
     /**
@@ -904,8 +905,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static InputStream processErrorStream(Process receiver) {
-        streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDERR);
-        return receiver.getErrorStream();
+        return observed(receiver, ProcessStreamStarvationDetector.Stream.STDERR, receiver.getErrorStream());
     }
 
     /**
@@ -970,6 +970,113 @@ public final class AgentConcurrencyUtilHooks {
         if (detector != null) {
             detector.recordWaitFor(process, Thread.currentThread());
         }
+    }
+
+    /**
+     * Weaves {@code PipedOutputStream.write(int)}: the write is recorded against the pipe's reading
+     * end, so one thread on both ends of a pair is reported (#994).
+     *
+     * @param receiver the writing end
+     * @param b        the byte
+     * @throws IOException as the write does
+     * @since 1.13.2
+     */
+    public static void pipedWrite(java.io.PipedOutputStream receiver, int b) throws IOException {
+        pipeWritten(receiver);
+        receiver.write(b);
+    }
+
+    /**
+     * Weaves {@code PipedOutputStream.write(byte[], int, int)}, as {@link #pipedWrite(java.io.PipedOutputStream, int)}.
+     *
+     * @param receiver the writing end
+     * @param b        the bytes
+     * @param off      the first byte to write
+     * @param len      how many to write
+     * @throws IOException as the write does
+     * @since 1.13.2
+     */
+    public static void pipedWrite(java.io.PipedOutputStream receiver, byte[] b, int off, int len)
+            throws IOException {
+        pipeWritten(receiver);
+        receiver.write(b, off, len);
+    }
+
+    /**
+     * Weaves {@code PipedOutputStream.write(byte[])}, as {@link #pipedWrite(java.io.PipedOutputStream, int)}.
+     *
+     * @param receiver the writing end
+     * @param b        the bytes
+     * @throws IOException as the write does
+     * @since 1.13.2
+     */
+    public static void pipedWrite(java.io.PipedOutputStream receiver, byte[] b) throws IOException {
+        pipeWritten(receiver);
+        receiver.write(b);
+    }
+
+    /**
+     * Weaves {@code PipedInputStream.read()}: the read is recorded against the pipe (#994).
+     *
+     * @param receiver the reading end
+     * @return what the read returns
+     * @throws IOException as the read does
+     * @since 1.13.2
+     */
+    public static int pipedRead(java.io.PipedInputStream receiver) throws IOException {
+        pipeRead(receiver);
+        return receiver.read();
+    }
+
+    /**
+     * Weaves {@code PipedInputStream.read(byte[], int, int)}, as {@link #pipedRead(java.io.PipedInputStream)}.
+     *
+     * @param receiver the reading end
+     * @param b        where to read into
+     * @param off      the first index to fill
+     * @param len      how many bytes at most
+     * @return what the read returns
+     * @throws IOException as the read does
+     * @since 1.13.2
+     */
+    public static int pipedRead(java.io.PipedInputStream receiver, byte[] b, int off, int len)
+            throws IOException {
+        pipeRead(receiver);
+        return receiver.read(b, off, len);
+    }
+
+    /**
+     * Weaves {@code PipedInputStream.read(byte[])}, as {@link #pipedRead(java.io.PipedInputStream)}.
+     *
+     * @param receiver the reading end
+     * @param b        where to read into
+     * @return what the read returns
+     * @throws IOException as the read does
+     * @since 1.13.2
+     */
+    public static int pipedRead(java.io.PipedInputStream receiver, byte[] b) throws IOException {
+        pipeRead(receiver);
+        return receiver.read(b);
+    }
+
+    private static void pipeWritten(java.io.PipedOutputStream out) {
+        ProcessStreamStarvationDetector detector = AsyncTestContext.currentProcessStreamStarvationDetector();
+        if (detector != null) {
+            detector.agentPipeWrite(out, Thread.currentThread());
+        }
+    }
+
+    private static void pipeRead(java.io.PipedInputStream in) {
+        ProcessStreamStarvationDetector detector = AsyncTestContext.currentProcessStreamStarvationDetector();
+        if (detector != null) {
+            detector.recordPipeRead(in, Thread.currentThread());
+        }
+    }
+
+    private static InputStream observed(Process process, ProcessStreamStarvationDetector.Stream stream,
+                                        InputStream raw) {
+        ProcessStreamStarvationDetector detector = AsyncTestContext.currentProcessStreamStarvationDetector();
+        return detector == null ? raw : detector.observeStream(process, stream, raw);
     }
 
     private static void streamTaken(Process process, ProcessStreamStarvationDetector.Stream stream) {

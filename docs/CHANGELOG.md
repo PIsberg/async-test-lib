@@ -199,6 +199,166 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release fails") says how to create it by hand. `PublishWaitsForCentralTest` went red on the old
   order first.
 
+### Fixed
+
+- **A piped stream pair used from one thread is reported (#994).** The `PipedInputStream` javadoc
+  warns that using both ends from one thread may deadlock it: once the 1024-byte buffer fills, the
+  write waits for a read that thread never makes. Nothing covered it. It is a second rule in
+  `PROCESS_STREAM_STARVATION`, the same "a stream nobody drains on another thread" family, rather
+  than a 148th detector: new `recordPipeWrite(sink, thread)` and `recordPipeRead(source, thread)`,
+  and with `collections=true` the agent weaves `PipedOutputStream.write` (three overloads) and
+  `PipedInputStream.read` (three overloads) and pairs each write with its pipe through the writer's
+  private `sink` (new `PipeSinks`; the agent now also opens `java.io` to the library;
+  `JdkPipeShapeCanaryTest` pins the field). A write through a variable typed `OutputStream` is not
+  woven. Tests: `onePipeUsedFromOneThreadIsReported` was red before the rule;
+  `PipedStreamWeavingTest` fires through the real weaver and went red with the `java.io` opening
+  disabled; the one-thread-per-end twins stay silent in the unit test and in
+  `PipedStreamSparesOneThreadPerEndTest`. The agent module (410 tests) and the full corpus module
+  are green.
+- **`VIRTUAL_THREAD_CARRIER_EXHAUSTION`: `jdk.VirtualThreadSubmitFailed` measured and not used
+  (#986).** A probe on JDK 21.0.9 and 26 saturated a one-carrier scheduler with pinned threads and
+  200,000 virtual-thread starts and saw zero events: the JDK emits it only when the scheduler rejects
+  a submit, which the default one does not do under saturation. The catalog entry records the
+  measurement; the detector keeps its record-call feed. JDK 24 and 25 were not probed.
+- **`PROCESS_STREAM_STARVATION` says how to make an unwoven drain visible (#996, item 5).** A pump
+  thread in a process library outside the agent's `includes` (commons-exec, zt-exec) takes its pipe
+  unseen, so a correct wait is reported. A stream the woven getter handed out and that pump then
+  reads is already seen since #998, wherever the pump's code lives. For a pipe no thread was seen
+  taking at all, the finding now ends with a hint to add that library's package to `includes=`.
+  A library taking the pipe itself in unwoven code stays unobservable without weaving the JDK's own
+  pipe classes, which the agent never does. `waitForWithUntakenPipesIsReported` asserts the hint and
+  was red before it.
+- **`NON_ATOMIC_CONCURRENT_MAP_UPDATE`: racers that put one cached box or one enum constant are
+  reported (#996, item 1).** The agent-fed check-then-act excused a round whose callers all put the
+  same instance, for the idiom of installing one shared object after a `get`. That also excused
+  `put(k, get(k) + 1)` when every racer computed `Integer.valueOf(1)`, and `IDLE` to `STARTED`
+  transitions, because the JVM hands out one instance per small box and one per enum constant. A
+  boxed primitive (`Number`, `Boolean`, `Character`) or enum constant now carries no value into the
+  excuse, like a remove; a shared object still does. The issue proposed a data-flow mark in the
+  weaver; telling a value from a chosen object was enough for both cases it named.
+  `AgentMapCheckThenActHooksTest.cachedBoxIncrementIsReported` (formerly the pinned false negative)
+  and the new `enumConstantTransitionIsReported` were red before the change; the shared-generation
+  idiom stays silent; the full corpus module stays green.
+- **`EXECUTOR_SHUTDOWN` no longer reports a pool the test class closes in `@AfterEach` (#996,
+  item 3).** Analysis runs inside the test method, before JUnit calls `@AfterEach`, so a pool the
+  run declared and teardown shut down read as never shut down. In a class that declares an
+  `@AfterEach`, the JUnit interceptor now runs the body through
+  `ConcurrencyRunner.executeBeforeTeardown`, the detector holds its "never shut down" verdicts, and
+  the interceptor's new `afterEach` callback, which JUnit calls after the test's own `@AfterEach`
+  methods, reports the pools still open through the same print, listener and failOn path as every
+  other finding (gated only when the run had passed its own gate). Behaviour change for listeners:
+  in such a class that report now arrives after `@AfterEach`. A class without `@AfterEach`, and the
+  programmatic `AsyncTestRunner`, report inline as before. The corpus's subject window moved from
+  `before/afterTestExecution` to `before/afterEach` to keep attributing it. Tests:
+  `ExecutorClosedInTeardownTest.closedInAfterEachIsSilent` was red before the change; a pool a
+  teardown forgets is still reported, and still fails `failOn = MEDIUM` (that case went red with the
+  held verdict's gate disabled on purpose). Full corpus module green.
+- **`SYNCHRONIZED_COLLECTION_ITERATION` judges a synchronized set it did not see being made (#996,
+  item 2).** The agent-fed path judged a synchronized list against itself and a map view against
+  the map it saw return it, and skipped any other synchronized set or collection, since it might be
+  a view guarded by a map. With `collections=true` the agent now also opens `java.util` to the
+  library's module (beside `java.util.concurrent.locks`, and `atomic` under field weaving), and the
+  detector reads the wrapper's private `mutex` (new `SynchronizedMutexes`), so every wrapper is
+  judged against the monitor it really locks, a `subList` against its parent included. Without the
+  opening the old rule stands. `JdkSynchronizedWrapperShapeCanaryTest` pins the field on every CI
+  JDK. `SynchronizedSetIterationWeavingTest` (a set built in unwoven code, iterated without its
+  lock) was red before the change; `SynchronizedSetIterationSparesTheMutexTest` (the set under its
+  own monitor, and a synchronized map's key set taken in unwoven code under the map's monitor)
+  stays silent. The full corpus module stays green.
+- **`INTERRUPT_SWALLOWING`/`INTERRUPT_MISHANDLING`: a restoring call answers only for its own path
+  (#996, item 4).** `InterruptHandlerWeaver` treated an `interrupt()` call reachable on any path
+  from the handler as handling the whole handler, and counted any call whose name mentions an
+  interrupt, `acquireUninterruptibly` and `lockInterruptibly` included, as a restore. The walk now
+  reports a handler when some path reaches a return without passing a restore, `*Interruptibly`
+  names restore nothing, and the walk tracks the `int` locals a constant made non-zero so Guava's
+  `if (interrupted) interrupt()` in a `finally` stays handled. `InterruptHandlerWeaverTest` was red
+  on the two new shapes (`restoreOnOnePathOnly`, `callAnUninterruptibleMethod`) before the change;
+  the six handled shapes, Guava's idiom among them, stay silent, and the corpus idiom, agent-pair
+  and library-excluded lanes, which drive real Guava `Uninterruptibles` bytecode, stay green.
+- **`PROCESS_STREAM_STARVATION` reports a pipe the waiter took before `waitFor` but read only
+  after it (#998).** A take used to count as a drain, so `InputStream out = p.getInputStream();
+  p.waitFor(); out.readAllBytes()` was silent, although it hangs a verbose child exactly like an
+  untaken pipe. New `ProcessStreamStarvationDetector.observeStream(process, stream, raw)` hands out
+  a `FilterInputStream` over the pipe that notes which threads read it and whether a read reached
+  its end; with the detector on, the woven `getInputStream` and `getErrorStream` return it (the
+  same instance per process and stream). A pipe the waiter took that way counts as drained only if
+  it was read to its end before the wait, or another thread read or took it. `inputReader`,
+  `errorReader` and `recordStreamTaken` keep the old rule. Tests: the unit test and
+  `ProcessTakenBeforeWaitWeavingTest` were red before the change; the twins (read to the end then
+  wait, and take then hand the stream to a drain thread) stay silent in the unit test and in
+  `ProcessFeedSparesCorrectUseTest`. The corpus agent-pair lane's two process rows read through
+  the wrapped stream and stay green; no corpus idiom-lane body uses a process, so that lane says
+  nothing about the wrapper.
+- **`VIRTUAL_THREAD_PINNING` reports a pin on a virtual thread the body starts, with the agent
+  attached (#983).** JFR reports every virtual thread in the JVM and names no parent, so the feed
+  kept only the workers' own pins and counted a thread the body started
+  (`Thread.ofVirtual().start(...)`) as unattributed. `AsyncTestContext` now keeps the ids of the
+  threads a run's threads start through the woven `Thread.start` and `Thread.Builder.start`
+  (`spawnedThreadIds()`), and `JfrPinningStream` reads them beside the workers, giving each the
+  round its starter was in. With the agent the feed also opens on platform workers, for the
+  virtual threads their body starts. Without the agent nothing changes. Tests:
+  `BodyStartedPinningOnVirtualWorkersTest` and `BodyStartedPinningOnPlatformWorkersTest` were red
+  before the change; `ForeignPinningIsNotAttributedTest` (fresh pinning threads started each round
+  by a thread that is no worker) stays silent, and went red when the spawned set was made JVM-wide
+  on purpose.
+- **`VIRTUAL_THREAD_PINNING` grades observed pins apart from recorded ones, is paired in the
+  corpus, and stopped reporting the agent's own pins (#984).** `PinningReport` implements
+  `GradedFindings`: a pin the JVM reported through `jdk.VirtualThreadPinned` is `FACT` on
+  `OBSERVED` evidence, one described through `recordPinningEvent` stays `PROMPT` on `ASSERTED`,
+  and `PinningEventSnapshot.isObserved()` says which. The `DetectorTrust` row moves from `ASSERTED`
+  to `OBSERVED` evidence (tier `PROMPT`, its weaker path) and leaves `FED_BELOW_OBSERVED`. A new
+  agent-lane corpus pair fires on a worker that initializes a fresh copy of a class whose
+  initializer sleeps, and stays silent on the same load followed by the same sleep outside it.
+  Its first run fired the silent twin 235 times, on three causes, each fixed:
+  - **The agent pinned virtual threads itself.** Byte Buddy's default self-injection gave every
+    class woven at load a `<clinit>` that loads `net.bytebuddy.dynamic.Nexus` through the system
+    class loader, and threads initializing woven classes at once contended on its lock under the
+    JVM's initializer frame. `AsyncTestAgent` now installs with `InitializationStrategy.NoOp`, which
+    the dynamic-attach path always used, since no weaver registers a loaded-type initializer.
+  - **Pins inside the agent's transformer and the library's bookkeeping were reported as the
+    code's.** The agent's per-loader bookkeeping (`UpdaterAccess.openTo`) takes a contended monitor
+    under `defineClass`, and so, once in four lane runs, did `LocksetRegistry.register` behind a
+    woven monitor enter. `JfrPinningStream` now drops a pin whose first frame outside the JDK is the
+    agent's package, or library code other than a woven `Agent*Hooks`/`TelemetryRegistry` hook (told
+    apart from user code sharing the package names by its code source), and counts it in
+    `runner.pinning.instrumentation` (DEBUG).
+  - **Under the agent every woven pin had the hook as its site** (`AgentSleepHooks.sleep`), so two
+    call sites pinning in different rounds passed the two-round rule as one. The site skips the
+    library's `Agent*Hooks` and telemetry frames.
+
+  The lane's fresh loaders also serve the classes they delegated from a map after the first round,
+  since six of them asking one parent at once pin on its per-name locks. The agent-pair lane is
+  green locally on JDK 26 (104 tests); paired detectors 133 to 134, refusals 14 to 13.
+- **`VIRTUAL_THREAD_PINNING` dropped a recorded pin inside a class initializer on JDK 26
+  (#985).** `classifyOperation` mapped every description naming `<clinit>` or a static
+  initializer to `PinningCause.CLASS_INIT`, which `stillPinsOn` calls obsolete on JDK 26. That
+  holds for waiting on another thread's initializer, not for blocking inside one: a 2026-10-10
+  probe saw JDK 26 emit `jdk.VirtualThreadPinned` with "VM call to X.<clinit> on stack" for an
+  initializer that sleeps, and nothing for the thread waiting on it. A new constant,
+  `PinningCause.CLASS_INIT_EXECUTING`, pins on every JDK; `CLASS_INIT` keeps its meaning (waiting)
+  and its JDK 26 cut-off, and a description is classified as waiting only when it says so ("waiting
+  for class initialization", the JDK 24 reason "Waited for initialization of X by another
+  thread"). The JFR feed labels its causes the same way; its pins were never filtered.
+  `blockingInAStaticInitializerStaysAFindingOnEveryJdk` was red on JDK 26 before the split. The
+  JDK 25 waiter row was not re-probed (no JDK 25 here); the javadoc's "pinned up to JDK 25" for
+  waiting is unchanged.
+- **`TelemetryEventBufferTest.testMpscConcurrency` asserted zero loss from a buffer that drops by
+  design (#987).** `publish` drops an event after a second with no consumer progress and counts it
+  in `droppedCount()`; a full-suite run starved the test's 10 ms scheduled drainer that long once
+  and the test read 3,998 of 4,000. It now asserts that drained plus dropped equals published and
+  that no event drains twice. The new `testMpscConcurrencyWithAStarvedConsumer` starts the drainer
+  after 1.3 s, which reproduces the drop on every run: it read 3,992 of 4,000 against the old
+  assertion and passes against the new one.
+- **`OwnershipOfferWeavingTest` could read zero offers on a loaded runner, and Gradle hid why
+  (#997).** One Gradle JDK 21 run failed `Collection.addAll / Queue.remove()` with "the offer must
+  be published once" and passed on rerun; Gradle printed only the exception class and line. Two
+  changes: the Gradle `test` task now prints full assertion messages, and the test flushes until
+  the chunk's offer and take have both arrived (at most 10 s) instead of flushing once.
+  `TelemetryRegistry.flush()` gives up after one second and closing the bridge discards anything
+  drained later, which is the one way the case could see no event at all; a doubled event still
+  fails, now with the events and the drop count in the message. Not reproduced locally: 83 of 83
+  green under Maven and Gradle.
+
 ## [1.13.1] - 2026-10-09
 
 > **The first 1.13 on Maven Central.** 1.13.0 was tagged and released on GitHub, but Central

@@ -164,8 +164,8 @@ class AgentMapCheckThenActHooksTest {
     }
 
     @Test
-    @DisplayName("racers that all put one cached box are excused: the documented false negative")
-    void cachedBoxIncrementIsTheKnownFalseNegative() throws InterruptedException {
+    @DisplayName("racers that all put one cached box are reported: an increment was lost (#996)")
+    void cachedBoxIncrementIsReported() throws InterruptedException {
         AsyncTestContext context = newContext();
         Map<Object, Object> counts = new ConcurrentHashMap<>();
         counts.put("hits", 0);
@@ -177,10 +177,34 @@ class AgentMapCheckThenActHooksTest {
         });
 
         assertEquals(1, counts.get("hits"), "an increment was lost");
-        assertFalse(reportOf(context).hasIssues(),
-                "both racers put Integer.valueOf(1), the one cached instance, so the same-instance "
-                        + "excuse applies. This pins the boundary the agentAct javadoc states; if "
-                        + "the hooks learn to tell a derived value from a chosen one, flip it");
+        assertTrue(reportOf(context).hasIssues(),
+                "both racers put Integer.valueOf(1), which is one cached instance only because the "
+                        + "JVM caches small boxes: the value was derived from the read, and an "
+                        + "increment was lost: " + reportOf(context));
+    }
+
+    /** States a check-then-act moves a key through. */
+    private enum Phase { IDLE, STARTED }
+
+    @Test
+    @DisplayName("racers that all put one enum constant after a check are reported (#996)")
+    void enumConstantTransitionIsReported() throws InterruptedException {
+        AsyncTestContext context = newContext();
+        Map<Object, Object> phases = new ConcurrentHashMap<>();
+        phases.put("job", Phase.IDLE);
+
+        together(context, meet -> {
+            boolean idle = AgentCollectionHooks.mapGet(phases, "job") == Phase.IDLE;
+            meet.run();
+            if (idle) {
+                AgentCollectionHooks.mapPut(phases, "job", Phase.STARTED);
+            }
+        });
+
+        assertTrue(reportOf(context).hasIssues(),
+                "both racers saw IDLE and both moved the job to STARTED, so both believe they "
+                        + "started it; the constant is shared by the enum, not chosen as a token: "
+                        + reportOf(context));
     }
 
     @Test

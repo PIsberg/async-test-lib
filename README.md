@@ -97,8 +97,8 @@ only 21 of the 146 shipped when this was first measured could see anything at al
 those produced every finding in the corpus. Saying so is the difference between a measurement and a marketing number. Two more
 lanes exist for exactly that reason. One records what the body did, the way a user following
 `AsyncTestContext` would; the other attaches the agent and writes the bug next to its fix. Between
-them 133 of the 147 detectors are paired with a case that must fire and a twin that must stay
-silent, and the other 14 carry a written reason. 34 of those pairs are what let their detectors
+them 134 of the 147 detectors are paired with a case that must fire and a twin that must stay
+silent, and the other 13 carry a written reason. 34 of those pairs are what let their detectors
 carry `VERDICT`, the tier a build can fail on; a pair alone is not enough, because the detector
 must also decide from something other than the test's own record call. HikariCP joins the corpus
 as an eighth library

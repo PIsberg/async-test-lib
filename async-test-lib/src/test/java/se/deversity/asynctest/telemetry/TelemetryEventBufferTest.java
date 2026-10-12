@@ -92,6 +92,17 @@ class TelemetryEventBufferTest {
 
     @Test
     void testMpscConcurrency() throws Exception {
+        runMpsc(0);
+    }
+
+    @Test
+    void testMpscConcurrencyWithAStarvedConsumer() throws Exception {
+        // The drain thread starts after the publish give-up bound (1 s), which is what a
+        // full-suite run does to a scheduled drainer now and then (#987).
+        runMpsc(1_300);
+    }
+
+    private void runMpsc(long drainDelayMillis) throws Exception {
         int capacity = 1024;
         TelemetryEventBuffer buffer = new TelemetryEventBuffer(capacity);
         int producerThreadsCount = 8;
@@ -106,7 +117,7 @@ class TelemetryEventBufferTest {
             buffer.drain((tid, field, write) -> {
                 drainedEvents.add(tid + ":" + field);
             });
-        }, 0, 10, TimeUnit.MILLISECONDS);
+        }, drainDelayMillis, 10, TimeUnit.MILLISECONDS);
 
         CountDownLatch latch = new CountDownLatch(producerThreadsCount);
         for (int p = 0; p < producerThreadsCount; p++) {
@@ -138,7 +149,16 @@ class TelemetryEventBufferTest {
             drainedEvents.add(tid + ":" + field);
         });
 
-        assertEquals(producerThreadsCount * eventsPerProducer, drainedEvents.size(), "Drained event count mismatch");
+        // The buffer drops an event by design after a second with no consumer progress, and a
+        // loaded machine can starve the scheduled drainer that long, so assert the accounting:
+        // every event is either drained exactly once or counted as dropped (#987).
+        assertEquals(producerThreadsCount * eventsPerProducer,
+                drainedEvents.size() + buffer.droppedCount(), "Drained plus dropped mismatch");
+        assertEquals(drainedEvents.size(), new java.util.HashSet<>(drainedEvents).size(),
+                "An event was drained twice");
+        if (drainDelayMillis > 0) {
+            assertTrue(buffer.droppedCount() > 0, "A starved consumer should have cost a drop");
+        }
     }
 
     @Test

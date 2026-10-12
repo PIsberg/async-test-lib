@@ -22,8 +22,10 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.function.Consumer;
 
@@ -45,12 +47,12 @@ import java.util.function.Consumer;
  * <ul>
  *   <li>a path that reaches an {@code ATHROW} hands the exception, or a wrapper of it, on;</li>
  *   <li>a call to a method named {@code interrupt}, or to a helper whose name mentions an
- *       interrupt other than {@code interrupted} and {@code isInterrupted}, which read the flag,
- *       restores it, and one reachable on any path from the handler answers for the whole
- *       handler. The walk goes on through the method's ordinary code for that reason: Guava's
- *       {@code Uninterruptibles} notes the interrupt, goes on waiting, and restores the flag in
- *       a {@code finally};</li>
- *   <li>a handler with no such call reachable, and a path to a return, swallows the interrupt:
+ *       interrupt other than {@code interrupted}, {@code isInterrupted} and the
+ *       {@code *Interruptibly} family, restores it and ends that path. The walk goes on through
+ *       the method's ordinary code: Guava's {@code Uninterruptibles} notes the interrupt in a
+ *       local, goes on waiting, and restores the flag in a {@code finally} guarded by that local,
+ *       which the walk follows by tracking the locals a constant made non-zero (#996);</li>
+ *   <li>a handler with a path to a return that passes no such call swallows the interrupt:
  *       the caller never learns of it. A {@code run()} that returns is the one exception, a
  *       thread's own loop exiting on interrupt being its interruption policy.</li>
  * </ul>
@@ -187,10 +189,17 @@ final class InterruptHandlerWeaver implements AsmVisitorWrapper {
             this.threadRun = threadRun;
         }
 
-        /** One instruction, as much of it as the walk needs. */
-        private record Insn(int opcode, Label[] targets, String owner, String name) {
+        /**
+         * One instruction, as much of it as the walk needs: {@code operand} is the local of a
+         * variable instruction or an {@code IINC}, or the value of a {@code BIPUSH}/{@code SIPUSH},
+         * and -1 otherwise.
+         */
+        private record Insn(int opcode, Label[] targets, String owner, String name, int operand) {
             static final Label[] NONE = new Label[0];
         }
+
+        /** A point of the walk: an instruction, and the int locals known to hold a non-zero value. */
+        private record Visit(int at, long knownTrue) { }
 
         /** One protected range and its handler. */
         private record Block(Label start, Label end, Label handler, String type) { }
@@ -205,6 +214,10 @@ final class InterruptHandlerWeaver implements AsmVisitorWrapper {
 
         /** Marks the first instruction, and stops buffering a method that declared no handler. */
         private void instruction(int opcode, Label[] targets, String owner, String name) {
+            instruction(opcode, targets, owner, name, -1);
+        }
+
+        private void instruction(int opcode, Label[] targets, String owner, String name, int operand) {
             if (prologue < 0) {
                 prologue = actions.size();
                 if (!sawInterruptHandler) {
@@ -212,7 +225,7 @@ final class InterruptHandlerWeaver implements AsmVisitorWrapper {
                 }
             }
             if (buffering) {
-                insns.add(new Insn(opcode, targets, owner, name));
+                insns.add(new Insn(opcode, targets, owner, name, operand));
             }
         }
 
@@ -332,13 +345,13 @@ final class InterruptHandlerWeaver implements AsmVisitorWrapper {
 
         @Override
         public void visitIntInsn(int opcode, int operand) {
-            instruction(opcode, Insn.NONE, "", "");
+            instruction(opcode, Insn.NONE, "", "", operand);
             action(mv -> mv.visitIntInsn(opcode, operand));
         }
 
         @Override
         public void visitVarInsn(int opcode, int varIndex) {
-            instruction(opcode, Insn.NONE, "", "");
+            instruction(opcode, Insn.NONE, "", "", varIndex);
             action(mv -> mv.visitVarInsn(opcode, varIndex));
         }
 
@@ -384,7 +397,7 @@ final class InterruptHandlerWeaver implements AsmVisitorWrapper {
 
         @Override
         public void visitIincInsn(int varIndex, int increment) {
-            instruction(Opcodes.IINC, Insn.NONE, "", "");
+            instruction(Opcodes.IINC, Insn.NONE, "", "", varIndex);
             action(mv -> mv.visitIincInsn(varIndex, increment));
         }
 
@@ -537,53 +550,101 @@ final class InterruptHandlerWeaver implements AsmVisitorWrapper {
          * well, since a handler may only note the interrupt and leave the restoring to a
          * {@code finally}: Guava's {@code Uninterruptibles} sets a flag, goes on waiting, and calls
          * {@code interrupt()} once the wait is over. A path ends at an {@code ATHROW}, which hands
-         * the exception or a wrapper of it on, and at a call that restores the flag, which
-         * anywhere on any path from the handler is taken to answer for the whole handler: the
-         * check is not path-sensitive, and it errs toward silence. A handler swallows when no
-         * such call is reachable and some path reaches a return, the caller then never learning
-         * of the interrupt. A {@code run()} that returns is a thread's own policy, and a walk that
-         * runs past its bound reports nothing.
+         * the exception or a wrapper of it on, and at a call that restores the flag. A handler
+         * swallows when some path reaches a return without passing such a call, the caller then
+         * never learning of the interrupt (#996: a restoring call on one branch used to answer for
+         * every path). The walk carries which {@code int} locals are known to hold a non-zero value,
+         * set by a constant stored into them, so {@code if (interrupted) interrupt()} after the
+         * handler set {@code interrupted = true} follows only the branch that restores. A
+         * {@code run()} that returns is a thread's own policy, and a walk that runs past its bound
+         * reports nothing.
          */
         private boolean swallows(int handler) {
-            BitSet seen = new BitSet();
-            Deque<Integer> work = new ArrayDeque<>();
-            work.push(handler);
+            Set<Visit> seen = new HashSet<>();
+            Deque<Visit> work = new ArrayDeque<>();
+            work.push(new Visit(handler, 0L));
             int steps = 0;
-            boolean returns = false;
             while (!work.isEmpty()) {
                 steps++;
                 if (steps > MAX_WALK) {
                     return false;
                 }
-                int at = work.pop();
-                if (at < 0 || at >= insns.size() || seen.get(at)) {
+                Visit visit = work.pop();
+                int at = visit.at();
+                if (at < 0 || at >= insns.size() || !seen.add(visit)) {
                     continue;
                 }
-                seen.set(at);
                 Insn insn = insns.get(at);
                 int opcode = insn.opcode();
-                if (restoresTheFlag(insn)) {
-                    return false;
-                }
-                if (opcode == Opcodes.ATHROW) {
+                if (restoresTheFlag(insn) || opcode == Opcodes.ATHROW) {
                     continue;
                 }
                 if (opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN) {
-                    returns |= !threadRun;
+                    if (!threadRun) {
+                        return true;
+                    }
                     continue;
                 }
-                for (int next : successors(at)) {
-                    work.push(next);
+                long known = knownAfter(at, visit.knownTrue());
+                for (int next : feasibleSuccessors(at, known)) {
+                    work.push(new Visit(next, known));
                 }
             }
-            return returns;
+            return false;
+        }
+
+        /** {@return the locals known non-zero after the instruction at {@code at}} */
+        private long knownAfter(int at, long known) {
+            Insn insn = insns.get(at);
+            int local = insn.operand();
+            boolean store = insn.opcode() == Opcodes.ISTORE || insn.opcode() == Opcodes.IINC;
+            if (!store || local < 0 || local >= 64) {
+                return known;
+            }
+            long bit = 1L << local;
+            boolean storesNonZero = insn.opcode() == Opcodes.ISTORE && at > 0
+                    && nonZeroConstant(insns.get(at - 1));
+            return storesNonZero ? known | bit : known & ~bit;
+        }
+
+        private static boolean nonZeroConstant(Insn insn) {
+            int opcode = insn.opcode();
+            boolean iconst = opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5
+                    && opcode != Opcodes.ICONST_0;
+            boolean push = (opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH) && insn.operand() != 0;
+            return iconst || push;
+        }
+
+        /**
+         * {@return the successors of the instruction at {@code at} that {@code known} leaves
+         * possible}: an {@code IFEQ} or {@code IFNE} right after loading a local known non-zero
+         * takes one branch only.
+         */
+        private List<Integer> feasibleSuccessors(int at, long known) {
+            Insn insn = insns.get(at);
+            int opcode = insn.opcode();
+            if ((opcode == Opcodes.IFEQ || opcode == Opcodes.IFNE) && at > 0) {
+                Insn load = insns.get(at - 1);
+                int local = load.operand();
+                if (load.opcode() == Opcodes.ILOAD && local >= 0 && local < 64
+                        && (known & (1L << local)) != 0) {
+                    if (opcode == Opcodes.IFEQ) {
+                        return List.of(at + 1);
+                    }
+                    Integer target = labelAt.get(insn.targets()[0]);
+                    return target == null ? List.of() : List.of(target);
+                }
+            }
+            return successors(at);
         }
 
         /**
          * {@return whether {@code insn} is a call that sets the interrupt flag again}: a method named
          * {@code interrupt}, or one whose name mentions an interrupt and does not just read the flag,
-         * such as a project's own {@code restoreInterrupt} helper. A call named for interrupts that
-         * does something else is taken at its word, which errs toward not reporting.
+         * such as a project's own {@code restoreInterrupt} helper. A name saying the call ignores
+         * interrupts ({@code acquireUninterruptibly}) or may be interrupted
+         * ({@code lockInterruptibly}) restores nothing (#996). A call named for interrupts that does
+         * something else is taken at its word, which errs toward not reporting.
          */
         private static boolean restoresTheFlag(Insn insn) {
             if (insn.opcode() < Opcodes.INVOKEVIRTUAL || insn.opcode() > Opcodes.INVOKEINTERFACE) {
@@ -592,6 +653,7 @@ final class InterruptHandlerWeaver implements AsmVisitorWrapper {
             String name = insn.name();
             return "interrupt".equals(name)
                     || name.contains("nterrupt") // interrupt or Interrupt, with no case mapping
+                    && !name.contains("nterruptibl")
                     && !"interrupted".equals(name) && !"isInterrupted".equals(name);
         }
 

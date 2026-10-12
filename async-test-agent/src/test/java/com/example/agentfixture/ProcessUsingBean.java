@@ -72,6 +72,45 @@ public class ProcessUsingBean {
     }
 
     /**
+     * Takes the merged output, waits for the child, and only then reads it: the defect, though the
+     * take came first (#998).
+     *
+     * @return the child's output
+     * @throws IOException          if the child cannot be started or read
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public String takeThenWaitThenRead() throws IOException, InterruptedException {
+        Process child = javaVersion().redirectErrorStream(true).start();
+        java.io.InputStream out = child.getInputStream();
+        child.waitFor();
+        return new String(out.readAllBytes(), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Takes the merged output, hands the stream to a thread that drains it, then waits (#998).
+     *
+     * @return the child's output
+     * @throws IOException          if the child cannot be started
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public String takeThenHandOffThenWait() throws IOException, InterruptedException {
+        Process child = javaVersion().redirectErrorStream(true).start();
+        java.io.InputStream stream = child.getInputStream();
+        AtomicReference<String> out = new AtomicReference<>();
+        Thread drain = new Thread(() -> {
+            try {
+                out.set(new String(stream.readAllBytes(), StandardCharsets.UTF_8));
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+        drain.start();
+        child.waitFor();
+        drain.join();
+        return out.get();
+    }
+
+    /**
      * Discards both outputs, then waits for the child.
      *
      * @return the child's exit value

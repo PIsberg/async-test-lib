@@ -68,7 +68,7 @@ class InterruptHandlerWeaverTest {
         String owner = InterruptHandlingShapes.class.getName();
 
         for (String method : List.of("swallowEmpty", "swallowLogged", "swallowByReturning",
-                "swallowInAMultiCatch")) {
+                "swallowInAMultiCatch", "restoreOnOnePathOnly", "callAnUninterruptibleMethod")) {
             String entered = entered(sample, method);
             assertTrue(entered.startsWith(owner + "." + method + ":"),
                     method + " neither rethrows nor restores the flag, so its method start must "

@@ -242,6 +242,12 @@ public final class AsyncTestContext {
     private volatile boolean analysed;
 
     /**
+     * Ids of the threads this run's threads started through a woven {@code Thread.start} (#983).
+     * Concurrent: the workers add while the pinning feed reads.
+     */
+    private final java.util.Set<Long> spawnedThreadIds = ConcurrentHashMap.newKeySet();
+
+    /**
      * Third-party detectors contributed through the public {@link se.deversity.asynctest.spi.Detector}
      * SPI, discovered once per context via {@code ServiceLoader}.
      *
@@ -716,6 +722,19 @@ public final class AsyncTestContext {
     }
 
     /**
+     * Internal: registry-backed {@link ExecutorShutdownDetector} for this context, or {@code null}
+     * when {@link DetectorType#EXECUTOR_SHUTDOWN} is not enabled. Public only so
+     * {@code ConcurrencyRunner}, in another package, can hold its "never shut down" verdict until
+     * the test's {@code @AfterEach} methods have run (#996); not part of the stable public API.
+     *
+     * @return the shared detector, or {@code null} when it is disabled
+     * @since 1.13.2
+     */
+    public @Nullable ExecutorShutdownDetector sharedExecutorShutdownDetector() {
+        return executorShutdownDetector;
+    }
+
+    /**
      * Internal: registry-backed {@link VirtualThreadPinningDetector} for this context, or
      * {@code null} when {@link DetectorType#VIRTUAL_THREAD_PINNING} is not enabled.
      *
@@ -798,7 +817,23 @@ public final class AsyncTestContext {
             });
         }
         SPAWNED.put(child.threadId(), new WeakReference<>(context));
+        context.spawnedThreadIds.add(child.threadId());
         SelfGuard.Scope.spawned(child, context.sharingScope);
+    }
+
+    /**
+     * Internal: a live, read-only view of the ids of the threads this run's threads started through
+     * a woven {@code Thread.start}, empty without the agent (#983). The JVM's pinning events carry
+     * no parent thread, so this is what lets the runner attribute a pin on a thread the body started.
+     *
+     * <p>Public only so the runner, in another package, can pass it to the pinning feed; not part of
+     * the stable public API.
+     *
+     * @return the started threads' ids, growing while the run goes on
+     * @since 1.13.2
+     */
+    public java.util.Set<Long> spawnedThreadIds() {
+        return java.util.Collections.unmodifiableSet(spawnedThreadIds);
     }
 
     /**

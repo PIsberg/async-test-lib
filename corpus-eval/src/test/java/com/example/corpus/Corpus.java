@@ -1434,6 +1434,22 @@ final class Corpus {
                     "the same child, with a thread draining its output started before the wait, "
                             + "as the Process javadoc asks"),
 
+            new RecordingSubject("agent_pipe_bothEndsOnOneThread", JDK,
+                    "java.io.PipedInputStream",
+                    DetectorType.PROCESS_STREAM_STARVATION, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "each worker writes into a pipe and reads it back itself. The PipedInputStream "
+                            + "javadoc warns that using both ends from a single thread may deadlock "
+                            + "it, once a write fills the buffer with no other thread to read (#994)",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("agent_pipe_oneThreadPerEnd", JDK,
+                    "java.io.PipedInputStream",
+                    DetectorType.PROCESS_STREAM_STARVATION, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same pipe, with its writer on a thread of its own, the javadoc's own "
+                            + "pattern"),
+
             new RecordingSubject("agent_thread_startedWithNoDaemonDecision", JDK,
                     "java.lang.Thread",
                     DetectorType.DAEMON_THREAD_HYGIENE, Contract.THREAD_SAFE,
@@ -1813,6 +1829,30 @@ final class Corpus {
                     "the same Guava acquisition, released in a finally when it succeeded. The "
                             + "release is written in the body, because Guava has no release "
                             + "helper; the acquisition the leak is made of is Guava's in both"),
+
+            // --- Virtual-thread pinning. Fed by the JVM's own jdk.VirtualThreadPinned event
+            //     through the runner's JFR stream, so, like the deadlock rows below, the input is
+            //     the JVM rather than a woven call site (#984).
+
+            new RecordingSubject("agent_virtualThreadPinning_blocksInsideAnInitializer", JDK,
+                    "java.lang.Thread",
+                    DetectorType.VIRTUAL_THREAD_PINNING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a virtual thread that blocks while running a class initializer cannot unmount, "
+                            + "on JDK 21, 25 and 26 alike, and the JVM says so with "
+                            + "jdk.VirtualThreadPinned. A fresh copy of the class per execution "
+                            + "makes the same initializer pin in every round, which is what "
+                            + "separates it from one-time class-loading warm-up",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("agent_virtualThreadPinning_blocksOutsideAnInitializer", JDK,
+                    "java.lang.Thread",
+                    DetectorType.VIRTUAL_THREAD_PINNING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same fresh class load in every round and the same sleep, after the "
+                            + "initializer returns, where the virtual thread unmounts and the JVM "
+                            + "emits nothing. A finding here would mean the detector reports "
+                            + "blocking or class loading rather than pinning"),
 
             // --- Deadlock. The one detector here whose input is the JVM rather than a woven call
             //     site, and the one whose MUST_FIRE row leaves the JVM permanently changed: a real

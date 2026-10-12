@@ -199,6 +199,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 ### 62. Virtual Thread Carrier Exhaustion Detector
 * **Severity**: `HIGH`
 * **Description**: When many virtual threads are simultaneously pinned (e.g. inside `synchronized`) or otherwise blocked in a way that can't unmount them from their carrier, all carrier threads in the scheduler's `ForkJoinPool` can become occupied — apparent deadlock/starvation with no classic deadlock cycle. The detector tracks peak and sustained concurrently-blocked counts against the carrier thread count.
+* **No JFR feed, measured** (#986): the JVM's `jdk.VirtualThreadSubmitFailed` event looked like direct evidence of this condition, but the JDK emits it only when the scheduler rejects a submit, and the default scheduler does not reject under saturation. A 2026-10-12 probe on JDK 21.0.9 and 26 ran one carrier (`jdk.virtualThreadScheduler.parallelism=1`, `maxPoolSize=1`) held by a thread pinned in a class initializer and one pinned in `synchronized` (sleeping, and in a second run in `Object.wait`), started 200,000 virtual threads behind them, and saw zero events, no rejected start and the pins themselves reported. JDK 24 and 25 were not probed. The detector stays fed by record calls.
 * **Buggy Code**:
   ```java
   private final Object lock = new Object();

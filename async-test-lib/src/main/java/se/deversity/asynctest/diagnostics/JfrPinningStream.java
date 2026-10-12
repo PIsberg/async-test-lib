@@ -45,9 +45,21 @@ import java.util.concurrent.atomic.AtomicLong;
  * The site is the first frame outside the JDK. A run of one round therefore gets no observed
  * finding, only {@link #singleRoundSites()}.
  *
+ * <p><strong>A pin inside the agent's own transformer is not the code's.</strong> With the agent
+ * attached, every class definition runs its transformer under the native {@code defineClass} frame,
+ * and a contended monitor there (the agent's per-loader bookkeeping) pins the virtual thread that
+ * is defining the class. The first corpus pair for this detector saw 235 such pins on a body that
+ * defines a fresh class in every round, all with the agent's {@code UpdaterAccess.openTo} as the
+ * first frame outside the JDK. Code in the agent's package runs only inside its transformer and
+ * install (the woven hooks live in the library), so a pin whose site is there would not exist
+ * without the agent; nor would one whose first frame outside the JDK is library code other than a
+ * woven hook, such as the lockset bookkeeping of a woven monitor enter, which the corpus also met.
+ * Both are counted in {@link #instrumentationEvents()} and not reported (#984).
+ *
  * <p>JFR hands every event to every open stream, so two runs in parallel each see the other's
- * pins. Only events on a thread in the run's worker set are kept; the rest are counted in
- * {@link #unattributedEvents()}. The events arrive in batches, and none had arrived before
+ * pins. Only events on a thread in the run's worker set, or on a thread one of the run's threads
+ * started through a woven {@code Thread.start} (the agent records those, #983), are kept; the rest
+ * are counted in {@link #unattributedEvents()}. The events arrive in batches, and none had arrived before
  * {@code stop()} in the probe while all had when it returned, so {@link #close()} is what makes
  * them visible to an analysis that follows it.
  *
@@ -80,8 +92,25 @@ public final class JfrPinningStream implements AutoCloseable {
      */
     public static @Nullable JfrPinningStream start(VirtualThreadPinningDetector target, Set<Long> workers,
                                                    String testName) {
+        return start(target, workers, Set.of(), testName);
+    }
+
+    /**
+     * {@link #start(VirtualThreadPinningDetector, Set, String)} that also attributes a pin on a
+     * thread in {@code spawned}, the threads the run's own threads started, which the agent records
+     * from a woven {@code Thread.start} (#983). Such a thread takes the round its starter was in,
+     * read at the same round boundaries as the workers.
+     *
+     * @param target   the run's pinning detector
+     * @param workers  the run's worker thread ids, filled as workers start
+     * @param spawned  the ids of threads the run's threads started, filled as they start
+     * @param testName the test method, for log lines
+     * @return the open stream, or {@code null} without a usable JFR
+     */
+    public static @Nullable JfrPinningStream start(VirtualThreadPinningDetector target, Set<Long> workers,
+                                                   Set<Long> spawned, String testName) {
         try {
-            return new JfrPinningStream(Live.start(target, workers, testName));
+            return new JfrPinningStream(Live.start(target, workers, spawned, testName));
         } catch (LinkageError | RuntimeException e) { // NOPMD - any failure to start leaves the recorded feed, never the run
             if (UNAVAILABLE_LOGGED.compareAndSet(false, true)) {
                 log.debug("pinning.jfr.unavailable test={} reason=\"{}\"", testName, e.toString());
@@ -102,6 +131,11 @@ public final class JfrPinningStream implements AutoCloseable {
     /** {@return how many pinning events fell on threads that are not this run's workers} */
     public long unattributedEvents() {
         return live.unattributed.get();
+    }
+
+    /** {@return how many pinning events on this run's workers had the agent's transformer as their site} */
+    public long instrumentationEvents() {
+        return live.instrumentation.get();
     }
 
     /** {@return how many call sites pinned a worker in one round only, and so were not reported} */
@@ -128,8 +162,11 @@ public final class JfrPinningStream implements AutoCloseable {
         private final RecordingStream stream;
         private final VirtualThreadPinningDetector target;
         private final Set<Long> workers;
+        /** Threads the run's threads started through a woven {@code Thread.start} (#983). */
+        private final Set<Long> spawned;
         private final String testName;
         private final AtomicLong unattributed = new AtomicLong();
+        private final AtomicLong instrumentation = new AtomicLong();
         private final AtomicBoolean closed = new AtomicBoolean();
         /** The round each worker ran in, filled in at each {@link #markRound()} and at close. */
         private final Map<Long, Integer> roundOf = new ConcurrentHashMap<>();
@@ -141,18 +178,20 @@ public final class JfrPinningStream implements AutoCloseable {
         private int singleRoundSites;
 
         private Live(RecordingStream stream, VirtualThreadPinningDetector target, Set<Long> workers,
-                     String testName) {
+                     Set<Long> spawned, String testName) {
             this.stream = stream;
             this.target = target;
             this.workers = workers;
+            this.spawned = spawned;
             this.testName = testName;
         }
 
-        static Live start(VirtualThreadPinningDetector target, Set<Long> workers, String testName) {
+        static Live start(VirtualThreadPinningDetector target, Set<Long> workers, Set<Long> spawned,
+                          String testName) {
             RecordingStream stream = new RecordingStream();
             try {
                 stream.enable(EVENT).withThreshold(Duration.ZERO).withStackTrace();
-                Live live = new Live(stream, target, workers, testName);
+                Live live = new Live(stream, target, workers, spawned, testName);
                 stream.onEvent(EVENT, live::receive);
                 stream.startAsync();
                 return live;
@@ -174,6 +213,9 @@ public final class JfrPinningStream implements AutoCloseable {
             for (Long id : workers) {
                 roundOf.putIfAbsent(id, completed);
             }
+            for (Long id : spawned) {
+                roundOf.putIfAbsent(id, completed);
+            }
         }
 
         private void receive(RecordedEvent event) {
@@ -183,7 +225,7 @@ public final class JfrPinningStream implements AutoCloseable {
                     return;
                 }
                 long threadId = thread.getJavaThreadId();
-                if (!workers.contains(threadId)) {
+                if (!workers.contains(threadId) && !spawned.contains(threadId)) {
                     unattributed.incrementAndGet();
                     return;
                 }
@@ -191,8 +233,13 @@ public final class JfrPinningStream implements AutoCloseable {
                     return;
                 }
                 StackTraceElement[] frames = frames(event.getStackTrace());
+                String site = site(frames);
+                if (instrumentation(frames)) {
+                    instrumentation.incrementAndGet();
+                    return;
+                }
                 String reason = reason(event, frames);
-                pins.add(new Pin(threadId, String.valueOf(thread.getJavaName()), site(frames),
+                pins.add(new Pin(threadId, String.valueOf(thread.getJavaName()), site,
                         "JFR jdk.VirtualThreadPinned: " + reason, cause(reason),
                         event.getDuration().toMillis(), frames));
             } catch (RuntimeException e) { // NOPMD - an exception here would end the stream's dispatch
@@ -264,15 +311,90 @@ public final class JfrPinningStream implements AutoCloseable {
             return out.toArray(new StackTraceElement[0]);
         }
 
-        /** The first frame outside the JDK, where the user's code made the blocking call. */
+        /** The agent's package, whose code runs only inside its transformer and install. */
+        private static final String AGENT_PACKAGE = "se.deversity.asynctest.agent.";
+
+        /**
+         * The prefixes of the library classes a woven call site calls instead of the JDK method:
+         * the {@code Agent*Hooks} and the telemetry registry. A blocking call the agent wove passes
+         * through one of them, so as a site it would name the hook every such call shares.
+         */
+        private static final String[] WOVEN_HOOKS = {
+            "se.deversity.asynctest.Agent", "se.deversity.asynctest.telemetry.TelemetryRegistry"
+        };
+
+        /** Per class name, whether it is this library's own code; see {@link #isLibraryCode}. */
+        private static final Map<String, Boolean> LIBRARY_CODE = new ConcurrentHashMap<>();
+
+        /**
+         * {@return whether the pin happened in the instrumentation rather than the code under test}:
+         * the first frame outside the JDK is the agent's own code, which runs only in its transformer
+         * and install, or library code other than a woven hook, such as the lockset bookkeeping a
+         * woven monitor enter does. A woven hook only delegates the user's own call (a sleep, a
+         * lock), so a pin under one is the user's. The corpus pair met both: the agent's per-loader
+         * bookkeeping and {@code LocksetRegistry.register} contended on a monitor while a class was
+         * being defined, a native frame below them (#984).
+         */
+        private static boolean instrumentation(StackTraceElement[] frames) {
+            for (StackTraceElement frame : frames) {
+                String type = frame.getClassName();
+                if (isJdk(type)) {
+                    continue;
+                }
+                return type.startsWith(AGENT_PACKAGE) || !isWovenHook(type) && isLibraryCode(type);
+            }
+            return false;
+        }
+
+        /**
+         * {@return whether {@code type} comes from the same jar or class directory as this class},
+         * which tells the library's code from the user's even where the user's code shares the
+         * library's package names, as this project's own tests do.
+         */
+        private static boolean isLibraryCode(String type) {
+            return type.startsWith("se.deversity.asynctest.")
+                    && LIBRARY_CODE.computeIfAbsent(type, Live::sharesThisCodeSource);
+        }
+
+        private static boolean sharesThisCodeSource(String type) {
+            try {
+                Class<?> found = Class.forName(type, false, JfrPinningStream.class.getClassLoader());
+                java.security.CodeSource ours = JfrPinningStream.class.getProtectionDomain().getCodeSource();
+                java.security.CodeSource theirs = found.getProtectionDomain().getCodeSource();
+                return ours != null && theirs != null
+                        && java.util.Objects.equals(ours.getLocation(), theirs.getLocation());
+            } catch (ClassNotFoundException | LinkageError | RuntimeException e) { // NOPMD - unknown is the user's
+                return false;
+            }
+        }
+
+        /**
+         * The first frame outside the JDK and the woven hooks, where the user's code made the
+         * blocking call. Without skipping the hooks, every pin under the agent had the sleep hook as
+         * its site, so two different call sites pinning in two different rounds read as one site
+         * pinning in two (#984).
+         */
         private static String site(StackTraceElement[] frames) {
             for (StackTraceElement frame : frames) {
                 String type = frame.getClassName();
-                if (!type.startsWith("java.") && !type.startsWith("jdk.") && !type.startsWith("sun.")) {
+                if (!isJdk(type) && !isWovenHook(type)) {
                     return frame.toString();
                 }
             }
             return frames.length == 0 ? "" : frames[0].toString();
+        }
+
+        private static boolean isJdk(String type) {
+            return type.startsWith("java.") || type.startsWith("jdk.") || type.startsWith("sun.");
+        }
+
+        private static boolean isWovenHook(String type) {
+            for (String prefix : WOVEN_HOOKS) {
+                if (type.startsWith(prefix)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         /** JDK 24+ records why; JDK 21-23 record no reason, so the stack is all there is. */
@@ -296,7 +418,7 @@ public final class JfrPinningStream implements AutoCloseable {
                 return VirtualThreadPinningDetector.PinningCause.NATIVE;
             }
             if (r.contains("<clinit>") || r.contains("initialization")) {
-                return VirtualThreadPinningDetector.PinningCause.CLASS_INIT;
+                return VirtualThreadPinningDetector.classInitCause(r);
             }
             return VirtualThreadPinningDetector.PinningCause.OTHER;
         }

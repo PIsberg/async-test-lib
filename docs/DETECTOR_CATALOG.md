@@ -254,6 +254,11 @@ keep their VERDICT grades, and since #837 name their evidence too: the lost upda
 plain-mode note `CONTEXTUAL`, since both are decided after the lockset; the observed mutation and
 the probed executor `OBSERVED`; the structural note `CONTEXT_FREE` and the churn count `HEURISTIC`.
 `DetectorEvidenceMatchesCodeTest` fails the build on a built-in grade that names none.
+`VIRTUAL_THREAD_PINNING` grades the same way since #984: a pin the JVM reported through
+`jdk.VirtualThreadPinned`, in at least two rounds, is FACT on `OBSERVED` evidence, and a pin
+described through `recordPinningEvent` is PROMPT on `ASSERTED`; the row is PROMPT, its weaker path,
+on `OBSERVED`. The observed pin stops at FACT because the JVM says the thread could not unmount,
+not that the cost matters. Its corpus pair is in the agent lane.
 
 **Advisory tier:** `SHARED_RANDOM` and `SHARED_SECURE_RANDOM`. `Random` and `SecureRandom` are
 thread-safe, so their finding is about contention on one instance rather than corruption of it,
@@ -395,10 +400,10 @@ on the calling thread, and a `put` or `remove` on the same map and key in the sa
 it. A `containsKey` that found the key decides an overwrite and starts no pair, and a plain
 `HashMap` is left to `SharedCollectionDetector`, which already reports every call on it. The put
 value goes along, so a round whose callers all put one instance is excused, as a hand-recorded
-absent check is: the hook cannot tell a value chosen without reading the map from one derived from
-the read, and callers that install one shared object after a `get` are correct. The cost is a
-known false negative: racers that all put one cached box (an `Integer` up to 127) or one enum
-constant are excused even where the check decided other work.
+absent check is: callers that install one shared object after a `get` are correct. A boxed
+primitive or an enum constant is not excused that way (#996): it is one instance because the JVM
+caches small boxes and an enum has one constant per value, so racers that read 0 and put 1, or saw
+`IDLE` and put `STARTED`, lost an increment or both believe they started the job.
 
 `ExecutorShutdownDetector` and `FutureIgnoredDetector` joined in the same change.
 `ExecutorShutdownDetector` reports only an executor it was told the code created, which is what
@@ -431,11 +436,15 @@ than a call. A `catch (InterruptedException e)` that neither rethrows nor restor
 the one cancellation signal a thread gets, and its handler runs only when an interrupt arrives,
 which a test seldom delivers. So `InterruptHandlerWeaver` buffers a method that declares such a
 handler, follows the handler through the method's control flow, ordinary code included, and calls
-it swallowing when a path reaches a return and no call that restores the flag is reachable from
-the handler at all; a path ending in an `ATHROW` hands the exception on. The walk goes past the
-handler because a handler may only note the interrupt: Guava's `Uninterruptibles` sets a flag,
-goes on waiting, and restores the interrupt in a `finally`, which an earlier version of the rule
-named on three Guava subjects of the corpus. A `run()` that returns on interrupt is a thread's own
+it swallowing when some path from the handler reaches a return without passing a call that
+restores the flag; a path ending in an `ATHROW` hands the exception on. Until #996 one restoring
+call anywhere on any path answered for the whole handler, and so did a call that merely named an
+interrupt (`acquireUninterruptibly`); now a restore covers only its own path and an
+`*Interruptibly` name restores nothing. The walk goes past the handler because a handler may only
+note the interrupt: Guava's `Uninterruptibles` sets a flag, goes on waiting, and restores the
+interrupt in a `finally`, which an earlier version of the rule named on three Guava subjects of
+the corpus. The walk carries which `int` locals a constant made non-zero, so the `finally`'s
+`if (interrupted)` takes only its restoring branch on the paths from the handler. A `run()` that returns on interrupt is a thread's own
 policy and is not named. When a method holding a swallowing handler runs on a run's thread, its
 entry names the handler's location to both detectors, once per run; `INTERRUPT_MISHANDLING` is the
 one the default preset runs.
@@ -445,9 +454,13 @@ compiles to, and `stream()`. A `Collections.synchronized*` wrapper takes its mon
 call and releases it before the next, and its javadoc requires the caller to hold it across an
 iteration. The hook asks `Thread.holdsLock` of the monitor the wrapper really uses: a synchronized
 list's own, and for a `keySet`, `values` or `entrySet` view the map's, which the woven call that
-returned the view records. A synchronized set or collection the run did not see come out of a map
-is not judged, because it may be such a view, and judging it against its own monitor would report
-the documented `synchronized (map)` idiom.
+returned the view records. Any other wrapper, a set or a view the run did not see being made
+included, is judged against its private `mutex`, the monitor its methods really lock: the agent
+opens `java.util` to the library under collection weaving so it can be read (#996), and
+`JdkSynchronizedWrapperShapeCanaryTest` fails the build on a JDK that moves the field. Without that
+opening a synchronized list is judged against itself and a synchronized set or collection is not
+judged, because it may be a map's view and judging it against its own monitor would report the
+documented `synchronized (map)` idiom.
 
 `SystemPropertyMutationDetector` hears the woven `System.setProperty` and `clearProperty`, and the
 two JVM defaults no detector covered before: `Locale.setDefault`, recorded under the key
@@ -464,7 +477,12 @@ child writes a pipe's worth it blocks, and the wait never returns. A taken pipe 
 drained, and so is one a drain task takes after the wait began; an output the `ProcessBuilder`
 redirected has no pipe and is not reported. The start tells it which builders merged stderr into
 stdout: on Linux that stderr is still a pipe object, at end of stream, and the stream alone does
-not say so.
+not say so. Since #998 the woven `getInputStream`/`getErrorStream` hand out a stream whose reads
+are seen, so a pipe the waiter took counts as drained only if it read it to the end before the
+wait. A second rule covers the same family in memory (#994): the woven `PipedOutputStream.write`
+and `PipedInputStream.read` calls, paired through the writer's private `sink` (the agent opens
+`java.io` to the library to read it), report a thread that both writes to and reads from one pair,
+which the `PipedInputStream` javadoc warns may deadlock.
 
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
@@ -484,13 +502,22 @@ Watch the JVM and the harness themselves (`ThreadMXBean` deadlock scans, per-rou
 snapshots, live `<clinit>` stacks, the JVM's `jdk.VirtualThreadPinned` JFR event) and can fire with
 no agent and no recording call.
 
-The pinning detector takes the JFR feed only for a run on virtual workers (`useVirtualThreads`,
-the default) and only for pins on those workers: JFR reports every virtual thread in the JVM, so a
-pin on a thread the body started, or in a test running in parallel, is counted in
-`runner.pinning.unattributed` and not reported. A call site is reported only when it pinned in at
+The pinning detector takes the JFR feed for a run on virtual workers (`useVirtualThreads`, the
+default), and for pins on those workers or on threads they started. JFR reports every virtual
+thread in the JVM and names no parent, so a thread the body started is attributed only with the
+agent attached (`collections=true`), which records every thread a worker starts through a woven
+`Thread.start` or `Thread.Builder.start`; with the agent the feed also opens on platform workers,
+for the virtual threads their body starts (#983). A pin on a thread started in code the agent does
+not weave, or in a test running in parallel, is counted in `runner.pinning.unattributed` and not
+reported. A call site is reported only when it pinned in at
 least two rounds: workers contending on `ClassLoader.loadClass` or a library's first use pin for a
 few milliseconds once per JVM, which is warm-up and not the code, so a run of one round gets no
-observed finding. The event is the running JDK's own verdict, so it
+observed finding. A pin whose first frame outside the JDK is the agent's own code (its class-file
+transformer), or library code other than a woven hook (the lockset bookkeeping of a woven monitor
+enter), is the instrumentation's, so it is counted at DEBUG in
+`runner.pinning.instrumentation` and not reported; and the site skips the library hooks a woven
+call goes through, so two call sites do not merge into one under the agent (#984). The event is
+the running JDK's own verdict, so it
 fires for a blocking `synchronized` block up to JDK 23 and not from 24 (JEP 491), and for blocking
 inside a class initializer or under a native frame on every JDK. Without a usable JFR (a runtime
 image without `jdk.jfr`) the detector keeps its recording feed. The four:

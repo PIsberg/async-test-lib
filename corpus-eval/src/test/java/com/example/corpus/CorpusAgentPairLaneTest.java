@@ -1229,6 +1229,47 @@ class CorpusAgentPairLaneTest {
         }
     }
 
+    /** Every worker writes one byte into a fresh pipe and reads it back on the same thread. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_pipe_bothEndsOnOneThread() {
+        counted(() -> {
+            try {
+                java.io.PipedInputStream in = new java.io.PipedInputStream();
+                java.io.PipedOutputStream out = new java.io.PipedOutputStream(in);
+                Thread writer = Thread.currentThread();
+                out.write(writer.getName().length());
+                out.close();
+                in.read();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+    }
+
+    /** The same byte through the same pipe, written by a thread of its own. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_pipe_oneThreadPerEnd() {
+        counted(() -> {
+            try {
+                java.io.PipedInputStream in = new java.io.PipedInputStream();
+                java.io.PipedOutputStream out = new java.io.PipedOutputStream(in);
+                Thread writer = new Thread(() -> {
+                    try {
+                        out.write(Thread.currentThread().getName().length());
+                        out.close();
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                });
+                writer.start();
+                in.read();
+                writer.join();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+    }
+
     /** Every worker waits for its child before anything reads the child's output. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 60_000, detectAll = true)
     void agent_process_waitedForBeforeDraining() {
@@ -2070,6 +2111,110 @@ class CorpusAgentPairLaneTest {
             }
         });
     }
+    // --- Virtual-thread pinning ------------------------------------------------------------
+
+    /** How long both pinning rows block, inside an initializer or outside one. */
+    private static final long PIN_MILLIS = 20;
+
+    /**
+     * Its initializer blocks, which pins the virtual thread running it on every JDK this project
+     * builds on: the JVM cannot unmount a thread with a class initializer on its stack.
+     *
+     * <p>Touches only public JDK API, since each copy lives in a loader, and so a runtime package,
+     * of its own.
+     */
+    public static final class SleepsInItsInitializer {
+        static {
+            try {
+                Thread.sleep(PIN_MILLIS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        private SleepsInItsInitializer() {
+        }
+    }
+
+    /**
+     * The same class with no initializer to run. An initializer that resolves anything, a
+     * {@code System.nanoTime()} for a static field, contends on the parent loader while the VM is
+     * running it and pins for that, on six workers at once, which is class loading again.
+     */
+    public static final class InitializesAtOnce {
+        private InitializesAtOnce() {
+        }
+    }
+
+    /**
+     * Initializes a fresh copy of a class whose initializer sleeps, in every round.
+     *
+     * <p>No call reaches the detector: the JVM emits {@code jdk.VirtualThreadPinned} for the worker
+     * and the runner's JFR stream delivers it. A fresh copy per execution makes the same
+     * initializer pin in every round, where a class initialized once would pin once and read as
+     * class-loading warm-up, which the detector deliberately does not report.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_virtualThreadPinning_blocksInsideAnInitializer() {
+        counted(() -> initializeFreshCopy(SleepsInItsInitializer.class));
+    }
+
+    /**
+     * Loads a fresh copy of a class the same way and blocks for the same time after its
+     * initializer returns, where a virtual thread unmounts.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_virtualThreadPinning_blocksOutsideAnInitializer() {
+        counted(() -> {
+            initializeFreshCopy(InitializesAtOnce.class);
+            Thread.sleep(PIN_MILLIS);
+        });
+    }
+
+    /**
+     * Classes the fresh loaders delegated to their parent, so that only the first round asks it.
+     *
+     * <p>Each fresh copy resolves {@code Thread}, its exception types and the agent's hooks through
+     * its loader, and the parent takes a per-name lock for each. Six workers doing that at once
+     * contend on those locks under the native {@code defineClass} frame, which pins them in every
+     * round, in both rows: real pins, of the fixture's class loading rather than of the code the
+     * pair is about. Served from here after the first round, the delegation takes no lock.
+     */
+    private static final ConcurrentHashMap<String, Class<?>> DELEGATED = new ConcurrentHashMap<>();
+
+    /** Defines {@code type} again in a loader of its own and initializes it, running its {@code <clinit>}. */
+    private static void initializeFreshCopy(Class<?> type) {
+        String name = type.getName();
+        byte[] bytes;
+        try (java.io.InputStream in = type.getResourceAsStream("/" + name.replace('.', '/') + ".class")) {
+            bytes = java.util.Objects.requireNonNull(in, name).readAllBytes();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        ClassLoader loader = new ClassLoader(type.getClassLoader()) {
+            @Override
+            protected Class<?> loadClass(String className, boolean resolve) throws ClassNotFoundException {
+                if (!className.equals(name)) {
+                    Class<?> known = DELEGATED.get(className);
+                    if (known == null) {
+                        known = super.loadClass(className, resolve);
+                        DELEGATED.putIfAbsent(className, known);
+                    }
+                    return known;
+                }
+                synchronized (getClassLoadingLock(className)) {
+                    Class<?> loaded = findLoadedClass(className);
+                    return loaded != null ? loaded : defineClass(className, bytes, 0, bytes.length);
+                }
+            }
+        };
+        try {
+            Class.forName(name, true, loader);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     // --- Deadlock ----------------------------------------------------------------------------
 
     /** The two monitors the deadlock rows take, in opposite orders. */

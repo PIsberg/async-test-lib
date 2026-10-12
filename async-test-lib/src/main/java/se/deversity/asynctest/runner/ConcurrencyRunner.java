@@ -20,6 +20,7 @@ import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.diagnostics.DeadlockDetector;
 import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
+import se.deversity.asynctest.diagnostics.ExecutorShutdownDetector;
 import se.deversity.asynctest.diagnostics.GradedFindings;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.JfrPinningStream;
@@ -90,6 +91,22 @@ import java.util.concurrent.TimeoutException;
 public class ConcurrencyRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ConcurrencyRunner.class);
+
+    /** Set by {@link #executeBeforeTeardown} for the length of its {@link #execute} call. */
+    private static final ThreadLocal<Boolean> TEARDOWN_FOLLOWS = new ThreadLocal<>();
+
+    /**
+     * The check {@link #afterTeardown} makes once the test's {@code @AfterEach} methods have run,
+     * left on the test thread by the {@link #execute} call before it (#996).
+     */
+    private static final ThreadLocal<PendingTeardown> PENDING_TEARDOWN = new ThreadLocal<>();
+
+    /**
+     * What {@link #afterTeardown} needs: the run's executor detector, holding its "never shut
+     * down" verdicts, and whether the run reached the failOn gate, which only then applies to them.
+     */
+    private record PendingTeardown(ExecutorShutdownDetector detector, AsyncTestConfig config,
+                                   Method testMethod, boolean gate) { }
 
     /**
      * One-shot latch for the {@code runner.agent.absent} INFO event in {@link #execute}.
@@ -299,11 +316,14 @@ public class ConcurrencyRunner {
         AgentAutoAttach.attachIfRequested();
         AtomicityValidator telemetryTarget = phase2Context.sharedAtomicityValidator();
         boolean telemetryRunning = telemetryTarget != null && TelemetryRegistry.isRunning();
-        // The JVM's jdk.VirtualThreadPinned events are filtered by the same worker set, and
-        // only a virtual worker can pin, so platform workers leave the feed off.
-        @Nullable VirtualThreadPinningDetector pinningTarget = config.useVirtualThreads
-                ? phase2Context.sharedVirtualThreadPinningDetector()
-                : null;
+        // The JVM's jdk.VirtualThreadPinned events are filtered by the same worker set, plus the
+        // threads the workers started when the agent attributes them (#983). Only a virtual thread
+        // can pin, so platform workers leave the feed off unless the agent is there to attribute
+        // a virtual thread the body starts.
+        @Nullable VirtualThreadPinningDetector pinningTarget =
+                config.useVirtualThreads || TelemetryRegistry.isRunning()
+                        ? phase2Context.sharedVirtualThreadPinningDetector()
+                        : null;
         @Nullable Set<Long> workerThreadIds = (telemetryRunning || pinningTarget != null)
                 ? ConcurrentHashMap.newKeySet()
                 : null;
@@ -421,6 +441,16 @@ public class ConcurrencyRunner {
         Method testMethod = invocationContext.getExecutable();
         testMethod.setAccessible(true);
 
+        // A pool the test class closes in @AfterEach is closed after analysis, so the "never shut
+        // down" verdict waits for afterTeardown when JUnit will call it (#996). Left on this thread
+        // ungated now, so a failed run still reports it, and gated once the run passes the gate.
+        @Nullable ExecutorShutdownDetector heldShutdowns = Boolean.TRUE.equals(TEARDOWN_FOLLOWS.get())
+                ? phase2Context.sharedExecutorShutdownDetector() : null;
+        if (heldShutdowns != null) {
+            heldShutdowns.holdUnclosedUntilTeardown();
+            PENDING_TEARDOWN.set(new PendingTeardown(heldShutdowns, config, testMethod, false));
+        }
+
         // Discover @BeforeEachInvocation / @AfterEachInvocation methods once
         Object testInstance = invocationContext.getTarget().orElse(null);
         List<Method> beforeInvocationMethods =
@@ -487,7 +517,8 @@ public class ConcurrencyRunner {
         // between and leave a JFR recording running for the life of the JVM. start() never
         // throws: without a usable JFR it returns null and the detector keeps its recorded feed.
         @Nullable JfrPinningStream pinningStream = (pinningTarget != null && workerThreadIds != null)
-                ? JfrPinningStream.start(pinningTarget, workerThreadIds, testMethod.getName())
+                ? JfrPinningStream.start(pinningTarget, workerThreadIds, phase2Context.spawnedThreadIds(),
+                        testMethod.getName())
                 : null;
         phase2Analysis.drainBeforeAnalysis(pinningStream);
 
@@ -687,11 +718,17 @@ public class ConcurrencyRunner {
                 if (unattributedPins > 0) {
                     log.info("runner.pinning.unattributed test={} events={} "
                             + "reason=\"the JVM reported virtual-thread pins on threads that are not "
-                            + "this run's workers: threads the body started, or a test running in "
+                            + "this run's workers or threads they started through woven code: "
+                            + "threads started in code the agent does not weave, or a test running in "
                             + "parallel, so they are not this run's findings\" "
-                            + "hint=\"pin in the @AsyncTest workers themselves to have the pin "
-                            + "reported, or read a clean pinning report as covering the workers only\"",
+                            + "hint=\"attach the agent with collections=true so threads the body "
+                            + "starts are attributed, or pin in the @AsyncTest workers themselves\"",
                         testMethod.getName(), unattributedPins);
+                }
+                // DEBUG: a pin inside the agent's transformer, on a class the body defined (#984).
+                if (pinningStream.instrumentationEvents() > 0) {
+                    log.debug("runner.pinning.instrumentation test={} events={}",
+                        testMethod.getName(), pinningStream.instrumentationEvents());
                 }
                 // DEBUG, not INFO: nearly every run has some, from class loading on first use.
                 if (pinningStream.singleRoundSites() > 0) {
@@ -716,6 +753,9 @@ public class ConcurrencyRunner {
         // gate is intentionally success-path-only; failure/timeout paths above are
         // report-only (see reportFailure and timeoutError).
         analyzeAndGate(config, testMethod, phase2Analysis);
+        if (heldShutdowns != null) {
+            PENDING_TEARDOWN.set(new PendingTeardown(heldShutdowns, config, testMethod, true));
+        }
     }
 
     /**
@@ -815,10 +855,20 @@ public class ConcurrencyRunner {
             return;
         }
 
-        Map<String, List<GradedFindings.Grade>> graded = phase2Analysis.grades();
-        Map<String, IssueSeverity> structured = phase2Analysis.severities();
-        Map<String, List<String>> findingMessages = phase2Analysis.messages();
+        reportAndGate(config, testMethod, reports, phase2Analysis.grades(), phase2Analysis.severities(),
+                phase2Analysis.messages(), true);
+    }
 
+    /**
+     * {@link #analyzeAndGate}'s reporting half, for any set of reports: prints each, hands it to the
+     * listeners, and, when {@code gate} is set, fails the test on the ones at or above failOn that
+     * no baseline accepts. {@link #afterTeardown} reuses it for the verdicts held past
+     * {@code @AfterEach}, ungated when the run had already failed.
+     */
+    private static void reportAndGate(AsyncTestConfig config, Method testMethod, Map<String, String> reports,
+                                      Map<String, List<GradedFindings.Grade>> graded,
+                                      Map<String, IssueSeverity> structured,
+                                      Map<String, List<String>> findingMessages, boolean gate) {
         String testId = testMethod.getDeclaringClass().getName() + "#" + testMethod.getName();
         Baseline baseline = Baseline.fromSystemProperties();
 
@@ -857,7 +907,7 @@ public class ConcurrencyRunner {
             List<GradedFindings.Grade> gated = grades.isEmpty() || !fingerprinting ? grades
                     : grades.stream().filter(g -> uncovered.contains(Baseline.fingerprint(g.summary()))).toList();
             IssueSeverity structuredSeverity = structured.get(e.getKey());
-            boolean trips = trips(config, e.getKey(), e.getValue(), structuredSeverity, gated);
+            boolean trips = gate && trips(config, e.getKey(), e.getValue(), structuredSeverity, gated);
             // A block that fails the run always prints in full: the assertion says "full reports above".
             if (!fullReports && !trips && foldsOnConsole(e.getKey(), grades)) {
                 System.err.println(foldedLine(e.getKey(), e.getValue(), grades,
@@ -898,6 +948,54 @@ public class ConcurrencyRunner {
             + "=<file> (add -D" + Baseline.UPDATE_PROPERTY + "=true once to record them).");
         AsyncTestListenerRegistry.fireTestFailed(error);
         throw error;
+    }
+
+    /**
+     * {@link #execute} for a caller that will call {@link #afterTeardown} once the test instance's
+     * {@code @AfterEach} methods have run, as the JUnit interceptor does: the "never shut down"
+     * verdict on an executor the run declared then waits until teardown (#996).
+     *
+     * @param invocationContext the JUnit invocation being run
+     * @param config            the resolved configuration
+     * @throws Throwable whatever {@link #execute} throws
+     * @since 1.13.2
+     */
+    public static void executeBeforeTeardown(ReflectiveInvocationContext<Method> invocationContext,
+                                             AsyncTestConfig config) throws Throwable {
+        TEARDOWN_FOLLOWS.set(Boolean.TRUE);
+        try {
+            execute(invocationContext, config);
+        } finally {
+            TEARDOWN_FOLLOWS.remove();
+        }
+    }
+
+    /**
+     * Reports the executors the last {@link #executeBeforeTeardown} on this thread declared and the
+     * test's {@code @AfterEach} methods did not shut down either, and applies the failOn gate to
+     * them when the run itself passed it (#996). Does nothing when there was no such run.
+     *
+     * @since 1.13.2
+     */
+    public static void afterTeardown() {
+        PendingTeardown pending = PENDING_TEARDOWN.get();
+        PENDING_TEARDOWN.remove();
+        if (pending == null) {
+            return;
+        }
+        ExecutorShutdownDetector.ExecutorShutdownReport report = pending.detector().analyzeAfterTeardown();
+        if (!report.hasIssues()) {
+            return;
+        }
+        String name = ExecutorShutdownDetector.class.getSimpleName();
+        IssueSeverity severity = report.structuredViolations.stream()
+                .map(se.deversity.asynctest.report.Violation::severity)
+                .findFirst()
+                .orElse(IssueSeverity.MEDIUM);
+        List<String> messages = report.structuredViolations.stream()
+                .map(se.deversity.asynctest.report.Violation::message).toList();
+        reportAndGate(pending.config(), pending.testMethod(), Map.of(name, "\n" + report),
+                Map.of(), Map.of(name, severity), Map.of(name, messages), pending.gate());
     }
 
     /**

@@ -24,6 +24,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li><b>Waiting for class initialization</b> ({@code <clinit>} on another thread) —
  *       pinned up to JDK 25; <em>no longer pins since JDK 26</em> (virtual threads now
  *       unmount while waiting for class init).</li>
+ *   <li><b>Blocking inside a class initializer</b> ({@code <clinit>} on the pinned thread's
+ *       own stack) — still pins on all JDK versions, JDK 26 included.</li>
  *   <li><b>Blocking native calls</b> (JNI / FFM downcalls) — still pin on all JDK
  *       versions.</li>
  * </ul>
@@ -33,9 +35,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * event the JVM emits for one of those workers is reported with no call from the test body. The
  * event is the running JDK's own verdict, so such a pin is never annotated as obsolete. The
  * events are delivered when the stream stops after the run, so they are in the run's report and
- * not in an {@link #analyzePinning()} the body calls itself. Pins on threads the body starts are
- * not attributed (they are counted in {@code runner.pinning.unattributed}); for those, and on a
- * JVM without JFR, {@link #recordPinningEvent} records a pin the caller describes. A call site
+ * not in an {@link #analyzePinning()} the body calls itself. A pin on a thread the body starts is
+ * attributed when the agent is attached ({@code collections=true}), which records every thread a
+ * worker starts through a woven {@code Thread.start} or {@code Thread.Builder.start}; with the
+ * agent the feed also opens on platform workers, for the virtual threads their body starts (#983).
+ * Without the agent such a pin is counted in {@code runner.pinning.unattributed}; for those, and on
+ * a JVM without JFR, {@link #recordPinningEvent} records a pin the caller describes. A call site
  * that pinned in one round only is not reported: class loading and a library's first use pin
  * once per JVM, so such a pin is warm-up, and a run of one round gets no observed finding.
  *
@@ -76,6 +81,13 @@ public class VirtualThreadPinningDetector {
         MONITOR,
         /** Waiting for another thread's class initialization — no longer pins since JDK 26. */
         CLASS_INIT,
+        /**
+         * Blocking while executing a class initializer ({@code <clinit>} on the pinned thread's own
+         * stack) — pins on all JDK versions, JDK 26 included (#985).
+         *
+         * @since 1.13.2
+         */
+        CLASS_INIT_EXECUTING,
         /** Blocking native call (JNI / FFM downcall) — pins on all JDK versions. */
         NATIVE,
         /** Unrecognized description — conservatively treated as still pinning. */
@@ -98,14 +110,31 @@ public class VirtualThreadPinningDetector {
             return PinningCause.MONITOR;
         }
         if (op.contains("clinit") || op.contains("class init") || op.contains("class-init")
-                || op.contains("static initializer")) {
-            return PinningCause.CLASS_INIT;
+                || op.contains("static initializer") || WAITS_FOR_INITIALIZATION.matcher(op).find()) {
+            return classInitCause(op);
         }
         if (op.contains("native") || op.contains("jni") || op.contains("ffm")
                 || op.contains("foreign")) {
             return PinningCause.NATIVE;
         }
         return PinningCause.OTHER;
+    }
+
+    /**
+     * A description that waits <em>for</em> a class initializer, the JDK 24 reason "Waited for
+     * initialization of X by another thread" among them, which names no {@code <clinit>}. Anything else that names one blocks inside
+     * it, which is the case JDK 26 still pins (#985).
+     */
+    private static final java.util.regex.Pattern WAITS_FOR_INITIALIZATION = java.util.regex.Pattern.compile(
+            "wait(?:s|ed|ing)? for (?:the )?(?:class )?init|(?:clinit>?|class init|initiali[sz]ation) wait");
+
+    /**
+     * {@return {@link PinningCause#CLASS_INIT} when the lower-cased {@code description} waits for
+     * another thread's initializer, else {@link PinningCause#CLASS_INIT_EXECUTING}}
+     */
+    static PinningCause classInitCause(String description) {
+        return WAITS_FOR_INITIALIZATION.matcher(description).find()
+                ? PinningCause.CLASS_INIT : PinningCause.CLASS_INIT_EXECUTING;
     }
 
     /**
@@ -122,7 +151,7 @@ public class VirtualThreadPinningDetector {
         return switch (cause) {
             case MONITOR    -> jdkFeatureVersion < 24;  // JEP 491 (JDK 24)
             case CLASS_INIT -> jdkFeatureVersion < 26;  // JDK 26 unmounts on class-init waits
-            case NATIVE, OTHER -> true;
+            case CLASS_INIT_EXECUTING, NATIVE, OTHER -> true;
         };
     }
 
@@ -216,10 +245,8 @@ public class VirtualThreadPinningDetector {
      * Records a pin the JVM reported through {@code jdk.VirtualThreadPinned}; called by
      * {@link JfrPinningStream}, which resolves the cause and the frames from the event.
      *
-     * <p>Unlike {@link #recordPinningEvent} the cause is not checked against the running JDK:
-     * {@link #classifyOperation} maps a blocking {@code <clinit>} to {@link PinningCause#CLASS_INIT},
-     * which {@link #stillPinsOn} calls obsolete on JDK 26, and JDK 26 still emits the event for it.
-     * The event is the verdict. The peak count is raised to at least one, since an event carries
+     * <p>Unlike {@link #recordPinningEvent} the cause is not checked against the running JDK: the
+     * event is the running JDK's own verdict, whatever {@link #stillPinsOn} says of its cause. The peak count is raised to at least one, since an event carries
      * no overlap with the others.
      */
     void recordObservedPinning(long threadId, String threadName, String reason, PinningCause cause,
@@ -259,7 +286,8 @@ public class VirtualThreadPinningDetector {
                     event.getDurationMillis(),
                     event.stackTrace,
                     event.cause,
-                    event.obsoleteOnCurrentJdk
+                    event.obsoleteOnCurrentJdk,
+                    event.observedDurationMillis >= 0
                 ));
             }
         }
@@ -335,8 +363,16 @@ public class VirtualThreadPinningDetector {
 
     /**
      * Report of virtual thread pinning analysis.
+     *
+     * <p>Grades each finding by the path that produced it (#984): a pin the JVM reported through
+     * {@code jdk.VirtualThreadPinned}, in at least two rounds, is a {@link TrustTier#FACT} on
+     * {@link DetectorTrust.Evidence#OBSERVED} evidence, since the running JDK itself says the
+     * thread could not unmount. Whether the pin costs anything that matters is the reader's call,
+     * so it stops short of a verdict. A pin a caller described through {@link #recordPinningEvent}
+     * is classified by its wording alone, so it stays a {@link TrustTier#PROMPT} on
+     * {@link DetectorTrust.Evidence#ASSERTED} evidence.
      */
-    public static class PinningReport {
+    public static class PinningReport implements GradedFindings {
         private final List<PinningEventSnapshot> events;
         private final int maxPinnedCount;
         private final boolean virtualThreadSupported;
@@ -432,6 +468,15 @@ public class VirtualThreadPinningDetector {
         /** The findings as Violations, at the severity the text resolved to (#801). */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
+        /** One grade per entry of {@link #structuredViolations}, in the same order. */
+        private final List<GradedFindings.Grade> grades = new ArrayList<>();
+
+        /** {@return one grade per finding: observed pins on OBSERVED evidence, recorded ones on ASSERTED} */
+        @Override
+        public List<GradedFindings.Grade> grades() {
+            return List.copyOf(grades);
+        }
+
         /** Adds a Violation per finding, worded as its text line (#801); called once before the report is returned. */
         void fillStructuredViolations() {
             if (!hasIssues()) {
@@ -443,10 +488,15 @@ public class VirtualThreadPinningDetector {
             for (PinningEventSnapshot event : events) {
                 // hasIssues() counts only events that still pin on this JDK; the rest are history.
                 if (!event.isObsoleteOnCurrentJdk()) {
+                    String summary = event.threadName + " (id=" + event.threadId + "): pinned during "
+                            + event.blockingOperation;
                     structuredViolations.add(new Violation("VirtualThreadPinning", severity,
-                            event.threadName + " (id=" + event.threadId + "): pinned during "
-                                    + event.blockingOperation,
-                            List.of(), Map.of(), Instant.now()));
+                            summary, List.of(), Map.of(), Instant.now()));
+                    grades.add(event.isObserved()
+                            ? new GradedFindings.Grade(severity, TrustTier.FACT, summary,
+                                    DetectorTrust.Evidence.OBSERVED)
+                            : new GradedFindings.Grade(severity, TrustTier.PROMPT, summary,
+                                    DetectorTrust.Evidence.ASSERTED));
                 }
             }
         }
@@ -521,10 +571,19 @@ public class VirtualThreadPinningDetector {
         private final StackTraceElement[] stackTrace;
         private final PinningCause cause;
         private final boolean obsoleteOnCurrentJdk;
+        private final boolean observed;
 
+        /** A recorded event's snapshot, which no JVM event backs. */
         PinningEventSnapshot(long threadId, String threadName, String blockingOperation,
                             long durationMillis, StackTraceElement[] stackTrace,
                             PinningCause cause, boolean obsoleteOnCurrentJdk) {
+            this(threadId, threadName, blockingOperation, durationMillis, stackTrace, cause,
+                    obsoleteOnCurrentJdk, false);
+        }
+
+        PinningEventSnapshot(long threadId, String threadName, String blockingOperation,
+                            long durationMillis, StackTraceElement[] stackTrace,
+                            PinningCause cause, boolean obsoleteOnCurrentJdk, boolean observed) {
             this.threadId = threadId;
             this.threadName = threadName;
             this.blockingOperation = blockingOperation;
@@ -532,6 +591,17 @@ public class VirtualThreadPinningDetector {
             this.stackTrace = stackTrace;
             this.cause = cause;
             this.obsoleteOnCurrentJdk = obsoleteOnCurrentJdk;
+            this.observed = observed;
+        }
+
+        /**
+         * {@return whether the JVM reported this pin through {@code jdk.VirtualThreadPinned},
+         * rather than a caller describing it through {@code recordPinningEvent}}
+         *
+         * @since 1.13.2
+         */
+        public boolean isObserved() {
+            return observed;
         }
 
         /**

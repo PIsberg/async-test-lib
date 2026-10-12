@@ -8,11 +8,15 @@ import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.runner.ConcurrencyRunner;
 import se.deversity.vibetags.annotations.AICore;
 import se.deversity.vibetags.annotations.AILoadBearing;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.InvocationInterceptor;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
 
 import java.lang.reflect.Method;
+import org.junit.platform.commons.support.AnnotationSupport;
+import org.junit.platform.commons.support.HierarchyTraversalMode;
 
 /**
  * Intercepts the execution of the test method and delegates it to the {@link ConcurrencyRunner}.
@@ -27,7 +31,7 @@ import java.lang.reflect.Method;
     note = "invocation.skip() is intentional — ConcurrencyRunner owns the full N×M execution and must never call invocation.proceed(). Restoring proceed() would run the test body once outside the CyclicBarrier, bypassing all detectors."
 )
 @API(status = Status.STABLE)
-public class AsyncTestInvocationInterceptor implements InvocationInterceptor {
+public class AsyncTestInvocationInterceptor implements InvocationInterceptor, AfterEachCallback {
 
     private final AsyncTest asyncTest;
     private final int threadCount;
@@ -71,6 +75,27 @@ public class AsyncTestInvocationInterceptor implements InvocationInterceptor {
         // invocation.proceed() — as the sole InvocationInterceptor we own the execution.
         // Skipping proceed() is valid per JUnit's contract (Fix 6).
         invocation.skip();
-        ConcurrencyRunner.execute(invocationContext, AsyncTestConfig.from(asyncTest, threadCount));
+        AsyncTestConfig config = AsyncTestConfig.from(asyncTest, threadCount);
+        // Only a class with an @AfterEach can close a pool after analysis; elsewhere the verdict
+        // is reported inline, as before (#996).
+        if (AnnotationSupport.findAnnotatedMethods(invocationContext.getTargetClass(), AfterEach.class,
+                HierarchyTraversalMode.TOP_DOWN).isEmpty()) {
+            ConcurrencyRunner.execute(invocationContext, config);
+        } else {
+            ConcurrencyRunner.executeBeforeTeardown(invocationContext, config);
+        }
+    }
+
+    /**
+     * Reports the executors the run declared that the test's own {@code @AfterEach} methods did not
+     * shut down either. JUnit calls an extension's {@code afterEach} after those methods, and the
+     * run's analysis came before them, so a pool closed in teardown is judged here (#996).
+     *
+     * @param context the invocation's extension context
+     * @since 1.13.2
+     */
+    @Override
+    public void afterEach(ExtensionContext context) {
+        ConcurrencyRunner.afterTeardown();
     }
 }

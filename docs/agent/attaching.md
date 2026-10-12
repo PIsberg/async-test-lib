@@ -126,9 +126,9 @@ recording call: a `containsKey` that found the key absent, or any `get`, is held
 thread's pending check, and a `put` or `remove` on the same map and key in the same round completes
 it. The pair is reported when two threads complete it in one round with no lock held across both
 calls; under the map's own monitor it is atomic and stays silent
-(`CheckThenActWeavingEndToEndTest`). A round whose callers all put one instance is excused, which
-also excuses racers that all put one cached box such as `Integer.valueOf(1)`: the hook cannot tell
-a value derived from the read from one chosen without it.
+(`CheckThenActWeavingEndToEndTest`). A round whose callers all put one shared object is excused;
+a boxed primitive such as `Integer.valueOf(1)` or an enum constant is not, since it is the same
+instance only because its value is (#996).
 
 Executors are watched the same way. The fourteen `Executors` factories are woven, and an executor a
 run thread creates through one of them is declared to `ExecutorShutdownDetector` as the run's own,
@@ -153,7 +153,10 @@ child's stdout and stderr are still pipes no thread has taken, and the woven `ge
 writes a pipe's worth blocks, and the wait never returns. A drain thread or task that takes the
 pipe after the wait began excuses it (`ProcessFeedSparesCorrectUseTest`). One that runs in code
 the agent does not weave, a process library's own pump threads for example, takes its pipe
-unseen, and the wait is reported (#996).
+unseen, and the wait is reported with a hint to add that library to `includes=` (#996). The same
+detector hears the woven `PipedOutputStream.write` and `PipedInputStream.read` calls and reports
+one thread on both ends of a pair, paired through the writer's private `sink`; a write through a
+variable typed `OutputStream` is not woven (#994).
 
 The same option substitutes `Object.wait`, `notify` and `notifyAll` (#694), which is what feeds
 `MissedSignalDetector` without a recorded call: the hooks run with the monitor held, so a notify is
