@@ -154,6 +154,7 @@ import se.deversity.asynctest.diagnostics.ScopeConfigurationMisuseDetector;
 import se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector;
 import se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector;
 import se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector;
+import se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
@@ -433,6 +434,7 @@ public final class AsyncTestContext {
     final @Nullable ScopeResultEscapeDetector scopeResultEscapeDetector;
     final @Nullable LazyCollectionMisuseDetector lazyCollectionMisuseDetector;
     final @Nullable ProcessStreamStarvationDetector processStreamStarvationDetector;
+    final @Nullable BlockingOnNonBlockingThreadDetector blockingOnNonBlockingThreadDetector;
 
     // ---- Agent-telemetry bridge target (1.7.0+) ----
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
@@ -594,6 +596,7 @@ public final class AsyncTestContext {
         scopeResultEscapeDetector = registry.scopeResultEscapeDetector;
         lazyCollectionMisuseDetector = registry.lazyCollectionMisuseDetector;
         processStreamStarvationDetector = registry.processStreamStarvationDetector;
+        blockingOnNonBlockingThreadDetector = registry.blockingOnNonBlockingThreadDetector;
         // Agent-telemetry bridge target
         atomicityValidator                     = registry.atomicityValidator;
 
@@ -2103,6 +2106,16 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link BlockingOnNonBlockingThreadDetector} for the run the calling thread works
+     * for, or {@code null}}: every woven blocking call records here, and a thread the run does not
+     * own, an event loop the framework started unseen, resolves to no run (#991).
+     */
+    static @Nullable BlockingOnNonBlockingThreadDetector currentBlockingOnNonBlockingThreadDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.blockingOnNonBlockingThreadDetector;
+    }
+
+    /**
      * {@return the {@link SynchronizedCollectionIterationDetector} for the run the calling thread
      * works for, or {@code null}}: a woven {@code iterator()} or {@code stream()} on a synchronized
      * wrapper, and a woven view of a synchronized map, are handed to it.
@@ -3450,6 +3463,18 @@ public final class AsyncTestContext {
      */
     public static ProcessStreamStarvationDetector processStreamStarvationDetector() {
         return require(DetectorType.PROCESS_STREAM_STARVATION, c -> c.processStreamStarvationDetector);
+    }
+
+    /**
+     * Returns the {@link BlockingOnNonBlockingThreadDetector} for the current test.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@link DetectorType#BLOCKING_ON_NON_BLOCKING_THREAD} is not enabled
+     * @since 1.13.2
+     *
+     * @return the {@link BlockingOnNonBlockingThreadDetector} for the active {@code @AsyncTest} context
+     */
+    public static BlockingOnNonBlockingThreadDetector blockingOnNonBlockingThreadDetector() {
+        return require(DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD, c -> c.blockingOnNonBlockingThreadDetector);
     }
 
     // ---- Phase 1 / Phase 3 detector accessors ----

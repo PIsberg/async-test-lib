@@ -102,6 +102,7 @@ Detailed per-element guardrails live in scoped rule files that Gemini CLI does n
 - `se.deversity.asynctest.Preset` → `.gemini/rules/async-test-configuration.md`
 - `se.deversity.asynctest.benchmark.BenchmarkComparator` → `.gemini/rules/async-test-instrumentation.md`
 - `se.deversity.asynctest.benchmark.BenchmarkRecorder` → `.gemini/rules/async-test-instrumentation.md`
+- `se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.CompletableFutureCancellationPropagationDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.CompletableFutureCombinatorMisuseDetector` → `.gemini/rules/async-test-detectors.md`

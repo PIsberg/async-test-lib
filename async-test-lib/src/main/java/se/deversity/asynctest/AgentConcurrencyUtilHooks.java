@@ -52,6 +52,7 @@ import se.deversity.asynctest.diagnostics.ExecutorShutdownDetector;
 import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
+import se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector;
 import se.deversity.asynctest.diagnostics.MdcContextLeakDetector;
 import se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector;
 import se.deversity.asynctest.diagnostics.ThreadLocalMonitor;
@@ -2855,6 +2856,12 @@ public final class AgentConcurrencyUtilHooks {
      */
     static void blocking(String callType, boolean managed) {
         Thread thread = Thread.currentThread();
+        BlockingOnNonBlockingThreadDetector nonBlocking =
+                AsyncTestContext.currentBlockingOnNonBlockingThreadDetector();
+        if (nonBlocking != null) {
+            // Managed or not: a join of a CompletableFuture stalls an event loop all the same (#991).
+            nonBlocking.recordBlockingCall(callType, thread);
+        }
         CompletableFutureBlockingCallbackDetector callbacks =
                 AsyncTestContext.currentCfBlockingCallbackDetector();
         if (callbacks != null) {

@@ -12,6 +12,9 @@
 - **Coverage Goal**: 80%
 - **Frameworks**: JUNIT_5
 
+### se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/BlockingOnNonBlockingThreadDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureBlockingCallbackDetectorTest.java
 
@@ -154,6 +157,10 @@
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/WeakHashMapSharedDetectorTest.java
 
 ## Thread-Safety Guarantee
+
+### se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector
+- **Strategy**: OTHER
+- **Note**: Findings in a concurrent set keyed by thread, kind and operation; classification reads the calling thread's own object only.
 
 ### se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector
 - **Strategy**: OTHER

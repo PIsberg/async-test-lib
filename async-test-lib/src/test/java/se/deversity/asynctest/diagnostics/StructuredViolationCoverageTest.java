@@ -313,6 +313,12 @@ class StructuredViolationCoverageTest {
                 d.recordWaitFor(child, Thread.currentThread());
                 return d.analyze();
             }),
+            new Path("BlockingOnNonBlockingThreadDetector", "slept on a Reactor non-blocking thread", () -> {
+                var d = new BlockingOnNonBlockingThreadDetector();
+                d.recordBlockingCall("Thread.sleep",
+                        new BlockingOnNonBlockingThreadDetectorTest.ReactorThread(() -> { }));
+                return d.analyze();
+            }),
             new Path("LockUpgradeDeadlockDetector", "write lock attempted under the read lock", () -> {
                 var d = new LockUpgradeDeadlockDetector();
                 var lock = new ReentrantReadWriteLock();

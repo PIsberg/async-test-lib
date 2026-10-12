@@ -68,7 +68,7 @@ import java.util.Optional;
 public final class DetectorTrust {
 
     /** Number of built-in detectors classified here; equals {@code DetectorType.values().length}. */
-    public static final int DETECTOR_COUNT = 147;
+    public static final int DETECTOR_COUNT = 148;
 
     /**
      * One detector's classification.
@@ -354,7 +354,8 @@ public final class DetectorTrust {
             row(DetectorType.SCOPE_CONFIGURATION_MISUSE, "ScopeConfigurationMisuseDetector", "ScopeConfigurationMisuse", TrustTier.PROMPT, Evidence.HEURISTIC),
             row(DetectorType.SCOPE_RESULT_ESCAPE, "ScopeResultEscapeDetector", "ScopeResultEscape", TrustTier.FACT, Evidence.ASSERTED),
             row(DetectorType.LAZY_COLLECTION_MISUSE, "LazyCollectionMisuseDetector", "LazyCollectionMisuse", TrustTier.PROMPT, Evidence.HEURISTIC),
-            row(DetectorType.PROCESS_STREAM_STARVATION, "ProcessStreamStarvationDetector", "ProcessStreamStarvation", TrustTier.PROMPT, Evidence.ASSERTED)
+            row(DetectorType.PROCESS_STREAM_STARVATION, "ProcessStreamStarvationDetector", "ProcessStreamStarvation", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD, "BlockingOnNonBlockingThreadDetector", "BlockingOnNonBlockingThread", TrustTier.PROMPT, Evidence.OBSERVED)
     );
 
     private static final List<Row> ROWS = List.copyOf(TABLE.stream().map(Classified::row).toList());

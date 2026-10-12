@@ -42,7 +42,7 @@ mavenPublishing {
     )
     pom {
         name = "Async Test Library"
-        description = "Enterprise-grade JUnit 5 concurrency testing library with 147 problem detectors " +
+        description = "Enterprise-grade JUnit 5 concurrency testing library with 148 problem detectors " +
                 "for detecting deadlocks, visibility issues, false sharing, livelocks, and other subtle concurrency bugs."
     }
 }

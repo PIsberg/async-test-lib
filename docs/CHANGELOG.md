@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`BLOCKING_ON_NON_BLOCKING_THREAD`, detector 148: a blocking call on a thread that must not
+  block (#991, #993).** An event loop runs every task queued for it in turn, so a sleep, a `join`
+  or `get` of a pending future, a latch await or a take on it stalls all of them; BlockHound exists
+  for this, and nothing here covered it. The thread is classified by its class's names, as
+  BlockHound does: a Reactor `NonBlocking` scheduler thread, a Vert.x `VertxThread` that is not a
+  worker, a Netty `FastThreadLocalThread` whose `permitBlockingCalls()` is false, and, as the first
+  coroutine rule (#993), a Kotlin `CoroutineScheduler$Worker` in state `CPU_ACQUIRED`
+  (`Dispatchers.Default`; the same worker on `Dispatchers.IO` is `BLOCKING` and not reported).
+  `HIGH`, tier `PROMPT`, evidence `OBSERVED`. With `collections=true` every woven blocking call
+  feeds it; by the owner's choice the run claims an event-loop thread only when the framework's
+  scheduler packages are in the agent's `includes=`, so the woven start or submission inside the
+  framework carries the run to it, and a thread the run never saw reports nothing (41 detectors
+  now see unmodified code). The rest of #993, the coroutine owner model, is #1007. New: example
+  151, consumer-fixture `Phase26NonBlockingThreadFixtureTest`, catalog entry 148, a corpus agent-lane
+  pair on Netty's real `FastThreadLocalThread`. Tests: the detector test was red with the
+  classification stubbed; `BlockingOnNonBlockingThreadWeavingTest` fires through the real weaver
+  and went red with the hook call removed; `BlockingOnNonBlockingThreadSparesTest` (an ordinary
+  thread, and a non-blocking thread started by no worker) stays silent and went red with every
+  thread classified as non-blocking on purpose.
+
 - **`PROCESS_STREAM_STARVATION`, detector 147: `Process.waitFor()` on a child whose output nobody
   drains.** A child writes stdout and stderr into pipes of a few kilobytes and blocks once one is
   full, so a parent that waits before reading waits for a child that is waiting for it. It hangs

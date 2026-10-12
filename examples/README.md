@@ -6,7 +6,7 @@ Real-world examples demonstrating common Java concurrency bugs that `@AsyncTest`
 
 Most examples ship the buggy service, a sequential `@Test` that passes on it, and an
 `@AsyncTest` that exposes the bug. **Those `@AsyncTest` demonstrations are `@Disabled`**: 96 of
-the 149 examples have one. That is deliberate: they demonstrate code that fails, so enabling
+the 150 examples have one. That is deliberate: they demonstrate code that fails, so enabling
 them would make the examples pipeline permanently red. Each carries a reason saying so, and
 removing the annotation is the intended way to watch the bug surface.
 
@@ -18,7 +18,7 @@ rather than only that the example compiles. Forty-one examples are written this 
 example from 136 onwards is.
 
 The distinction matters when reading the pipeline's green tick. For the disabled majority, the
-examples pipeline builds all 149 and runs their enabled tests, so it proves those examples
+examples pipeline builds all 150 and runs their enabled tests, so it proves those examples
 **compile and keep working against the current library** — it does not prove any detector
 fires. The check that does that for the library itself is `DetectionCoverageTest` in
 `async-test-lib`, which runs real buggy code through a real `@AsyncTest` and asserts on the
@@ -187,7 +187,8 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 147 | [Scope Configuration Misuse](147-scope-configuration-misuse/) | `ScopeConfigurationMisuseDetector` | `Configuration` is immutable, so a lambda that drops what `withTimeout` returned applies no deadline at all and the scope waits on its slowest subtask forever | 🟠 High |
 | 148 | [Scope Result Escape](148-scope-result-escape/) | `ScopeResultEscapeDetector` | JDK 26 returns a `List` where JDK 25 returned a `Stream`; a `List` stores happily in a field, so the subtask handles are read after the scope that guaranteed them closed | 🔴 High |
 | 149 | [Lazy Collection Misuse](149-lazy-collection-misuse/) | `LazyCollectionMisuseDetector` | `List.ofLazy` elements compute on whichever thread asks first, so a mapping function reading its own collection deadlocks two threads the JDK's cycle check never sees | 🔴 High |
-| 150 | [Process Stream Starvation](150-process-stream-starvation/) | `ProcessStreamStarvationDetector` | `Process.waitFor()` before anyone reads the child's output returns on a quiet command and hangs forever once a verbose one fills its pipe | 🟡 Medium |
+| 150 | [Process Stream Starvation](150-process-stream-starvation/) | `ProcessStreamStarvationDetector` | `Process.waitFor()` before anyone reads the child's output returns on a quiet command and hangs forever once a verbose one fills its pipe |
+| 151 | [Blocking On A Non-Blocking Thread](151-blocking-on-non-blocking-thread/) | `BlockingOnNonBlockingThreadDetector` | a slow lookup on an event-loop thread answers one quote fine and stalls every quote queued behind it under load | 🟡 Medium |
 
 > Examples 114–119 target JDK 24–26 concurrency features. The detectors work off recorded
 > `String`-key + `Thread` events, so they compile and run on the Java 21 baseline while

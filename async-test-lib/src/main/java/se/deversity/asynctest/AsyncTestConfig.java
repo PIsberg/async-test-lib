@@ -414,6 +414,8 @@ public final class AsyncTestConfig {
     public final boolean detectLazyCollectionMisuse;
     /** Whether {@link DetectorType#PROCESS_STREAM_STARVATION} is enabled for this run. */
     public final boolean detectProcessStreamStarvation;
+    /** Whether {@link DetectorType#BLOCKING_ON_NON_BLOCKING_THREAD} is enabled for this run. */
+    public final boolean detectBlockingOnNonBlockingThread;
 
     // ---- Benchmarking ----
     /** Resolved value of {@link AsyncTest#enableBenchmarking()} for this run. */
@@ -604,6 +606,7 @@ public final class AsyncTestConfig {
         detectScopeResultEscape = enabled.contains(DetectorType.SCOPE_RESULT_ESCAPE);
         detectLazyCollectionMisuse = enabled.contains(DetectorType.LAZY_COLLECTION_MISUSE);
         detectProcessStreamStarvation = enabled.contains(DetectorType.PROCESS_STREAM_STARVATION);
+        detectBlockingOnNonBlockingThread = enabled.contains(DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD);
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -1745,6 +1748,12 @@ public final class AsyncTestConfig {
          * @return this builder
          */
         public Builder detectProcessStreamStarvation(boolean v) { return flag(DetectorType.PROCESS_STREAM_STARVATION, v); }
+        /**
+         * Sets {@link AsyncTestConfig#detectBlockingOnNonBlockingThread}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectBlockingOnNonBlockingThread(boolean v) { return flag(DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD, v); }
         /**
          * Sets {@link AsyncTestConfig#enableBenchmarking}.
          * @param v the value to use

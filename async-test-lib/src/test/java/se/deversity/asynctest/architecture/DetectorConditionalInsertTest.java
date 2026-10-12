@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>The window is one round wide in both cases: once the entry exists every later lookup is a
  * hit, so a single-shot test never reaches it and only a barrier-forced collision on a fresh
  * instance does. That makes this cheaper to enforce structurally than to test per detector, which
- * is the point of doing it here rather than writing 147 concurrency tests.
+ * is the point of doing it here rather than writing 148 concurrency tests.
  *
  * <p><strong>What this gate does not do.</strong> It recognises two concrete shapes, not
  * check-then-act in general. It reads source text rather than bytecode, because asm is confined to

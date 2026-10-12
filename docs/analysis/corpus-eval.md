@@ -1872,13 +1872,13 @@ silence, so a refusal cannot outlive a pair in that lane either.
 | | Detectors |
 |---|---|
 | Paired in the recording lane | 117 |
-| Paired in the agent-pair lane | 18 |
+| Paired in the agent-pair lane | 19 |
 | ...less `SHARED_MESSAGE_DIGEST`, `LATCH_MISUSE` and `BLOCKING_QUEUE`, which are paired in both | -3 |
 | Paired by lane one over 139 subjects (`ATOMICITY_VIOLATIONS`, `SHARED_COLLECTIONS`) | +2 |
-| **Total paired** | **134** |
+| **Total paired** | **135** |
 | Refused: every recorded event is a finding, so no silent twin can exist | 5 |
 | Refused: the outcome is a threshold or a clock, not the recorded calls | 8 |
-| **Total** | **147** |
+| **Total** | **148** |
 
 Nothing in that table is maintained by hand. The two lane figures come from the generated
 reports:
@@ -2340,8 +2340,8 @@ mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair 
 the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
-added below, and the Guava service pair (#736), 18 of the 36 agent-fed detectors are measured in
-both directions on call sites inside a library. `LibraryReach` records why the other eighteen are not,
+added below, and the Guava service pair (#736), 18 of the 37 agent-fed detectors are measured in
+both directions on call sites inside a library. `LibraryReach` records why the other nineteen are not,
 and `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:
 

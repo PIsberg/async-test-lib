@@ -159,5 +159,6 @@
         <module>148-scope-result-escape</module>
         <module>149-lazy-collection-misuse</module>
         <module>150-process-stream-starvation</module>
+        <module>151-blocking-on-non-blocking-thread</module>
     </modules>
 </project>

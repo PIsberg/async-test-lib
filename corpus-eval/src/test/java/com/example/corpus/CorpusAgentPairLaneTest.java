@@ -1229,6 +1229,39 @@ class CorpusAgentPairLaneTest {
         }
     }
 
+    /** Every worker sleeps on a Netty event-loop-class thread it starts. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_nettyThread_sleepsOnAnEventLoopThread() {
+        counted(() -> sleepOnANettyThread(false));
+    }
+
+    /** The same sleep on a Netty thread that permits blocking calls. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_nettyThread_sleepsOnAnOrdinaryThread() {
+        counted(() -> sleepOnANettyThread(true));
+    }
+
+    /** Starts a Netty thread that sleeps 1 ms, permitting blocking calls or not, and joins it. */
+    private static void sleepOnANettyThread(boolean permitBlocking) throws InterruptedException {
+        Runnable nap = () -> {
+            try {
+                Thread.sleep(1);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        };
+        Thread thread = permitBlocking
+                ? new io.netty.util.concurrent.FastThreadLocalThread(nap) {
+                    @Override
+                    public boolean permitBlockingCalls() {
+                        return true;
+                    }
+                }
+                : new io.netty.util.concurrent.FastThreadLocalThread(nap);
+        thread.start();
+        thread.join();
+    }
+
     /** Every worker writes one byte into a fresh pipe and reads it back on the same thread. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_pipe_bothEndsOnOneThread() {

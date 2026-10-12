@@ -148,7 +148,9 @@ public final class DetectorFeeds {
             // a value an earlier task left on the thread, read by the next (#995).
             DetectorType.THREAD_LOCAL_LEAKS,
             // The MDC at the start and end of each pooled task the woven submit hands over (#995).
-            DetectorType.MDC_CONTEXT_LEAK);
+            DetectorType.MDC_CONTEXT_LEAK,
+            // Every woven blocking call, on a thread a framework made for not blocking (#991, #993).
+            DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD);
 
     /**
      * Fed by the JVM and the harness with no recording call.

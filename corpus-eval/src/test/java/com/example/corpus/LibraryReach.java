@@ -108,6 +108,11 @@ final class LibraryReach {
         unreached(DetectorType.MDC_CONTEXT_LEAK,
                 "agent-fed since #995 through the MDC snapshots around the pooled tasks a woven "
                         + "submit hands over; no corpus library writes to the MDC");
+        unreached(DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD,
+                "agent-fed since #991 through every woven blocking call; a firing library row "
+                        + "needs a library method that blocks on its own event loop, and none of "
+                        + "the corpus libraries does, so its pair blocks in the test body on a "
+                        + "Netty thread class");
     }
 
     private static void unreached(DetectorType type, String reason) {
