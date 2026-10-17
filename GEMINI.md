@@ -15,13 +15,6 @@ indexed from the block below.
 The following elements are well-tested core components. Make changes with extreme caution:
 
 - `se.deversity.asynctest.agent.AsyncTestAgent`: Sensitivity: Critical. Note: The INSTALLED gate must stay at-most-once per JVM: every entry point (premain, agentmain, selfAttach) races on the same compareAndSet, and a second transformer would double-weave accesses and double-count every one. premain installs without retransformation because classes are woven as they load; agentmain must keep RETRANSFORMATION + disableClassFormatChanges(), which is only safe while no weaver adds a member, and there are four besides the Advice, which is a method-entry prologue. FieldAccessWeaver inserts a stack-neutral, branch-free call before each field instruction, a load of the monitor plus a call at the entry of a synchronized method and before each of its returns (#822), a DUP of the monitor, an ALOAD of the local the owner was loaded from, an LDC of the field and a call before a MONITORENTER whose monitor the four instructions before it read from an instance field (ALOAD, GETFIELD, DUP, ASTORE, with no label between, #793), a DUP plus call after a VarHandle reference getAndSet it does not substitute (the ownership take, #555), DUP2 and SWAP plus a call before a JCTools offer, and a DUP before plus DUP_X1 and SWAP plus a call after a JCTools poll (#664), a copy of owner and value plus a call before a volatile field store and after a volatile field load, with a DUP of the receiver before an instance load (#742), and replaces an int VarHandle, AtomicIntegerFieldUpdater, AtomicBoolean or AtomicInteger store, swap or value-returning release, or a reference-slot store or getAndSet on an AtomicReference, its updater, its array or an instance-field VarHandle, or an acquiring reference read, an AtomicReference get or getAcquire, an updater get, an AtomicReferenceArray get or getAcquire or a VarHandle getVolatile or getAcquire (the acquire of the store it returned, #741), or an AtomicStampedReference get, getReference, set, compareAndSet, weakCompareAndSet or attemptStamp (#817), with a static hook consuming the same stack and returning the same result, plus one POP where a VarHandle call site declared a void result and one CHECKCAST to the declared type after a VarHandle reference getAndSet or acquiring read (the spinlock, #554, #558, #658, #667; the ownership offer and take, #664). CollectionAccessWeaver replaces each call its tables list with a static hook consuming the same stack, and inserts only the monitor loads and the loop back-edge call its own rules describe. ThreadConstructionWeaver inserts a DUP plus a call after the constructor call of a new Thread(...), and an ALOAD 0 plus a call after a Thread subclass constructor's superclass call (#737). ConstructionWeaver inserts a call that consumes and returns the order argument before a LinkedHashMap(int, float, boolean) constructor call and a DUP or an ALOAD 0 plus a call after it (#807), and an ALOAD 0, an LDC of the class name and a call before each RETURN of a constructor and after a this(...) delegation (#791); it leaves alone a class in a named module that cannot read the library. InterruptHandlerWeaver inserts an LDC of the locations of a method's InterruptedException handlers that neither rethrow nor restore the flag, and a call, before the first instruction of a method that declares one, and leaves alone a class in a named module that cannot read the library. PersistenceHandleWeaver inserts, before a call whose owner is a JPA EntityManager or Hibernate Session by name, a stack-neutral copy of the receiver (DUP; SWAP, DUP_X1; or DUP2_X1, POP2, DUP_X2 for zero, one or two one-slot arguments) and a call, and leaves calls with more or wider arguments alone (#992). So frames stay valid and only maxStack grows (COMPUTE_MAXS, never COMPUTE_FRAMES, which would load classes from inside the agent). In every mode, install and the transformer open java.util.concurrent.locks, with fields=true also java.util.concurrent.atomic, and with collections=true also java.util and java.io (a synchronized wrapper's mutex, #996; a piped writer's sink, #994), to one module per woven loader and to nothing else: the module of the TelemetryRegistry copy that loader resolves, never the woven loader or its ancestors as such (UpdaterAccess, #659, #668, #855); the locks opening lets the library read a ReentrantLock owner at analysis. In every mode, a woven class in a named module gets a read edge to the library copy its loader resolves (UpdaterAccess.letRead, #862): the JVM's own edge for a transformed class reaches only the agent loader's unnamed module. The library resolves an updater bound before the attach by reading the JDK implementation from that copy (JdkUpdaterShapeCanaryTest pins the shape it reads), and the opening must fail silently like the rest of install. Nothing may throw out of premain — an exception there aborts JVM startup, which is why install() catches Throwable and releases the gate rather than propagating. Both modes use AgentBuilder.InitializationStrategy.NoOp: no weaver needs a loaded-type initializer, and Byte Buddy's default self-injection gave every class woven at load a <clinit> that loads net.bytebuddy.dynamic.Nexus through the system class loader, whose lock virtual threads initializing classes at once contend on and pin (#984). The Premain-Class / Agent-Class manifest entries live in this module's jar, which is why attaching uses -javaagent:async-test-agent.jar.
-
-## Scoped Rules Index
-Detailed per-element guardrails live in scoped rule files that Gemini CLI does not load on its own. A line `a.b`: `C`, `D` names a.b.C and a.b.D. Unless an entry carries an explicit path, its file is .gemini/rules/{path, every non-alphanumeric character replaced by '-'}.md. Before modifying an element listed below, open its file with read_file and apply the guardrails there:
-
-- `se.deversity.asynctest.agent.AgentOptions` → `.gemini/rules/async-test-instrumentation.md`
-- `se.deversity.asynctest.agent.AtomicFieldRegistry` → `.gemini/rules/async-test-instrumentation.md`
-- `se.deversity.asynctest.agent.CollectionAccessWeaver` → `.gemini/rules/async-test-instrumentation.md`
 <!-- VIBETAGS-MODULE-END: async-test-agent -->
 <!-- VIBETAGS-MODULE: async-test-analysis -->
 # GEMINI AI INSTRUCTIONS
@@ -83,97 +76,25 @@ Do not weaken security properties of these elements. Flag any change for securit
 - `se.deversity.asynctest.runner.LicenseGuard`: Security-critical code [authorization]. Do not weaken security properties. Flag any change for security review.
 - `se.deversity.asynctest.runner.LicenseValidationCache`: Security-critical code [authorization (isFresh skips online validation; hasRecord admits outage grace)]. Do not weaken security properties. Flag any change for security review.
 - `se.deversity.asynctest.runner.OfflineLicense`: Security-critical code [authorization]. Do not weaken security properties. Flag any change for security review.
+<!-- VIBETAGS-MODULE-END: async-test-lib -->
 
 ## Scoped Rules Index
 Detailed per-element guardrails live in scoped rule files that Gemini CLI does not load on its own. A line `a.b`: `C`, `D` names a.b.C and a.b.D. Unless an entry carries an explicit path, its file is .gemini/rules/{path, every non-alphanumeric character replaced by '-'}.md. Before modifying an element listed below, open its file with read_file and apply the guardrails there:
 
+- `se.deversity.asynctest.agent`: `AgentOptions`, `AtomicFieldRegistry`, `CollectionAccessWeaver` → `.gemini/rules/async-test-instrumentation.md`
 - `se.deversity.asynctest`: `AgentCollectionHooks`, `AgentConcurrencyUtilHooks`, `AgentConstructionHooks`, `AgentGcHooks`, `AgentLockHooks`, `AgentMonitorHooks`, `AgentSharedInstanceHooks`, `AgentSleepHooks`, `AgentThreadHooks`, `RunOutcomes`
-- `se.deversity.asynctest.AsyncAssert` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.AsyncFindings` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.AsyncTest` → `.gemini/rules/async-test-configuration.md`
-- `se.deversity.asynctest.AsyncTestConfig` → `.gemini/rules/async-test-configuration.md`
+- `se.deversity.asynctest`: `AsyncAssert`, `AsyncFindings`, `AsyncTestListener`, `AsyncTestListenerRegistry`, `AsyncTestRunner` → `.gemini/rules/async-test-public-api.md`
+- `se.deversity.asynctest`: `AsyncTest`, `AsyncTestConfig`, `DetectorRegistry`, `DetectorType`, `Preset` → `.gemini/rules/async-test-configuration.md`
 - `se.deversity.asynctest.AsyncTestContext` → `.gemini/rules/async-test-runtime-core.md`
-- `se.deversity.asynctest.AsyncTestListener` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.AsyncTestListenerRegistry` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.AsyncTestListenerRegistry.Registration` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.AsyncTestRunner` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.DetectorRegistry` → `.gemini/rules/async-test-configuration.md`
-- `se.deversity.asynctest.DetectorType` → `.gemini/rules/async-test-configuration.md`
-- `se.deversity.asynctest.Preset` → `.gemini/rules/async-test-configuration.md`
-- `se.deversity.asynctest.benchmark.BenchmarkComparator` → `.gemini/rules/async-test-instrumentation.md`
-- `se.deversity.asynctest.benchmark.BenchmarkRecorder` → `.gemini/rules/async-test-instrumentation.md`
-- `se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.CompletableFutureCancellationPropagationDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.CompletableFutureCombinatorMisuseDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.CompletableFutureCompletionRaceDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.ConfinedArenaThreadEscapeDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.DetectorDefaultSeverity` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.DetectorFeeds` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.DetectorTrust` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.FileChannelPositionRaceDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.FinalFieldMutationDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.FlowPublisherConcurrencyDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.GradedFindings` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.HighContentionAtomicDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.LazyConstantMisuseDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.NotifyWithoutMonitorDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.PlatformThreadPerTaskDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.RecordMutableComponentLeakDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.ScopeConfigurationMisuseDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.ScopeJoinerMisuseDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SharedByteBufferDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SharedCharsetCoderDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SharedChecksumDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SharedDeflaterDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SharedIteratorDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SharedJsonMapperReconfigDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SharedKdfDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SharedMemorySegmentRaceDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SharedMessageDigestDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SharedSecureRandomDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SharedSplittableRandomDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SiteCapture` → `.gemini/rules/async-test-detectors.md`
+- `se.deversity.asynctest.benchmark`: `BenchmarkComparator`, `BenchmarkRecorder` → `.gemini/rules/async-test-instrumentation.md`
+- `se.deversity.asynctest.diagnostics`: `BlockingOnNonBlockingThreadDetector`, `CompletableFutureBlockingCallbackDetector`, `CompletableFutureCancellationPropagationDetector`, `CompletableFutureCombinatorMisuseDetector`, `CompletableFutureCompletionRaceDetector`, `CompletableFutureObtrudeDetector`, `ConfinedArenaThreadEscapeDetector`, `DaemonThreadHygieneDetector`, `DetectorDefaultSeverity`, `DetectorFeeds`, `DetectorTrust`, `FileChannelPositionRaceDetector`, `FinalFieldMutationDetector`, `FlowPublisherConcurrencyDetector`, `GradedFindings`, `HighContentionAtomicDetector`, `JdbcConnectionSharedDetector`, `LambdaLostUpdateDetector`, `LazyCollectionMisuseDetector`, `LazyConstantMisuseDetector`, `LockUpgradeDeadlockDetector`, `NonAtomicConcurrentMapUpdateDetector`, `NotifyWithoutMonitorDetector`, `PlatformThreadPerTaskDetector`, `ProcessStreamStarvationDetector`, `RecordMutableComponentLeakDetector`, `ScopeConfigurationMisuseDetector`, `ScopeJoinerMisuseDetector`, `ScopeResultEscapeDetector`, `SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`, `SharedDeflaterDetector`, `SharedIteratorDetector`, `SharedJsonMapperReconfigDetector`, `SharedKdfDetector`, `SharedMemorySegmentRaceDetector`, `SharedMessageDigestDetector`, `SharedSecureRandomDetector`, `SharedSplittableRandomDetector`, `SharedStatefulCryptoDetector`, `SiteCapture`, `SpuriousWakeupDetector`, `StaticInitDeadlockDetector`, `ThisEscapeDetector`, `ThreadLocalCacheDegradationDetector`, `ThreadLocalRandomMisuseDetector`, `TrustTier`, `TryLockMisuseDetector`, `VarHandleNonAtomicUpdateDetector`, `VirtualThreadMonitorSerializationDetector`, `VirtualThreadPoolingDetector`, `VirtualThreadResourceSaturationDetector`, `WeakHashMapSharedDetector` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.diagnostics.SiteCapture.Site` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.SpuriousWakeupDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.StaticInitDeadlockDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.ThisEscapeDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.ThreadLocalCacheDegradationDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.ThreadLocalRandomMisuseDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.TrustTier` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.TryLockMisuseDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.VarHandleNonAtomicUpdateDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.VirtualThreadMonitorSerializationDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.VirtualThreadResourceSaturationDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.diagnostics.WeakHashMapSharedDetector` → `.gemini/rules/async-test-detectors.md`
-- `se.deversity.asynctest.extension.AsyncTestExtension` → `.gemini/rules/async-test-runtime-core.md`
-- `se.deversity.asynctest.extension.AsyncTestInvocationInterceptor` → `.gemini/rules/async-test-runtime-core.md`
-- `se.deversity.asynctest.report.Formatter` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.report.JUnitXmlReportListener` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.report.JsonFormatter` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.report.JsonReportListener` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.report.MarkdownFormatter` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.report.SarifFormatter` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.report.Violation` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.runner.ConcurrencyRunner` → `.gemini/rules/async-test-runtime-core.md`
-- `se.deversity.asynctest.runner.LicenseGuard` → `.gemini/rules/async-test-runtime-core.md`
-- `se.deversity.asynctest.runner.LicenseValidationCache` → `.gemini/rules/async-test-runtime-core.md`
-- `se.deversity.asynctest.spi.Detector` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.spi.DetectorFactory` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.spi.DetectorRegistry` → `.gemini/rules/async-test-public-api.md`
+- `se.deversity.asynctest.extension`: `AsyncTestExtension`, `AsyncTestInvocationInterceptor` → `.gemini/rules/async-test-runtime-core.md`
+- `se.deversity.asynctest.report`: `Formatter`, `JUnitXmlReportListener`, `JsonFormatter`, `JsonReportListener`, `MarkdownFormatter`, `SarifFormatter`, `Violation` → `.gemini/rules/async-test-public-api.md`
+- `se.deversity.asynctest.runner`: `ConcurrencyRunner`, `LicenseGuard`, `LicenseValidationCache` → `.gemini/rules/async-test-runtime-core.md`
+- `se.deversity.asynctest.spi`: `Detector`, `DetectorFactory`, `DetectorRegistry` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.telemetry.TelemetryBridge` → `.gemini/rules/async-test-instrumentation.md`
-<!-- VIBETAGS-MODULE-END: async-test-lib -->
 <!-- VIBETAGS-END -->
 
 ## Core Principles
