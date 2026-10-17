@@ -227,6 +227,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Dependencies bumped to their latest releases.** byte-buddy 1.18.15, asm 9.11.1, SpotBugs 4.10.5
+  (plugin 4.10.5.0), japicmp plugin 0.26.5, pitest 1.30.1, central-publishing 0.12.0 (its bundle is
+  entry-for-entry identical to 0.11.0's, checked offline against a dead upload URL on the pinned
+  Maven 3.9.16), Gradle spotbugs plugin 6.5.13 and cyclonedx 3.5.1, corpus caffeine 3.3.1,
+  scorecard-action 2.5.0, the Copilot CLI pin 1.0.98. The language fixtures' Gradle twins had
+  drifted from their poms (Groovy 5.1.0 vs 6.0.0, Scala 3.8.4 vs 3.10.0, Kotlin 2.4.10 vs 2.4.21)
+  and now match. The bumpdeps skill reported "no reactor property updates" with four pending,
+  because it ran the versions plugin with `-q`, which hides the lines it greps for; it now lists
+  every reactor dependency and plugin update, including the ones its property pass cannot rewrite.
+
 - **`SYSTEM_PROPERTY_MUTATION` names the property it saw written, never the value.** Its warning
   for a single-thread write read `Property 'k' set to 'v'`. Once the agent feeds every
   `System.setProperty` a run makes, that is any property the code under test sets, including one
