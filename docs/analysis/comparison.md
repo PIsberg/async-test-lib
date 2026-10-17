@@ -17,7 +17,7 @@ concurrency stress tool, is the closer Java-side comparison and is included belo
 | Happens-before data-race detection | no | no | no | no | no (detects incorrect outcomes, not races) | yes |
 | Zero-config deadlock detection | yes (live circular wait via ThreadMXBean) | no | no | no | in the tested operations via model checking, not live ThreadMXBean detection | lock-order inversion reports |
 | Memory-model conformance probes | limited | no | no | yes (the reference tool) | limited | yes |
-| Reproduction handle for a failing run | replay seed (library RNG only, not the schedule) | no | no | seeds per config | yes in model-checking mode (deterministic interleaving replay) | no |
+| Reproduction handle for a failing run | replay seed: the library RNG by default; with `controlledSchedule = true` also the interleaving, at woven field accesses and explicit `schedulePoint()`s, exact when no worker blocked outside a point | no | no | seeds per config | yes in model-checking mode (deterministic interleaving replay) | no |
 | Applies to JVM code | yes | yes | yes | yes | yes | no |
 
 What that means in practice:

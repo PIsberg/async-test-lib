@@ -56,6 +56,13 @@ public final class AsyncTestConfig {
     public final long replaySeed;
 
     /**
+     * Resolved value of {@link AsyncTest#controlledSchedule()}: whether the replay seed decides the
+     * interleaving of each round's workers.
+     * @since 1.13.2
+     */
+    public final boolean controlledSchedule;
+
+    /**
      * Severity threshold at or above which detector findings fail the test.
      * {@link FailOn#NONE} (default) keeps the legacy report-only behavior.
      * @since 1.7.0
@@ -451,6 +458,7 @@ public final class AsyncTestConfig {
         virtualThreadStressMode        = b.virtualThreadStressMode;
         detectAll                      = b.detectAll;
         replaySeed                     = b.replaySeed;
+        controlledSchedule             = b.controlledSchedule;
         failOn                         = b.failOn;
         minTrust                       = b.minTrust;
         detectDeadlocks                = enabled.contains(DetectorType.DEADLOCKS);
@@ -744,6 +752,7 @@ public final class AsyncTestConfig {
             .virtualThreadStressMode(ann.virtualThreadStressMode())
             .detectAll(effectiveDetectAll)
             .replaySeed(ann.replaySeed())
+            .controlledSchedule(ann.controlledSchedule())
             .failOn(ann.failOn())
             .minTrust(ann.minTrust())
             .enableBenchmarking(ann.enableBenchmarking() || globalBenchmarkingEnabled)
@@ -775,6 +784,7 @@ public final class AsyncTestConfig {
         private String virtualThreadStressMode     = "OFF";
         private boolean detectAll                  = false;
         private long    replaySeed                 = 0L;
+        private boolean controlledSchedule         = false;
         private FailOn  failOn                     = FailOn.NONE;
         private TrustTier minTrust                 = TrustTier.ADVISORY;
         private boolean enableBenchmarking = false;
@@ -854,6 +864,13 @@ public final class AsyncTestConfig {
          * @return this builder
          */
         public Builder replaySeed(long v)                    { replaySeed = v; return this; }
+        /**
+         * Sets {@link AsyncTestConfig#controlledSchedule}.
+         * @param v the value to use
+         * @return this builder
+         * @since 1.13.2
+         */
+        public Builder controlledSchedule(boolean v)         { controlledSchedule = v; return this; }
         /**
          * Sets {@link AsyncTestConfig#failOn}.
          * @param v the value to use

@@ -50,7 +50,10 @@ logs the same count once at INFO, as `runner.selection.partial` ([the once-per-J
 it records a position in the code, which the stack trace already had.
 
 The replay seed belongs in the narrative on every round. It is the reproduction handle for a failure
-that only happens sometimes, and it is worthless if it is only printed on the failing round.
+that only happens sometimes, and it is worthless if it is only printed on the failing round. Under
+`controlledSchedule = true` each round also logs `runner.schedule.round` with its seed, the points
+reached and `escapes=`, because whether the seed replays the round's interleaving depends on that
+count, and `runner.config` says `schedule=controlled` or `schedule=os`.
 
 ## Cost
 

@@ -131,6 +131,7 @@ class PresetResolutionTest {
         @Override public boolean detectAll() { return def("detectAll"); }
         @Override public Preset preset() { return preset; }
         @Override public long replaySeed() { return def("replaySeed"); }
+        @Override public boolean controlledSchedule() { return def("controlledSchedule"); }
         @Override public DetectorType[] excludes() { return excludes; }
         @Override public DetectorType[] includes() { return def("includes"); }
         @Override public String[] excludeIds() { return def("excludeIds"); }

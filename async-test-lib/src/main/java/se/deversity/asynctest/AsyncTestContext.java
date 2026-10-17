@@ -162,6 +162,7 @@ import se.deversity.vibetags.annotations.AIIdempotent;
 import se.deversity.vibetags.annotations.AIPublicAPI;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 import se.deversity.asynctest.report.Violation;
+import se.deversity.asynctest.telemetry.ControlledSchedule;
 
 import java.lang.ref.WeakReference;
 import java.time.Duration;
@@ -1318,6 +1319,22 @@ public final class AsyncTestContext {
     @API(status = Status.EXPERIMENTAL, since = "1.13.0")
     public static void rendezvous(Duration timeout) {
         awaitRendezvous(Objects.requireNonNull(timeout, "timeout"));
+    }
+
+    /**
+     * Marks a place in the body where a {@link AsyncTest#controlledSchedule() controlled schedule}
+     * may hand the round to another worker.
+     *
+     * <p>Under a controlled schedule workers run one at a time and change hands only at scheduling
+     * points; the replay seed decides at which. Every field access the agent weaves is one already;
+     * call this to add one where nothing is woven, typically between a read and the write that
+     * depends on it. Outside a controlled round, and on a thread the body started, it does nothing.
+     *
+     * @since 1.13.2
+     */
+    @API(status = Status.EXPERIMENTAL, since = "1.13.2")
+    public static void schedulePoint() {
+        ControlledSchedule.point();
     }
 
     private static void awaitRendezvous(@Nullable Duration timeout) {

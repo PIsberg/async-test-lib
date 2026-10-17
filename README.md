@@ -393,7 +393,8 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
     includes     = { DetectorType.DEADLOCKS },      // OR: exactly these detectors, nothing else
     excludes     = { DetectorType.FALSE_SHARING },  // prune even from a preset/includes
     failOn       = FailOn.HIGH,              // findings at/above this severity fail the test
-    replaySeed   = 0L                        // 0 = fresh per round; set on failure to reproduce
+    replaySeed   = 0L,                       // 0 = fresh per round; set on failure to replay it
+    controlledSchedule = false               // true: the seed decides the interleaving too
 )
 ```
 
@@ -410,7 +411,8 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 | `excludes` | `{}` | Detectors to skip — layers on top of any preset or `includes` and wins on conflict |
 | `excludeIds` | `{}` | Detectors to skip by id: a third-party detector's own `id()`, or a built-in's `DetectorType` name (1.13.0+) |
 | `failOn` | `FailOn.NONE` | Severity gate: findings at/above this level (`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`) fail the test; `NONE` = report-only |
-| `replaySeed` | 0 | Per-round RNG seed. `0` = fresh per round (printed on failure); set explicitly to reproduce a failing schedule |
+| `replaySeed` | 0 | Per-round seed. `0` = fresh per round (printed on failure); set explicitly to replay the seed's random choices, and with `controlledSchedule` the interleaving too |
+| `controlledSchedule` | false | Run each round's workers one at a time, switching only at scheduling points (woven field accesses, `AsyncTestContext.schedulePoint()`) in an order the replay seed decides, so a failing seed replays its interleaving (1.13.2+, experimental) |
 
 `@AsyncTest` can also be placed on a **class** (shared config for all `@TestTemplate`
 methods; method-level `@AsyncTest` wins) or on an **annotation** to compose reusable
@@ -558,6 +560,31 @@ class FlakyTest {
     }
 }
 ```
+
+The seed alone replays the body's random choices, not the thread schedule: the OS still decides
+which worker runs when. `controlledSchedule = true` hands that decision to the seed too. Workers run
+one at a time and change hands only at scheduling points, every field access the agent weaves with
+`fields=true` and every `AsyncTestContext.schedulePoint()`, so the seed a failing round prints
+replays its interleaving:
+
+```java
+class LostUpdateTest {
+    private int count;
+
+    @AsyncTest(threads = 2, invocations = 200, controlledSchedule = true)  // each round tries a schedule
+    // @AsyncTest(threads = 2, controlledSchedule = true, replaySeed = 4242L) // the failing one, every time
+    void increment() {
+        int read = count;
+        AsyncTestContext.schedulePoint();   // not needed with the agent: the read and write are points
+        count = read + 1;
+    }
+}
+```
+
+Workers run one at a time, so a controlled round explores interleavings, not memory-model
+reorderings. A worker that blocks without reaching a point (a lock its paused peer holds, a sleep,
+a `get`) leaves the schedule until its next point; the failure line says when that happened, since
+only a round without such an escape is guaranteed to replay exactly.
 
 ### Scoped listener (no JVM-wide leak)
 

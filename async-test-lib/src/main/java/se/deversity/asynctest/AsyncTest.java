@@ -172,11 +172,11 @@ public @interface AsyncTest {
      * value is logged on test failure so you can plug it back in. When set
      * explicitly, every invocation uses that exact seed.
      *
-     * <p>This does <em>not</em> make thread scheduling deterministic — that
-     * would require JVM-level instrumentation — but it gives any RNG-driven
-     * input in your test body (sleep jitter, randomised payloads, choice of
-     * worker behaviour) a stable starting point so a failure caught once can
-     * be reproduced.
+     * <p>On its own this does <em>not</em> make thread scheduling deterministic: it
+     * gives any RNG-driven input in your test body (sleep jitter, randomised payloads,
+     * choice of worker behaviour) a stable starting point. With
+     * {@link #controlledSchedule()} the seed also decides the order the workers run
+     * in, so a seed that produced an interleaving replays it.
      *
      * <p>Usage pattern:
      * <pre>{@code
@@ -193,6 +193,35 @@ public @interface AsyncTest {
      * @return the fixed seed to reproduce a previous run, or {@code 0} to draw a fresh seed per round
      */
     long replaySeed() default 0L;
+
+    /**
+     * Runs each round's workers one at a time, switching between them only at scheduling points,
+     * in an order the round's {@link #replaySeed() replay seed} decides.
+     *
+     * <p>The OS scheduler decides which interleaving a normal round sees, so a failure caught once
+     * may not come back. Under a controlled schedule the seed decides it: the seed the runner prints
+     * for a failing round, pasted into {@link #replaySeed()}, replays the same interleaving. The order
+     * is drawn the way PCT draws it (Burckhardt et al., ASPLOS 2010): every worker gets a random
+     * priority, the highest-priority worker that is ready runs, and at a few random points the one
+     * running drops to the lowest priority, so each round tries a different interleaving.
+     *
+     * <p>Scheduling points are every field access the agent weaves ({@code fields=true}) and every
+     * call to {@link AsyncTestContext#schedulePoint()}. Without either, workers never change hands
+     * mid-body, so the round interleaves nothing; the run says so once at INFO
+     * ({@code runner.schedule.unpointed}).
+     *
+     * <p>Limits, all by design. Workers run one at a time, so the round explores interleavings under
+     * sequential consistency and cannot show a stale read the memory model allows. A worker that
+     * blocks outside a point (on a lock a paused worker holds, a sleep, a {@code get}) leaves the
+     * schedule until its next point, and runs alongside the next worker until then; each such
+     * escape is counted ({@code runner.schedule.round escapes=N}), and only a round with none is
+     * guaranteed to replay exactly. Threads the body starts are not scheduled.
+     *
+     * @since 1.13.2
+     *
+     * @return {@code true} to let the replay seed decide the interleaving
+     */
+    boolean controlledSchedule() default false;
 
     /**
      * Specific detectors to exclude from whatever {@link #includes()}, {@link #preset()} or

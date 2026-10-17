@@ -934,8 +934,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="StrictModeListener" data-target="AsyncTestListener" data-type="IMPLEMENTS" x="3134.1" y="389.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#1d4ed8" font-style="italic">implements</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="Detector" data-type="HAS" d="M428.0 209.0 Q443.2 198.1 448.0 180.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="Detector" data-type="HAS" x="440.6" y="190.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">byId</text>
-<path class="edge-line" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" d="M1276.0 254.0 Q3135.8 1685.6 5042.0 3055.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" x="3147.4" y="1664.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicityValidator</text>
+<path class="edge-line" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" d="M1476.0 254.0 Q3235.0 1685.0 5042.0 3055.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="TelemetryBridge" data-target="AtomicityValidator" data-type="HAS" x="3247.0" y="1663.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">atomicityValidator</text>
 <path class="edge-line" data-source="TelemetryRegistry" data-target="TelemetryEventBuffer" data-type="HAS" d="M1276.0 344.0 Q1286.0 347.6 1296.0 344.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="TelemetryRegistry" data-target="TelemetryEventBuffer" data-type="HAS" x="1286.0" y="339.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">BUFFER</text>
 <g id="AfterEachInvocation">
@@ -1143,7 +1143,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="498.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">timeoutMs: long</text>
   <text x="3376.0" y="513.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">virtualThreadStressMode: S…</text>
   <text x="3376.0" y="528.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">detectAll: boolean</text>
-  <text x="3376.0" y="543.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+163 more)</text>
+  <text x="3376.0" y="543.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+164 more)</text>
   <line x1="3368.0" y1="556.7" x2="3548.0" y2="556.7" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="3376.0" y="570.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabledDetectors(): Set&lt;De…</text>
   <text x="3376.0" y="585.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isEnabled(DetectorType): b…</text>
@@ -1187,7 +1187,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedThreadLocalMonitor()…</text>
   <text x="3376.0" y="438.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedBusyWaitDetector(): …</text>
   <text x="3376.0" y="453.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedAtomicityValidator()…</text>
-  <text x="3376.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+222 more)</text>
+  <text x="3376.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+223 more)</text>
 </g>
 <g id="DetectorRegistry">
   <title>DetectorRegistry [CLASS]</title>
@@ -4382,7 +4382,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="880.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeAndGate(AsyncTestCo…</text>
   <text x="880.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">reportAndGate(AsyncTestCon…</text>
   <text x="880.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">executeBeforeTeardown(Refl…</text>
-  <text x="880.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+24 more)</text>
+  <text x="880.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+25 more)</text>
 </g>
 <g id="LicenseGuard">
   <title>LicenseGuard [CLASS]</title>
@@ -4506,62 +4506,83 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="256.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isEnabledFor(AsyncTestConf…</text>
   <text x="256.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">create(AsyncTestConfig): D…</text>
 </g>
+<g id="ControlledSchedule">
+  <title>ControlledSchedule [CLASS]</title>
+  <rect class="node-rect" x="1096.0" y="24.0" width="180.0" height="280.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="1186.0" y="46.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">ControlledSchedule</text>
+  <line x1="1096.0" y1="68.0" x2="1276.0" y2="68.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="1104.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DEPTH: int</text>
+  <text x="1104.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">POLL_NANOS: long</text>
+  <text x="1104.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">STALL_NANOS: long</text>
+  <text x="1104.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">SPIN_LIMIT: int</text>
+  <text x="1104.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">OPEN: AtomicInteger</text>
+  <text x="1104.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">CURRENT: ThreadLocal&lt;Worke…</text>
+  <text x="1104.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+22 more)</text>
+  <line x1="1096.0" y1="185.0" x2="1276.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="1104.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">open(int, long): Controlle…</text>
+  <text x="1104.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">point(): void</text>
+  <text x="1104.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enter(int): void</text>
+  <text x="1104.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">leave(): void</text>
+  <text x="1104.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">close(): void</text>
+  <text x="1104.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">summary(): Summary</text>
+  <text x="1104.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+4 more)</text>
+</g>
 <g id="ReferenceSlots">
   <title>ReferenceSlots [CLASS]</title>
-  <rect class="node-rect" x="1096.0" y="24.0" width="180.0" height="190.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="1186.0" y="46.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">ReferenceSlots</text>
-  <line x1="1096.0" y1="68.0" x2="1276.0" y2="68.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="1104.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UPDATER_IMPL: String</text>
-  <text x="1104.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">FIELDS: Map&lt;Object,String&gt;</text>
-  <text x="1104.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">ELEMENTS: String</text>
-  <line x1="1096.0" y1="125.0" x2="1276.0" y2="125.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="1104.0" y="138.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">element(int): String</text>
-  <text x="1104.0" y="153.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldOf(AtomicReferenceFie…</text>
-  <text x="1104.0" y="168.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldOf(VarHandle): String</text>
-  <text x="1104.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">describe(VarHandle): String</text>
-  <text x="1104.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">describe(AtomicReferenceFi…</text>
+  <rect class="node-rect" x="1296.0" y="24.0" width="180.0" height="190.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="1386.0" y="46.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">ReferenceSlots</text>
+  <line x1="1296.0" y1="68.0" x2="1476.0" y2="68.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="1304.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UPDATER_IMPL: String</text>
+  <text x="1304.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">FIELDS: Map&lt;Object,String&gt;</text>
+  <text x="1304.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">ELEMENTS: String</text>
+  <line x1="1296.0" y1="125.0" x2="1476.0" y2="125.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="1304.0" y="138.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">element(int): String</text>
+  <text x="1304.0" y="153.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldOf(AtomicReferenceFie…</text>
+  <text x="1304.0" y="168.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldOf(VarHandle): String</text>
+  <text x="1304.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">describe(VarHandle): String</text>
+  <text x="1304.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">describe(AtomicReferenceFi…</text>
 </g>
 <g id="SpinLocks">
   <title>SpinLocks [CLASS]</title>
-  <rect class="node-rect" x="1296.0" y="24.0" width="180.0" height="280.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="1386.0" y="46.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">SpinLocks</text>
-  <line x1="1296.0" y1="68.0" x2="1476.0" y2="68.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="1304.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">ATOMIC: String</text>
-  <text x="1304.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">HANDLE_FIELDS: Map&lt;Object,…</text>
-  <text x="1304.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">SPIN_FIELDS: Set&lt;String&gt;</text>
-  <text x="1304.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">LOCKS: Map&lt;Key,Lock&gt;</text>
-  <text x="1304.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NEXT_SWEEP: AtomicInteger</text>
-  <text x="1304.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UPDATER_IMPL: String</text>
-  <text x="1304.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+5 more)</text>
-  <line x1="1296.0" y1="185.0" x2="1476.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="1304.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">bound(Object, String): void</text>
-  <text x="1304.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isSpinField(String): boole…</text>
-  <text x="1304.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">anySpinField(): boolean</text>
-  <text x="1304.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldOf(VarHandle): String</text>
-  <text x="1304.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldOf(AtomicIntegerField…</text>
-  <text x="1304.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">describe(AtomicIntegerFiel…</text>
-  <text x="1304.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+18 more)</text>
+  <rect class="node-rect" x="1096.0" y="114.0" width="180.0" height="280.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="1186.0" y="136.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">SpinLocks</text>
+  <line x1="1096.0" y1="158.0" x2="1276.0" y2="158.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="1104.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">ATOMIC: String</text>
+  <text x="1104.0" y="186.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">HANDLE_FIELDS: Map&lt;Object,…</text>
+  <text x="1104.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">SPIN_FIELDS: Set&lt;String&gt;</text>
+  <text x="1104.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">LOCKS: Map&lt;Key,Lock&gt;</text>
+  <text x="1104.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NEXT_SWEEP: AtomicInteger</text>
+  <text x="1104.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UPDATER_IMPL: String</text>
+  <text x="1104.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+5 more)</text>
+  <line x1="1096.0" y1="275.0" x2="1276.0" y2="275.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="1104.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">bound(Object, String): void</text>
+  <text x="1104.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isSpinField(String): boole…</text>
+  <text x="1104.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">anySpinField(): boolean</text>
+  <text x="1104.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldOf(VarHandle): String</text>
+  <text x="1104.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldOf(AtomicIntegerField…</text>
+  <text x="1104.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">describe(AtomicIntegerFiel…</text>
+  <text x="1104.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+18 more)</text>
 </g>
 <g id="TelemetryBridge">
   <title>TelemetryBridge [CLASS]</title>
-  <rect class="node-rect" x="1096.0" y="114.0" width="180.0" height="280.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="1186.0" y="136.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">TelemetryBridge</text>
-  <line x1="1096.0" y1="158.0" x2="1276.0" y2="158.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="1104.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">atomicityValidator: Atomic…</text>
-  <text x="1104.0" y="186.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">workerFilter: LongPredicate</text>
-  <text x="1104.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">active: boolean</text>
-  <text x="1104.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">droppedNonWorkerEvents: ja…</text>
-  <text x="1104.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldIdentifiers: java.uti…</text>
-  <text x="1104.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">MAX_MEMOIZED_IDENTIFIERS: …</text>
-  <text x="1104.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+8 more)</text>
-  <line x1="1096.0" y1="275.0" x2="1276.0" y2="275.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="1104.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">detached(AtomicityValidato…</text>
-  <text x="1104.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activate(AtomicityValidato…</text>
-  <text x="1104.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activateWithFilter(Atomici…</text>
-  <text x="1104.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">forCurrentContext(Set&lt;Long…</text>
-  <text x="1104.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">onEvent(long, String, bool…</text>
-  <text x="1104.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">onEvent(long, String, bool…</text>
-  <text x="1104.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+25 more)</text>
+  <rect class="node-rect" x="1296.0" y="114.0" width="180.0" height="280.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="1386.0" y="136.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">TelemetryBridge</text>
+  <line x1="1296.0" y1="158.0" x2="1476.0" y2="158.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="1304.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">atomicityValidator: Atomic…</text>
+  <text x="1304.0" y="186.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">workerFilter: LongPredicate</text>
+  <text x="1304.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">active: boolean</text>
+  <text x="1304.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">droppedNonWorkerEvents: ja…</text>
+  <text x="1304.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldIdentifiers: java.uti…</text>
+  <text x="1304.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">MAX_MEMOIZED_IDENTIFIERS: …</text>
+  <text x="1304.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+8 more)</text>
+  <line x1="1296.0" y1="275.0" x2="1476.0" y2="275.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="1304.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">detached(AtomicityValidato…</text>
+  <text x="1304.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activate(AtomicityValidato…</text>
+  <text x="1304.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">activateWithFilter(Atomici…</text>
+  <text x="1304.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">forCurrentContext(Set&lt;Long…</text>
+  <text x="1304.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">onEvent(long, String, bool…</text>
+  <text x="1304.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">onEvent(long, String, bool…</text>
+  <text x="1304.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+25 more)</text>
 </g>
 <g id="TelemetryEventBuffer">
   <title>TelemetryEventBuffer [CLASS]</title>

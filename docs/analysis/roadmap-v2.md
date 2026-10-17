@@ -211,6 +211,13 @@ that says what it would take.
   which makes a round's workers meet mid-body, and `RunOutcomes`, which asserts that something
   happened exactly once, at most once, or with distinct values
   ([ASYNC_ASSERT.md](../ASYNC_ASSERT.md)).
+* **Controlled schedule** (shipped 2026-10-17, experimental). The replay seed replayed the body's
+  random choices and never the thread schedule, so a failure caught once could pass when the
+  printed seed was pasted back. `@AsyncTest(controlledSchedule = true)` runs a round's workers one
+  at a time and lets the seed pick, PCT-style, who runs at each woven field access and each
+  `AsyncTestContext.schedulePoint()`; a seed that lost an update loses it on every replay. What it
+  does not cover yet (an exact rendezvous, lock-aware points, threads the body starts) is in the
+  follow-up issues linked from the PR.
 
 ## Overcoming the mechanical gates
 

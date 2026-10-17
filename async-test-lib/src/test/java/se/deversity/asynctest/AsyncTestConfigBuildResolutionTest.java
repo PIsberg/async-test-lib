@@ -133,9 +133,12 @@ class AsyncTestConfigBuildResolutionTest {
                 .useVirtualThreads(false)
                 .virtualThreadStressMode("HIGH")
                 .replaySeed(99L)
+                .controlledSchedule(true)
                 .failOn(FailOn.HIGH)
                 .enableBenchmarking(true)
                 .build();
+        assertTrue(cfg.controlledSchedule);
+        assertFalse(AsyncTestConfig.builder().build().controlledSchedule, "off unless asked for");
         assertEquals(7, cfg.threads);
         assertEquals(42, cfg.invocations);
         assertEquals(1234L, cfg.timeoutMs);

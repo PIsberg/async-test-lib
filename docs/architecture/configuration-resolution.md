@@ -14,7 +14,8 @@ public final fields, built once, safe to share across worker threads. It must st
 setters, no mutable state after construction.
 
 Non-detector knobs: `threads`, `invocations`, `timeoutMs`, `useVirtualThreads`,
-`virtualThreadStressMode`, `replaySeed`, `failOn`, `enableBenchmarking`, plus the license fields.
+`virtualThreadStressMode`, `replaySeed`, `controlledSchedule`, `failOn`, `enableBenchmarking`, plus
+the license fields.
 
 ## Detector selection resolution
 

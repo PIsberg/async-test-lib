@@ -52,6 +52,12 @@ stack-neutral, branch-free observation call before each field instruction, and f
 a second one that hands the value to the happens-before model: just before a store, and just after
 a load ([#742](https://github.com/PIsberg/async-test-lib/issues/742)).
 
+The same observation call is a scheduling point of a controlled schedule
+(`@AsyncTest(controlledSchedule = true)`): before each woven field instruction the round may hand
+over to another worker, in an order the replay seed decides, so the read and the write of a bare
+`count++` are two places a lost update can be made to happen and replayed
+([results-and-practices.md](../usage/results-and-practices.md#reproducing-a-failure)).
+
 The call carries the receiver, so the analysis can tell six threads racing on one object from six
 threads each using their own, and — for a store of a reference type — the value being stored. That
 last one is what lets the atomicity model tell an idempotent value apart from a side effect: a

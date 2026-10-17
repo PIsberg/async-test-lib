@@ -53,6 +53,13 @@ Read a clean report from any of these as "not observed" rather than "nothing the
 names the test that triggered it, and each carries a `hint=` field with the same advice as the
 table above.
 
+`runner.schedule.unpointed test=...` is logged once per run of a test with
+`controlledSchedule = true`, at the first round that reached no scheduling point: no field access was woven
+(the agent is not attached, `fields=true` is off, or the body's classes are outside `includes=`) and
+nothing called `AsyncTestContext.schedulePoint()`, so each worker ran its body whole and the round
+interleaved nothing. Every controlled round also logs `runner.schedule.round ... steps= switches=
+escapes=` at DEBUG; `escapes=0` is what makes its seed replay exactly.
+
 `runner.pinning.unattributed test=... events=<n>` is logged per test rather than per JVM, because
 it is about that test's body. `VirtualThreadPinningDetector` reads the JVM's own
 `jdk.VirtualThreadPinned` JFR event on a run with virtual workers, and JFR reports every virtual

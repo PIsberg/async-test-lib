@@ -145,6 +145,29 @@ out the timeout:
 Called outside an `@AsyncTest` worker it throws `IllegalStateException`. A round of more than
 65,535 workers opens no rendezvous, and calling it there throws the same.
 
+Under `controlledSchedule = true` a rendezvous still works, but a worker waiting at it has stopped
+without reaching a scheduling point, so the round counts an escape and is not guaranteed to replay;
+use `schedulePoint()` there instead.
+
+## Letting the schedule switch mid-body: `AsyncTestContext.schedulePoint()` (1.13.2, experimental)
+
+Under `@AsyncTest(controlledSchedule = true)` a round's workers run one at a time and change hands
+only at scheduling points, in an order the replay seed decides. Every field access the agent weaves
+with `fields=true` is a point; `AsyncTestContext.schedulePoint()` adds one where nothing is woven:
+
+```java
+@AsyncTest(threads = 2, controlledSchedule = true)
+void increment() {
+    int read = counter.value;
+    AsyncTestContext.schedulePoint();   // the round may switch workers here, and the seed decides
+    counter.value = read + 1;
+}
+```
+
+Outside a controlled round, and on a thread the body started, it does nothing, so it can stay in a
+body that also runs uncontrolled. A controlled run whose workers reach no point at all interleaves
+nothing, and says so once at INFO (`runner.schedule.unpointed`).
+
 ## Checking that results are linearizable: `OperationHistory` (1.13.0, experimental)
 
 `RunOutcomes` asserts a property you name. `OperationHistory` asserts one you do not have to: that

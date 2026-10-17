@@ -5,6 +5,12 @@ paths: ["**/benchmark/**", "**/telemetry/**", "**/agent/**", "**/analysis/**"]
 <!-- VIBETAGS-START -->
 # Rules for async-test-instrumentation
 
+## Core Functionality
+
+### se.deversity.asynctest.telemetry.ControlledSchedule
+- **Sensitivity**: High
+- **Note**: A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read. Only watch() may read the clock or Thread.getState(), and each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise.
+
 ## Performance Constraints
 
 ### se.deversity.asynctest.benchmark.BenchmarkRecorder
