@@ -42,12 +42,16 @@ Three sections:
    classifiers, `-vt-` test tags). Gradle follows automatically: `build.gradle.kts` reads these
    properties with `pomVersion(...)`, and `BuildMetadataSyncTest` fails if that derivation is
    unwound.
-2. **Satellite pins**: every `file  current -> latest  (coordinate)` line the `RULES` table in
-   the script knows about: `consumer-fixture/`, `consumer-fixture-langs/`, `examples/*/`,
-   `load-tests/`, and the Gradle-only pins in `build.gradle.kts` (logback, the plugin ids in
-   `plugins {}`). Adding a pin to the repository means adding one line to `RULES`; a pin the
-   table does not know about is invisible to this skill, so when you add a new fixture or
-   example toolchain, add its rule in the same PR.
+   Below them, every reactor dependency and plugin with a newer release: the property pass
+   cannot see a property used only in a module or a profile (pitest, central-publishing) or a
+   literal plugin version (japicmp), so bump those by hand.
+2. **`versions/pom.xml` and Gradle-only pins**: every `file  current -> latest  (coordinate)`
+   line the `RULES` table knows about. `versions/pom.xml` holds every version the builds outside
+   the reactor use (examples, both fixtures, corpus, load tests, demo); none of their own files
+   names one (`SatelliteVersionsTest`). The Gradle-only pins are the root `build.gradle.kts`
+   (logback, the plugin ids in `plugins {}`) and load-tests' JMH plugin. A new property in
+   `versions/pom.xml` needs one line in `RULES`; a property the table does not know about is
+   invisible to this skill.
 3. **Manual, reported only**: the Gradle wrapper (regenerating it needs
    `gradle wrapper --gradle-version X` so `wrapper-validation` keeps passing), `intellij-plugin/`
    (no workflow builds it, so a bump there is unverifiable in CI), the japicmp `<oldVersion>`
@@ -64,16 +68,18 @@ bitten:
 - **vibetags**: a new processor version regenerates the guardrail files (`CLAUDE.md`,
   `GEMINI.md`, `.claude/rules`, `.gemini/rules`). Delete `.vibetags-cache` and
   `async-test-lib/.vibetags-cache` before the build, then commit what it regenerates; the
-  `guardrail-drift` job compares a clean regeneration with what is committed.
+  `guardrail-drift` job compares a clean regeneration with what is committed. On a Dependabot PR
+  `dependabot-regen.yml` pushes that regeneration itself (it needs the `DEPENDABOT_REGEN_TOKEN`
+  Dependabot secret).
 - **Scala** in `consumer-fixture-langs`: the rule takes the latest `scala3-library_3`, which is
   the "Next" line, not the LTS. If the Scala fixture stops compiling on the new line and the fix
   is not obvious, pin the LTS and say so in the PR; the fixture proves the language, not the
   compiler release.
 - **gmavenplus** major bumps: check `<targetBytecode>` still applies; Groovy 5 refuses the
   plugin's 1.8 default.
-- **JUnit in examples**: 137 poms and 137 Gradle files move together. The examples job on the PR
-  builds every changed example (`examples-changed`), which is the check that matters; do not
-  skip it by editing only a few.
+- **Anything in `versions/pom.xml`** changes every example while editing none of their files. The
+  examples jobs treat a `versions/**` change as a reason to run all of them (`examples-changed`),
+  which is the check that matters.
 
 ## 3. Apply
 
@@ -86,7 +92,7 @@ git --no-pager diff --stat | tail -3
 Look at the non-example part of the diff by hand:
 
 ```bash
-git --no-pager diff -- pom.xml build.gradle.kts consumer-fixture consumer-fixture-langs load-tests | grep '^[-+] '
+git --no-pager diff -- pom.xml build.gradle.kts versions load-tests | grep '^[-+] '
 ```
 
 ## 4. Verify, and report what actually ran

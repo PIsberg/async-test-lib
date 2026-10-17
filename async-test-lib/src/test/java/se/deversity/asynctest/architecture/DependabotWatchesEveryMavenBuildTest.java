@@ -52,7 +52,7 @@ class DependabotWatchesEveryMavenBuildTest {
             for (Path dir : dirs.filter(Files::isDirectory).toList()) {
                 String name = dir.getFileName().toString();
                 if (Files.isRegularFile(dir.resolve("pom.xml")) && !modules.contains(name)
-                        && !watched.contains("/" + name)) {
+                        && !watched.contains("/" + name) && declaresSomethingToUpdate(dir.resolve("pom.xml"))) {
                     unwatched.add(name);
                 }
             }
@@ -62,6 +62,16 @@ class DependabotWatchesEveryMavenBuildTest {
         assertTrue(unwatched.isEmpty(), "these Maven builds are not reactor modules and no"
                 + " Dependabot maven entry lists them, so nothing proposes their security fixes"
                 + " (#958); add them to .github/dependabot.yml: " + unwatched);
+    }
+
+    /**
+     * {@return whether the pom declares a dependency or a plugin} A pom that declares neither, such
+     * as {@code versions/pom.xml}, has nothing for Dependabot to update in its own directory: its
+     * properties are updated through the watched builds that inherit and use them.
+     */
+    private static boolean declaresSomethingToUpdate(Path pom) {
+        String xml = read(pom);
+        return xml.contains("<dependency>") || xml.contains("<plugin>");
     }
 
     /** {@return the directories of every {@code maven} entry, read line by line} */

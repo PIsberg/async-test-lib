@@ -12,12 +12,11 @@
 #                           release and reattributed the broken 1.7.0-RC jars to RCs that
 #                           never existed. A surviving PIN is a hard error; surviving prose
 #                           is printed for a human to judge.
-#   2. examples/          — replace the pin by PATTERN, whatever it currently says. Examples
-#                           resolve mavenLocal() before mavenCentral(), and CI publishes the
-#                           current version to mavenLocal before building them; an example
-#                           pinned at an older version silently tests that old release from
-#                           Central instead of this repo's code. Pattern-matching means drift
-#                           cannot quietly reappear.
+#   2. (gone)             — examples/ used to carry 300 pins of their own, realigned here by
+#                           pattern. They now inherit <async-test.version> from versions/pom.xml,
+#                           which pass 1 rewrites, and SatelliteVersionsTest fails the build if
+#                           any satellite pins a version again or if versions/pom.xml disagrees
+#                           with the reactor version.
 #
 # docs/CHANGELOG.md is never touched — its version headings are history. Prose stating a
 # minimum version ("requires 1.7.0+") is a floor, not a pin, and is also left alone.
@@ -63,16 +62,18 @@ ALLOWLIST=(
   async-test-analysis/pom.xml
   # gradle.properties is deliberately absent: build.gradle.kts reads the version out of
   # pom.xml, so there is nothing to bump there.
+  # The library version every build outside the reactor resolves: the examples, both consumer
+  # fixtures, the corpus. Their poms inherit it and their Gradle builds read it, so this one
+  # <async-test.version> replaces the ~300 pins those builds used to carry. Leave it behind and
+  # each of them resolves the PREVIOUS release from Central instead of the build CI just published.
+  versions/pom.xml
+  # The fixtures' own <version>, and the language modules' <parent><version>.
   consumer-fixture/pom.xml
-  consumer-fixture/build.gradle.kts
-  # The language fixtures pin the same way: one parent pom (module poms pin only their
-  # parent, which perl rewrites through the <version> rule) and one root Gradle file.
   consumer-fixture-langs/pom.xml
   consumer-fixture-langs/kotlin/pom.xml
   consumer-fixture-langs/groovy/pom.xml
   consumer-fixture-langs/scala/pom.xml
   consumer-fixture-langs/clojure/pom.xml
-  consumer-fixture-langs/build.gradle.kts
   README.md
   # These docs carry install snippets like README.md; they sat outside the
   # allowlist until 1.9.1 and drifted three releases (pins said 1.6.0).
@@ -80,12 +81,9 @@ ALLOWLIST=(
   docs/QUICK_REFERENCE.md
   docs/DISTRIBUTION.md
   .claude/SKILL.md
-  # corpus-eval is standalone, so nothing in the reactor drags its pin along. CI installs the
-  # release under test into a job-local repository and then runs this module against whatever
-  # <async-test.version> names: leave it behind and Maven does not find that version locally,
-  # downloads the PREVIOUS release from Central, and the corpus measures the last release while
-  # reporting on this one. Same trap as examples/, and it would have fired for the first time at
-  # 1.9.8 - the module was created at 1.9.7 and has never been through a release until now.
+  # corpus-eval's own <version>. The library version it measures comes from versions/pom.xml
+  # above; before that moved there, a pin left behind here would have measured the last release
+  # while reporting on this one.
   corpus-eval/pom.xml
 )
 
@@ -172,46 +170,11 @@ if [[ -n "$missed" ]]; then
   exit 1
 fi
 
-# Pass 2 — examples pin by pattern, so a stale pin is corrected even if it wasn't at $CURRENT.
-echo
-echo "Realigning examples/ pins (by pattern):"
-
-ex_poms=0
-for f in examples/*/pom.xml; do
-  [[ -f "$f" ]] || continue
-  if perl -pi -e "BEGIN{\$c=0} \$c += s|<async-test-lib\.version>[^<]*</async-test-lib\.version>|<async-test-lib.version>$NEW</async-test-lib.version>|g; END{exit 0}" "$f"; then
-    ex_poms=$((ex_poms + 1))
-  fi
-done
-
-ex_gradle=0
-for f in examples/*/build.gradle.kts; do
-  [[ -f "$f" ]] || continue
-  perl -pi -e "s|^val asyncTestVersion = \"[^\"]*\"|val asyncTestVersion = \"$NEW\"|" "$f"
-  ex_gradle=$((ex_gradle + 1))
-done
-
-echo "  ✓ examples/*/pom.xml           ($ex_poms file(s))"
-echo "  ✓ examples/*/build.gradle.kts  ($ex_gradle file(s))"
-
-# Fail loudly if any example pin did not land on $NEW — a silent miss means that example
-# would test an old release from Central rather than this build.
-stray="$( { grep -rh -o "<async-test-lib\.version>[^<]*" examples/*/pom.xml 2>/dev/null | sed 's|.*>||'
-           grep -rh -oE '^val asyncTestVersion = "[^"]*"' examples/*/build.gradle.kts 2>/dev/null | sed -E 's|.*"([^"]*)"|\1|'
-         } | sort -u | grep -v -x -F "$NEW" || true )"
-if [[ -n "$stray" ]]; then
-  echo
-  echo "error: some example pins are not at $NEW after the rewrite:" >&2
-  echo "$stray" | sed 's/^/  - /' >&2
-  exit 1
-fi
-
 # Surface anything else still referencing the old version, so a human can judge it.
 echo
 echo "Other tracked files still mentioning $CURRENT (review manually — NOT auto-bumped):"
 others="$(git grep -l -F "$CURRENT" -- . \
   ':(exclude)docs/CHANGELOG.md' \
-  ':(exclude)examples' \
   "${ALLOWLIST[@]/#/:(exclude)}" 2>/dev/null || true)"
 if [[ -z "$others" ]]; then
   echo "  (none)"

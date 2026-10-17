@@ -6,11 +6,14 @@
 # GuardrailDriftWiringTest pins that .github/workflows/guardrails.yml and .pre-commit-config.yaml
 # both call it, and that the path list lives only here.
 #
-# Usage:  sh tools/guardrail-drift.sh [--ignore-whitespace]
+# Usage:  sh tools/guardrail-drift.sh [--ignore-whitespace | --list-paths]
 #
 # --ignore-whitespace is for the local hook. A regeneration on another OS or JDK can differ from
 # CI's in line endings or a trailing blank line alone, and a hook that fails on those is a hook
 # people switch off. CI runs without it and stays byte-exact.
+#
+# --list-paths prints the path list, one per line, and builds nothing. tools/dependabot-regen.sh
+# reads it, so the files a Dependabot regeneration may push are the files this script checks.
 #
 # Never fix a failure by editing inside VIBETAGS-START/END: change the annotation and rerun.
 set -eu
@@ -20,6 +23,12 @@ paths="CLAUDE.md GEMINI.md AGENTS.md .claudeignore .vibetags-roles .vibetags-roo
        async-test-lib/CLAUDE.md async-test-lib/.claudeignore async-test-lib/.vibetags-roles async-test-lib/.claude/rules
        async-test-agent/CLAUDE.md async-test-agent/.claude/rules
        async-test-analysis/CLAUDE.md async-test-analysis/.claude/rules"
+
+if [ "${1:-}" = "--list-paths" ]; then
+    # shellcheck disable=SC2086
+    printf '%s\n' $paths
+    exit 0
+fi
 
 diff_opts=""
 if [ "${1:-}" = "--ignore-whitespace" ]; then

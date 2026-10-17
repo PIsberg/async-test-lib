@@ -518,6 +518,14 @@ When contributing new examples:
 3. Include tests with `@Test` (passes) and commented `@AsyncTest` (fails)
 4. Document the problem, root cause, and solution in comments
 5. Update this README with the new example
+6. Copy `pom.xml`, `build.gradle.kts` and `settings.gradle.kts` from an existing example and add the
+   module to `examples/pom.xml` and `examples/settings.gradle.kts`. They name no versions: the pom
+   inherits them from `examples/pom.xml`, whose parent is `versions/pom.xml`, and the Gradle build
+   reads `libs.versions.*` from the same file. `SatelliteVersionsTest` fails on a version literal.
+
+To use an example outside this repository, replace each `${name.version}` in its pom (or
+`libs.versions.name.version.get()` in its Gradle build) with the value in `versions/pom.xml` and
+drop the `<parent>` block or the `apply(from = ...)` line.
 
 ## CI Integration
 
