@@ -106,7 +106,7 @@
         <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
         <checkstyle.version>14.3.0</checkstyle.version>
         <spotbugs-maven-plugin.version>4.10.4.1</spotbugs-maven-plugin.version>
-        <spotbugs.version>4.10.3</spotbugs.version>
+        <spotbugs.version>4.10.5</spotbugs.version>
         <findsecbugs.version>1.14.0</findsecbugs.version>
         <maven-pmd-plugin.version>3.28.0</maven-pmd-plugin.version>
         <pitest-maven.version>1.30.0</pitest-maven.version>
