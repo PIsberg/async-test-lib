@@ -55,6 +55,47 @@ class GuardrailDriftWiringTest {
                 "async-test-agent/.claude/rules", "async-test-analysis/CLAUDE.md"}) {
             assertTrue(script.contains(path), "the script's path list must include " + path);
         }
+        int listPaths = script.indexOf("\"--list-paths\" ]; then");
+        assertTrue(listPaths >= 0 && listPaths < script.indexOf("mvn -B -q clean test-compile"),
+                "--list-paths must print the path list before any build runs: "
+                        + "tools/dependabot-regen.sh calls it in the job that must not build");
+    }
+
+    /**
+     * The Dependabot regeneration (#1010 merged red because a vibetags bump needs a regeneration)
+     * pushes with a token that can write to the repository. Its safety is the shape pinned here:
+     * the job that builds the pull request holds no secret, the job that holds the token runs only
+     * main's copy of the apply script, and that script takes its allowed files from this script's
+     * path list rather than a copy.
+     */
+    @Test
+    @DisplayName("the Dependabot regeneration pushes only guardrail files, from a job that runs no PR code")
+    void dependabotRegenerationIsConfinedToTheGuardrailFiles() throws IOException {
+        String workflow = read(".github/workflows/dependabot-regen.yml");
+        String regen = read("tools/dependabot-regen.sh");
+        int pushJob = workflow.indexOf("\n  push:\n");
+        assertTrue(pushJob > 0, "dependabot-regen.yml must have a separate push job");
+        String build = workflow.substring(0, pushJob);
+        String push = workflow.substring(pushJob);
+
+        assertTrue(build.contains("sh " + SCRIPT), "the regeneration must be the drift check's own");
+        assertFalse(build.contains("token: ${{ secrets."),
+                "the job that builds the pull request must not check out with a write token");
+        assertFalse(push.contains("sh tools/") || push.contains("mvn ") || push.contains("./gradlew"),
+                "the job holding the push token must not run anything from the pull request's tree");
+        assertTrue(push.contains("sh base/tools/dependabot-regen.sh apply head"),
+                "the push job must apply the patch with the base branch's copy of the script");
+        assertTrue(push.contains("ref: ${{ github.event.pull_request.base.sha }}"),
+                "base/ must be the base branch, not the pull request");
+        assertTrue(push.contains("dependabot/*)"), "the push must refuse a branch Dependabot does not own");
+        assertTrue(push.contains("[dependabot skip]"),
+                "without [dependabot skip] Dependabot stops rebasing a PR somebody else committed to");
+        assertTrue(workflow.contains("github.event.pull_request.user.login == 'dependabot[bot]'"),
+                "only Dependabot's own pull requests may be regenerated and pushed to");
+
+        assertTrue(regen.contains("guardrail-drift.sh\" --list-paths"),
+                "the files a regeneration may push must be read from " + SCRIPT + ", never copied");
+        assertFalse(regen.contains("paths=\"CLAUDE.md"), "the path list must live only in " + SCRIPT);
     }
 
     private static String read(String relative) throws IOException {
