@@ -208,7 +208,7 @@ that says what it would take.
   a bounded search (the general problem is NP-complete, so histories stay small) and a report
   format. Added 2026-10-06. Since 2026-10-17 a failing round is reported as its shortest prefix
   with no linearization, which is sound without re-running anything because linearizability is
-  prefix-closed; a systematic scenario search and re-run shrinking are still open.
+  prefix-closed; a systematic scenario search and re-run shrinking are still open (#1025).
 * **Shipped 2026-10-06** as the smaller helpers proposed with it: `AsyncTestContext.rendezvous()`,
   which makes a round's workers meet mid-body, and `RunOutcomes`, which asserts that something
   happened exactly once, at most once, or with distinct values
@@ -218,8 +218,8 @@ that says what it would take.
   printed seed was pasted back. `@AsyncTest(controlledSchedule = true)` runs a round's workers one
   at a time and lets the seed pick, PCT-style, who runs at each woven field access and each
   `AsyncTestContext.schedulePoint()`; a seed that lost an update loses it on every replay. What it
-  does not cover yet (an exact rendezvous, lock-aware points, threads the body starts) is in the
-  follow-up issues linked from the PR.
+  does not cover yet is in #1021 (an exact rendezvous), #1022 (lock-aware points), #1023 (atomic
+  and collection hooks as points) and #1024 (threads the body starts).
 
 ## Overcoming the mechanical gates
 

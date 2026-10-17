@@ -200,4 +200,4 @@ not merely as over the size bound. Each was run 3 times pinned to 2 CPUs and 3 t
 - **No scenario search, and shrinking only by prefix.** `generate` draws a scenario per round from
   the replay seed; unlike Lincheck it does not explore scenarios systematically, and it does not
   re-run a failing scenario with operations removed. The report cuts the observed history to its
-  shortest impossible prefix, which needs no re-run.
+  shortest impossible prefix, which needs no re-run. Both are #1025.
