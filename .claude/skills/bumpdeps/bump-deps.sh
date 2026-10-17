@@ -40,13 +40,30 @@ PORTAL="https://plugins.gradle.org/m2"
 IGNORE='.*-(alpha|beta|rc|RC|M|m|ea|preview|dev|SNAPSHOT|jdk[0-9]).*,.*-alpha[0-9]*,.*-beta-?[0-9]*,.*-vt-.*'
 
 echo "== 1. Reactor properties (versions-maven-plugin)"
+# No -q: the plugin prints its findings at INFO, so -q left the grep nothing to match and the
+# report read "no updates" while four were pending (2026-10-17).
 if [[ $DRY_RUN -eq 1 ]]; then
-  mvn -q -N versions:display-property-updates -DgenerateBackupPoms=false \
-      "-Dmaven.version.ignore=$IGNORE" 2>&1 | grep -E '\$\{.*\} .* -> ' || echo "  (no reactor property updates)"
+  mvn -N versions:display-property-updates -DgenerateBackupPoms=false \
+      "-Dmaven.version.ignore=$IGNORE" 2>&1 | grep -E '\$\{.*\} .* -> |ERROR' || echo "  (no reactor property updates)"
 else
-  mvn -q -N versions:update-properties -DgenerateBackupPoms=false \
+  mvn -N versions:update-properties -DgenerateBackupPoms=false \
       "-Dmaven.version.ignore=$IGNORE" 2>&1 | grep -E 'Updat|ERROR' || echo "  (no reactor property updates)"
 fi
+# The -N property pass sees only properties the root pom itself uses outside profiles, so a
+# property used in a module or a profile (pitest, central-publishing) and a literal plugin
+# version (japicmp) never show above. List every reactor update here; bump those by hand.
+echo "  -- every reactor dependency and plugin with a newer release (bump by hand if not above):"
+mvn versions:display-dependency-updates versions:display-plugin-updates -DprocessDependencyManagement=true \
+    "-Dmaven.version.ignore=$IGNORE" 2>&1 \
+  | awk '/following (plugin updates|dependencies in .* have newer versions)/{p=1; next}
+         /^\[INFO\] *$/{p=0} p && /->/' \
+  | sed 's/\[INFO\] */  /' | grep -v 'async-test-' | sort -u \
+  | awk '{print $1, $(NF-2), $NF}' \
+  | while read -r coord cur new; do
+      # The "Require Maven X" tables also list older releases; keep only real upgrades.
+      [[ "$cur" != "$new" && "$(printf '%s\n%s\n' "$cur" "$new" | sort -V | tail -1)" == "$new" ]] \
+        && printf '  %-60s %s -> %s\n' "$coord" "$cur" "$new"
+    done || true
 echo
 # ---- satellite rules -------------------------------------------------------------------
 # glob | perl regex: (pre)VERSION(post), VERSION written as [^<]+ or [^"]+ | groupId | artifactId | C=Central P=plugin portal
