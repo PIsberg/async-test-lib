@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -24,6 +26,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GuardrailDriftWiringTest {
 
     private static final String SCRIPT = "tools/guardrail-drift.sh";
+
+    /** A job's key line directly under {@code jobs:}. */
+    private static final Pattern JOB_KEY = Pattern.compile("\n  [a-z][a-z0-9-]*:\n");
 
     @Test
     @DisplayName("the CI Guardrail Drift job runs the shared script, byte-exact")
@@ -64,23 +69,22 @@ class GuardrailDriftWiringTest {
     /**
      * The Dependabot regeneration (#1010 merged red because a vibetags bump needs a regeneration)
      * pushes with a token that can write to the repository. Its safety is the shape pinned here:
-     * the job that builds the pull request holds no secret, the job that holds the token runs only
-     * main's copy of the apply script, and that script takes its allowed files from this script's
-     * path list rather than a copy.
+     * the job that builds the pull request names no secret at all (a job that names one, even to
+     * compare it with '', has it delivered to its runner, where a build step can read the runner's
+     * memory), the job that holds the token runs only main's copy of the apply script, and that
+     * script checks what was staged, against this script's path list rather than a copy.
      */
     @Test
     @DisplayName("the Dependabot regeneration pushes only guardrail files, from a job that runs no PR code")
     void dependabotRegenerationIsConfinedToTheGuardrailFiles() throws IOException {
         String workflow = read(".github/workflows/dependabot-regen.yml");
         String regen = read("tools/dependabot-regen.sh");
-        int pushJob = workflow.indexOf("\n  push:\n");
-        assertTrue(pushJob > 0, "dependabot-regen.yml must have a separate push job");
-        String build = workflow.substring(0, pushJob);
-        String push = workflow.substring(pushJob);
+        String build = job(workflow, "regenerate");
+        String push = job(workflow, "push");
 
         assertTrue(build.contains("sh " + SCRIPT), "the regeneration must be the drift check's own");
-        assertFalse(build.contains("token: ${{ secrets."),
-                "the job that builds the pull request must not check out with a write token");
+        assertFalse(build.contains("secrets."),
+                "the job that builds the pull request must not name a secret, not even to test it exists");
         assertFalse(push.contains("sh tools/") || push.contains("mvn ") || push.contains("./gradlew"),
                 "the job holding the push token must not run anything from the pull request's tree");
         assertTrue(push.contains("sh base/tools/dependabot-regen.sh apply head"),
@@ -96,6 +100,18 @@ class GuardrailDriftWiringTest {
         assertTrue(regen.contains("guardrail-drift.sh\" --list-paths"),
                 "the files a regeneration may push must be read from " + SCRIPT + ", never copied");
         assertFalse(regen.contains("paths=\"CLAUDE.md"), "the path list must live only in " + SCRIPT);
+        assertTrue(regen.contains("git diff --cached --raw --no-renames"),
+                "apply must check what was staged, which is what gets committed, not parse the patch");
+        assertTrue(regen.contains("git reset -q --hard HEAD"), "a refused patch must leave nothing staged");
+    }
+
+    /** {@return the text of one job, from its key under {@code jobs:} to the next job's key} */
+    private static String job(String workflow, String name) {
+        int start = workflow.indexOf("\n  " + name + ":\n");
+        assertTrue(start > 0, "dependabot-regen.yml must have a " + name + " job");
+        Matcher next = JOB_KEY.matcher(workflow);
+        int end = next.find(start + 1) ? next.start() : workflow.length();
+        return workflow.substring(start, end);
     }
 
     private static String read(String relative) throws IOException {
