@@ -30,6 +30,7 @@ import se.deversity.asynctest.diagnostics.TrustTier;
 import se.deversity.asynctest.diagnostics.VirtualThreadPinningDetector;
 import se.deversity.asynctest.diagnostics.VirtualThreadStressConfig;
 import se.deversity.asynctest.report.Baseline;
+import se.deversity.asynctest.telemetry.ControlledSchedule;
 import se.deversity.asynctest.telemetry.TelemetryBridge;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import org.junit.jupiter.api.extension.ReflectiveInvocationContext;
@@ -265,6 +266,10 @@ public class ConcurrencyRunner {
         } else {
             actualThreads = config.threads;
         }
+        // A controlled schedule runs one worker at a time, so virtual workers buy it nothing, and
+        // on JDK 21 a virtual worker the schedule parks inside synchronized pins its carrier: with
+        // enough of them the worker granted the next turn has no carrier left to run on.
+        final boolean virtualWorkers = config.useVirtualThreads && !config.controlledSchedule;
 
         // Benchmarking setup
         BenchmarkRecorder benchmarkRecorder = null;
@@ -321,7 +326,7 @@ public class ConcurrencyRunner {
         // can pin, so platform workers leave the feed off unless the agent is there to attribute
         // a virtual thread the body starts.
         @Nullable VirtualThreadPinningDetector pinningTarget =
-                config.useVirtualThreads || TelemetryRegistry.isRunning()
+                virtualWorkers || TelemetryRegistry.isRunning()
                         ? phase2Context.sharedVirtualThreadPinningDetector()
                         : null;
         @Nullable Set<Long> workerThreadIds = (telemetryRunning || pinningTarget != null)
@@ -382,7 +387,7 @@ public class ConcurrencyRunner {
         // The capability check is what keeps this honest in both directions. On a JDK whose dump
         // does name monitors the detector reads the cycle out of it (issue #367) and nothing is
         // announced, because nothing is inert.
-        if (config.detectDeadlocks && config.useVirtualThreads
+        if (config.detectDeadlocks && virtualWorkers
                 && !DeadlockDetector.canSeeVirtualThreadDeadlocks()
                 && DEADLOCK_INERT_LOGGED.compareAndSet(false, true)) {
             log.info("runner.detector.inert test={} detector=DeadlockDetector "
@@ -398,7 +403,7 @@ public class ConcurrencyRunner {
         // The livelock detector is enabled and the runner is on virtual threads, so the thread
         // dump it filters cannot contain the workers it is filtering for. Said once per JVM at
         // INFO, for the same reason as the announcements above.
-        if (config.detectLivelocks && config.useVirtualThreads
+        if (config.detectLivelocks && virtualWorkers
                 && LIVELOCK_INERT_LOGGED.compareAndSet(false, true)) {
             log.info("runner.detector.inert test={} detector=LivelockDetector "
                     + "reason=\"dumpAllThreads() does not report virtual threads, and "
@@ -432,7 +437,7 @@ public class ConcurrencyRunner {
         // Workers carry the async-test-worker- prefix so thread dumps, deadlock reports
         // and the quiesce stack dump read as the harness's own workers instead of
         // anonymous pool-N-thread-M entries.
-        ExecutorService executor = config.useVirtualThreads
+        ExecutorService executor = virtualWorkers
             ? Executors.newThreadPerTaskExecutor(namedWorkerFactory(Thread.ofVirtual().factory()))
             : Executors.newFixedThreadPool(actualThreads,
                 namedWorkerFactory(Executors.defaultThreadFactory()));
@@ -478,10 +483,11 @@ public class ConcurrencyRunner {
         if (log.isDebugEnabled()) {
             log.debug("runner.config test={} threads={} invocations={} timeoutMs={} "
                     + "multiplier={} effectiveTimeoutMs={} virtualThreads={} stressMode={} "
-                    + "replaySeed={} benchmarking={} detectors={} selection={}",
+                    + "replaySeed={} schedule={} benchmarking={} detectors={} selection={}",
                 testMethod.getName(), actualThreads, config.invocations, config.timeoutMs,
-                timeoutMultiplier, effectiveTimeoutMs, config.useVirtualThreads,
-                config.virtualThreadStressMode, config.replaySeed, config.enableBenchmarking,
+                timeoutMultiplier, effectiveTimeoutMs, virtualWorkers,
+                config.virtualThreadStressMode, config.replaySeed,
+                config.controlledSchedule ? "controlled" : "os", config.enableBenchmarking,
                 config.enabledDetectors().size(), selectionLabel(config.enabledDetectors()));
         }
         // The same selection at INFO, once per JVM (the latch above), and only when it left
@@ -503,6 +509,10 @@ public class ConcurrencyRunner {
                 ? null
                 : new java.util.Random();
         long currentSeed = 0L;
+        // The last controlled round's schedule, read by the failure report: whether the printed
+        // seed replays the round's interleaving depends on whether any worker escaped it.
+        ControlledSchedule.@Nullable Summary lastSchedule = null;
+        boolean unpointedLogged = false;
 
         // Set by the pre-round deadline check below, read by the catch block: the error it
         // throws has already been through timeoutError() — listeners notified, thread dump
@@ -584,13 +594,35 @@ public class ConcurrencyRunner {
                 // caller still sees the round failure it needs to act on, with the teardown
                 // failure attached underneath.
                 Throwable roundFailure = null;
+                // Opened immediately before the try whose finally closes it, so nothing can throw
+                // in between and leave the JVM-wide open count raised for every later hook call.
+                @Nullable ControlledSchedule schedule = config.controlledSchedule
+                    ? ControlledSchedule.open(actualThreads, currentSeed)
+                    : null;
                 try {
                     runSingleInvocationRound(invocationContext, actualThreads,
                         executor, phase1, phase2Context, remainingMs,
-                        config.useVirtualThreads, workerThreadIds, testMethod);
+                        virtualWorkers, workerThreadIds, testMethod, schedule);
                 } catch (Throwable t) { // NOPMD - rethrown below; caught only to order teardown
                     roundFailure = t;
                 } finally {
+                    // First, so a worker of a timed-out round still waiting for a turn is released
+                    // before the quiesce below waits for it to stop.
+                    if (schedule != null) {
+                        schedule.close();
+                        lastSchedule = schedule.summary();
+                        log.debug("runner.schedule.round test={} round={} seed={} steps={} switches={} "
+                                + "escapes={}", testMethod.getName(), i, currentSeed, lastSchedule.steps(),
+                            lastSchedule.switches(), lastSchedule.escapes());
+                        if (lastSchedule.steps() == 0 && !unpointedLogged) {
+                            unpointedLogged = true;
+                            log.info("runner.schedule.unpointed test={} reason=\"no worker reached a "
+                                    + "scheduling point, so the controlled schedule ran each body whole "
+                                    + "and interleaved nothing\" hint=\"run with the agent's fields=true, "
+                                    + "or call AsyncTestContext.schedulePoint() where a worker may be "
+                                    + "interrupted\"", testMethod.getName());
+                        }
+                    }
                     // Quiesce before teardown when the round failed. runSingleInvocationRound
                     // throws right after future.cancel(true), and cancellation only requests
                     // interruption: workers can still be unwinding inside the test body. Running
@@ -647,7 +679,7 @@ public class ConcurrencyRunner {
                 throw timeoutError(effectiveTimeoutMs, e, phase2Analysis,
                         config.detectDeadlocks);
             }
-            reportFailure(e, currentSeed, phase2Analysis);
+            reportFailure(e, currentSeed, lastSchedule, phase2Analysis);
             throw e;
         } catch (Throwable t) {
             // Same quiescence rule as the AssertionError branch: this path is reachable
@@ -655,7 +687,7 @@ public class ConcurrencyRunner {
             // interrupted out of latch.await by a JUnit-level timeout), and the reports
             // below must not read detector state that live workers are still writing.
             quiesceWorkers(executor, testMethod);
-            reportFailure(t, currentSeed, phase2Analysis);
+            reportFailure(t, currentSeed, lastSchedule, phase2Analysis);
             throw unwrap(t);
         } finally {
             executor.shutdownNow();
@@ -1074,7 +1106,8 @@ public class ConcurrencyRunner {
                                                  long roundTimeoutMs,
                                                  boolean useVirtualThreads,
                                                  @Nullable Set<Long> workerThreadIds,
-                                                 Method method) throws Throwable {
+                                                 Method method,
+                                                 @Nullable ControlledSchedule schedule) throws Throwable {
 
         ContentionBarrier barrier = createBarrier(threads, roundTimeoutMs, useVirtualThreads);
         List<Throwable> failures = new CopyOnWriteArrayList<>();
@@ -1110,15 +1143,27 @@ public class ConcurrencyRunner {
                     installed = true;
                     try {
                         barrier.arrive();
-                        Object result = method.invoke(target, args);
-                        // Async test body support: if the method returns a CompletionStage,
-                        // wait for it to complete (or fail) before counting this worker done.
-                        // Without this, the test would "succeed" the instant invoke() returned,
-                        // long before the async work finished — defeating the whole point of
-                        // running stress tests on async code.
-                        if (result instanceof CompletionStage<?> stage) {
-                            stage.toCompletableFuture()
-                                 .get(roundTimeoutMs, TimeUnit.MILLISECONDS);
+                        // After the barrier, so every worker joins the schedule; left in a finally,
+                        // so a body that throws hands the round on and clears the thread's slot
+                        // before a pooled thread runs the next round.
+                        if (schedule != null) {
+                            schedule.enter(workerSlot);
+                        }
+                        try {
+                            Object result = method.invoke(target, args);
+                            // Async test body support: if the method returns a CompletionStage,
+                            // wait for it to complete (or fail) before counting this worker done.
+                            // Without this, the test would "succeed" the instant invoke() returned,
+                            // long before the async work finished — defeating the whole point of
+                            // running stress tests on async code.
+                            if (result instanceof CompletionStage<?> stage) {
+                                stage.toCompletableFuture()
+                                     .get(roundTimeoutMs, TimeUnit.MILLISECONDS);
+                            }
+                        } finally {
+                            if (schedule != null) {
+                                schedule.leave();
+                            }
                         }
                     } catch (Throwable ex) {
                         failures.add(unwrap(ex));
@@ -1294,13 +1339,34 @@ public class ConcurrencyRunner {
      * on the success path: a test that already failed does not need a second, synthetic
      * failure from detector findings on top of its own. The caller quiesces the workers first.
      */
-    private static void reportFailure(Throwable failure, long seed, Phase2Analysis phase2Analysis) {
-        // Surface the seed of the failing round so the user can reproduce by
-        // pasting it into @AsyncTest(replaySeed=N).
-        System.err.println("[AsyncTest] Failure with replaySeed=" + seed
-                + "L — paste into @AsyncTest(replaySeed=...) to reproduce.");
+    private static void reportFailure(Throwable failure, long seed,
+                                      ControlledSchedule.@Nullable Summary schedule,
+                                      Phase2Analysis phase2Analysis) {
+        // Surface the seed of the failing round, and say what pasting it into
+        // @AsyncTest(replaySeed=N) replays: on its own only the seed's random choices, under a
+        // controlled schedule the interleaving too, unless a worker escaped the schedule.
+        System.err.println(replayHint(seed, schedule));
         AsyncTestListenerRegistry.fireTestFailed(failure);
         printPhase2Reports(phase2Analysis);
+    }
+
+    /**
+     * The line a failing run prints about its seed. It used to say the seed reproduced the
+     * failure, which only a controlled schedule with no escapes makes true.
+     */
+    static String replayHint(long seed, ControlledSchedule.@Nullable Summary schedule) {
+        String head = "[AsyncTest] Failure with replaySeed=" + seed + "L — ";
+        if (schedule == null) {
+            return head + "paste into @AsyncTest(replaySeed=...) to replay the seed's random choices;"
+                    + " add controlledSchedule = true to replay the interleaving too.";
+        }
+        if (schedule.escapes() == 0) {
+            return head + "paste into @AsyncTest(replaySeed=..., controlledSchedule = true) to replay"
+                    + " this interleaving.";
+        }
+        return head + "under controlledSchedule = true, but " + schedule.escapes() + " time(s) a worker"
+                + " stopped without reaching a scheduling point (blocked, slept or waited) and left the"
+                + " schedule, so a replay may interleave differently.";
     }
 
     /**

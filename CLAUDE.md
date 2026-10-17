@@ -143,6 +143,10 @@ Guardrails for module `async-test-analysis` are maintained in that module's own 
       <sensitivity>Critical</sensitivity>
       <note>Core stress-test execution engine. The CyclicBarrier pattern forces maximum thread contention. Timeout logic and AsyncTestContext install/uninstall are carefully calibrated — subtle changes introduce flaky tests or missed detector activations.</note>
     </element>
+    <element path="se.deversity.asynctest.telemetry.ControlledSchedule">
+      <sensitivity>High</sensitivity>
+      <note>A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read. Only watch() may read the clock or Thread.getState(), and each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise.</note>
+    </element>
   </core_elements>
 
 <rule>Elements listed in <core_elements> are well-tested core components. Make changes with extreme caution and verify comprehensive test coverage before proposing modifications.</rule>

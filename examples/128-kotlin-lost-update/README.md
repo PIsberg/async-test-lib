@@ -43,11 +43,13 @@ The mock flag is how you run without a licence key while evaluating; see
 When the disabled test is enabled and fails, the output carries a line like:
 
 ```
-[AsyncTest] Failure with replaySeed=8134729471193L — paste into @AsyncTest(replaySeed=...) to reproduce.
+[AsyncTest] Failure with replaySeed=8134729471193L — paste into @AsyncTest(replaySeed=...) to replay the seed's random choices; add controlledSchedule = true to replay the interleaving too.
 ```
 
-Pasting that seed back into the annotation reruns the same interleaving, which is the difference
-between a flaky failure and a reproducible one.
+Pasting that seed back replays the round's random choices, not the thread schedule. To replay the
+interleaving too, run with `controlledSchedule = true` and the agent's `fields=true`, whose woven
+field accesses are the points where the schedule may switch workers; see
+[results-and-practices.md](../../docs/usage/results-and-practices.md#reproducing-a-failure).
 
 ## Note on `@Volatile`
 

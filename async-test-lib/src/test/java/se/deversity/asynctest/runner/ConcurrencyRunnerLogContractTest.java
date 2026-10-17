@@ -100,6 +100,7 @@ class ConcurrencyRunnerLogContractTest {
             "the multiplier that explains a CI-only difference: " + config);
         assertTrue(config.contains("detectors=" + se.deversity.asynctest.DetectorType.values().length
                 + " selection=all"), "how many detectors ran, and which selection: " + config);
+        assertTrue(config.contains("schedule=os"), "who decides the interleaving: " + config);
 
         assertEquals(2, events().stream().filter(m -> m.startsWith("runner.round.start")).count(),
             "one start event per invocation: " + events());
@@ -109,6 +110,40 @@ class ConcurrencyRunnerLogContractTest {
             "every round carries the replay seed, which is the reproduction handle");
         assertTrue(eventStartingWith("runner.round.done").contains("durationMs="),
             "the round reports what it cost");
+    }
+
+    @Test
+    @DisplayName("a controlled schedule says so, runs on platform workers and narrates every round")
+    void aControlledScheduleNarratesItself() {
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(ControlledDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        String config = eventStartingWith("runner.config");
+        assertTrue(config.contains("schedule=controlled"), "the annotation reached the runner: " + config);
+        assertTrue(config.contains("virtualThreads=false"),
+            "a controlled round runs on platform workers whatever useVirtualThreads says, and the"
+                + " config event reports what was used: " + config);
+        List<String> rounds = events().stream().filter(m -> m.startsWith("runner.schedule.round")).toList();
+        assertEquals(2, rounds.size(), "one schedule event per round: " + events());
+        assertTrue(rounds.get(0).contains("seed=11 ") && rounds.get(0).contains("steps=2 "),
+            "the round's seed and the points its two workers reached: " + rounds.get(0));
+    }
+
+    @Test
+    @DisplayName("the replay line says what the seed replays")
+    void theReplayLineSaysWhatTheSeedReplays() {
+        String plain = ConcurrencyRunner.replayHint(5L, null);
+        assertTrue(plain.contains("replaySeed=5L") && plain.contains("random choices")
+            && plain.contains("controlledSchedule = true"), plain);
+        String exact = ConcurrencyRunner.replayHint(5L,
+            new se.deversity.asynctest.telemetry.ControlledSchedule.Summary(5L, 8, 3, 0));
+        assertTrue(exact.contains("replay this interleaving"), exact);
+        String escaped = ConcurrencyRunner.replayHint(5L,
+            new se.deversity.asynctest.telemetry.ControlledSchedule.Summary(5L, 8, 3, 2));
+        assertTrue(escaped.contains("2 time(s)") && escaped.contains("may interleave differently"), escaped);
     }
 
     @Test
@@ -488,6 +523,18 @@ class ConcurrencyRunnerLogContractTest {
         @AsyncTest(threads = 3, invocations = 2, detectAll = true)
         void narrated() {
             counter.incrementAndGet();
+        }
+    }
+
+    /** Two workers, one explicit point each, under a controlled schedule with a fixed seed. */
+    static class ControlledDummy {
+        private int counter;
+
+        @AsyncTest(threads = 2, invocations = 2, controlledSchedule = true, replaySeed = 11)
+        void controlled() {
+            int read = counter;
+            AsyncTestContext.schedulePoint();
+            counter = read + 1;
         }
     }
 

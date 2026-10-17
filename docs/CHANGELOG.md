@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`@AsyncTest(controlledSchedule = true)`: the replay seed decides the interleaving, so a failing
+  seed replays it.** The seed a failing run printed replayed the body's random choices and never the
+  thread schedule, yet the failure line said "paste into @AsyncTest(replaySeed=...) to reproduce", and
+  `docs/usage/results-and-practices.md` said the same schedule was replayed. Pasting it back could pass.
+  Under a controlled schedule a round's workers run one at a time and change hands only at scheduling
+  points, every field access the agent weaves with `fields=true` and every new
+  `AsyncTestContext.schedulePoint()`, in an order drawn PCT-style from the round's seed (random
+  distinct priorities, two random priority drops, the step bound itself drawn from the seed). A
+  worker that blocks or stalls without reaching a point is marked escaped by the waiting workers, so
+  the round stays live, and counted: `runner.schedule.round test= round= seed= steps= switches=
+  escapes=` at DEBUG, and the failure line now says what the seed replays (random choices only, this
+  interleaving, or an interleaving that `N` escapes may change). `runner.config` gains `schedule=os`
+  or `schedule=controlled`; a controlled run whose round reached no point logs
+  `runner.schedule.unpointed` once at INFO. Controlled rounds run on platform workers, and
+  `runner.config`'s `virtualThreads=` reports that: on JDK 21 a virtual worker parked inside
+  `synchronized` pins its carrier, and enough of them leave the next worker nowhere to run. Off by
+  default; experimental. Tests: `ControlledScheduleTest` (a fixed seed replays a 12-point trace 5 of
+  5 times for 5 seeds; a seed in 1..64 that lost a read-point-write update loses it 10 of 10 replays,
+  and one that kept both keeps them, on both thread modes; one worker between two points; a worker
+  blocked on a lock its paused peer holds escapes instead of hanging) went 5 of 7 red against a no-op
+  schedule, and 2 red with the priority choice replaced by lowest slot first;
+  `ControlledScheduleWeavingTest` finds and replays the lost update in an unmodified `count = count + 1`
+  through the real weaver and went red with the three hook points removed; the contract test pins
+  `schedule=`, `virtualThreads=false` and the round event.
+- **A non-linearizable round is reported as its shortest prefix that has no linearization.** The
+  report listed every operation of the round, so a 30-operation round whose third response was
+  already impossible put 27 irrelevant lines between the reader and the cause. Linearizability is
+  prefix-closed, so the history cut at a response ticket (operations invoked before it, those not yet
+  returned turned pending) is something the workers really observed, and an impossible one is a
+  counterexample on its own; `LinearizabilityChecker.shortestViolatingCut` binary-searches the
+  response tickets for the earliest such cut (at most 7 more searches for 64 operations, a cut whose
+  search runs out of budget counting as not proven). The message keeps its first sentence, then says
+  `The shortest prefix with no such order holds K of its N operations and ends at #T, when [thread]
+  op(arg) returned R` and lists only those K, marking a call still running at the cut. The same text
+  reaches the `Linearizability` finding. Nothing is dropped from the middle of a history, which could
+  make a linearizable one look impossible. Tests: `LinearizabilityShrinkTest` went 4 of 5 red against
+  a search that found no cut, and 3 red with the search keeping the longest violating prefix; the 28
+  existing linearizability tests are unchanged and green.
+
 - **`BLOCKING_ON_NON_BLOCKING_THREAD`, detector 148: a blocking call on a thread that must not
   block (#991, #993).** An event loop runs every task queued for it in turn, so a sleep, a `join`
   or `get` of a pending future, a latch await or a take on it stalls all of them; BlockHound exists

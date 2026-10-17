@@ -201,6 +201,9 @@ public final class TelemetryRegistry {
     public static void recordAccess(int identity, long threadId, String qualifiedName,
                                     boolean isWrite, boolean volatileField, int constantTag,
                                     boolean afterVolatileRead) {
+        // Before the access is recorded, and before the stop check: a woven access is a point
+        // of the controlled schedule whether or not anything is draining the ring.
+        ControlledSchedule.point();
         if (STOPPED.get()) {
             return;
         }
@@ -251,6 +254,7 @@ public final class TelemetryRegistry {
                                     long threadId, String qualifiedName, boolean isWrite,
                                     boolean volatileField, int constantTag,
                                     boolean afterVolatileRead, boolean staticField) {
+        ControlledSchedule.point();
         if (STOPPED.get()) {
             return;
         }
@@ -436,6 +440,7 @@ public final class TelemetryRegistry {
                                     long threadId, String qualifiedName, boolean isWrite,
                                     boolean volatileField, int constantTag,
                                     boolean afterVolatileRead, boolean staticField) {
+        ControlledSchedule.point();
         if (STOPPED.get()) {
             return;
         }

@@ -13,6 +13,8 @@ Part of the [Usage guide](../USAGE.md).
 | `timeoutMs` | long | 5000 | Test timeout in milliseconds |
 | `useVirtualThreads` | boolean | true | Use Java 21+ virtual threads |
 | `virtualThreadStressMode` | String | "OFF" | Virtual thread stress level (OFF, LOW, MEDIUM, HIGH, EXTREME) |
+| `replaySeed` | long | 0 | Seed of every round; `0` draws a fresh one per round and prints a failing round's. Replays the body's random choices, and with `controlledSchedule` the interleaving too |
+| `controlledSchedule` | boolean | false | Workers run one at a time and change hands only at scheduling points (woven field accesses, `AsyncTestContext.schedulePoint()`), in an order the replay seed decides, so a failing seed replays its interleaving. Runs on platform workers. Experimental, 1.13.2+; see [results-and-practices.md](results-and-practices.md#reproducing-a-failure) |
 | `preset` | Preset | ESSENTIALS | Curated detector bundle, used when neither `includes` nor `detectAll = true` is set. A bare `@AsyncTest` runs `ESSENTIALS` (1.13.0) |
 | `detectAll` | boolean | false | Enable every detector, whatever `preset` says; `includes` still wins. `false` leaves `preset` in charge |
 | `includes` | DetectorType[] | {} | Enable exactly these detectors; overrides `preset` and `detectAll` when non-empty |

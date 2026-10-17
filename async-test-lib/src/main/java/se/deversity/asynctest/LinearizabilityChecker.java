@@ -72,6 +72,54 @@ final class LinearizabilityChecker {
         }
     }
 
+    /**
+     * {@return the response ticket at which the shortest prefix of {@code ops} with no linearization
+     * ends, or {@code -1} when no prefix is proven to have none}
+     *
+     * <p>Linearizability is prefix-closed: every prefix of a linearizable history is linearizable.
+     * So the prefix this finds is a counterexample in its own right, observed by the workers, and
+     * not an artefact of cutting: the history became unexplainable the moment that response was
+     * seen. Only a response can make a history unexplainable, since a call still running may be
+     * left out, so the cuts tried are the response tickets, by binary search over them. A prefix
+     * whose search runs out of budget counts as not proven, so the cut returned is always one the
+     * search proved, if possibly not the shortest.
+     *
+     * @param ops    one round's operations, at most {@link #MAX_OPERATIONS}
+     * @param spec   the sequential model
+     * @param budget the most states each search visits
+     */
+    static <M> long shortestViolatingCut(List<Op> ops, SequentialSpec<M> spec, long budget) {
+        long[] responses = ops.stream().filter(op -> !op.pending()).mapToLong(Op::response).sorted().toArray();
+        long found = -1L;
+        int low = 0;
+        int high = responses.length - 1;
+        while (low <= high) {
+            int mid = (low + high) >>> 1;
+            if (check(prefix(ops, responses[mid]), spec, budget) == Verdict.NOT_LINEARIZABLE) {
+                found = responses[mid];
+                high = mid - 1;
+            } else {
+                low = mid + 1;
+            }
+        }
+        return found;
+    }
+
+    /**
+     * {@return what the workers had seen of {@code ops} at ticket {@code cut}: every operation invoked
+     * before it, in their order, with those that had not returned by then turned pending}
+     *
+     * @param ops one round's operations
+     * @param cut a response ticket
+     */
+    static List<Op> prefix(List<Op> ops, long cut) {
+        return ops.stream()
+                .filter(op -> op.invoke() < cut)
+                .map(op -> op.response() <= cut ? op
+                        : new Op(op.thread(), op.operation(), op.argument(), op.result(), op.invoke(), NO_RESPONSE))
+                .toList();
+    }
+
     private static final class BudgetExhausted extends RuntimeException {
         private static final long serialVersionUID = 1L;
 

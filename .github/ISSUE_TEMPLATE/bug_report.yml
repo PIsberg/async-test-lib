@@ -25,7 +25,8 @@ body:
       label: Reproducer
       description: >
         The smallest `@AsyncTest` that shows it. If a run failed, paste the
-        `[AsyncTest] Failure with replaySeed=...` line — it makes the interleaving reproducible.
+        `[AsyncTest] Failure with replaySeed=...` line. It replays the interleaving only under
+        `controlledSchedule = true`; otherwise it replays the body's random choices.
       render: java
     validations:
       required: true

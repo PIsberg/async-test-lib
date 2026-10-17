@@ -145,6 +145,29 @@ out the timeout:
 Called outside an `@AsyncTest` worker it throws `IllegalStateException`. A round of more than
 65,535 workers opens no rendezvous, and calling it there throws the same.
 
+Under `controlledSchedule = true` a rendezvous still works, but a worker waiting at it has stopped
+without reaching a scheduling point, so the round counts an escape and is not guaranteed to replay;
+use `schedulePoint()` there instead.
+
+## Letting the schedule switch mid-body: `AsyncTestContext.schedulePoint()` (1.13.2, experimental)
+
+Under `@AsyncTest(controlledSchedule = true)` a round's workers run one at a time and change hands
+only at scheduling points, in an order the replay seed decides. Every field access the agent weaves
+with `fields=true` is a point; `AsyncTestContext.schedulePoint()` adds one where nothing is woven:
+
+```java
+@AsyncTest(threads = 2, controlledSchedule = true)
+void increment() {
+    int read = counter.value;
+    AsyncTestContext.schedulePoint();   // the round may switch workers here, and the seed decides
+    counter.value = read + 1;
+}
+```
+
+Outside a controlled round, and on a thread the body started, it does nothing, so it can stay in a
+body that also runs uncontrolled. A controlled run whose workers reach no point at all interleaves
+nothing, and says so once at INFO (`runner.schedule.unpointed`).
+
 ## Checking that results are linearizable: `OperationHistory` (1.13.0, experimental)
 
 `RunOutcomes` asserts a property you name. `OperationHistory` asserts one you do not have to: that
@@ -173,7 +196,10 @@ static void linearizable() {
 `run(...)` records one that returns nothing. The `SequentialSpec` says what each operation does
 when it runs alone: an initial state, a copy of a state, and the step, which returns the result the
 operation should give. A failure names the round and lists its operations with their tickets, so the
-overlap that made the results impossible is visible. One search takes at most 64 operations; a
+overlap that made the results impossible is visible. It lists only the shortest prefix of the round
+that already has no such order, and names the response that ended it: every prefix of a
+linearizable history is linearizable, so that prefix is a counterexample on its own, and the
+operations after it are left out. One search takes at most 64 operations; a
 round the search cannot decide within its budget fails rather than passes, and so does a check over
 no operations at all.
 
@@ -196,7 +222,8 @@ void counter() {
 ```
 
 Each worker draws its own sequence from the round's replay seed, so the seed the runner prints on a
-failure reproduces the scenario.
+failure reproduces the scenario. With `controlledSchedule = true` it reproduces the interleaving of
+that scenario too, as long as the round's operations reach scheduling points.
 
 To make a failed check a finding instead of an assertion, verify the history when you build it:
 `OperationHistory.of(AtomicInteger::new).verifiedAgainst(spec)`. Each run then checks its own rounds

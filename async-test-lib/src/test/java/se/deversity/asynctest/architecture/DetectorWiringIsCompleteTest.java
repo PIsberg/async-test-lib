@@ -46,7 +46,8 @@ class DetectorWiringIsCompleteTest {
             "useVirtualThreads", "picks the executor the workers run on",
             "enableBenchmarking", "turns on throughput recording, which reports rather than detects",
             "failOnBenchmarkRegression", "a gate on the benchmark, not a detector",
-            "licenseMockMode", "bypasses the licence check for local runs");
+            "licenseMockMode", "bypasses the licence check for local runs",
+            "controlledSchedule", "lets the replay seed decide the interleaving; runs every selected detector");
 
     @Test
     @DisplayName("no per-detector boolean switch remains on @AsyncTest")

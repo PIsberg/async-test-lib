@@ -48,14 +48,27 @@ Commit the file and review its diff. Full mechanics, including what a baseline d
 
 ### Reproducing a failure
 
-Every failing run prints the seed that produced the interleaving:
+Every failing run prints the seed of the failing round:
 
 ```
-[AsyncTest] Failure with replaySeed=8134729471193L — paste into @AsyncTest(replaySeed=...) to reproduce.
+[AsyncTest] Failure with replaySeed=8134729471193L — paste into @AsyncTest(replaySeed=...) to replay the seed's random choices; add controlledSchedule = true to replay the interleaving too.
 ```
 
-Paste it into the annotation and the same schedule is replayed, which is the difference between a
-flaky failure and one you can debug.
+On its own the seed replays what the body draws from it (`AsyncTestContext.replaySeed()`, drawn
+scenarios), not the thread schedule: the OS decides which worker runs when, so a pasted seed can
+still pass. Under `@AsyncTest(controlledSchedule = true)` the seed decides that too. Workers run one
+at a time and change hands only at scheduling points (every field access the agent weaves with
+`fields=true`, and every `AsyncTestContext.schedulePoint()`), so the line reads
+
+```
+[AsyncTest] Failure with replaySeed=8134729471193L — paste into @AsyncTest(replaySeed=..., controlledSchedule = true) to replay this interleaving.
+```
+
+and pasting the seed fails the same way every time, which is the difference between a flaky failure
+and one you can debug. When a worker blocked without reaching a point (on a lock a paused worker
+held, a sleep, a `get`) it left the schedule until its next point, and the line says how many times
+that happened, since only a round without such an escape is guaranteed to replay. Each round's
+`runner.schedule.round` event at DEBUG carries the same count as `escapes=`.
 
 When a test fails, the library provides detailed diagnostics:
 

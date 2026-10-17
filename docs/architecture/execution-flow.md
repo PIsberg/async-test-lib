@@ -98,7 +98,19 @@ state across invocations, causing false positives or missed detections. `@Before
 
 **Replay seeds.** Failures print a `replaySeed` that reproduces the failing round's randomness when
 pasted into `@AsyncTest(replaySeed = N)`. The default `0` draws a fresh seed per round; a non-zero
-seed fixes every round to that value.
+seed fixes every round to that value. On its own the seed does not fix the thread schedule.
+
+**Controlled schedule.** With `controlledSchedule = true` the runner opens a
+`telemetry.ControlledSchedule` per round, seeded with the round's replay seed, immediately before the
+try whose finally closes it. Each worker joins it after the start barrier and leaves it in a finally
+around the body, so only one worker runs at a time and the round changes hands only at a scheduling
+point: `TelemetryRegistry`'s field-access hooks and `AsyncTestContext.schedulePoint()`. Who runs next
+is PCT's choice (random distinct priorities, two random priority drops per round), so it depends on
+the seed alone. A worker that blocks or stalls without reaching a point is marked escaped by the
+workers waiting for a turn, which keeps the round live and is counted in `runner.schedule.round`;
+only a round without an escape replays exactly, and the failure line says which it was. Controlled
+rounds run on platform workers: on JDK 21 a virtual worker parked by the schedule inside
+`synchronized` pins its carrier, and enough of them leave the next worker nowhere to run.
 
 **Failure paths.** On failure the runner prints the replay seed, fires listeners, prints reports and
 rethrows; timeout-like assertion errors are rerouted through the timeout error with diagnostics. The
