@@ -106,7 +106,9 @@ the config, not through Surefire).
 
 ## Versions
 
-`<async-test.version>` in `pom.xml` and `asyncTestVersion` in `build.gradle.kts` are pins the
-release skill bumps (`.claude/skills/release/bump-version.sh`). Language toolchain versions are
-properties in the parent `pom.xml`; the Gradle files repeat them because a Gradle plugin
-version cannot be read from a pom at `plugins {}` time.
+Every version, the library's included, comes from `versions/pom.xml`: the parent `pom.xml`
+inherits it, and the Gradle build reads the same properties as `libs.versions.*` through
+`settings.gradle.kts`. The Kotlin Gradle plugin, which a `plugins {}` block resolves before any
+build code runs, comes through the catalog's `libs.plugins.kotlin.jvm` alias. The Gradle files used
+to repeat the toolchain versions and had drifted (Groovy 5.1.0, Scala 3.8.4 and Kotlin 2.4.10 while
+the poms said 6.0.0, 3.10.0 and 2.4.21); `SatelliteVersionsTest` now fails on a literal.

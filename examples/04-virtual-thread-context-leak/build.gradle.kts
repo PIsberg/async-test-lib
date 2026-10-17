@@ -15,9 +15,9 @@ repositories {
     mavenLocal()
 }
 
-val asyncTestVersion = "1.13.1"
-val junitVersion = "6.1.3"
-val junitPlatformVersion = "6.1.3"
+val asyncTestVersion = libs.versions.async.test.version.get()
+val junitVersion = libs.versions.junit.jupiter.version.get()
+val junitPlatformVersion = libs.versions.junit.platform.version.get()
 
 dependencies {
     testImplementation("se.deversity.async-test-lib:async-test-lib:$asyncTestVersion")

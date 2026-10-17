@@ -327,6 +327,11 @@ jobs:
             # example, and a change to this file cannot demonstrate its own effect.
             pipeline:
               - '.github/workflows/gradle-tests.yml'
+            # versions/pom.xml is where every example takes its versions from, so a bump there
+            # changes all of them while editing none of their files. It runs every example, as
+            # the same bump did when it still rewrote 150 example build files.
+            versions:
+              - 'versions/**'
 
       - name: Compute changed example modules
         id: compute
@@ -339,6 +344,12 @@ jobs:
             changed=$(printf '%s\n' ${{ steps.filter.outputs.examples_files }} \
               | awk -F/ 'NF>=3 && $1=="examples" {print $2}' \
               | while read m; do if [ -f "examples/$m/build.gradle.kts" ]; then echo "$m"; fi; done)
+          fi
+
+          # Every example, when the versions they all build against moved.
+          if [ "${{ steps.filter.outputs.versions }}" = "true" ]; then
+            changed=$(ls -1 examples/*/build.gradle.kts | awk -F/ '{print $2}')
+            echo "versions/ changed - running every example project."
           fi
 
           # 2. A library change edits no examples/** path, but every example consumes the built

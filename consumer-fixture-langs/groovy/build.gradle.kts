@@ -3,5 +3,5 @@ plugins {
 }
 
 dependencies {
-    testImplementation("org.apache.groovy:groovy:6.0.0")
+    testImplementation("org.apache.groovy:groovy:${libs.versions.groovy.version.get()}")
 }

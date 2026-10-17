@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The one place every build outside the reactor takes its versions from: examples/,
+  consumer-fixture/, consumer-fixture-langs/, corpus-eval/ and tools/demo/ inherit this pom as
+  their parent, and their Gradle twins (and load-tests/) read the same properties through
+  versions/versions.settings.gradle.kts. A satellite build file names no version of its own.
+
+  It is a parent and nothing else: no modules, no plugins bound, no dependencies added, so
+  inheriting it changes what a build resolves only through the properties below. It is never
+  installed or published; every child finds it by <relativePath>.
+
+  A property also declared in the reactor's pom.xml (JUnit, Surefire, the compiler plugin,
+  slf4j) must carry the same value there, and <async-test.version> must equal the reactor's own
+  version: SatelliteVersionsTest fails otherwise. Dependabot updates both poms in one PR
+  (.github/dependabot.yml, group-by: dependency-name), so a bump never reaches one without the
+  other. The release skill moves <async-test.version>; nothing else here is release-bound.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>se.deversity.async-test-lib</groupId>
+    <artifactId>async-test-satellite-versions</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+
+    <name>Async Test Lib - satellite versions</name>
+    <description>Version properties shared by every build outside the reactor. Never published.</description>
+
+    <properties>
+        <!-- The library under test. CI publishes the working tree to the local repository first,
+             so this resolves the build just produced rather than the release on Central. -->
+        <async-test.version>1.13.1</async-test.version>
+
+        <!-- Shared with the reactor pom.xml; SatelliteVersionsTest holds them equal. -->
+        <junit.jupiter.version>6.1.3</junit.jupiter.version>
+        <junit.platform.version>6.1.3</junit.platform.version>
+        <maven-compiler-plugin.version>3.16.0</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.6.0</maven-surefire-plugin.version>
+        <slf4j.version>2.0.20</slf4j.version>
+
+        <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
+
+        <!-- consumer-fixture-langs/ and examples/128-kotlin-lost-update: language toolchains.
+             Gradle's Kotlin plugin, Groovy and Scala read the same three. -->
+        <!-- 2.4.x or newer: the IntelliJ util bundled with Kotlin 2.1 cannot parse a JDK
+             version of "26" and dies before compiling anything. -->
+        <kotlin.version>2.4.21</kotlin.version>
+        <groovy.version>6.0.0</groovy.version>
+        <scala.version>3.10.0</scala.version>
+        <clojure.version>1.12.6</clojure.version>
+        <gmavenplus-plugin.version>5.1.0</gmavenplus-plugin.version>
+        <scala-maven-plugin.version>4.10.0</scala-maven-plugin.version>
+        <clojure-maven-plugin.version>1.9.4</clojure-maven-plugin.version>
+
+        <!-- corpus-eval/: the third-party subjects. A subject bump can move the measured numbers;
+             rerun the corpus lanes before merging one. -->
+        <commons-lang3.version>3.21.0</commons-lang3.version>
+        <commons-collections4.version>4.6.0</commons-collections4.version>
+        <guava.version>33.7.2-jre</guava.version>
+        <jackson.version>2.22.3</jackson.version>
+        <caffeine.version>3.3.1</caffeine.version>
+        <netty.version>4.2.19.Final</netty.version>
+        <spring.version>7.0.9</spring.version>
+        <hikaricp.version>7.1.0</hikaricp.version>
+    </properties>
+</project>

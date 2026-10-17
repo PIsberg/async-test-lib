@@ -1,5 +1,9 @@
 rootProject.name = "async-examples"
 
+// Every version comes from versions/pom.xml (libs.versions.*). Gradle ignores the settings file
+// inside each example when it builds them all from here, so this line is the one that counts.
+apply(from = "../versions/versions.settings.gradle.kts")
+
 include(":01-completablefuture-exception-handling")
 include(":02-visibility-volatile-flag")
 include(":03-shared-collection")
