@@ -206,7 +206,9 @@ that says what it would take.
   fail with the history as the counterexample. On the JVM the established tool is Lincheck, which
   is Kotlin-first. A design effort rather than a helper: a recording API, a way to state the model,
   a bounded search (the general problem is NP-complete, so histories stay small) and a report
-  format. Added 2026-10-06.
+  format. Added 2026-10-06. Since 2026-10-17 a failing round is reported as its shortest prefix
+  with no linearization, which is sound without re-running anything because linearizability is
+  prefix-closed; a systematic scenario search and re-run shrinking are still open.
 * **Shipped 2026-10-06** as the smaller helpers proposed with it: `AsyncTestContext.rendezvous()`,
   which makes a round's workers meet mid-body, and `RunOutcomes`, which asserts that something
   happened exactly once, at most once, or with distinct values

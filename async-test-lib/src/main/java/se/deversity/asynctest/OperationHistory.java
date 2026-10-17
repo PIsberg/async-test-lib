@@ -328,8 +328,9 @@ public final class OperationHistory<S> {
      *
      * @param <M>  the model's state
      * @param spec the sequential behaviour the object must be explainable by
-     * @throws AssertionError for the first round with no linearization, listing its operations;
-     *                        for a round the search could not decide within its budget; for a
+     * @throws AssertionError for the first round with no linearization, listing the shortest prefix
+     *                        of its operations that already has none, and naming the response that
+     *                        ended it; for a round the search could not decide within its budget; for a
      *                        round of more than 64 operations, which one search cannot take; and
      *                        when nothing was recorded, since a check over no operations proves
      *                        nothing
@@ -428,14 +429,24 @@ public final class OperationHistory<S> {
     private static <M> void check(String name, List<Op> ops, SequentialSpec<M> spec) {
         Verdict verdict = LinearizabilityChecker.check(ops, spec, LinearizabilityChecker.DEFAULT_BUDGET);
         if (verdict == Verdict.NOT_LINEARIZABLE) {
-            throw new AssertionError(describe(name, ops,
-                    "is not linearizable: no order of its " + ops.size()
-                            + " operations that respects real time gives the results the workers saw."));
+            String head = "is not linearizable: no order of its " + ops.size()
+                    + " operations that respects real time gives the results the workers saw.";
+            long cut = LinearizabilityChecker.shortestViolatingCut(ops, spec, LinearizabilityChecker.DEFAULT_BUDGET);
+            List<Op> shown = cut < 0 ? ops : ops.stream().filter(op -> op.invoke() < cut).toList();
+            if (shown.size() == ops.size()) {
+                throw new AssertionError(describe(name, ops, head, Long.MAX_VALUE));
+            }
+            Op last = ops.stream().filter(op -> op.response() == cut).findFirst().orElseThrow();
+            throw new AssertionError(describe(name, shown, head + " The shortest prefix with no such order"
+                    + " holds " + shown.size() + " of its " + ops.size() + " operations and ends at #" + cut
+                    + ", when [" + last.thread() + "] " + last.operation() + "("
+                    + (last.argument() == null ? "" : last.argument()) + ") returned " + last.result()
+                    + "; the operations after it are left out:", cut));
         }
         if (verdict == Verdict.UNDECIDED) {
             throw new AssertionError(describe(name, ops,
                     "could not be decided within " + LinearizabilityChecker.DEFAULT_BUDGET
-                            + " search steps; record fewer operations per round."));
+                            + " search steps; record fewer operations per round.", Long.MAX_VALUE));
         }
     }
 
@@ -453,7 +464,8 @@ public final class OperationHistory<S> {
         return round != null ? round : NO_ROUND;
     }
 
-    private static String describe(String name, List<Op> ops, String verdict) {
+    /** Lists {@code ops} in invocation order; one that returned after {@code cut} is marked as such. */
+    private static String describe(String name, List<Op> ops, String verdict, long cut) {
         StringBuilder sb = new StringBuilder(name).append(' ').append(verdict);
         ops.stream().sorted(Comparator.comparingLong(Op::invoke)).forEach(op -> {
             sb.append("\n  [").append(op.thread()).append("] ").append(op.operation())
@@ -462,7 +474,8 @@ public final class OperationHistory<S> {
                 sb.append("threw, no response   (invoked #").append(op.invoke()).append(')');
             } else {
                 sb.append(op.result()).append("   (invoked #").append(op.invoke())
-                        .append(", returned #").append(op.response()).append(')');
+                        .append(", returned #").append(op.response())
+                        .append(op.response() > cut ? ", after the cut, so still running at it)" : ")");
             }
         });
         return sb.toString();

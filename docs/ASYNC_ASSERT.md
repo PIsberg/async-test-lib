@@ -196,7 +196,10 @@ static void linearizable() {
 `run(...)` records one that returns nothing. The `SequentialSpec` says what each operation does
 when it runs alone: an initial state, a copy of a state, and the step, which returns the result the
 operation should give. A failure names the round and lists its operations with their tickets, so the
-overlap that made the results impossible is visible. One search takes at most 64 operations; a
+overlap that made the results impossible is visible. It lists only the shortest prefix of the round
+that already has no such order, and names the response that ended it: every prefix of a
+linearizable history is linearizable, so that prefix is a counterexample on its own, and the
+operations after it are left out. One search takes at most 64 operations; a
 round the search cannot decide within its budget fails rather than passes, and so does a check over
 no operations at all.
 
@@ -219,7 +222,8 @@ void counter() {
 ```
 
 Each worker draws its own sequence from the round's replay seed, so the seed the runner prints on a
-failure reproduces the scenario.
+failure reproduces the scenario. With `controlledSchedule = true` it reproduces the interleaving of
+that scenario too, as long as the round's operations reach scheduling points.
 
 To make a failed check a finding instead of an assertion, verify the history when you build it:
 `OperationHistory.of(AtomicInteger::new).verifiedAgainst(spec)`. Each run then checks its own rounds

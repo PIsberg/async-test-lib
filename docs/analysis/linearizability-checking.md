@@ -1,6 +1,7 @@
 # History-based (linearizability) checking: design note
 
-Issue: #924. Status: experimental prototype in `OperationHistory` and `SequentialSpec`, 2026-10-06.
+Issue: #924. Status: experimental prototype in `OperationHistory` and `SequentialSpec`, 2026-10-06;
+failures reported as their shortest impossible prefix since 2026-10-17.
 
 ## The gap
 
@@ -136,6 +137,36 @@ results the workers saw.
 The tickets show which operations overlapped, so the reader can see why the two results of 1
 cannot both be right: the two increments overlapped, and any order of them returns 1 then 2.
 
+### The shortest prefix (2026-10-17)
+
+A round of 30 operations whose third response is already impossible used to be reported as all 30.
+Linearizability is prefix-closed: every prefix of a linearizable history is linearizable. So the
+history cut at a response ticket, keeping every operation invoked before the cut and turning those
+that had not returned by then pending, is a history the workers really observed, and if it has no
+linearization it is a counterexample on its own. Only a response can make a history impossible (a
+call still running may be left out), so `LinearizabilityChecker.shortestViolatingCut` binary-searches
+the response tickets for the earliest cut whose prefix the search proves impossible: at most
+log2(64) + 1 = 7 more searches, each under the same budget. A prefix whose search runs out of budget
+counts as not proven, so the cut reported is always one the search proved. The report then lists
+only that prefix and names the response that ended it:
+
+```
+Round 1 is not linearizable: no order of its 6 operations that respects real time gives the
+results the workers saw. The shortest prefix with no such order holds 3 of its 6 operations and
+ends at #6, when [async-test-worker-0] increment() returned 2; the operations after it are left out:
+  [async-test-worker-0] increment() -> 1   (invoked #1, returned #2)
+  [async-test-worker-0] increment() -> 2   (invoked #3, returned #4)
+  [async-test-worker-0] increment() -> 2   (invoked #5, returned #6)
+```
+
+An operation invoked before the cut that returned after it is listed with `after the cut, so still
+running at it`. Cutting is the one reduction that is sound without re-running anything: dropping an
+operation from the middle can make a linearizable history look impossible (a `get() -> 1` without
+the increment before it), so the report never does that. `LinearizabilityShrinkTest` covers both
+directions: the cut is the first response no order explains, a call still running at the cut is
+pending, a linearizable history has no cut, and the report lists 3 of a 6-operation round. Making
+the search keep the longest violating prefix instead turns three of its five tests red.
+
 ## Both directions (invariant 10)
 
 `LinearizabilityCheckerTest` checks the search on hand-built histories (a sequential history
@@ -163,5 +194,10 @@ not merely as over the size bound. Each was run 3 times pinned to 2 CPUs and 3 t
   narrow race happen. A bare `MutableInt.incrementAndGet()` under drawn scenarios was caught in 10 of
   10 runs on 16 cores and 0 of 6 pinned to 2, so the corpus's broken twins place a `rendezvous()`
   between the read and the write. A suite relying on chance overlap should expect the same.
-- **No scenario search or shrinking.** `generate` draws a scenario per round from the replay seed;
-  unlike Lincheck it does not explore scenarios systematically or minimise a failing one.
+  `controlledSchedule = true` is the other way: with a `schedulePoint()` (or a woven field access)
+  between the read and the write, the replay seed decides whether the round switches workers there,
+  and a seed that broke the object breaks it on every replay.
+- **No scenario search, and shrinking only by prefix.** `generate` draws a scenario per round from
+  the replay seed; unlike Lincheck it does not explore scenarios systematically, and it does not
+  re-run a failing scenario with operations removed. The report cuts the observed history to its
+  shortest impossible prefix, which needs no re-run.

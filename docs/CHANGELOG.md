@@ -33,6 +33,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ControlledScheduleWeavingTest` finds and replays the lost update in an unmodified `count = count + 1`
   through the real weaver and went red with the three hook points removed; the contract test pins
   `schedule=`, `virtualThreads=false` and the round event.
+- **A non-linearizable round is reported as its shortest prefix that has no linearization.** The
+  report listed every operation of the round, so a 30-operation round whose third response was
+  already impossible put 27 irrelevant lines between the reader and the cause. Linearizability is
+  prefix-closed, so the history cut at a response ticket (operations invoked before it, those not yet
+  returned turned pending) is something the workers really observed, and an impossible one is a
+  counterexample on its own; `LinearizabilityChecker.shortestViolatingCut` binary-searches the
+  response tickets for the earliest such cut (at most 7 more searches for 64 operations, a cut whose
+  search runs out of budget counting as not proven). The message keeps its first sentence, then says
+  `The shortest prefix with no such order holds K of its N operations and ends at #T, when [thread]
+  op(arg) returned R` and lists only those K, marking a call still running at the cut. The same text
+  reaches the `Linearizability` finding. Nothing is dropped from the middle of a history, which could
+  make a linearizable one look impossible. Tests: `LinearizabilityShrinkTest` went 4 of 5 red against
+  a search that found no cut, and 3 red with the search keeping the longest violating prefix; the 28
+  existing linearizability tests are unchanged and green.
 
 - **`BLOCKING_ON_NON_BLOCKING_THREAD`, detector 148: a blocking call on a thread that must not
   block (#991, #993).** An event loop runs every task queued for it in turn, so a sleep, a `join`
