@@ -16,12 +16,12 @@ repositories {
     mavenLocal()
 }
 
-val asyncTestVersion = "1.13.1"
-val junitVersion = "6.1.3"
-// The library brings in junit-jupiter-engine:6.1.2 as an api dependency, which wins
+val asyncTestVersion = libs.versions.async.test.version.get()
+val junitVersion = libs.versions.junit.jupiter.version.get()
+// The library brings in junit-jupiter-engine as an api dependency, which wins
 // over junitVersion above. Pin the launcher to match so Gradle's bundled 5.x launcher
 // does not cause "OutputDirectoryCreator not available" failures.
-val junitPlatformVersion = "6.1.3"
+val junitPlatformVersion = libs.versions.junit.platform.version.get()
 
 dependencies {
     testImplementation("se.deversity.async-test-lib:async-test-lib:$asyncTestVersion")

@@ -57,20 +57,18 @@ sort above the latest tag.
 bash .claude/skills/release/bump-version.sh <new-version>
 ```
 
-The script does two passes:
+The script rewrites the exact current version string where it is a pin, in an allowlist:
+`pom.xml` and the three module poms, `versions/pom.xml`, the fixtures' and the corpus's own
+`<version>` and the language modules' `<parent><version>`, `README.md`, `docs/USAGE.md`,
+`docs/QUICK_REFERENCE.md`, `docs/DISTRIBUTION.md`, `.claude/SKILL.md`.
 
-1. **Allowlisted files** — `pom.xml`, `gradle.properties`, `consumer-fixture/pom.xml`,
-   `consumer-fixture/build.gradle.kts`, `consumer-fixture-langs/pom.xml` and its four module
-   poms, `consumer-fixture-langs/build.gradle.kts`, `README.md`, `docs/USAGE.md`, `docs/QUICK_REFERENCE.md`, `docs/DISTRIBUTION.md`, `.claude/SKILL.md` — replacing the exact
-   current version string.
-2. **`examples/`** — rewriting `<async-test-lib.version>` (115 poms) and `val asyncTestVersion`
-   (85 gradle files) **by pattern**, then failing loudly if any pin didn't land on the new
-   version.
-
-The example pins must move with the release. Examples resolve `mavenLocal()` before
-`mavenCentral()`, and CI runs `./gradlew publishToMavenLocal` before building them — so an
-example pinned at an older version silently resolves that **old release from Central** and
-passes while proving nothing about the current build. That drift is a bug, not a convention.
+`versions/pom.xml`'s `<async-test.version>` is the one pin every build outside the reactor
+resolves: the 150 examples, both consumer fixtures and the corpus inherit it, and their Gradle
+builds read it. It must move with the release. Those builds resolve `mavenLocal()` before
+`mavenCentral()`, and CI publishes the working tree there before building them, so a pin left on
+an older version silently resolves that **old release from Central** and passes while proving
+nothing about the current build. `SatelliteVersionsTest` fails if it disagrees with the reactor
+version.
 
 Two things the script leaves alone, and you must not work around:
 

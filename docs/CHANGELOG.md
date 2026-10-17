@@ -227,6 +227,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Every build outside the reactor takes its versions from `versions/pom.xml`.** The examples,
+  both consumer fixtures, the corpus, the load tests and `tools/demo` restated every version they
+  used: a JUnit bump rewrote ~300 example files, the language fixtures' Gradle twins had drifted a
+  release or more behind their poms, and the README demo still pinned JUnit 5.11.4 and the library
+  at 1.7.3. Their poms now inherit `versions/pom.xml` and their Gradle builds read it as
+  `libs.versions.*` through `versions/versions.settings.gradle.kts`. `SatelliteVersionsTest` fails
+  if a satellite build names a version again, or if `versions/pom.xml` disagrees with the reactor
+  on the library version or on one of the five properties both declare. Dependabot's maven entries
+  are one entry with `group-by: dependency-name`, so a shared bump edits both poms in one PR instead
+  of two PRs that each fail that test. What every satellite resolves is unchanged (dependency and
+  plugin versions of all 158 Maven modules compared before and after), except `tools/demo`, which
+  moves onto the shared versions. An example copied out of the repository needs its
+  `${name.version}` references replaced with numbers; `examples/README.md` says how.
+
+- **Dependencies bumped to their latest releases.** byte-buddy 1.18.15, asm 9.11.1, SpotBugs 4.10.5
+  (plugin 4.10.5.0), japicmp plugin 0.26.5, pitest 1.30.1, central-publishing 0.12.0 (its bundle is
+  entry-for-entry identical to 0.11.0's, checked offline against a dead upload URL on the pinned
+  Maven 3.9.16), Gradle spotbugs plugin 6.5.13 and cyclonedx 3.5.1, corpus caffeine 3.3.1,
+  scorecard-action 2.5.0, the Copilot CLI pin 1.0.98. The language fixtures' Gradle twins had
+  drifted from their poms (Groovy 5.1.0 vs 6.0.0, Scala 3.8.4 vs 3.10.0, Kotlin 2.4.10 vs 2.4.21)
+  and now match. The bumpdeps skill reported "no reactor property updates" with four pending,
+  because it ran the versions plugin with `-q`, which hides the lines it greps for; it now lists
+  every reactor dependency and plugin update, including the ones its property pass cannot rewrite.
+
 - **`SYSTEM_PROPERTY_MUTATION` names the property it saw written, never the value.** Its warning
   for a single-thread write read `Property 'k' set to 'v'`. Once the agent feeds every
   `System.setProperty` a run makes, that is any property the code under test sets, including one

@@ -56,7 +56,7 @@ With the flag off the check returns before looking at the report and writes noth
 The same switch is on wherever the detectors are measured from outside this module: every
 corpus-eval lane, `consumer-fixture` and `consumer-fixture-langs` (Maven and Gradle), the examples
 Gradle build, and the `mvn -f examples/pom.xml` commands in `e2e-tests.yml` (the example poms do
-not carry it, because they are copy-paste material; Surefire forwards the `-D` to the forked JVM).
+not carry it, so each reads like a consumer's build; Surefire forwards the `-D` to the forked JVM).
 Without it #605's crash in corpus lane one read as a silent detector and both corpus jobs stayed
 green (#612). One place is lenient on purpose: `example-demos.yml`, where a demonstration that
 fails is the expected outcome, so a crash promoted to a failure would look like a demo that fired.
