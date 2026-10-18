@@ -69,7 +69,9 @@ reported. With the agent attached (`collections=true`) a thread a worker starts 
 is attributed (#983). Otherwise pin in the `@AsyncTest` workers themselves to have the pin
 reported. A call site that pinned in one round only is not reported
 either (class loading on first use is the usual cause), and is counted at DEBUG in
-`runner.pinning.single-round test=... sites=<n>`. A pin inside the agent's own class-file
+`runner.pinning.single-round test=... sites=<n>`. A site counts as pinning again only at the same top
+frame, so two JDK classes first initialized under one call site in two different rounds count as two
+single-round sites. A pin inside the agent's own class-file
 transformer, or inside the library's own bookkeeping rather than a woven hook delegating the body's
 call, is the instrumentation's rather than the code's and is counted at DEBUG in `runner.pinning.instrumentation test=... events=<n>`. A JVM without a usable JFR logs
 `pinning.jfr.unavailable` once at DEBUG, and the detector keeps its recording feed.

@@ -294,6 +294,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`VIRTUAL_THREAD_PINNING` no longer reports JDK class initialization spread over two rounds as a
+  recurring pin.** Corpus Eval went red on JDK 25 (run 39115010864) on the correct
+  `idiom_stampedLock_validatesItsOptimisticRead`: three FACT pins under one `readLock()`, a worker
+  waiting for `StampedLock$WriterNode`'s initializer in one round and two waiting on
+  `StampedLock$ReaderNode`'s in another. Each class initializes once per JVM, but the JFR feed counted
+  rounds per call site, the first frame outside the JDK, and both initializations shared it. A pin now
+  recurs only at the same site and the same top frame, the JDK instruction it pinned at, so the two
+  initializations are two single-round pins and are not reported, while an initializer that blocks in
+  every round still is. The run passed on JDK 21 and 26 (26 unmounts on class-init waits) and on the
+  next JDK 25 run of the same commit. Tests: `JfrPinningStreamTest`, whose StampedLock case was red
+  before the change with the three pins CI printed; a pin recurring at one frame in two rounds is still
+  reported, and a pin in one round is not.
+
 - **`THREAD_LOCAL_LEAKS` and `MDC_CONTEXT_LEAK` are fed by the agent, and the per-thread cache idiom
   stays silent (#995).** Both fired only on recorded calls. With `collections=true` the task wrapper
   a woven `submit` hands the pool now snapshots `MDC.getCopyOfContextMap()` at each task's start and

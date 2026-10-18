@@ -42,8 +42,10 @@ import java.util.concurrent.atomic.AtomicLong;
  * {@code ClassLoader.loadClass}, and a library's first use (Netty, Jackson, the detectors' own lazy
  * state), mostly 0-5 ms and up to 36 ms. Those are real pins, but a class loads and initializes
  * once per JVM, so they can only happen in one round, while a pin in the code under test recurs.
- * The site is the first frame outside the JDK. A run of one round therefore gets no observed
- * finding, only {@link #singleRoundSites()}.
+ * The site is the first frame outside the JDK, and a pin recurs only where it recurs at the same
+ * site and the same top frame: two JDK classes first used under one call site in two rounds are
+ * two one-time initializations, not one pin seen twice. A run of one round therefore gets no
+ * observed finding, only {@link #singleRoundSites()}.
  *
  * <p><strong>A pin inside the agent's own transformer is not the code's.</strong> With the agent
  * attached, every class definition runs its transformer under the native {@code defineClass} frame,
@@ -138,7 +140,7 @@ public final class JfrPinningStream implements AutoCloseable {
         return live.instrumentation.get();
     }
 
-    /** {@return how many call sites pinned a worker in one round only, and so were not reported} */
+    /** {@return how many call sites, each with the frame it pinned in, pinned a worker in one round only, and so were not reported} */
     public int singleRoundSites() {
         return live.singleRoundSites;
     }
@@ -271,28 +273,8 @@ public final class JfrPinningStream implements AutoCloseable {
             }
         }
 
-        /** Hands the detector one pin per thread and site, for each site seen in two rounds. */
         private void deliver() {
-            Map<String, Set<Integer>> roundsBySite = new HashMap<>();
-            for (Pin pin : pins) {
-                roundsBySite.computeIfAbsent(pin.site, s -> new HashSet<>())
-                        .add(roundOf.getOrDefault(pin.threadId, -1));
-            }
-            Set<String> delivered = new HashSet<>();
-            for (Pin pin : pins) {
-                // A timed park re-parks for its remainder, one event each: keep the first.
-                if (roundsBySite.getOrDefault(pin.site, Set.of()).size() >= 2 && delivered.add(pin.threadId + "@" + pin.site)) {
-                    target.recordObservedPinning(pin.threadId, pin.threadName, pin.reason, pin.cause,
-                            pin.durationMillis, pin.frames);
-                }
-            }
-            int single = 0;
-            for (Set<Integer> rounds : roundsBySite.values()) {
-                if (rounds.size() < 2) {
-                    single++;
-                }
-            }
-            singleRoundSites = single;
+            singleRoundSites = JfrPinningStream.deliver(pins, roundOf, target);
         }
 
         /** The frames below the JDK's own parking machinery, which every event starts with. */
@@ -424,9 +406,52 @@ public final class JfrPinningStream implements AutoCloseable {
         }
     }
 
+    /**
+     * Hands {@code target} one pin per thread and site, for each site seen pinning at the same
+     * frame in two rounds, where {@code roundOf} gives each worker's round, and {@return how many
+     * site and frame pairs pinned in one round only}.
+     */
+    static int deliver(Iterable<Pin> pins, Map<Long, Integer> roundOf, VirtualThreadPinningDetector target) {
+        Map<String, Set<Integer>> roundsByPin = new HashMap<>();
+        for (Pin pin : pins) {
+            roundsByPin.computeIfAbsent(recurrenceKey(pin), s -> new HashSet<>())
+                    .add(roundOf.getOrDefault(pin.threadId, -1));
+        }
+        Set<String> delivered = new HashSet<>();
+        for (Pin pin : pins) {
+            // A timed park re-parks for its remainder, one event each: keep the first.
+            if (roundsByPin.getOrDefault(recurrenceKey(pin), Set.of()).size() >= 2 && delivered.add(pin.threadId + "@" + pin.site)) {
+                target.recordObservedPinning(pin.threadId, pin.threadName, pin.reason, pin.cause,
+                        pin.durationMillis, pin.frames);
+            }
+        }
+        int single = 0;
+        for (Set<Integer> rounds : roundsByPin.values()) {
+            if (rounds.size() < 2) {
+                single++;
+            }
+        }
+        return single;
+    }
+
+    /**
+     * The site plus the frame the pin happened in, line included. A JDK class initializes once per
+     * JVM, and waiting for it pins at the instruction that first used it, a JDK frame the site
+     * skips: keyed by the site alone, two such classes first used under one call site in two
+     * rounds read as one pin recurring. Correct StampedLock code did that on JDK 25, waiting for
+     * WriterNode's initializer in one round and ReaderNode's in another, both under one readLock.
+     */
+    private static String recurrenceKey(Pin pin) {
+        if (pin.frames.length == 0) {
+            return pin.site;
+        }
+        StackTraceElement top = pin.frames[0];
+        return pin.site + " at " + top.getClassName() + "." + top.getMethodName() + ":" + top.getLineNumber();
+    }
+
     /** One observed pin on a worker, before its site's rounds are known. */
-    private record Pin(long threadId, String threadName, String site, String reason,
-                       VirtualThreadPinningDetector.PinningCause cause, long durationMillis,
-                       StackTraceElement[] frames) {
+    record Pin(long threadId, String threadName, String site, String reason,
+               VirtualThreadPinningDetector.PinningCause cause, long durationMillis,
+               StackTraceElement[] frames) {
     }
 }
