@@ -25,6 +25,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Feeds {@link VirtualThreadPinningDetector} from the JVM's own {@code jdk.VirtualThreadPinned}
@@ -44,7 +46,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * once per JVM, so they can only happen in one round, while a pin in the code under test recurs.
  * The site is the first frame outside the JDK, and a pin recurs only where it recurs at the same
  * site and the same top frame: two JDK classes first used under one call site in two rounds are
- * two one-time initializations, not one pin seen twice. A run of one round therefore gets no
+ * two one-time initializations, not one pin seen twice. A wait for another thread's initializer
+ * that JDK 24+ name recurs only for the same class, since through {@code Class.forName} every
+ * class's wait pins at one native frame (#1038). A run of one round therefore gets no
  * observed finding, only {@link #singleRoundSites()}.
  *
  * <p><strong>A pin inside the agent's own transformer is not the code's.</strong> With the agent
@@ -424,6 +428,10 @@ public final class JfrPinningStream implements AutoCloseable {
         return type.startsWith("java.") || type.startsWith("jdk.") || type.startsWith("sun.");
     }
 
+    /** The class JDK 24+ name in the reason of a pin that waited for another thread's initializer. */
+    private static final Pattern WAITED_FOR_INITIALIZATION =
+            Pattern.compile("Waited for initialization of (\\S+) by another thread");
+
     /** What {@link #deliver} withheld from the detector, for the run's DEBUG lines. */
     record Delivery(int singleRoundSites, int criticalSectionPins) {
     }
@@ -482,8 +490,18 @@ public final class JfrPinningStream implements AutoCloseable {
      * skips: keyed by the site alone, two such classes first used under one call site in two
      * rounds read as one pin recurring. Correct StampedLock code did that on JDK 25, waiting for
      * WriterNode's initializer in one round and ReaderNode's in another, both under one readLock.
+     *
+     * <p>A wait JDK 24+ names, {@code Waited for initialization of X by another thread}, is keyed
+     * by X instead of the frame: through {@code Class.forName} or {@code ensureInitialized} every
+     * class's initialization waits at the same native frame, so one line loading a different
+     * class in each round would otherwise recur at one key (#1038). Waits for one name recur only
+     * when a fresh copy of that class is initialized again, which the code does.
      */
     private static String recurrenceKey(Pin pin) {
+        Matcher waited = WAITED_FOR_INITIALIZATION.matcher(pin.reason);
+        if (waited.find()) {
+            return pin.site + " waits for " + waited.group(1);
+        }
         if (pin.frames.length == 0) {
             return pin.site;
         }

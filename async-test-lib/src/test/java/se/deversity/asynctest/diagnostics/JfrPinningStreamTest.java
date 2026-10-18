@@ -143,6 +143,61 @@ class JfrPinningStreamTest {
         assertEquals(2, detector.analyzePinning().getEvents().size(), "the code's own monitor, in two rounds");
     }
 
+    /** The frames of a wait for a class initializer through {@code Class.forName}, every class at one native frame. */
+    private static final StackTraceElement[] FOR_NAME = {
+        frame("java.lang.Class", "forName0", -1),
+        frame("java.lang.Class", "forName", 463),
+        frame("java.lang.Class", "forName", 454),
+        frame("com.example.Plugins", "load", 30)
+    };
+
+    @Test
+    void aDifferentClassInitializedInEachRoundThroughOneFrameIsWarmUp() {
+        // #1038, as a JDK 24 probe recorded it: one Class.forName line loads a different slow
+        // class in each round, and the other workers wait for its initializer at the same native
+        // frame, beside a pin on the loader's lock. Each class initializes once; keyed by site and
+        // top frame, three one-time initializations read as one pin recurring.
+        VirtualThreadPinningDetector detector = monitoring();
+        StackTraceElement[] loaderLock = {
+            frame("java.lang.ClassLoader", "loadClass", 490),
+            frame("java.lang.Class", "forName0", -1),
+            frame("java.lang.Class", "forName", 463),
+            frame("java.lang.Class", "forName", 454),
+            frame("com.example.Plugins", "load", 30)
+        };
+        List<JfrPinningStream.Pin> pins = List.of(
+                waitFor(1L, "com.example.Plugin0"), pin(1L, CRITICAL_SECTION_ENTER, loaderLock),
+                waitFor(2L, "com.example.Plugin1"), pin(2L, CRITICAL_SECTION_ENTER, loaderLock),
+                waitFor(3L, "com.example.Plugin2"));
+
+        int singleRound = JfrPinningStream.deliver(pins, Map.of(1L, 0, 2L, 1, 3L, 2), detector).singleRoundSites();
+
+        var report = detector.analyzePinning();
+        assertFalse(report.hasIssues(), "three classes, each initialized once: " + report);
+        assertEquals(3, singleRound, "one single-round pin per class");
+    }
+
+    @Test
+    void waitingForOneClassInitializerInTwoRoundsIsReported() {
+        // A fresh copy of one class per round, waited on by the other workers each time: the same
+        // initializer holding them up in every round is the code's, and stays a finding.
+        VirtualThreadPinningDetector detector = monitoring();
+        List<JfrPinningStream.Pin> pins = List.of(
+                waitFor(1L, "com.example.Plugin"), waitFor(2L, "com.example.Plugin"));
+
+        JfrPinningStream.deliver(pins, Map.of(1L, 0, 2L, 1), detector);
+
+        assertEquals(2, detector.analyzePinning().getEvents().size());
+    }
+
+    /** JDK 24's pin for a worker waiting, through {@link #FOR_NAME}, for {@code type}'s initializer. */
+    private static JfrPinningStream.Pin waitFor(long threadId, String type) {
+        JfrPinningStream.Pin pin = pin(threadId,
+                "Waited for initialization of " + type + " by another thread (Object.wait)", FOR_NAME);
+        return new JfrPinningStream.Pin(pin.threadId(), pin.threadName(), pin.site(), pin.reason(),
+                VirtualThreadPinningDetector.PinningCause.CLASS_INIT, pin.durationMillis(), pin.frames());
+    }
+
     private static VirtualThreadPinningDetector monitoring() {
         VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
         detector.startMonitoring();

@@ -323,6 +323,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and class-loading-lock cases were red before the change; the code's-own-monitor case went red with
   the JDK-frame condition removed.
 
+- **`VIRTUAL_THREAD_PINNING` no longer reports one line initializing a different class in each round
+  as a recurring pin (#1038).** Through `Class.forName` or `MethodHandles.Lookup.ensureInitialized`,
+  every class's initialization waits at the same native frame, so on JDK 24 and 25, where waiting for
+  another thread's initializer pins, one line loading a different slow class per round read as one
+  pin seen in every round; a JDK 24 probe recorded exactly that. A wait that JDK 24+ name (`Waited for
+  initialization of X by another thread`) now recurs only for the same class X, and the loader-lock
+  pin beside it is the JDK's (#1028). A fresh copy of one class initialized again in every round
+  still recurs and is still reported. Tests: `JfrPinningStreamTest`, whose case built from the probe's
+  events was red before the change; the new corpus row
+  `agent_virtualThreadPinning_waitsForADifferentInitializerEachRound` (MUST_STAY_SILENT) initializes
+  four classes through one `Class.forName` line, one per round, while the other workers wait.
+
 - **`THREAD_LOCAL_LEAKS` and `MDC_CONTEXT_LEAK` are fed by the agent, and the per-thread cache idiom
   stays silent (#995).** Both fired only on recorded calls. With `collections=true` the task wrapper
   a woven `submit` hands the pool now snapshots `MDC.getCopyOfContextMap()` at each task's start and

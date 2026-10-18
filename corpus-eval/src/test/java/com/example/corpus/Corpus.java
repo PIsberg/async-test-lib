@@ -1872,6 +1872,16 @@ final class Corpus {
                             + "emits nothing. A finding here would mean the detector reports "
                             + "blocking or class loading rather than pinning"),
 
+            new RecordingSubject("agent_virtualThreadPinning_waitsForADifferentInitializerEachRound", JDK,
+                    "java.lang.Class",
+                    DetectorType.VIRTUAL_THREAD_PINNING, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one Class.forName line initializes a different class in each of four rounds, "
+                            + "and the other workers wait for its initializer, which computes "
+                            + "without blocking. On JDK 24 and 25 every wait pins at the same native "
+                            + "frame, but a class initializes once, so the four are warm-up, not "
+                            + "one pin recurring (#1038)"),
+
             // --- Deadlock. The one detector here whose input is the JVM rather than a woven call
             //     site, and the one whose MUST_FIRE row leaves the JVM permanently changed: a real
             //     deadlock does not end. Both rows are therefore ordered last, and the silent row
