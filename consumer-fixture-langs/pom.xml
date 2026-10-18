@@ -22,7 +22,7 @@
 
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>consumer-fixture-langs</artifactId>
-    <version>1.13.1</version>
+    <version>1.13.2</version>
     <packaging>pom</packaging>
 
     <name>Async Test Consumer Fixture (JVM languages)</name>

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.2] - 2026-10-18
+
 ### Added
 
 - **`@AsyncTest(controlledSchedule = true)`: the replay seed decides the interleaving, so a failing
@@ -291,6 +293,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wait now comes first; a stall leaves the tag without a Release, and `docs/RELEASE.md` ("When a
   release fails") says how to create it by hand. `PublishWaitsForCentralTest` went red on the old
   order first.
+- **japicmp compares against 1.13.1, with no waiver.** The baseline was 1.12.4 for 1.13.1, because
+  1.13.0 never reached Central (#949), and nine `<excludes>` entries waived the 1.13.0 removals. Both
+  are gone: the gate now checks this release against the published 1.13.1 jar, and any binary
+  break against it fails the build. `docs/SUPPORT_POLICY.md` and `docs/RELEASE.md` say so.
 
 ### Fixed
 
