@@ -1784,6 +1784,16 @@ it delegated from a map after the first round. A pin in the hook a woven call go
 (`AgentSleepHooks.sleep`) also used to be every such pin's site, which merged call sites under the
 two-round rule; the site now skips the hooks.
 
+A third row, `agent_virtualThreadPinning_waitsForADifferentInitializerEachRound`, is the warm-up
+the rule exists to drop, written so that it recurs at one site and one frame (#1038): one
+`Class.forName` line initializes a different class in each of four rounds, whose initializer
+computes for 20 ms without blocking, while the other five workers wait for it. On JDK 24 and 25 each
+wait pins at the native `Class.forName0` frame, beside a contended enter on the class's init lock
+that the JVM cannot preempt (`Freeze or preempt failed (2)`, its own critical section). Against the
+library before the fix the row fired on JDK 24 with 21 FACT pins; the feed now keys a wait by the
+class it waited for and leaves out a JDK lock contended inside the JVM's critical section (#1028),
+and the row is silent on JDK 24 while the firing row still fires.
+
 ### Reopening the refusals, and what seven of them were hiding
 
 The accounting above was arithmetically right and wrong underneath, in two places. Both were

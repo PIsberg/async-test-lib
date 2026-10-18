@@ -2204,6 +2204,79 @@ class CorpusAgentPairLaneTest {
         });
     }
 
+    /** Hands out executions in order, so that each round's workers initialize the same class. */
+    private static final AtomicInteger INITIALIZING_ROUND_TICKETS = new AtomicInteger();
+
+    /** Computes, without blocking, for {@link #PIN_MILLIS} while it initializes. */
+    private static void computeWhileInitializing() {
+        long end = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(PIN_MILLIS);
+        while (System.nanoTime() < end) {
+            Thread.onSpinWait();
+        }
+    }
+
+    /** The class the first round initializes. Its initializer computes; it never blocks. */
+    public static final class FirstUsedInRound0 {
+        static {
+            computeWhileInitializing();
+        }
+
+        private FirstUsedInRound0() {
+        }
+    }
+
+    /** The class the second round initializes. */
+    public static final class FirstUsedInRound1 {
+        static {
+            computeWhileInitializing();
+        }
+
+        private FirstUsedInRound1() {
+        }
+    }
+
+    /** The class the third round initializes. */
+    public static final class FirstUsedInRound2 {
+        static {
+            computeWhileInitializing();
+        }
+
+        private FirstUsedInRound2() {
+        }
+    }
+
+    /** The class the fourth round initializes; every later round finds it initialized. */
+    public static final class FirstUsedInRound3 {
+        static {
+            computeWhileInitializing();
+        }
+
+        private FirstUsedInRound3() {
+        }
+    }
+
+    /**
+     * Initializes, through one {@code Class.forName} line, a different class in each of the first
+     * four rounds, which all six workers reach at once (#1038).
+     *
+     * <p>One worker runs each initializer and the other five wait for it. On JDK 24 and 25 those
+     * waits pin, all at the native {@code Class.forName0} frame, and so does the loader lock they
+     * contend on first, at one JDK frame: four one-time initializations at one site and one frame,
+     * which read as one pin recurring until the feed keyed a wait by the class it waited for.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_virtualThreadPinning_waitsForADifferentInitializerEachRound() {
+        counted(() -> {
+            int round = Math.min(INITIALIZING_ROUND_TICKETS.getAndIncrement() / THREADS, 3);
+            try {
+                Class.forName(FirstUsedInRound0.class.getName().replace("Round0", "Round" + round),
+                        true, CorpusAgentPairLaneTest.class.getClassLoader());
+            } catch (ClassNotFoundException e) {
+                throw new IllegalStateException(e);
+            }
+        });
+    }
+
     /**
      * Classes the fresh loaders delegated to their parent, so that only the first round asks it.
      *

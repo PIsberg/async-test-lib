@@ -762,6 +762,11 @@ public class ConcurrencyRunner {
                     log.debug("runner.pinning.instrumentation test={} events={}",
                         testMethod.getName(), pinningStream.instrumentationEvents());
                 }
+                // DEBUG: a JDK lock the JVM contended on while it loaded or initialized a class (#1028).
+                if (pinningStream.criticalSectionEvents() > 0) {
+                    log.debug("runner.pinning.critical-section test={} events={}",
+                        testMethod.getName(), pinningStream.criticalSectionEvents());
+                }
                 // DEBUG, not INFO: nearly every run has some, from class loading on first use.
                 if (pinningStream.singleRoundSites() > 0) {
                     log.debug("runner.pinning.single-round test={} sites={}",

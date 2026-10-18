@@ -25,6 +25,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Feeds {@link VirtualThreadPinningDetector} from the JVM's own {@code jdk.VirtualThreadPinned}
@@ -44,7 +46,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * once per JVM, so they can only happen in one round, while a pin in the code under test recurs.
  * The site is the first frame outside the JDK, and a pin recurs only where it recurs at the same
  * site and the same top frame: two JDK classes first used under one call site in two rounds are
- * two one-time initializations, not one pin seen twice. A run of one round therefore gets no
+ * two one-time initializations, not one pin seen twice. A wait for another thread's initializer
+ * that JDK 24+ name recurs only for the same class, since through {@code Class.forName} every
+ * class's wait pins at one native frame (#1038). A run of one round therefore gets no
  * observed finding, only {@link #singleRoundSites()}.
  *
  * <p><strong>A pin inside the agent's own transformer is not the code's.</strong> With the agent
@@ -57,6 +61,19 @@ import java.util.concurrent.atomic.AtomicLong;
  * without the agent; nor would one whose first frame outside the JDK is library code other than a
  * woven hook, such as the lockset bookkeeping of a woven monitor enter, which the corpus also met.
  * Both are counted in {@link #instrumentationEvents()} and not reported (#984).
+ *
+ * <p><strong>Nor is a JDK lock the JVM contended on for itself.</strong> While the JVM loads,
+ * links or initializes a class it keeps the virtual thread from unmounting, a continuation
+ * critical section, and only the JDK's own code can enter one otherwise ({@code Continuation.pin()}
+ * is internal). A monitor enter it could not preempt there is reported on JDK 24-26 as
+ * {@code Freeze or preempt failed (2) (Contended monitor enter)}, code 2 being that section; with
+ * a JDK frame on top, the lock is the JDK's: a class's init lock taken at the JDK instruction that
+ * first used the class ({@code CompletableFuture.waitingGet} creating a {@code Signaller}, on
+ * correct code in Corpus Eval on JDK 25), or the application loader's per-name lock under
+ * {@code Class.forName}, which probes on JDK 24 and 26 saw pin in every round of a body loading a
+ * new class per round. Those are counted in {@link #criticalSectionEvents()} and not reported
+ * (#1028). The same reason with the body's frame on top, a loader the code wrote taking a monitor
+ * of its own, is the code's lock and goes through the two-round rule like any other pin.
  *
  * <p>JFR hands every event to every open stream, so two runs in parallel each see the other's
  * pins. Only events on a thread in the run's worker set, or on a thread one of the run's threads
@@ -142,7 +159,12 @@ public final class JfrPinningStream implements AutoCloseable {
 
     /** {@return how many call sites, each with the frame it pinned in, pinned a worker in one round only, and so were not reported} */
     public int singleRoundSites() {
-        return live.singleRoundSites;
+        return live.delivery.singleRoundSites();
+    }
+
+    /** {@return how many pins on this run's workers were a JDK lock the JVM contended on inside its own critical section, and so were not reported} */
+    public int criticalSectionEvents() {
+        return live.delivery.criticalSectionPins();
     }
 
     /**
@@ -177,7 +199,7 @@ public final class JfrPinningStream implements AutoCloseable {
         private final Queue<Pin> pins = new ConcurrentLinkedQueue<>();
         private final AtomicInteger held = new AtomicInteger();
         /** Written once by close(), on the runner thread, and read after it on the same thread. */
-        private int singleRoundSites;
+        private Delivery delivery = new Delivery(0, 0);
 
         private Live(RecordingStream stream, VirtualThreadPinningDetector target, Set<Long> workers,
                      Set<Long> spawned, String testName) {
@@ -274,7 +296,7 @@ public final class JfrPinningStream implements AutoCloseable {
         }
 
         private void deliver() {
-            singleRoundSites = JfrPinningStream.deliver(pins, roundOf, target);
+            delivery = JfrPinningStream.deliver(pins, roundOf, target);
         }
 
         /** The frames below the JDK's own parking machinery, which every event starts with. */
@@ -366,10 +388,6 @@ public final class JfrPinningStream implements AutoCloseable {
             return frames.length == 0 ? "" : frames[0].toString();
         }
 
-        private static boolean isJdk(String type) {
-            return type.startsWith("java.") || type.startsWith("jdk.") || type.startsWith("sun.");
-        }
-
         private static boolean isWovenHook(String type) {
             for (String prefix : WOVEN_HOOKS) {
                 if (type.startsWith(prefix)) {
@@ -406,21 +424,40 @@ public final class JfrPinningStream implements AutoCloseable {
         }
     }
 
+    private static boolean isJdk(String type) {
+        return type.startsWith("java.") || type.startsWith("jdk.") || type.startsWith("sun.");
+    }
+
+    /** The class JDK 24+ name in the reason of a pin that waited for another thread's initializer. */
+    private static final Pattern WAITED_FOR_INITIALIZATION =
+            Pattern.compile("Waited for initialization of (\\S+) by another thread");
+
+    /** What {@link #deliver} withheld from the detector, for the run's DEBUG lines. */
+    record Delivery(int singleRoundSites, int criticalSectionPins) {
+    }
+
     /**
      * Hands {@code target} one pin per thread and site, for each site seen pinning at the same
-     * frame in two rounds, where {@code roundOf} gives each worker's round, and {@return how many
-     * site and frame pairs pinned in one round only}.
+     * frame in two rounds, where {@code roundOf} gives each worker's round, leaving out every pin
+     * on a JDK lock the JVM contended on inside its own critical section, and {@return how many
+     * site and frame pairs pinned in one round only, and how many pins were left out}.
      */
-    static int deliver(Iterable<Pin> pins, Map<Long, Integer> roundOf, VirtualThreadPinningDetector target) {
+    static Delivery deliver(Iterable<Pin> pins, Map<Long, Integer> roundOf, VirtualThreadPinningDetector target) {
         Map<String, Set<Integer>> roundsByPin = new HashMap<>();
+        int criticalSection = 0;
         for (Pin pin : pins) {
+            if (jdkCriticalSectionEnter(pin)) {
+                criticalSection++;
+                continue;
+            }
             roundsByPin.computeIfAbsent(recurrenceKey(pin), s -> new HashSet<>())
                     .add(roundOf.getOrDefault(pin.threadId, -1));
         }
         Set<String> delivered = new HashSet<>();
         for (Pin pin : pins) {
             // A timed park re-parks for its remainder, one event each: keep the first.
-            if (roundsByPin.getOrDefault(recurrenceKey(pin), Set.of()).size() >= 2 && delivered.add(pin.threadId + "@" + pin.site)) {
+            if (roundsByPin.getOrDefault(recurrenceKey(pin), Set.of()).size() >= 2 && !jdkCriticalSectionEnter(pin)
+                    && delivered.add(pin.threadId + "@" + pin.site)) {
                 target.recordObservedPinning(pin.threadId, pin.threadName, pin.reason, pin.cause,
                         pin.durationMillis, pin.frames);
             }
@@ -431,7 +468,20 @@ public final class JfrPinningStream implements AutoCloseable {
                 single++;
             }
         }
-        return single;
+        return new Delivery(single, criticalSection);
+    }
+
+    /**
+     * Whether the JVM pinned for itself: a monitor enter it could not preempt inside a
+     * continuation critical section, {@code Continuation.Pinned} code 2, which JDK 24-26 report
+     * as {@code Freeze or preempt failed (2)}, with a JDK frame on top, so the lock is the JDK's.
+     * JDK 21-23 record no reason and so are never matched.
+     */
+    private static boolean jdkCriticalSectionEnter(Pin pin) {
+        String reason = pin.reason.toLowerCase(Locale.ROOT);
+        return (reason.contains("freeze or preempt failed (2)") || reason.contains("in critical section"))
+                && reason.contains("contended monitor enter")
+                && pin.frames.length > 0 && isJdk(pin.frames[0].getClassName());
     }
 
     /**
@@ -440,8 +490,18 @@ public final class JfrPinningStream implements AutoCloseable {
      * skips: keyed by the site alone, two such classes first used under one call site in two
      * rounds read as one pin recurring. Correct StampedLock code did that on JDK 25, waiting for
      * WriterNode's initializer in one round and ReaderNode's in another, both under one readLock.
+     *
+     * <p>A wait JDK 24+ names, {@code Waited for initialization of X by another thread}, is keyed
+     * by X instead of the frame: through {@code Class.forName} or {@code ensureInitialized} every
+     * class's initialization waits at the same native frame, so one line loading a different
+     * class in each round would otherwise recur at one key (#1038). Waits for one name recur only
+     * when a fresh copy of that class is initialized again, which the code does.
      */
     private static String recurrenceKey(Pin pin) {
+        Matcher waited = WAITED_FOR_INITIALIZATION.matcher(pin.reason);
+        if (waited.find()) {
+            return pin.site + " waits for " + waited.group(1);
+        }
         if (pin.frames.length == 0) {
             return pin.site;
         }
