@@ -511,9 +511,11 @@ agent attached (`collections=true`), which records every thread a worker starts 
 for the virtual threads their body starts (#983). A pin on a thread started in code the agent does
 not weave, or in a test running in parallel, is counted in `runner.pinning.unattributed` and not
 reported. A call site is reported only when it pinned in at
-least two rounds: workers contending on `ClassLoader.loadClass` or a library's first use pin for a
-few milliseconds once per JVM, which is warm-up and not the code, so a run of one round gets no
-observed finding. A pin whose first frame outside the JDK is the agent's own code (its class-file
+least two rounds at the same top frame: workers contending on `ClassLoader.loadClass` or a library's
+first use pin for a few milliseconds once per JVM, which is warm-up and not the code, so a run of
+one round gets no observed finding, and two JDK classes first initialized under one call site in two
+rounds (`StampedLock`'s `WriterNode` and `ReaderNode` under one `readLock()`) are two one-time pins,
+not one pin seen twice. A pin whose first frame outside the JDK is the agent's own code (its class-file
 transformer), or library code other than a woven hook (the lockset bookkeeping of a woven monitor
 enter), is the instrumentation's, so it is counted at DEBUG in
 `runner.pinning.instrumentation` and not reported; and the site skips the library hooks a woven
