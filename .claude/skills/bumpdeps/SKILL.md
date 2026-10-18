@@ -68,7 +68,9 @@ bitten:
 - **vibetags**: a new processor version regenerates the guardrail files (`CLAUDE.md`,
   `GEMINI.md`, `.claude/rules`, `.gemini/rules`). Delete `.vibetags-cache` and
   `async-test-lib/.vibetags-cache` before the build, then commit what it regenerates; the
-  `guardrail-drift` job compares a clean regeneration with what is committed.
+  `guardrail-drift` job compares a clean regeneration with what is committed. On a Dependabot PR
+  `dependabot-regen.yml` pushes that regeneration itself (it needs the `DEPENDABOT_REGEN_TOKEN`
+  Dependabot secret).
 - **Scala** in `consumer-fixture-langs`: the rule takes the latest `scala3-library_3`, which is
   the "Next" line, not the LTS. If the Scala fixture stops compiling on the new line and the fix
   is not obvious, pin the LTS and say so in the PR; the fixture proves the language, not the

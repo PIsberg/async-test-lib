@@ -1,0 +1,190 @@
+name: Dependabot Guardrail Regeneration
+
+# A dependency bump can change the guardrail files the build generates. Every vibetags-processor
+# release so far has (1.3.5, 1.3.7, 1.3.8, 1.4.0), and each of those Dependabot PRs went red on
+# Guardrail Drift until somebody pushed the regeneration by hand. #1010 was merged without it,
+# main stayed red until #1026, and every Dependabot PR cut in between inherited the red. This
+# regenerates on the Dependabot PR itself and pushes the result as one more commit, so the PR is
+# green the way it would be had a person done it.
+#
+# The token that can push never sits next to code from the PR. `regenerate` builds the PR (the
+# annotation processor is a dependency, so the build runs whatever version the PR names) with a
+# read-only GITHUB_TOKEN, names no secret at all, and hands over only a patch. `preflight` checks
+# that the token exists without checking anything out. `push` runs nothing from the PR: it applies
+# the patch with main's copy of tools/dependabot-regen.sh, which checks what was staged and refuses
+# the whole patch unless every entry is a generated guardrail file, then commits and pushes.
+#
+# The push uses DEPENDABOT_REGEN_TOKEN, a fine-grained personal access token (or GitHub App
+# token) with Contents: read and write on this repository only, stored as a *Dependabot* secret
+# (Settings > Secrets and variables > Dependabot): a workflow Dependabot triggers sees Dependabot
+# secrets, not Actions secrets. It cannot be GITHUB_TOKEN: a push made with GITHUB_TOKEN starts no
+# workflow, so the regenerated head would carry no checks and branch protection would wait on
+# them forever. Without the secret the `regenerate` job fails with that instruction rather than
+# skipping quietly.
+#
+# The commit message carries [dependabot skip], so Dependabot keeps treating the PR as its own:
+# it still rebases it, which drops this commit, and this workflow then regenerates again.
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependabot-regen-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Whether the push token exists, decided in a job that checks out nothing. A job that names a
+  # secret, even only to compare it with '', has that secret delivered to its runner, so the job
+  # that builds the pull request must not name one: a build step can read the runner's memory.
+  preflight:
+    name: Check the regeneration token (Dependabot)
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      has-token: ${{ steps.token.outputs.has-token }}
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+
+      - name: Check that the push token is configured
+        id: token
+        env:
+          HAVE_TOKEN: ${{ secrets.DEPENDABOT_REGEN_TOKEN != '' }}
+        run: echo "has-token=$HAVE_TOKEN" >> "$GITHUB_OUTPUT"
+
+  regenerate:
+    name: Regenerate guardrails (Dependabot)
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.patch.outputs.changed }}
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            *.blob.core.windows.net:443
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+            results-receiver.actions.githubusercontent.com:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      # The same regeneration the Guardrail Drift check runs. It exits 1 on drift and prints the
+      # ::error:: line; any other failure is a broken build, which this job reports, not patches.
+      - name: Regenerate, and keep the result as a patch when it differs
+        id: patch
+        run: |
+          set -eu
+          if sh tools/guardrail-drift.sh > "$RUNNER_TEMP/drift.log" 2>&1; then
+            echo "Guardrail files already match a clean regeneration; nothing to push."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! grep -q "Guardrail files are out of date" "$RUNNER_TEMP/drift.log"; then
+            cat "$RUNNER_TEMP/drift.log"
+            exit 1
+          fi
+          sh tools/dependabot-regen.sh patch "$RUNNER_TEMP/regen.patch"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the regeneration patch
+        if: steps.patch.outputs.changed == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: guardrail-regen-patch
+          path: ${{ runner.temp }}/regen.patch
+          retention-days: 1
+
+  missing-token:
+    name: Regeneration needs DEPENDABOT_REGEN_TOKEN (Dependabot)
+    needs: [ preflight, regenerate ]
+    if: needs.regenerate.outputs.changed == 'true' && needs.preflight.outputs.has-token != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail with what to do
+        run: |
+          echo "::error::This bump changes the generated guardrail files, but the DEPENDABOT_REGEN_TOKEN Dependabot secret is not set, so the regeneration cannot be pushed. Add the secret (see the header of .github/workflows/dependabot-regen.yml), or push the regeneration by hand: mvn clean test-compile, then commit the files tools/guardrail-drift.sh lists."
+          exit 1
+
+  push:
+    name: Push the guardrail regeneration (Dependabot)
+    needs: [ preflight, regenerate ]
+    if: needs.regenerate.outputs.changed == 'true' && needs.preflight.outputs.has-token == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            *.blob.core.windows.net:443
+            agent.api.stepsecurity.io:443
+            api.github.com:443
+            github.com:443
+            results-receiver.actions.githubusercontent.com:443
+
+      # main's scripts, the only code this job runs. No credentials kept.
+      - name: Checkout the base branch's scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          persist-credentials: false
+
+      # The PR's head commit, with the token that can push. Nothing in it is executed.
+      - name: Checkout the pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+          token: ${{ secrets.DEPENDABOT_REGEN_TOKEN }}
+
+      - name: Download the regeneration patch
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: guardrail-regen-patch
+          path: ${{ runner.temp }}/regen
+
+      # Pushed onto the exact head the patch was made from: if Dependabot rebased in the meantime
+      # the push is not a fast-forward and fails, and the run on the new head regenerates again.
+      - name: Apply, commit and push
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -eu
+          case "$HEAD_REF" in
+            dependabot/*) ;;
+            *) echo "::error::Refusing to push to '$HEAD_REF', which is not a Dependabot branch."; exit 1 ;;
+          esac
+          sh base/tools/dependabot-regen.sh apply head "$RUNNER_TEMP/regen/regen.patch"
+          cd head
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -q -m "chore(guardrails): regenerate for this dependency bump [dependabot skip]" \
+                        -m "The bump changes the guardrail files the build generates; this is a clean regeneration (tools/guardrail-drift.sh), pushed by .github/workflows/dependabot-regen.yml."
+          git push origin "HEAD:refs/heads/$HEAD_REF"

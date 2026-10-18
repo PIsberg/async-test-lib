@@ -227,6 +227,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A Dependabot bump that changes the generated guardrail files now regenerates them on its own
+  PR.** Every vibetags-processor release so far needed a regeneration commit, its Dependabot PR
+  was red on Guardrail Drift until somebody pushed one, and #1010 was merged without it, which
+  left main red until #1026 and every Dependabot PR cut in between red with it.
+  `dependabot-regen.yml` runs the drift check's own regeneration on the PR in a job with no secret,
+  then a second job that runs nothing from the PR applies the result, refusing any file outside
+  `tools/guardrail-drift.sh --list-paths` (new), and pushes it with `[dependabot skip]` so
+  Dependabot still manages the branch. The push needs a `DEPENDABOT_REGEN_TOKEN` Dependabot secret,
+  because a push made with `GITHUB_TOKEN` starts no checks; without it the job fails and says so.
+
 - **Every build outside the reactor takes its versions from `versions/pom.xml`.** The examples,
   both consumer fixtures, the corpus, the load tests and `tools/demo` restated every version they
   used: a JUnit bump rewrote ~300 example files, the language fixtures' Gradle twins had drifted a
