@@ -18,9 +18,9 @@ repositories {
     mavenCentral()
 }
 
-// MUST match the version in the parent's gradle.properties / pom.xml.
-val asyncTestVersion = "1.13.1"
-val junitVersion = "6.1.3"
+// Both from versions/pom.xml, through settings.gradle.kts.
+val asyncTestVersion = libs.versions.async.test.version.get()
+val junitVersion = libs.versions.junit.jupiter.version.get()
 
 dependencies {
     testImplementation("se.deversity.async-test-lib:async-test-lib:$asyncTestVersion")

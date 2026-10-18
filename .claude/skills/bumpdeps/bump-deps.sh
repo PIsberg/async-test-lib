@@ -3,15 +3,16 @@
 #
 #   bash .claude/skills/bumpdeps/bump-deps.sh [--dry-run]
 #
-# Two layers, because Dependabot only watches the reactor root:
+# Two layers:
 #
 #   1. Reactor (pom.xml + module poms). versions-maven-plugin rewrites the <properties> pins to
 #      the latest release, pre-releases excluded. build.gradle.kts reads those properties, so
 #      Gradle follows for free (BuildMetadataSyncTest pins that derivation).
-#   2. Satellites: consumer-fixture/, consumer-fixture-langs/, examples/*/, load-tests/ and the
-#      Gradle-only pins in build.gradle.kts. Each is a file pattern plus the Maven coordinate
-#      whose latest release belongs there; the RULES table below is the whole list, so a new
-#      pin is one line here.
+#   2. versions/pom.xml, where every build outside the reactor (examples/, consumer-fixture/,
+#      consumer-fixture-langs/, corpus-eval/, load-tests/) takes its versions from, plus the
+#      Gradle-only pins in build.gradle.kts and load-tests/. Each rule is a file pattern plus the
+#      Maven coordinate whose latest release belongs there; the RULES table below is the whole
+#      list, so a new property in versions/pom.xml is one line here.
 #
 # What it deliberately leaves alone (reported, never rewritten):
 #   - the async-test-lib version pins: that is the release skill's job (bump-version.sh)
@@ -68,32 +69,30 @@ echo
 # ---- satellite rules -------------------------------------------------------------------
 # glob | perl regex: (pre)VERSION(post), VERSION written as [^<]+ or [^"]+ | groupId | artifactId | C=Central P=plugin portal
 RULES=(
-  # JUnit everywhere the reactor's property does not reach
-  'consumer-fixture/pom.xml|(<junit\.jupiter\.version>)[^<]+(</junit\.jupiter\.version>)|org.junit.jupiter|junit-jupiter|C'
-  'consumer-fixture/build.gradle.kts|(val junitVersion = ")[^"]+(")|org.junit.jupiter|junit-jupiter|C'
-  'consumer-fixture-langs/pom.xml|(<junit\.jupiter\.version>)[^<]+(</junit\.jupiter\.version>)|org.junit.jupiter|junit-jupiter|C'
-  'consumer-fixture-langs/build.gradle.kts|(val junitVersion = ")[^"]+(")|org.junit.jupiter|junit-jupiter|C'
-  'examples/*/pom.xml|(<junit\.version>)[^<]+(</junit\.version>)|org.junit.jupiter|junit-jupiter|C'
-  'examples/*/build.gradle.kts|(val junitVersion = ")[^"]+(")|org.junit.jupiter|junit-jupiter|C'
-  'examples/*/build.gradle.kts|(val junitPlatformVersion = ")[^"]+(")|org.junit.platform|junit-platform-launcher|C'
-  'load-tests/build.gradle.kts|(val junitVersion = ")[^"]+(")|org.junit.jupiter|junit-jupiter|C'
-  # Language toolchains of consumer-fixture-langs (Maven properties + Gradle literals)
-  'consumer-fixture-langs/pom.xml|(<kotlin\.version>)[^<]+(</kotlin\.version>)|org.jetbrains.kotlin|kotlin-stdlib|C'
-  'consumer-fixture-langs/kotlin/build.gradle.kts|(kotlin\("jvm"\) version ")[^"]+(")|org.jetbrains.kotlin.jvm|org.jetbrains.kotlin.jvm.gradle.plugin|P'
-  'consumer-fixture-langs/pom.xml|(<groovy\.version>)[^<]+(</groovy\.version>)|org.apache.groovy|groovy|C'
-  'consumer-fixture-langs/groovy/build.gradle.kts|(org\.apache\.groovy:groovy:)[^"]+(")|org.apache.groovy|groovy|C'
-  'consumer-fixture-langs/pom.xml|(<gmavenplus-plugin\.version>)[^<]+(</gmavenplus-plugin\.version>)|org.codehaus.gmavenplus|gmavenplus-plugin|C'
-  'consumer-fixture-langs/pom.xml|(<scala\.version>)[^<]+(</scala\.version>)|org.scala-lang|scala3-library_3|C'
-  'consumer-fixture-langs/scala/build.gradle.kts|(org\.scala-lang:scala3-library_3:)[^"]+(")|org.scala-lang|scala3-library_3|C'
-  'consumer-fixture-langs/pom.xml|(<scala-maven-plugin\.version>)[^<]+(</scala-maven-plugin\.version>)|net.alchim31.maven|scala-maven-plugin|C'
-  'consumer-fixture-langs/pom.xml|(<clojure\.version>)[^<]+(</clojure\.version>)|org.clojure|clojure|C'
-  'consumer-fixture-langs/pom.xml|(<clojure-maven-plugin\.version>)[^<]+(</clojure-maven-plugin\.version>)|com.theoryinpractise|clojure-maven-plugin|C'
-  'consumer-fixture-langs/pom.xml|(<maven-surefire-plugin\.version>)[^<]+(</maven-surefire-plugin\.version>)|org.apache.maven.plugins|maven-surefire-plugin|C'
-  'consumer-fixture/pom.xml|(<maven-surefire-plugin\.version>)[^<]+(</maven-surefire-plugin\.version>)|org.apache.maven.plugins|maven-surefire-plugin|C'
-  'consumer-fixture/pom.xml|(<maven-compiler-plugin\.version>)[^<]+(</maven-compiler-plugin\.version>)|org.apache.maven.plugins|maven-compiler-plugin|C'
-  # The Kotlin example
-  'examples/128-kotlin-lost-update/pom.xml|(<kotlin\.version>)[^<]+(</kotlin\.version>)|org.jetbrains.kotlin|kotlin-stdlib|C'
-  'examples/128-kotlin-lost-update/build.gradle.kts|(kotlin\("jvm"\) version ")[^"]+(")|org.jetbrains.kotlin.jvm|org.jetbrains.kotlin.jvm.gradle.plugin|P'
+  # versions/pom.xml: every version the builds outside the reactor use. Satellite build files
+  # name none (SatelliteVersionsTest), so this is the whole satellite list. The first five are
+  # also reactor properties; the reactor pass above moves those, and both land on the same latest.
+  'versions/pom.xml|(<junit\.jupiter\.version>)[^<]+(</junit\.jupiter\.version>)|org.junit.jupiter|junit-jupiter|C'
+  'versions/pom.xml|(<junit\.platform\.version>)[^<]+(</junit\.platform\.version>)|org.junit.platform|junit-platform-launcher|C'
+  'versions/pom.xml|(<maven-compiler-plugin\.version>)[^<]+(</maven-compiler-plugin\.version>)|org.apache.maven.plugins|maven-compiler-plugin|C'
+  'versions/pom.xml|(<maven-surefire-plugin\.version>)[^<]+(</maven-surefire-plugin\.version>)|org.apache.maven.plugins|maven-surefire-plugin|C'
+  'versions/pom.xml|(<slf4j\.version>)[^<]+(</slf4j\.version>)|org.slf4j|slf4j-api|C'
+  'versions/pom.xml|(<maven-dependency-plugin\.version>)[^<]+(</maven-dependency-plugin\.version>)|org.apache.maven.plugins|maven-dependency-plugin|C'
+  'versions/pom.xml|(<kotlin\.version>)[^<]+(</kotlin\.version>)|org.jetbrains.kotlin|kotlin-stdlib|C'
+  'versions/pom.xml|(<groovy\.version>)[^<]+(</groovy\.version>)|org.apache.groovy|groovy|C'
+  'versions/pom.xml|(<scala\.version>)[^<]+(</scala\.version>)|org.scala-lang|scala3-library_3|C'
+  'versions/pom.xml|(<clojure\.version>)[^<]+(</clojure\.version>)|org.clojure|clojure|C'
+  'versions/pom.xml|(<gmavenplus-plugin\.version>)[^<]+(</gmavenplus-plugin\.version>)|org.codehaus.gmavenplus|gmavenplus-plugin|C'
+  'versions/pom.xml|(<scala-maven-plugin\.version>)[^<]+(</scala-maven-plugin\.version>)|net.alchim31.maven|scala-maven-plugin|C'
+  'versions/pom.xml|(<clojure-maven-plugin\.version>)[^<]+(</clojure-maven-plugin\.version>)|com.theoryinpractise|clojure-maven-plugin|C'
+  'versions/pom.xml|(<commons-lang3\.version>)[^<]+(</commons-lang3\.version>)|org.apache.commons|commons-lang3|C'
+  'versions/pom.xml|(<commons-collections4\.version>)[^<]+(</commons-collections4\.version>)|org.apache.commons|commons-collections4|C'
+  'versions/pom.xml|(<guava\.version>)[^<]+(</guava\.version>)|com.google.guava|guava|C'
+  'versions/pom.xml|(<jackson\.version>)[^<]+(</jackson\.version>)|com.fasterxml.jackson.core|jackson-databind|C'
+  'versions/pom.xml|(<caffeine\.version>)[^<]+(</caffeine\.version>)|com.github.ben-manes.caffeine|caffeine|C'
+  'versions/pom.xml|(<netty\.version>)[^<]+(</netty\.version>)|io.netty|netty-buffer|C'
+  'versions/pom.xml|(<spring\.version>)[^<]+(</spring\.version>)|org.springframework|spring-core|C'
+  'versions/pom.xml|(<hikaricp\.version>)[^<]+(</hikaricp\.version>)|com.zaxxer|HikariCP|C'
   # Gradle-only pins in the root build (everything else there is pomVersion(...))
   'build.gradle.kts|(extra\["logbackVersion"\] = ")[^"]+(")|ch.qos.logback|logback-classic|C'
   'build.gradle.kts|(id\("com\.vanniktech\.maven\.publish"\) version ")[^"]+(")|com.vanniktech.maven.publish|com.vanniktech.maven.publish.gradle.plugin|P'
@@ -103,7 +102,7 @@ RULES=(
   'load-tests/build.gradle.kts|(id\("me\.champeau\.jmh"\) version ")[^"]+(")|me.champeau.jmh|me.champeau.jmh.gradle.plugin|P'
 )
 
-echo "== 2. Satellite pins"
+echo "== 2. versions/pom.xml and Gradle-only pins"
 declare -A LATEST_CACHE
 changed_files=0
 for rule in "${RULES[@]}"; do

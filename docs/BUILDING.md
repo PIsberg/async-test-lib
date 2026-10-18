@@ -24,6 +24,20 @@ published descriptions stop matching. The only Gradle-declared versions are the 
 twin: the `plugins` block and the test-only logback backend, both watched by the gradle Dependabot
 ecosystem.
 
+**The builds outside the reactor take their versions from `versions/pom.xml`.** The examples, both
+consumer fixtures, the corpus, the load tests and `tools/demo` name no version of their own: every
+satellite pom inherits `versions/pom.xml` as its parent (the examples through `examples/pom.xml`),
+and every satellite Gradle build applies `versions/versions.settings.gradle.kts`, which turns each
+`<name.version>` property into the catalog entry `libs.versions.name.version`. A version change
+outside the reactor is one line in `versions/pom.xml`; before, a JUnit bump rewrote 300 example
+files and the language fixtures' Gradle twins had drifted a release or more behind their poms.
+`SatelliteVersionsTest` fails if a satellite build names a version again, if a settings file does
+not apply the script, if `<async-test.version>` differs from the reactor version, or if one of
+the five properties both poms declare (JUnit Jupiter and Platform, Surefire, the compiler plugin,
+slf4j) differs between them. Dependabot bumps both poms in one PR (`group-by: dependency-name` in
+`.github/dependabot.yml`). The one satellite version left where it is, load-tests' JMH Gradle
+plugin, has no Maven twin and is watched by the gradle Dependabot ecosystem.
+
 ```bash
 mvn test                                   # local tier (@Tag("e2e") engine tests excluded)
 mvn test -P fast                           # same 190 classes, ~3x faster (no jacoco, 0.5C forks)

@@ -93,23 +93,21 @@ together:
 | --- | --- |
 | `pom.xml` | `<version>` — canonical |
 | `async-test-lib/pom.xml`, `async-test-agent/pom.xml`, `async-test-analysis/pom.xml` | `<parent><version>` — the reactor modules |
-| `consumer-fixture/pom.xml` | own `<version>` + `<async-test.version>` |
-| `consumer-fixture/build.gradle.kts` | `asyncTestVersion` |
-| `consumer-fixture-langs/pom.xml` and `consumer-fixture-langs/{kotlin,groovy,scala,clojure}/pom.xml` | own `<version>`, `<async-test.version>`, and each module's `<parent><version>` |
-| `consumer-fixture-langs/build.gradle.kts` | `asyncTestVersion` |
+| `versions/pom.xml` | `<async-test.version>`, the library version every build outside the reactor resolves |
+| `consumer-fixture/pom.xml`, `corpus-eval/pom.xml` | own `<version>` |
+| `consumer-fixture-langs/pom.xml` and `consumer-fixture-langs/{kotlin,groovy,scala,clojure}/pom.xml` | own `<version>`, and each module's `<parent><version>` |
 | `README.md` | Maven + Gradle install snippets |
 | `docs/USAGE.md`, `docs/QUICK_REFERENCE.md`, `docs/DISTRIBUTION.md` | The same install snippets; allowlisted since 1.9.1 after all three drifted to 1.6.0 |
 | `.claude/SKILL.md` | Maven + Gradle install snippets |
-| `examples/*/pom.xml` | `<async-test-lib.version>` (115 files) |
-| `examples/*/build.gradle.kts` | `val asyncTestVersion` (85 files) |
 
 `bash .claude/skills/release/bump-version.sh <version>` rewrites all of them.
 
-**The example pins are load-bearing, not cosmetic.** Examples resolve `mavenLocal()` before
-`mavenCentral()`, and CI runs `./gradlew publishToMavenLocal` before building them. An example
-pinned at anything other than the current version silently resolves that **old release from
-Maven Central** and tests code that is not in this repo — the example passes while proving
-nothing about the current build. Keep them aligned.
+**`versions/pom.xml` is load-bearing, not cosmetic.** The examples, both consumer fixtures and
+the corpus take `<async-test.version>` from it, resolve `mavenLocal()` before `mavenCentral()`,
+and CI publishes the working tree there before building them. Left on anything other than the
+current version, every one of them silently resolves that **old release from Maven Central** and
+tests code that is not in this repo, passing while proving nothing about the current build.
+`SatelliteVersionsTest` fails the build when it disagrees with the reactor version.
 
 Deliberately **not** rewritten by the bump script:
 

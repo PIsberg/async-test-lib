@@ -75,11 +75,9 @@ jobs:
       - name: Build and install async-test-lib
         run: mvn install -DskipTests -q
 
-      - name: Set demo project version
-        run: |
-          VERSION=$(mvn help:evaluate -q -DforceStdout -Dexpression=project.version)
-          sed -i "s/<asynctest.version>.*<\/asynctest.version>/<asynctest.version>${VERSION}<\/asynctest.version>/" \
-            tools/demo/pom.xml
+      # No version stamp: tools/demo inherits <async-test.version> from versions/pom.xml, which
+      # SatelliteVersionsTest holds equal to the reactor version just installed. The stamp this
+      # replaced rewrote a committed pin that had sat at 1.7.3 since that release.
 
       # Recorded beside the committed cast rather than over it, so the comparison below has
       # both to look at and an unchanged demo leaves the working tree untouched.
@@ -123,8 +121,9 @@ jobs:
         # This step used to push straight to main, and had failed on every run
         # since branch protection went on: GH006, "Changes must be made through
         # a pull request". Its retry loop could not have helped either - it
-        # rebased with tools/demo/pom.xml still modified by the version stamp
-        # above, so git refused with "cannot rebase: You have unstaged changes".
+        # rebased with tools/demo/pom.xml still modified by a version stamp the
+        # workflow used to apply, so git refused with "cannot rebase: You have
+        # unstaged changes".
         #
         # The comment it carried - "Direct push avoids the GITHUB_TOKEN cannot
         # create PR restriction" - described a real restriction, since lifted:
@@ -134,10 +133,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-
-          # The version stamp is a build-time mutation, not something to commit,
-          # and leaving it dirty is what broke the old rebase.
-          git checkout -- tools/demo/pom.xml
 
           BRANCH=chore/demo-gif
           git config user.name "github-actions[bot]"
