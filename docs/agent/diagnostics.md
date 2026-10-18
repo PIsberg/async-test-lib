@@ -73,7 +73,10 @@ either (class loading on first use is the usual cause), and is counted at DEBUG 
 frame, so two JDK classes first initialized under one call site in two different rounds count as two
 single-round sites. A pin inside the agent's own class-file
 transformer, or inside the library's own bookkeeping rather than a woven hook delegating the body's
-call, is the instrumentation's rather than the code's and is counted at DEBUG in `runner.pinning.instrumentation test=... events=<n>`. A JVM without a usable JFR logs
+call, is the instrumentation's rather than the code's and is counted at DEBUG in `runner.pinning.instrumentation test=... events=<n>`. A JDK lock
+the JVM contended on inside its own critical section, while it loaded or initialized a class
+(`Freeze or preempt failed (2) (Contended monitor enter)` with a JDK frame on top), is the JDK's and
+is counted at DEBUG in `runner.pinning.critical-section test=... events=<n>`. A JVM without a usable JFR logs
 `pinning.jfr.unavailable` once at DEBUG, and the detector keeps its recording feed.
 
 ### When a detector leaves a note

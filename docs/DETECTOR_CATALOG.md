@@ -519,7 +519,10 @@ not one pin seen twice. A pin whose first frame outside the JDK is the agent's o
 transformer), or library code other than a woven hook (the lockset bookkeeping of a woven monitor
 enter), is the instrumentation's, so it is counted at DEBUG in
 `runner.pinning.instrumentation` and not reported; and the site skips the library hooks a woven
-call goes through, so two call sites do not merge into one under the agent (#984). The event is
+call goes through, so two call sites do not merge into one under the agent (#984). A monitor enter
+the JVM could not preempt inside its own critical section (`Freeze or preempt failed (2)`, while it
+loads or initializes a class) with a JDK frame on top is the JDK's lock, not the code's, so it is
+counted at DEBUG in `runner.pinning.critical-section` and not reported (#1028). The event is
 the running JDK's own verdict, so it
 fires for a blocking `synchronized` block up to JDK 23 and not from 24 (JEP 491), and for blocking
 inside a class initializer or under a native frame on every JDK. Without a usable JFR (a runtime

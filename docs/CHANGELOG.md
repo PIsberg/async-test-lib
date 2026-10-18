@@ -307,6 +307,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before the change with the three pins CI printed; a pin recurring at one frame in two rounds is still
   reported, and a pin in one round is not.
 
+- **`VIRTUAL_THREAD_PINNING` no longer reports a JDK lock the JVM contended on while it loaded or
+  initialized a class (#1028).** Corpus Eval went red on JDK 25 (run 39069516729) on the correct
+  `idiom_completableFuture_publishesThroughCompletion`: `Freeze or preempt failed (2) (Contended
+  monitor enter)` in `CompletableFuture.waitingGet`, the line that creates a `Signaller`. Code 2 is
+  `Continuation.Pinned.CRITICAL_SECTION`: the JVM keeps a virtual thread from unmounting while it
+  loads, links or initializes a class, and only JDK code can otherwise enter such a section
+  (`Continuation.pin()` is internal). A JFR probe on JDK 24 recorded the same event at the same
+  instruction; on JDK 24 and 26 it also showed the application loader's per-name lock under
+  `Class.forName` pinning in every round of a body that loads a new class per round, at one JDK
+  frame, so the two-round rule could not tell it from the code's pin. Such a pin with a JDK frame on
+  top is now counted at DEBUG in `runner.pinning.critical-section` and not reported. With the body's
+  own frame on top (a class loader the code wrote taking a monitor of its own, which the probes saw
+  pin in every round) it is still reported. Tests: `JfrPinningStreamTest`, whose `CompletableFuture`
+  and class-loading-lock cases were red before the change; the code's-own-monitor case went red with
+  the JDK-frame condition removed.
+
 - **`THREAD_LOCAL_LEAKS` and `MDC_CONTEXT_LEAK` are fed by the agent, and the per-thread cache idiom
   stays silent (#995).** Both fired only on recorded calls. With `collections=true` the task wrapper
   a woven `submit` hands the pool now snapshots `MDC.getCopyOfContextMap()` at each task's start and
