@@ -218,18 +218,20 @@ public final class AsyncTestAgent {
      * to call unconditionally even when a {@code -javaagent:} flag may already be present,
      * and safe to call concurrently from multiple threads.
      *
-     * <h4>Failure</h4>
-     * Self-attachment is disabled by default on JDK&nbsp;9+ unless the target JVM was
-     * started with {@code -Djdk.attach.allowAttachSelf=true}. When attachment is refused
-     * (or otherwise fails) this method throws an {@link IllegalStateException} rather than
-     * swallowing the error, so the failure is visible; the message directs the caller to
-     * fall back to the {@code -javaagent:} launch flag.
+     * <h4>Failure, and why this is not the recommended route</h4>
+     * Loading an agent into a running JVM prints a warning on JDK&nbsp;21 and later, and JEP 451
+     * says a future JDK will refuse it by default; a JVM started with
+     * {@code -XX:-EnableDynamicAgentLoading} refuses it today. {@code allowAttachSelf} is not the
+     * switch that matters: when self-attach is off, Byte Buddy attaches from a helper process. When
+     * the load is refused (or otherwise fails) this method throws an {@link IllegalStateException}
+     * rather than swallowing the error, and the message names the startup route, the
+     * {@code -javaagent:} launch flag, which keeps working ({@code SelfAttachRefusedTest}).
      *
      * @param agentArgs optional {@code includes}/{@code excludes}/{@code debug}
      *                  configuration (see {@link AgentOptions}), or {@code null} to
      *                  instrument every non-ignored class
-     * @throws IllegalStateException if the JVM forbids self-attachment (for example
-     *                               {@code jdk.attach.allowAttachSelf=false}) or the
+     * @throws IllegalStateException if the JVM refuses to load an agent at runtime (for
+     *                               example {@code -XX:-EnableDynamicAgentLoading}) or the
      *                               attach otherwise fails
      * @since 1.7.0
      */
@@ -246,10 +248,11 @@ public final class AsyncTestAgent {
             inst = ByteBuddyAgent.install();
         } catch (RuntimeException | Error ex) {
             throw new IllegalStateException(
-                    "AsyncTestAgent.selfAttach() could not attach to the current JVM. "
-                    + "Self-attachment is disabled by default on JDK 9+; start the JVM with "
-                    + "-Djdk.attach.allowAttachSelf=true, or fall back to launching with "
-                    + "-javaagent:async-test-agent-<version>.jar.", ex);
+                    "AsyncTestAgent.selfAttach() could not load the agent into the running JVM. "
+                    + "This JVM refuses agents loaded at runtime (-XX:-EnableDynamicAgentLoading, "
+                    + "which JEP 451 makes the default in a future JDK), or attaching failed for "
+                    + "another reason given below. Attach at startup instead: "
+                    + "-javaagent:async-test-agent-<version>.jar (docs/agent/attaching.md).", ex);
         }
         install(agentArgs, inst, true);
     }
