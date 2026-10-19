@@ -197,9 +197,36 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    </dependency>
    ```
 
-   The second artifact is the instrumentation agent. With it on the test classpath the
-   runner attaches it to the test JVM by itself, so the example below finds its race with
-   no further setup (see step 3).
+   The second artifact is the instrumentation agent. Start the test JVM with it, in
+   `<build><plugins>`: `dependency:properties` puts the agent jar's path in a property, and
+   surefire's `argLine` hands it to `-javaagent:`.
+
+   <!-- quickstart-agent-maven: kept equal to consumer-fixture-langs/quickstart/pom.xml -->
+   ```xml
+   <plugin>
+       <groupId>org.apache.maven.plugins</groupId>
+       <artifactId>maven-dependency-plugin</artifactId>
+       <version>3.11.0</version>
+       <executions>
+           <execution>
+               <goals><goal>properties</goal></goals>
+           </execution>
+       </executions>
+   </plugin>
+   <plugin>
+       <groupId>org.apache.maven.plugins</groupId>
+       <artifactId>maven-surefire-plugin</artifactId>
+       <configuration>
+           <argLine>-javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=fields=true,collections=true,includes=com.example</argLine>
+       </configuration>
+   </plugin>
+   ```
+
+   Replace `com.example` with your own package prefix: the agent weaves only classes whose
+   name starts with it. If JaCoCo or another plugin also sets `argLine`, start the line with
+   `@{argLine} ` so both agents load. CI builds this exact snippet in
+   [`consumer-fixture-langs/quickstart`](consumer-fixture-langs/quickstart) and fails if it
+   stops attaching the agent or stops finding the example's race.
 
 2. **Write your first stress test**:
    ```java
@@ -229,16 +256,17 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    - **`-Dlicense.mock.mode=true`**: without a licence key the run stops with
      `LICENSE DENIED`. CI sets mock mode automatically (`CI` or `GITHUB_ACTIONS` in the
      environment); a local run needs the flag. See [License](#license).
-   - **The agent attaches itself.** `counter++` compiles to a field read and a field write
-     with no method call between them, so only instrumented bytecode shows it. Because
-     `async-test-agent` is on the test classpath, the runner attaches it before the first
-     round, weaving field accesses and collection calls in your test's project (the first
-     three segments of the test class's package) and nothing else; the log says
-     `runner.agent.attached source=classpath`. **Without the agent artifact this example
-     passes and reports nothing.** The attach costs about 0.6 s once per JVM, and woven
-     code runs slower: a body making 200,000 synchronized calls took 3.4 s instead of
-     1.1 s. `-Dasynctest.agent=off` turns it off, and `-Dasynctest.agent=<args>` replaces
-     the defaults ([attaching the agent](docs/agent/attaching.md)).
+   - **The agent is what sees `counter++`.** It compiles to a field read and a field write
+     with no method call between them, so only instrumented bytecode shows it. **Without
+     the agent this example passes and reports nothing.** Woven code runs slower: a body
+     making 200,000 synchronized calls took 3.4 s instead of 1.1 s.
+   - **Skipped the plugin blocks?** With `async-test-agent` on the test classpath but not on
+     the command line, the runner loads it into the running JVM before the first round
+     instead, and logs `runner.agent.attached source=classpath`. That works on JDK 21 to 26,
+     but the JVM prints a four-line `WARNING` about it, and JEP 451 says a future JDK will
+     refuse it; the runner then logs `runner.agent.attach.failed` and the example reports
+     nothing again. Treat it as a fallback, not a setup. `-Dasynctest.agent=off` turns it
+     off ([attaching the agent](docs/agent/attaching.md)).
 
    Detection that needs no agent: deadlocks, which are read from the JVM's own
    thread state. If you want to see the library find something with zero setup, make two
@@ -250,12 +278,29 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
 <summary><b>Gradle</b></summary>
 
 1. **Add the dependency** to `build.gradle.kts`:
+   <!-- quickstart-agent-gradle: kept equal to consumer-fixture-langs/quickstart/build.gradle.kts -->
    ```kotlin
-   testImplementation("se.deversity.async-test-lib:async-test-lib:1.13.2")
-   testImplementation("se.deversity.async-test-lib:async-test-agent:1.13.2")
+   val asyncTestAgent = configurations.create("asyncTestAgent") {
+       isTransitive = false
+   }
+
+   dependencies {
+       testImplementation("se.deversity.async-test-lib:async-test-lib:1.13.2")
+       asyncTestAgent("se.deversity.async-test-lib:async-test-agent:1.13.2")
+   }
+
+   tasks.test {
+       useJUnitPlatform()
+       doFirst {
+           jvmArgs("-javaagent:${asyncTestAgent.singleFile}=fields=true,collections=true,includes=com.example")
+       }
+   }
    ```
 
-   The second artifact is the instrumentation agent, which the runner attaches by itself.
+   The second artifact is the instrumentation agent, given its own configuration so the test
+   JVM can be started with it (`-javaagent:`). Replace `com.example` with your own package
+   prefix: the agent weaves only classes whose name starts with it. CI builds this exact
+   snippet in [`consumer-fixture-langs/quickstart`](consumer-fixture-langs/quickstart).
 
 2. **Write your first stress test**:
    ```java
@@ -282,10 +327,9 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    ```
 
    `-Dlicense.mock.mode=true` is what a local run without a licence key needs (CI
-   activates mock mode by itself). The runner attaches `async-test-agent` because it is on
-   the test classpath: **without that artifact this example passes and reports nothing**,
-   because `counter++` is a field read and write with no method call between them.
-   `-Dasynctest.agent=off` turns the attach off.
+   activates mock mode by itself). The `-javaagent:` from step 1 is what sees `counter++`,
+   a field read and write with no method call between them: **without it this example
+   passes and reports nothing**.
 
    Deadlock detection needs no agent; it reads the JVM's own thread state.
 

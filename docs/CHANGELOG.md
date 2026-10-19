@@ -9,22 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **The runner attaches the agent by default when `async-test-agent` is on the test classpath.**
-  The README's first example, a bare `counter++`, passed and reported nothing unless the user also
-  passed `-Dasynctest.agent=fields=true`; adding the agent artifact was not enough. With the property
-  unset and the agent's entry point resolvable, the runner now attaches it before the first round
-  with `fields=true,collections=true,includes=` the first three segments of the test class's package,
-  so JUnit and the build tool are never woven, and logs `runner.agent.attached source=classpath`.
-  `-Dasynctest.agent=<args>` still passes through verbatim (`source=property`), `off` or `false`
-  opts out, and an agent already running (`-javaagent:`, a `selfAttach` in setup) is left alone. A
-  test in the default package, or a body run through `AsyncTestRunner`, gets no default (#1042). Cost,
-  measured on Windows 11 and JDK 26: about 0.6 s once per JVM for the attach, and a body of 200
-  synchronized map-backed calls at `threads = 10, invocations = 100` took 3.4 s instead of 1.1 s.
-  The README quick start now adds the agent dependency and drops the flag. Tests:
-  `AgentAutoAttachTest` (10 cases of the decision) and `AttachedByDefaultTest`, the README shape in
-  `com.example.autoattach` with no flag, which was red against the old runner and reports the racing
-  field while staying silent on its synchronized twin; it is also the first test of retransforming
-  a class loaded before a dynamic attach.
+- **The README quick start attaches the agent at JVM startup, and the runner loads it at runtime
+  only as a fallback.** The README's first example, a bare `counter++`, passed and reported nothing
+  unless the user also passed `-Dasynctest.agent=fields=true`; adding the agent artifact was not
+  enough. The quick start now starts the test JVM with
+  `-javaagent:<agent jar>=fields=true,collections=true,includes=com.example`, two plugin blocks in
+  Maven (`dependency:properties`, surefire `argLine`) and a configuration in Gradle, which is the
+  route JEP 451 endorses. Those snippets are the build of the new
+  `consumer-fixture-langs/quickstart`, which CI runs under Maven and Gradle; its test fails unless
+  the agent arrived by `-javaagent:` and found the race, and `QuickStartAgentSnippetTest` fails if
+  the README and the fixture drift apart. With the artifact on the test classpath and no agent
+  started with the JVM, the runner now loads it before the first round with
+  `fields=true,collections=true,includes=` the first three segments of the test class's package, and
+  logs `runner.agent.attached source=classpath mode=runtime` with a hint naming the startup route.
+  That load works on JDK 21 to 26 with the JVM's four-line `WARNING`, and is refused by a JVM started
+  with `-XX:-EnableDynamicAgentLoading`, the default JEP 451 announces for a future JDK (both checked
+  on JDK 21.0.9 and 26). `-Dasynctest.agent=<args>` still passes through verbatim
+  (`source=property`), `off` or `false` opts out, and an agent already running is left alone. A test
+  in the default package, or a body run through `AsyncTestRunner`, gets no runtime default (#1042).
+  Cost of the fallback, measured on Windows 11 and JDK 26: about 0.6 s once per JVM, and a body of
+  200 synchronized map-backed calls at `threads = 10, invocations = 100` took 3.4 s instead of
+  1.1 s. Tests: `AgentAutoAttachTest` (10 cases of the decision); `AttachedByDefaultTest`, red
+  against the old runner, also pins the fallback's log line; `CounterTest` in the quickstart
+  fixture, red without the `argLine`.
+
+### Fixed
+
+- **A refused runtime attach blamed the wrong switch.** `AsyncTestAgent.selfAttach` and the
+  runner's `runner.agent.attach.failed reason=attach-refused` hint said self-attachment was disabled
+  and to set `-Djdk.attach.allowAttachSelf=true`. In a JVM that refuses runtime agent loading that
+  flag changes nothing: Byte Buddy attaches from a helper process when self-attach is off, and it is
+  the load itself that `-XX:-EnableDynamicAgentLoading` refuses. Both now name that switch and the
+  `-javaagent:` route. `SelfAttachRefusedTest` forks a JVM with the switch off and was red on the old
+  message. `docs/agent/attaching.md` sections 3.3 and 3.4 said the same and are corrected.
 
 ## [1.13.2] - 2026-10-18
 

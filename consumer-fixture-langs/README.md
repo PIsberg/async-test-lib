@@ -56,6 +56,18 @@ package sits outside `se.deversity.asynctest` deliberately: the weaver refuses t
 the library's own root, so a wait bean under `se.deversity.asynctest.fixture` is never woven at all
 and both tests would measure nothing. The firing half is what caught that.
 
+## `quickstart`: the README's quick start, as a build
+
+Java rather than another language, and here because this aggregator is where CI already builds
+consumers against the fresh artifact under both Maven and Gradle. Its `pom.xml` plugin blocks and
+its `build.gradle.kts` are the README's quick-start agent snippets line for line, and
+`QuickStartAgentSnippetTest` in the library fails when the two drift apart. `CounterTest` is the
+README's `counter++` example. It fails unless the test JVM was started with
+`-javaagent:<async-test-agent jar>`, so the runner's runtime fallback, which JEP 451 says a future
+JDK will refuse, cannot pass for it; then it requires the race reported and the same increment
+under a lock left silent. Verified by breaking it: without the surefire `argLine` the test goes red
+on the `-javaagent:` assertion even though the fallback still finds the race.
+
 [#710]: https://github.com/PIsberg/async-test-lib/issues/710
 [#714]: https://github.com/PIsberg/async-test-lib/issues/714
 
@@ -63,8 +75,8 @@ and both tests would measure nothing. The firing half is what caught that.
 
 ```bash
 mvn install -DskipTests -Djacoco.skip=true      # publish the in-progress artifact to ~/.m2
-mvn -f consumer-fixture-langs/pom.xml test       # all four languages
-./gradlew -p consumer-fixture-langs test         # Kotlin, Groovy, Scala (see below)
+mvn -f consumer-fixture-langs/pom.xml test       # all four languages and quickstart
+./gradlew -p consumer-fixture-langs test         # Kotlin, Groovy, Scala and quickstart (see below)
 ```
 
 Clojure is Maven-only. Gradle has no first-party Clojure plugin, clojurephant's AOT model

@@ -345,10 +345,9 @@ public class ConcurrencyRunner {
         if (telemetryTarget != null && !TelemetryRegistry.isRunning()
                 && AGENT_ABSENCE_LOGGED.compareAndSet(false, true)) {
             log.info("runner.agent.absent test={} detector=AtomicityValidator "
-                    + "hint=\"field accesses are not auto-recorded; add the async-test-agent "
-                    + "artifact to the test classpath, which the runner attaches by itself, attach "
-                    + "-javaagent:async-test-agent-<version>.jar, or record accesses explicitly "
-                    + "via AsyncTestContext\"",
+                    + "hint=\"field accesses are not auto-recorded; start the test JVM with "
+                    + "-javaagent:async-test-agent-<version>.jar (the README quick start has the "
+                    + "build snippet), or record accesses explicitly via AsyncTestContext\"",
                 invocationContext.getExecutable().getName());
         }
 

@@ -10,11 +10,12 @@ Detectors normally observe field access via explicit recording calls (e.g.
 agent — records getter/setter access **automatically, with no source changes**, and can feed
 those events straight into a live `AtomicityValidator` via `TelemetryBridge`.
 
-The simplest way is to add the `async-test-agent` artifact as a test dependency and nothing
-else: the runner then attaches it before the first `@AsyncTest` round, weaving field accesses and
-collection calls in the test's own project, and `-Dasynctest.agent=off` turns that off
-([attaching.md](../agent/attaching.md) has the rules and the cost).
-To choose the scope yourself, attach it one of these ways:
+The recommended way is the README quick start's: start the test JVM with
+`-javaagent:<async-test-agent jar>=fields=true,collections=true,includes=<your package>`, which
+the quick start's Maven and Gradle snippets do for you. With the artifact on the test classpath and
+nothing on the command line, the runner loads the agent into the running JVM as a fallback; JDK 21+
+warns about that and a future JDK will refuse it ([attaching.md](../agent/attaching.md) has the
+rules and the cost). The explicit forms:
 
 ```
 # 1. Launch flag (static), optionally scoped:

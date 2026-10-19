@@ -29,8 +29,10 @@ events it produces, how instrumentation scope is controlled, and its honest limi
 > and the attach flag now names the agent JAR: `-javaagent:async-test-agent-<version>.jar`.
 > Nothing about the API, the entry points or the event format changed.
 >
-> With that dependency in place you need no flag at all: the runner attaches the agent itself,
-> scoped to the test's project ([attaching.md](agent/attaching.md)).
+> Attach it at JVM startup with `-javaagent:`; the README quick start has the Maven and Gradle
+> snippet, which CI builds as it stands. With only the dependency in place the runner loads the
+> agent into the running JVM as a fallback, which JDK 21+ warns about and a future JDK will refuse
+> ([attaching.md](agent/attaching.md)).
 
 ## Topics
 

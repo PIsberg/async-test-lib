@@ -45,7 +45,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * @since 1.9.2
  */
-@AIContract(reason = "The -Dasynctest.agent values are typed in users' builds and in this repository's own: corpus-eval's recording and agent-off lanes set it to off, and each lane is valid only while the agent stays detached, so renaming or dropping the opt-out silently attaches the agent there and voids both lanes' measurements. The default arguments (fields=true,collections=true, includes= the first three segments of the test class's package) are documented in the README quick start and docs/agent/attaching.md with measured costs. The default must never attach without an include: an empty includes= weaves JUnit and the build tool in every consumer's test JVM.")
+@AIContract(reason = "The -Dasynctest.agent values are typed in users' builds and in this repository's own: corpus-eval's recording and agent-off lanes set it to off, and each lane is valid only while the agent stays detached, so renaming or dropping the opt-out silently attaches the agent there and voids both lanes' measurements. This is the fallback, not the recommended route: loading an agent into a running JVM warns on JDK 21+ and JEP 451 says a future JDK will refuse it, so the README quick start attaches at startup with -javaagent and this class must keep logging mode=runtime with a hint naming that route (AttachedByDefaultTest). Its default arguments (fields=true,collections=true, includes= the first three segments of the test class's package) are documented in docs/agent/attaching.md section 3.0.1 with measured costs. The default must never attach without an include: an empty includes= weaves JUnit and the build tool in every consumer's test JVM.")
 final class AgentAutoAttach {
 
     private static final Logger log = LoggerFactory.getLogger(AgentAutoAttach.class);
@@ -137,7 +137,17 @@ final class AgentAutoAttach {
             Class<?> agent = Class.forName(AGENT_CLASS);
             Method selfAttach = agent.getMethod("selfAttach", String.class);
             selfAttach.invoke(null, agentArgs.isEmpty() ? null : agentArgs);
-            log.info("runner.agent.attached source={} args=\"{}\"", plan.source(), agentArgs);
+            if ("classpath".equals(plan.source())) {
+                // Said once per JVM, at INFO, beside the JVM's own WARNING: the user who reads the
+                // warning needs to know which line of their build to change.
+                log.info("runner.agent.attached source=classpath mode=runtime args=\"{}\" hint=\"the "
+                        + "agent was loaded into the running JVM, which JDK 21+ warns about and JEP 451 "
+                        + "says a future JDK will refuse; attach it at startup with -javaagent: (the "
+                        + "README quick start has the build snippet)\"", agentArgs);
+            } else {
+                log.info("runner.agent.attached source={} mode=runtime args=\"{}\"", plan.source(),
+                        agentArgs);
+            }
         } catch (ClassNotFoundException e) {
             log.warn("runner.agent.attach.failed reason=artifact-missing "
                     + "hint=\"-D{} was set but {} is not on the test classpath; add the "
@@ -146,9 +156,10 @@ final class AgentAutoAttach {
                     PROPERTY, AGENT_CLASS);
         } catch (Throwable t) { // NOPMD - broad by design: no attach failure may fail a test run
             log.warn("runner.agent.attach.failed reason=attach-refused source={} "
-                    + "hint=\"self-attachment was rejected by this JVM; run with "
-                    + "-Djdk.attach.allowAttachSelf=true or attach with -javaagent: instead, or set "
-                    + "-D{}=off to stop trying. Continuing without instrumentation.\" cause={}",
+                    + "hint=\"this JVM refused to load the agent at runtime, which JEP 451 makes the "
+                    + "default in a future JDK; attach it at startup with -javaagent: (the README "
+                    + "quick start has the build snippet), or set -D{}=off to stop trying. "
+                    + "Continuing without instrumentation.\" cause={}",
                     plan.source(), PROPERTY, t.toString());
         }
     }
