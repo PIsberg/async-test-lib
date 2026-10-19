@@ -34,7 +34,8 @@ Checked on Windows 11 and JDK 26, three runs, every row identical in all three.
 |---|---|---|---|
 | 0, control | `count++` from two threads | `AtomicityValidator` | not applicable |
 | 1, `CONCURRENT_MODIFICATIONS` | one thread iterates an `ArrayList` while another adds to it | none | none |
-| 2, `VISIBILITY` | data published behind a plain `boolean` flag | none | none |
+| 2, `VISIBILITY` | a constant (`data = 42`) published behind a plain `boolean` flag | none | none |
+| 2b, `VISIBILITY` | a computed value published behind the same plain flag | `AtomicityValidator` | not run |
 | 3, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` | a `CompletableFuture` left pending on the exception path | none | none |
 | 4, `THREAD_POOL` | a saturated pool's `RejectedExecutionException` caught and dropped | none | none |
 | 5, `THREAD_LEAKS` | a thread the body starts and never joins | `DaemonThreadHygieneDetector` | none |
@@ -46,9 +47,13 @@ What the rows mean:
   sees a failing test but no detector naming the cause. In the third run nothing was reported at
   all. The woven iteration records no read, so `SharedCollectionDetector` sees one writer and has
   nothing to report.
-- **Visibility is a gap.** One thread writes the data and the flag, the other reads them. No
-  thread does a compound read-modify-write, so `AtomicityValidator` stays silent, and no agent-fed
-  detector reports a conflicting write and read that the happens-before model leaves unordered.
+- **Visibility is a gap only for constant writes.** `AtomicityValidator` does report a field one
+  thread writes and another reads with nothing ordering them (row 2b, added after a first draft of
+  this page called all publication a gap). It excuses a field whose every write stores the same
+  constant, because such writes cannot lose an update, and in row 2 both `data = 42` and
+  `ready = true` are constants. That excuse is right for atomicity and wrong for visibility: the
+  classic missing-`volatile` stop flag, `running = false` read in another thread's loop, is a
+  constant write, and nothing reports it.
 - **The completion leak and the dropped rejection are gaps.** Nothing on the agent path sees a
   future's lifetime or a rejection.
 - **The thread leak is half covered.** `DaemonThreadHygieneDetector` reports the leaked thread for
@@ -66,8 +71,10 @@ test, and each flips its row here and in the test. The likely seams, not yet bui
   so `SharedCollectionDetector` sees the reader beside the writer, rather than feeding
   `ConcurrentModificationDetector`'s iteration start and end model, which needs an end event the
   weaver does not have.
-- **Visibility ([#1053](https://github.com/PIsberg/async-test-lib/issues/1053)):** report a plain field written by one thread and read by another with no
-  happens-before edge between them; the field stream already carries both accesses and the model.
+- **Visibility ([#1053](https://github.com/PIsberg/async-test-lib/issues/1053)):** report a plain field whose writes are a constant, written by one thread and
+  read by another with no lock and no happens-before edge between them, as a visibility finding
+  rather than an atomicity one; the field stream already carries both accesses and the model, and
+  the corpus idioms lane decides whether benign racy flags make it too noisy.
 - **Completion leak ([#1054](https://github.com/PIsberg/async-test-lib/issues/1054)):** weave `new CompletableFuture<>()` and the completing calls, and report a
   future still pending when the round ends.
 - **Dropped rejection ([#1055](https://github.com/PIsberg/async-test-lib/issues/1055)):** weave `Executor.execute`/`submit` and report a

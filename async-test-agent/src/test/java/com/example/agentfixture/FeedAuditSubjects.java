@@ -92,6 +92,12 @@ public final class FeedAuditSubjects {
         public int consumeVolatile() {
             return readyVolatile ? data : -1;
         }
+
+        /** Stores a computed value, then a plain flag: the data field is not a constant write. */
+        public void publishComputed(int value) {
+            data = value;
+            ready = true;
+        }
     }
 
     /** COMPLETABLE_FUTURE_COMPLETION_LEAKS: a future left pending on the exception path. */

@@ -146,6 +146,23 @@ class AgentFeedOverlapAuditTest {
     }
 
     @Test
+    void publishingAComputedValue_isAlreadyReported() {
+        // The constant-only rows above are excused by AtomicityValidator's rule that a field whose
+        // every write stores one constant cannot lose an update. A computed value is not excused,
+        // and the unordered write and read are reported: the visibility gap is the constant flag.
+        FeedAuditSubjects.Publication publication = new FeedAuditSubjects.Publication();
+        java.util.concurrent.atomic.AtomicInteger values = new java.util.concurrent.atomic.AtomicInteger();
+        assertRow("2b VISIBILITY computed value buggy", Set.of("AtomicityValidator"),
+                detectorsReporting("2b VISIBILITY computed value buggy", slot -> {
+                    if (slot == 0) {
+                        publication.publishComputed(values.incrementAndGet());
+                    } else {
+                        publication.consume();
+                    }
+                }));
+    }
+
+    @Test
     void completionLeak_isAGap() {
         assertRow("3 COMPLETABLE_FUTURE_COMPLETION_LEAKS buggy", Set.of(),
                 detectorsReporting("3 COMPLETABLE_FUTURE_COMPLETION_LEAKS buggy",
