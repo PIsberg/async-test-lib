@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.example.agentfixture.ConditionHandOff;
 import com.example.agentfixture.LockGuardedCounters;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.AfterAll;
@@ -19,6 +20,7 @@ import se.deversity.asynctest.AsyncTestRunner;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.ToIntFunction;
 
@@ -112,5 +114,27 @@ class ControlledScheduleLockWeavingTest {
     @Test
     void aReentrantLockIncrementReplaysWithNoEscape() throws Throwable {
         assertEveryRoundReplays(LockGuardedCounters::incrementUnderLock, LockGuardedCounters::lockCount);
+    }
+
+    @Test
+    void aWovenConditionAwaitLetsTheLockGo() throws Throwable {
+        // The waiter's await lets the lock go; the woven await tells the schedule, so the signaller
+        // waiting to take the lock gets an ordinary grant rather than the fallback (#1048).
+        int waits = 0;
+        for (long seed = 1; seed <= 20; seed++) {
+            ConditionHandOff handOff = new ConditionHandOff();
+            AtomicInteger slot = new AtomicInteger();
+            AsyncTestRunner.run(AsyncTestConfig.builder().threads(2).invocations(1)
+                    .replaySeed(seed).controlledSchedule(true).timeoutMs(60_000)
+                    .licenseMockMode(true).build(), () -> handOff.handOff(slot.getAndIncrement() == 0));
+            waits += handOff.waits();
+        }
+        List<String> rounds = appender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                .filter(m -> m.startsWith("runner.schedule.round")).toList();
+        assertEquals(20, rounds.size(), rounds.toString());
+        assertTrue(waits > 0, "no seed made the waiter wait, so nothing was exercised: " + rounds);
+        assertTrue(rounds.stream().allMatch(m -> m.contains("fallbacks=0")),
+                "a round went to the signaller through the fallback, so the schedule still listed the"
+                        + " waiter as holding the lock its await had let go: " + rounds);
     }
 }

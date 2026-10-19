@@ -42,6 +42,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -371,6 +372,13 @@ final class CollectionAccessWeaver {
             Entry.call(Lock.class, "tryLock", "tryLock"),
             Entry.call(Lock.class, "tryLock", "tryLock", long.class, TimeUnit.class),
             Entry.call(Lock.class, "unlock", "unlock"),
+            // Condition.await lets the condition's lock go for the wait; the hooks tell a controlled
+            // schedule so, as the Object.wait hooks do for a monitor (#1048).
+            Entry.call(Condition.class, "await", "conditionAwait"),
+            Entry.call(Condition.class, "await", "conditionAwait", long.class, TimeUnit.class),
+            Entry.call(Condition.class, "awaitNanos", "conditionAwaitNanos", long.class),
+            Entry.call(Condition.class, "awaitUninterruptibly", "conditionAwaitUninterruptibly"),
+            Entry.call(Condition.class, "awaitUntil", "conditionAwaitUntil", Date.class),
             // The views. Resolving readLock()/writeLock() at the call site is the only place the
             // owner and its view are both in hand; the hooks remember the pair so that acquiring
             // a view records the owner, in shared mode for the read side. The concrete class

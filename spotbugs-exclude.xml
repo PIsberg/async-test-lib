@@ -247,4 +247,16 @@
         <Class name="se.deversity.asynctest.AgentMonitorHooks"/>
     </Match>
 
+    <!-- The same for AgentLockHooks' Condition.await hooks (#1048): each stands in for the one
+         await the agent substituted, and the loop around it belongs to the woven caller. Scoped
+         to the hooks that substitute an await. -->
+    <Match>
+        <Bug pattern="WA_AWAIT_NOT_IN_LOOP"/>
+        <Class name="se.deversity.asynctest.AgentLockHooks"/>
+        <Or>
+            <Method name="conditionAwait"/>
+            <Method name="conditionAwaitUninterruptibly"/>
+        </Or>
+    </Match>
+
 </FindBugsFilter>

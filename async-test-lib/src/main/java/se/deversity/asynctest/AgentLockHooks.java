@@ -1,9 +1,11 @@
 package se.deversity.asynctest;
 
 import java.util.Collections;
+import java.util.Date;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -328,6 +330,78 @@ public final class AgentLockHooks {
             tryLocks.recordUnlock(receiver, receiver.getClass().getName(), Thread.currentThread());
         }
         receiver.unlock();
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Condition.await (#1048): the wait lets the condition's lock go, as Object.wait lets a
+    // monitor go, so a controlled schedule's record of the hold is handed back for the wait.
+    // Nothing else is recorded: the lockset and the lock detectors see the thread still inside
+    // lock()/unlock(), which is where the condition's lock is held when await returns.
+    // ------------------------------------------------------------------------------------------
+
+    /** Weaves {@code Condition.await()}. @param receiver the condition @throws InterruptedException if interrupted while waiting */
+    public static void conditionAwait(Condition receiver) throws InterruptedException {
+        Object owner = ControlledSchedule.lockOf(receiver);
+        int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        try {
+            receiver.await();
+        } finally {
+            if (owner != null) {
+                ControlledSchedule.reacquiredAfterWait(owner, holds);
+            }
+        }
+    }
+
+    /** Weaves {@code Condition.await(long, TimeUnit)}. @param receiver the condition @param time the maximum time to wait @param unit its unit @return false if the time elapsed first @throws InterruptedException if interrupted while waiting */
+    public static boolean conditionAwait(Condition receiver, long time, TimeUnit unit) throws InterruptedException {
+        Object owner = ControlledSchedule.lockOf(receiver);
+        int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        try {
+            return receiver.await(time, unit);
+        } finally {
+            if (owner != null) {
+                ControlledSchedule.reacquiredAfterWait(owner, holds);
+            }
+        }
+    }
+
+    /** Weaves {@code Condition.awaitNanos(long)}. @param receiver the condition @param nanosTimeout the maximum time to wait @return the time left, as the condition reports it @throws InterruptedException if interrupted while waiting */
+    public static long conditionAwaitNanos(Condition receiver, long nanosTimeout) throws InterruptedException {
+        Object owner = ControlledSchedule.lockOf(receiver);
+        int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        try {
+            return receiver.awaitNanos(nanosTimeout);
+        } finally {
+            if (owner != null) {
+                ControlledSchedule.reacquiredAfterWait(owner, holds);
+            }
+        }
+    }
+
+    /** Weaves {@code Condition.awaitUninterruptibly()}. @param receiver the condition */
+    public static void conditionAwaitUninterruptibly(Condition receiver) {
+        Object owner = ControlledSchedule.lockOf(receiver);
+        int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        try {
+            receiver.awaitUninterruptibly();
+        } finally {
+            if (owner != null) {
+                ControlledSchedule.reacquiredAfterWait(owner, holds);
+            }
+        }
+    }
+
+    /** Weaves {@code Condition.awaitUntil(Date)}. @param receiver the condition @param deadline the absolute time to wait until @return false if the deadline passed first @throws InterruptedException if interrupted while waiting */
+    public static boolean conditionAwaitUntil(Condition receiver, Date deadline) throws InterruptedException {
+        Object owner = ControlledSchedule.lockOf(receiver);
+        int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        try {
+            return receiver.awaitUntil(deadline);
+        } finally {
+            if (owner != null) {
+                ControlledSchedule.reacquiredAfterWait(owner, holds);
+            }
+        }
     }
 
     // ------------------------------------------------------------------------------------------

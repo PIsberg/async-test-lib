@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -272,6 +273,42 @@ class ControlledScheduleLockTest {
                         AgentMonitorHooks.monitorNotifyAll(monitor);
                     }
                     TelemetryRegistry.monitorExited(monitor);
+                }
+            });
+            waits += waited.get();
+        }
+        assertTrue(waits > 0, "no seed made the waiter wait, so nothing was exercised");
+        assertNoRoundFellBack(20);
+    }
+
+    @Test
+    void aWovenAwaitLetsTheLockGo() throws Throwable {
+        // Condition.await releases the ReentrantLock it belongs to, as Object.wait releases a
+        // monitor; the woven await hands the waiter's hold back for the duration, so the signaller
+        // waiting to take the lock gets an ordinary grant (#1048).
+        int waits = 0;
+        for (long seed = 1; seed <= 20; seed++) {
+            ReentrantLock lock = new ReentrantLock();
+            Condition changed = lock.newCondition();
+            boolean[] ready = new boolean[1];
+            AtomicInteger waited = new AtomicInteger();
+            AtomicInteger slot = new AtomicInteger();
+            AsyncTestRunner.run(controlled(2, seed).timeoutMs(10_000).build(), () -> {
+                boolean waiter = slot.getAndIncrement() == 0;
+                AsyncTestContext.schedulePoint();
+                AgentLockHooks.lock(lock);
+                try {
+                    if (waiter) {
+                        while (!ready[0]) {
+                            waited.incrementAndGet();
+                            AgentLockHooks.conditionAwait(changed);
+                        }
+                    } else {
+                        ready[0] = true;
+                        changed.signalAll();
+                    }
+                } finally {
+                    AgentLockHooks.unlock(lock);
                 }
             });
             waits += waited.get();

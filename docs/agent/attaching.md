@@ -127,10 +127,13 @@ the same way with no field access between them
 holds it, so a worker paused inside a critical section is never handed a peer that would only
 block on it: a `synchronized` or locked increment replays with no escape
 ([#1022](https://github.com/PIsberg/async-test-lib/issues/1022)). Read locks, other `Lock`
-implementations and `StampedLock` are plain points, since they may be shared. The table does not
-see a monitor released inside `Object.wait`, `Condition.await`, or by an exception leaving a
-`synchronized` method; when that stale hold leaves no ready worker able to proceed, the round is
-handed out anyway, which costs at most an escape and never a stall. A thread the body starts with a
+implementations and `StampedLock` are plain points, since they may be shared. A woven
+`Object.wait` or `Condition.await` hands the waiter's hold back for the wait, and a worker
+re-confirms its own holds at each point, which catches a monitor left by an exception out of a
+`synchronized` method ([#1048](https://github.com/PIsberg/async-test-lib/issues/1048)). A hold the
+table still gets wrong (a wait in code that is not woven, a write lock's condition) cannot stall
+the round: when no ready worker can proceed, the round is handed out anyway, and
+`runner.schedule.round` counts it as `fallbacks=`. A thread the body starts with a
 woven `Thread.start` (or a `Thread.Builder`) joins the round at its first point, under a slot the
 order of the starts decides, and an untimed `join` on it waits inside the schedule, so a worker
 racing its own child is split and replayed like two workers
