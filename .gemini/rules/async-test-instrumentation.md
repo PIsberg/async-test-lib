@@ -32,7 +32,7 @@
 
 ### se.deversity.asynctest.telemetry.ControlledSchedule
 - **Sensitivity**: High
-- **Note**: A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read. Only watch() may read the clock or Thread.getState(), and each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise.
+- **Note**: A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read, and the lock holds and pending acquisitions grant() consults (#1022), which change only at acquiring(), itself a point, and in acquired() and released(), which a worker calls in its own program order; an escaped worker's acquire or release lands outside a turn, but its round has already counted the escape. grant() must keep handing the round out when every ready worker waits on a held lock: the hold may be stale (a monitor released inside Object.wait is not seen), and withholding the round then stalls correct wait/notify code until the round times out (ControlledScheduleLockTest). Only watch() may read the clock or Thread.getState(), and each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise.
 
 ## Performance Constraints
 

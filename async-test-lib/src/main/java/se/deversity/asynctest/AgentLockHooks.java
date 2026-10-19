@@ -16,6 +16,7 @@ import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.diagnostics.LockLeakDetector;
 import se.deversity.asynctest.diagnostics.LockOrderValidator;
 import se.deversity.asynctest.diagnostics.TryLockMisuseDetector;
+import se.deversity.asynctest.telemetry.ControlledSchedule;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.vibetags.annotations.AIContract;
 
@@ -145,6 +146,26 @@ public final class AgentLockHooks {
         return null;
     }
 
+    /**
+     * Whether a controlled schedule may treat {@code lock} as held by one worker at a time (#1022).
+     * A read lock is shared: treating it as exclusive would keep a second reader out while the
+     * first is paused inside, and hide exactly the overlap a read-side race needs. Any other
+     * {@code Lock} implementation may be shared too, so only these two are named to the schedule;
+     * the rest get a plain scheduling point.
+     */
+    private static boolean exclusive(Lock lock) {
+        return lock instanceof java.util.concurrent.locks.ReentrantLock
+                || lock instanceof ReentrantReadWriteLock.WriteLock;
+    }
+
+    private static void beforeBlockingAcquire(Lock lock) {
+        if (exclusive(lock)) {
+            ControlledSchedule.acquiring(lock);
+        } else {
+            ControlledSchedule.point();
+        }
+    }
+
     private static void noteAcquired(Lock lock) {
         View view = viewOf(lock);
         if (view == null) {
@@ -241,20 +262,33 @@ public final class AgentLockHooks {
 
     /** Weaves {@code Lock.lock()}. @param receiver the lock */
     public static void lock(Lock receiver) {
+        beforeBlockingAcquire(receiver);
         receiver.lock();
         noteAcquired(receiver);
     }
 
     /** Weaves {@code Lock.lockInterruptibly()}. @param receiver the lock @throws InterruptedException if interrupted while waiting */
     public static void lockInterruptibly(Lock receiver) throws InterruptedException {
-        receiver.lockInterruptibly();
+        beforeBlockingAcquire(receiver);
+        try {
+            receiver.lockInterruptibly();
+        } catch (InterruptedException e) {
+            if (exclusive(receiver)) {
+                ControlledSchedule.released(receiver); // the schedule recorded a hold never taken
+            }
+            throw e;
+        }
         noteAcquired(receiver);
     }
 
     /** Weaves {@code Lock.tryLock()}. @param receiver the lock @return whether the lock was acquired */
     public static boolean tryLock(Lock receiver) {
+        ControlledSchedule.point();
         boolean acquired = receiver.tryLock();
         if (acquired) {
+            if (exclusive(receiver)) {
+                ControlledSchedule.acquired(receiver);
+            }
             noteAcquired(receiver);
         }
         deliverTryLock(receiver, acquired);
@@ -271,8 +305,12 @@ public final class AgentLockHooks {
      * @throws InterruptedException if interrupted while waiting
      */
     public static boolean tryLock(Lock receiver, long time, TimeUnit unit) throws InterruptedException {
+        ControlledSchedule.point();
         boolean acquired = receiver.tryLock(time, unit);
         if (acquired) {
+            if (exclusive(receiver)) {
+                ControlledSchedule.acquired(receiver);
+            }
             noteAcquired(receiver);
         }
         deliverTryLock(receiver, acquired);
@@ -281,6 +319,9 @@ public final class AgentLockHooks {
 
     /** Weaves {@code Lock.unlock()}. @param receiver the lock */
     public static void unlock(Lock receiver) {
+        if (exclusive(receiver)) {
+            ControlledSchedule.released(receiver);
+        }
         noteReleased(receiver);
         TryLockMisuseDetector tryLocks = AsyncTestContext.currentTryLockMisuseDetector();
         if (tryLocks != null) {

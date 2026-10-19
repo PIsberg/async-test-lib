@@ -4,6 +4,8 @@ import org.jspecify.annotations.Nullable;
 import se.deversity.vibetags.annotations.AICore;
 
 import java.util.Arrays;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.SplittableRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -23,8 +25,17 @@ import java.util.concurrent.locks.ReentrantLock;
  * too, between 4 and 4,096 on a log scale: rounds with a few points and rounds with thousands
  * both get change points that land.
  *
- * <p>A worker can stop running without reaching a point: it blocks on a lock a paused worker holds,
- * sleeps, waits on a future, or computes for longer than {@link #STALL_NANOS}. The waiting workers
+ * <p>The schedule knows which worker holds which exclusive lock (#1022). Entering a monitor or taking
+ * a {@code ReentrantLock} is a point that names the lock ({@link #acquiring}); a worker granted the
+ * round with such a step pending is recorded as its holder, {@link #released} drops the hold, and
+ * {@link #acquired} records one taken without waiting ({@code tryLock}, a {@code synchronized}
+ * method's monitor). {@link #grant()} passes over a ready worker whose pending lock another worker
+ * holds, so a worker paused inside a critical section is not handed a peer that would only block on
+ * it. When every ready worker waits on a lock another holds, that is a real deadlock, and the round
+ * is handed out anyway so it happens and is reported.
+ *
+ * <p>A worker can still stop running without reaching a point: it blocks on something the schedule
+ * does not track, sleeps, waits on a future, or computes for longer than {@link #STALL_NANOS}. The waiting workers
  * notice, mark it escaped and hand the round to the next; it rejoins at its next point. That keeps
  * a round live, but an escaped worker runs alongside the next one until then, so the round is no
  * longer guaranteed to replay. Each escape is counted, and {@link Summary#escapes()} is how the
@@ -42,7 +53,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 @AICore(
     sensitivity = "High",
-    note = "A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read. Only watch() may read the clock or Thread.getState(), and each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise."
+    note = "A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read, and the lock holds and pending acquisitions grant() consults (#1022), which change only at acquiring(), itself a point, and in acquired() and released(), which a worker calls in its own program order; an escaped worker's acquire or release lands outside a turn, but its round has already counted the escape. grant() must keep handing the round out when every ready worker waits on a held lock: the hold may be stale (a monitor released inside Object.wait is not seen), and withholding the round then stalls correct wait/notify code until the round times out (ControlledScheduleLockTest). Only watch() may read the clock or Thread.getState(), and each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise."
 )
 public final class ControlledSchedule {
 
@@ -104,6 +115,10 @@ public final class ControlledSchedule {
     private final @Nullable Worker[] slots;
     private final Status[] status;
     private final int[] priority;
+    /** The exclusive lock each worker's pending step acquires, or {@code null}. */
+    private final @Nullable Object[] pending;
+    /** Exclusive locks the round's workers hold: lock to {holding slot, hold count}. */
+    private final Map<Object, int[]> owners = new IdentityHashMap<>();
     private final long[] changePoints;
     private int nextChange;
     private int lowest;
@@ -126,6 +141,7 @@ public final class ControlledSchedule {
         this.slots = new Worker[workers];
         this.status = new Status[workers];
         Arrays.fill(status, Status.ABSENT);
+        this.pending = new Object[workers];
         SplittableRandom random = new SplittableRandom(seed ^ 0x5DEECE66DL);
         int[] order = new int[workers];
         for (int i = 0; i < workers; i++) {
@@ -179,7 +195,60 @@ public final class ControlledSchedule {
         if (worker == null || worker.inside || worker.free) {
             return;
         }
-        worker.schedule.step(worker);
+        worker.schedule.step(worker, null);
+    }
+
+    /**
+     * A scheduling point just before the calling worker takes the exclusive {@code lock}: entering
+     * a monitor, or {@code ReentrantLock.lock()}. The round goes to this worker only once no other
+     * worker holds the lock, unless every ready worker is waiting on one (a deadlock).
+     *
+     * @param lock the monitor or lock about to be taken
+     */
+    public static void acquiring(@Nullable Object lock) {
+        if (OPEN.get() == 0) {
+            return;
+        }
+        Worker worker = CURRENT.get();
+        if (worker == null || worker.inside || worker.free) {
+            return;
+        }
+        // A null monitor makes MONITORENTER throw; there is nothing to hold, only a point.
+        worker.schedule.step(worker, lock);
+    }
+
+    /**
+     * Records that the calling worker now holds {@code lock}, taken without waiting at a point: a
+     * successful {@code tryLock}, or the monitor of a {@code synchronized} method it has entered.
+     *
+     * @param lock the monitor or lock now held
+     */
+    public static void acquired(Object lock) {
+        if (OPEN.get() == 0) {
+            return;
+        }
+        Worker worker = CURRENT.get();
+        if (worker == null || worker.inside) {
+            return;
+        }
+        worker.schedule.hold(worker, lock);
+    }
+
+    /**
+     * Records that the calling worker is giving up one hold of {@code lock}. Not a point: the worker
+     * keeps running, and the peers waiting on the lock become eligible at the next grant.
+     *
+     * @param lock the monitor or lock being released
+     */
+    public static void released(Object lock) {
+        if (OPEN.get() == 0) {
+            return;
+        }
+        Worker worker = CURRENT.get();
+        if (worker == null || worker.inside) {
+            return;
+        }
+        worker.schedule.release(worker, lock);
     }
 
     /**
@@ -223,6 +292,7 @@ public final class ControlledSchedule {
         lock.lock();
         try {
             status[worker.slot] = Status.DONE;
+            pending[worker.slot] = null;
             if (running == worker.slot) {
                 running = -1;
                 grant();
@@ -257,7 +327,7 @@ public final class ControlledSchedule {
         }
     }
 
-    private void step(Worker worker) {
+    private void step(Worker worker, @Nullable Object acquiring) {
         worker.inside = true;
         lock.lock();
         try {
@@ -265,6 +335,7 @@ public final class ControlledSchedule {
                 return;
             }
             int slot = worker.slot;
+            pending[slot] = acquiring;
             if (running == slot) {
                 steps++;
                 streak++;
@@ -294,17 +365,92 @@ public final class ControlledSchedule {
         }
     }
 
-    /** Hands the round to the highest-priority ready worker, or to nobody. Lock held. */
+    private void hold(Worker worker, Object held) {
+        worker.inside = true;
+        lock.lock();
+        try {
+            take(worker.slot, held);
+        } finally {
+            lock.unlock();
+            worker.inside = false;
+        }
+    }
+
+    private void release(Worker worker, Object held) {
+        worker.inside = true;
+        lock.lock();
+        try {
+            int[] owner = owners.get(held);
+            if (owner != null && owner[0] == worker.slot) {
+                owner[1]--;
+                if (owner[1] <= 0) {
+                    owners.remove(held);
+                }
+            }
+        } finally {
+            lock.unlock();
+            worker.inside = false;
+        }
+    }
+
+    /** Records one more hold of {@code held} by {@code slot}. Lock held. */
+    private void take(int slot, Object held) {
+        int[] owner = owners.get(held);
+        if (owner == null) {
+            owners.put(held, new int[] {slot, 1});
+        } else if (owner[0] == slot) {
+            owner[1]++;
+        } else {
+            // The table says another worker holds it, yet this one has it: that worker's release
+            // was never seen (an exception out of a synchronized method is not woven). The JVM is
+            // the authority on who holds a lock, so the record follows it.
+            owner[0] = slot;
+            owner[1] = 1;
+        }
+    }
+
+    /** Whether worker {@code slot}'s pending step can take its lock now. Lock held. */
+    private boolean canProceed(int slot) {
+        Object wanted = pending[slot];
+        if (wanted == null) {
+            return true;
+        }
+        int[] owner = owners.get(wanted);
+        return owner == null || owner[0] == slot;
+    }
+
+    /**
+     * Hands the round to the highest-priority ready worker that can proceed, or, when every ready
+     * worker waits on a lock another holds, to the highest-priority ready worker regardless, so a
+     * deadlock in the code under test happens rather than stalling the scheduler. Lock held.
+     */
     private void grant() {
         int best = -1;
+        int anyReady = -1;
         for (int i = 0; i < workers; i++) {
-            if (status[i] == Status.READY && (best < 0 || priority[i] > priority[best])) {
+            if (status[i] != Status.READY) {
+                continue;
+            }
+            if (anyReady < 0 || priority[i] > priority[anyReady]) {
+                anyReady = i;
+            }
+            if (canProceed(i) && (best < 0 || priority[i] > priority[best])) {
                 best = i;
             }
+        }
+        if (best < 0) {
+            best = anyReady;
         }
         running = best;
         acknowledged = false;
         if (best >= 0) {
+            Object wanted = pending[best];
+            if (wanted != null) {
+                if (canProceed(best)) {
+                    take(best, wanted);
+                }
+                pending[best] = null;
+            }
             status[best] = Status.RUNNING;
             if (best != last) {
                 if (last >= 0) {

@@ -501,6 +501,10 @@ public final class TelemetryRegistry {
      * @since 1.9.6
      */
     public static void monitorEntered(Object monitor) {
+        // A point naming the monitor: a controlled schedule hands this worker the round only once
+        // no paused peer holds it (#1022). Before the lockset push, so the lockset says held only
+        // once the worker is about to enter.
+        ControlledSchedule.acquiring(monitor);
         HeldLocks.acquired(monitor);
     }
 
@@ -519,6 +523,9 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void methodMonitorEntered(Object monitor) {
+        // Already held: the flag took it before this first instruction, so this records the hold
+        // for a controlled schedule rather than being a point (#1022).
+        ControlledSchedule.acquired(monitor);
         HeldLocks.methodMonitorAcquired(monitor);
     }
 
@@ -530,6 +537,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void methodMonitorExited(Object monitor) {
+        ControlledSchedule.released(monitor);
         HeldLocks.methodMonitorReleased(monitor);
     }
 
@@ -3606,6 +3614,7 @@ public final class TelemetryRegistry {
      * @since 1.9.6
      */
     public static void monitorExited(Object monitor) {
+        ControlledSchedule.released(monitor);
         HeldLocks.released(monitor);
     }
 
