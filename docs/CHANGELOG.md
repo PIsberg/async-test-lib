@@ -95,6 +95,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   replay the same interleaving") and is green with every round at `escapes=0`; `RendezvousTest`,
   `RendezvousFailureE2eTest` and the three linearizability suites that use a rendezvous stay green.
 
+- **`ThreadLeakDetector` is agent-fed (#1056).** A thread the body starts and never joins was
+  reported on unmodified code only by `DaemonThreadHygieneDetector`, for its daemon status
+  (`AgentFeedOverlapAuditTest` row 5). Every woven `Thread.start` now records the thread with the
+  run's `ThreadLeakDetector`, which already decides at analysis whether each started thread is still
+  alive, so no recording call is needed. `THREAD_LEAKS` is in `Preset.ESSENTIALS`: a test whose body
+  starts a thread through woven code and leaves it running now gets a PROMPT-tier, `MEDIUM` finding.
+  The agent-fed count goes from 37 to 38 and recording-only from 107 to 106. Tests:
+  `ThreadLeakAgentFeedTest` (the woven start made by hand) was red ("Found: []") and is green, with
+  its joined twin silent; the audit's row 5 now pins `ThreadLeakDetector`; a corpus library pair
+  starts a Guava service and leaves it running against the same service stopped, and goes silent
+  with Guava excluded from the weave, so the finding comes from Guava's own `Thread.start`.
+
 ### Fixed
 
 - **A refused runtime attach blamed the wrong switch.** `AsyncTestAgent.selfAttach` and the

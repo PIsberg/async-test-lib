@@ -82,7 +82,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 49. Thread Leak Detector
 * **Severity**: `MEDIUM`
-* **Description**: Tracks thread creation and termination, then reports threads that were started but never joined or interrupted by test completion, or unexplained `Thread.activeCount()` growth across invocations.
+* **Description**: Tracks thread creation and termination, then reports threads that were started but never joined or interrupted by test completion, or unexplained `Thread.activeCount()` growth across invocations. With the agent attached it needs no recording call: every `Thread.start` in woven code is recorded, and a started thread still alive when the run is analysed is reported (#1056).
 * **Buggy Code**:
   ```java
   void startWorker() {
