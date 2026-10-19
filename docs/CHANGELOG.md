@@ -107,6 +107,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   starts a Guava service and leaves it running against the same service stopped, and goes silent
   with Guava excluded from the weave, so the finding comes from Guava's own `Thread.start`.
 
+- **One thread iterating a collection while another adds to it is reported (#1052).** The
+  concurrent-modification race in unmodified code drew no finding (`AgentFeedOverlapAuditTest` row
+  1); when it happened, the JDK's fail-fast iterator failed the test with no detector naming the
+  cause. Two things stood in the way: the woven `Iterable.iterator()` and `Collection.stream()`
+  recorded no read, and `SharedCollectionDetector` reported a round with one writer only when two or
+  more other threads read. A woven iteration now records a read, and one writer beside any other
+  reading thread in a round is reported; a writer reading its own collection is still not a second
+  party, and the lockset and happens-before filter is unchanged. Tests: two new
+  `SharedCollectionDetectorTest` cases (one red on the old rule), `IterationIsAReadTest` (red, then
+  green, guarded twin silent), and the audit's row 1; the accuracy evals stay green, and on the
+  corpus `SharedCollectionDetector` still draws nothing on its 100 documented-thread-safe subjects.
+
 ### Fixed
 
 - **A refused runtime attach blamed the wrong switch.** `AsyncTestAgent.selfAttach` and the

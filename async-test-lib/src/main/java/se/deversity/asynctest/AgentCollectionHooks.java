@@ -218,6 +218,10 @@ public final class AgentCollectionHooks {
 
     /** Hands an iteration of a synchronized wrapper to its detector, which knows its monitor. */
     private static void iterated(Object collection) {
+        // Walking a collection reads all of it: beside another thread's add, that is the concurrent
+        // modification race, and without this read SharedCollectionDetector saw one writer (#1052).
+        // record() skips the types that synchronize themselves, as it does for every other call.
+        record(collection, "iterator", false);
         if (!synchronizedWrapper(collection)) {
             return;
         }
