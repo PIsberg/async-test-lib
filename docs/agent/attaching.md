@@ -128,7 +128,12 @@ block on it: a `synchronized` or locked increment replays with no escape
 implementations and `StampedLock` are plain points, since they may be shared. The table does not
 see a monitor released inside `Object.wait`, `Condition.await`, or by an exception leaving a
 `synchronized` method; when that stale hold leaves no ready worker able to proceed, the round is
-handed out anyway, which costs at most an escape and never a stall.
+handed out anyway, which costs at most an escape and never a stall. A thread the body starts with a
+woven `Thread.start` (or a `Thread.Builder`) joins the round at its first point, under a slot the
+order of the starts decides, and an untimed `join` on it waits inside the schedule, so a worker
+racing its own child is split and replayed like two workers
+([#1024](https://github.com/PIsberg/async-test-lib/issues/1024)). Tasks handed to an executor are
+not scheduled.
 
 The call carries the receiver, so the analysis can tell six threads racing on one object from six
 threads each using their own, and — for a store of a reference type — the value being stored. That

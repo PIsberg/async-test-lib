@@ -1328,7 +1328,9 @@ public final class AsyncTestContext {
      * <p>Under a controlled schedule workers run one at a time and change hands only at scheduling
      * points; the replay seed decides at which. Every field access the agent weaves is one already;
      * call this to add one where nothing is woven, typically between a read and the write that
-     * depends on it. Outside a controlled round, and on a thread the body started, it does nothing.
+     * depends on it. Outside a controlled round it does nothing. On a thread the body started with a
+     * woven {@code Thread.start} it is a point of the round like any other (#1024); on any other
+     * thread it does nothing.
      *
      * @since 1.13.2
      */
