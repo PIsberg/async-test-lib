@@ -4,10 +4,10 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
+import se.deversity.vibetags.annotations.AIContract;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
-import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -45,6 +45,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * @since 1.9.2
  */
+@AIContract(reason = "The -Dasynctest.agent values are typed in users' builds and in this repository's own: corpus-eval's recording and agent-off lanes set it to off, and each lane is valid only while the agent stays detached, so renaming or dropping the opt-out silently attaches the agent there and voids both lanes' measurements. The default arguments (fields=true,collections=true, includes= the first three segments of the test class's package) are documented in the README quick start and docs/agent/attaching.md with measured costs. The default must never attach without an include: an empty includes= weaves JUnit and the build tool in every consumer's test JVM.")
 final class AgentAutoAttach {
 
     private static final Logger log = LoggerFactory.getLogger(AgentAutoAttach.class);
@@ -96,8 +97,8 @@ final class AgentAutoAttach {
             return null;
         }
         if (property != null) {
-            String switchValue = property.strip().toLowerCase(Locale.ROOT);
-            if ("off".equals(switchValue) || "false".equals(switchValue)) {
+            String switchValue = property.strip();
+            if ("off".equalsIgnoreCase(switchValue) || "false".equalsIgnoreCase(switchValue)) {
                 return null;
             }
             return new Plan(property, "property");

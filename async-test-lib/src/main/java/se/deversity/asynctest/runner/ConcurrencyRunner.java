@@ -314,9 +314,9 @@ public class ConcurrencyRunner {
         // JVM would take it from each other; the per-run filter means the loser under-reports
         // rather than mis-attributing another run's threads.
         //
-        // Attach before isRunning() is consulted below, so a user who asked for the agent with
-        // -Dasynctest.agent=... gets the pipeline running for this very run rather than the next
-        // one. Self-attach retransforms already-loaded classes, so test classes loaded before
+        // Attach before isRunning() is consulted below, so a user with the agent artifact on the
+        // test classpath (or -Dasynctest.agent=...) gets the pipeline running for this very run
+        // rather than the next one. Self-attach retransforms already-loaded classes, so test classes loaded before
         // this point are still woven.
         AgentAutoAttach.attachIfRequested(invocationContext.getTargetClass());
         AtomicityValidator telemetryTarget = phase2Context.sharedAtomicityValidator();
@@ -345,10 +345,10 @@ public class ConcurrencyRunner {
         if (telemetryTarget != null && !TelemetryRegistry.isRunning()
                 && AGENT_ABSENCE_LOGGED.compareAndSet(false, true)) {
             log.info("runner.agent.absent test={} detector=AtomicityValidator "
-                    + "hint=\"field accesses are not auto-recorded; run with "
-                    + "-Dasynctest.agent=fields=true (needs the async-test-agent artifact on the "
-                    + "test classpath), attach -javaagent:async-test-agent-<version>.jar, or "
-                    + "record accesses explicitly via AsyncTestContext\"",
+                    + "hint=\"field accesses are not auto-recorded; add the async-test-agent "
+                    + "artifact to the test classpath, which the runner attaches by itself, attach "
+                    + "-javaagent:async-test-agent-<version>.jar, or record accesses explicitly "
+                    + "via AsyncTestContext\"",
                 invocationContext.getExecutable().getName());
         }
 

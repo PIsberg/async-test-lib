@@ -60,7 +60,9 @@ final class CorpusReport {
                 .append("- Configuration: threads=").append(threads)
                 .append(", invocations=").append(invocations)
                 .append(", detectAll=true, agent=")
-                .append(System.getProperty("asynctest.agent", "(not attached)")).append('\n')
+                // "off" is how an agent-free lane stops the runner's default attach.
+                .append("off".equals(System.getProperty("asynctest.agent", "off"))
+                        ? "(not attached)" : System.getProperty("asynctest.agent")).append('\n')
                 .append("- Body executions: ").append(CorpusRecorder.bodyExecutions()).append('\n')
                 .append(LibraryBuild.describe()).append('\n')
                 // An access the buffer threw away is an access no detector saw. A run that lost
