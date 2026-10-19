@@ -27,7 +27,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * See {@link #plan}. The default weaves field instructions and collection calls, the two feeds most
  * agent-fed detectors need on unmodified code, but only in the test's own project: the first three
  * segments of the test class's package, so {@code com.acme.shop.order.OrderTest} weaves
- * {@code com.acme.shop}. Without an include the agent would weave JUnit and the build tool as well.
+ * {@code com.acme.shop}. For {@code AsyncTestRunner.run} it is the package of the body's own class,
+ * which the runner passes in place of the library's holder class (#1042). Without an include the
+ * agent would weave JUnit and the build tool as well.
  *
  * <h4>Why reflection</h4>
  * {@code ArchitectureTest} forbids the library from depending on the agent module, and rightly:
@@ -45,7 +47,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * @since 1.9.2
  */
-@AIContract(reason = "The -Dasynctest.agent values are typed in users' builds and in this repository's own: corpus-eval's recording and agent-off lanes set it to off, and each lane is valid only while the agent stays detached, so renaming or dropping the opt-out silently attaches the agent there and voids both lanes' measurements. This is the fallback, not the recommended route: loading an agent into a running JVM warns on JDK 21+ and JEP 451 says a future JDK will refuse it, so the README quick start attaches at startup with -javaagent and this class must keep logging mode=runtime with a hint naming that route (AttachedByDefaultTest). Its default arguments (fields=true,collections=true, includes= the first three segments of the test class's package) are documented in docs/agent/attaching.md section 3.0.1 with measured costs. The default must never attach without an include: an empty includes= weaves JUnit and the build tool in every consumer's test JVM.")
+@AIContract(reason = "The -Dasynctest.agent values are typed in users' builds and in this repository's own: corpus-eval's recording and agent-off lanes set it to off, and each lane is valid only while the agent stays detached, so renaming or dropping the opt-out silently attaches the agent there and voids both lanes' measurements. This is the fallback, not the recommended route: loading an agent into a running JVM warns on JDK 21+ and JEP 451 says a future JDK will refuse it, so the README quick start attaches at startup with -javaagent and this class must keep logging mode=runtime with a hint naming that route (AttachedByDefaultTest). Its default arguments (fields=true,collections=true, includes= the first three segments of the test class's package, or of the body's class for AsyncTestRunner.run, #1042) are documented in docs/agent/attaching.md section 3.0.1 with measured costs. The default must never attach without an include: an empty includes= weaves JUnit and the build tool in every consumer's test JVM.")
 final class AgentAutoAttach {
 
     private static final Logger log = LoggerFactory.getLogger(AgentAutoAttach.class);
@@ -103,7 +105,7 @@ final class AgentAutoAttach {
             }
             return new Plan(property, "property");
         }
-        // The library's own package is AsyncTestRunner's BodyHolder, and the agent never weaves it.
+        // The agent never weaves the library's own package, so no default scopes the weaving there.
         if (!agentOnClasspath || testPackage == null || testPackage.isEmpty()
                 || (testPackage + ".").startsWith(LIBRARY_PACKAGE)) {
             return null;
@@ -121,7 +123,8 @@ final class AgentAutoAttach {
      * <p>Without the property and without the agent artifact, which is the default for a consumer
      * that did not add it, this costs one failed class lookup per JVM and logs nothing.
      *
-     * @param testClass the class of the test being run, or {@code null} when there is none
+     * @param testClass the class of the test being run, or for {@code AsyncTestRunner} the body's
+     *                  class, or {@code null} when there is none
      */
     static void attachIfRequested(@Nullable Class<?> testClass) {
         if (!ATTEMPTED.compareAndSet(false, true)) {

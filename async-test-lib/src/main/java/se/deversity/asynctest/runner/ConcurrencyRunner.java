@@ -96,6 +96,9 @@ public class ConcurrencyRunner {
     /** Set by {@link #executeBeforeTeardown} for the length of its {@link #execute} call. */
     private static final ThreadLocal<Boolean> TEARDOWN_FOLLOWS = new ThreadLocal<>();
 
+    /** Set by {@link #executeForCodeIn} for the length of its {@link #execute} call. */
+    private static final ThreadLocal<Class<?>> CODE_UNDER_TEST = new ThreadLocal<>();
+
     /**
      * The check {@link #afterTeardown} makes once the test's {@code @AfterEach} methods have run,
      * left on the test thread by the {@link #execute} call before it (#996).
@@ -318,7 +321,8 @@ public class ConcurrencyRunner {
         // test classpath (or -Dasynctest.agent=...) gets the pipeline running for this very run
         // rather than the next one. Self-attach retransforms already-loaded classes, so test classes loaded before
         // this point are still woven.
-        AgentAutoAttach.attachIfRequested(invocationContext.getTargetClass());
+        @Nullable Class<?> codeUnderTest = CODE_UNDER_TEST.get();
+        AgentAutoAttach.attachIfRequested(codeUnderTest != null ? codeUnderTest : invocationContext.getTargetClass());
         AtomicityValidator telemetryTarget = phase2Context.sharedAtomicityValidator();
         boolean telemetryRunning = telemetryTarget != null && TelemetryRegistry.isRunning();
         // The JVM's jdk.VirtualThreadPinned events are filtered by the same worker set, plus the
@@ -1003,6 +1007,28 @@ public class ConcurrencyRunner {
             execute(invocationContext, config);
         } finally {
             TEARDOWN_FOLLOWS.remove();
+        }
+    }
+
+    /**
+     * {@link #execute} for a caller whose invocation context does not name the code under test, as
+     * {@code AsyncTestRunner} does: its context points at the runner's own holder class, in a
+     * package the agent never weaves. The default agent attach infers the package to weave from
+     * {@code codeUnderTest} instead (#1042); nothing else reads it.
+     *
+     * @param invocationContext the invocation being run
+     * @param config            the resolved configuration
+     * @param codeUnderTest     a class in the caller's package, such as the body's own class
+     * @throws Throwable whatever {@link #execute} throws
+     * @since 1.13.3
+     */
+    public static void executeForCodeIn(ReflectiveInvocationContext<Method> invocationContext,
+                                        AsyncTestConfig config, Class<?> codeUnderTest) throws Throwable {
+        CODE_UNDER_TEST.set(codeUnderTest);
+        try {
+            execute(invocationContext, config);
+        } finally {
+            CODE_UNDER_TEST.remove();
         }
     }
 

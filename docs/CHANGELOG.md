@@ -161,6 +161,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ThreadPoolMonitorTest` cases and a `DroppedRejectionAgentFeedTest` assertion that the woven path
   uses the new method, red against a stub that only delegated to `recordTaskRejected`, then green.
 
+- **`AsyncTestRunner.run` gets the default agent attach (#1042).** With `async-test-agent` on the
+  test classpath and no flag, the runner attaches the agent scoped to the test's project, inferred
+  from the test class's package. A body run through `AsyncTestRunner`, the entry point for
+  Kotlin, Scala, Groovy and Clojure suites that are not Jupiter, got no default: its invocation
+  names the library's holder class, in a package the agent never weaves, so a bare field race went
+  unreported unless the user set `-Dasynctest.agent`. `AsyncTestRunner` now passes the body's own
+  class through the new `ConcurrencyRunner.executeForCodeIn`, and the include comes from its
+  package; a lambda, a closure or a Clojure `reify` is compiled into the caller's. Nothing else
+  reads it: the engine still reports the run as `AsyncTestRunner$BodyHolder#run`. Test:
+  `ProgrammaticRunAttachedByDefaultTest` (agent module, own JVM) was red ("should have attached
+  it") and is green, with a guarded field beside the racing one staying silent.
+
 ### Fixed
 
 - **A controlled schedule counted a worker waiting on the scheduler's own lock as an escape

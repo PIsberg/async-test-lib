@@ -33,16 +33,18 @@ arguments it uses:
 
 | `-Dasynctest.agent` | Agent on the classpath | What the runner does |
 |---|---|---|
-| unset | yes | loads it with `fields=true,collections=true,includes=<the first three segments of the test class's package>` |
+| unset | yes | loads it with `fields=true,collections=true,includes=<the first three segments of the test class's package>`; for `AsyncTestRunner.run`, the body's class's package |
 | unset | no | nothing, and logs nothing |
 | `off` or `false` | either | nothing |
 | any other value, `""` included | either | loads it with that value verbatim, as after `-javaagent:...=` |
 
 The runner does nothing when an agent is already running, attached with `-javaagent:` or by a
-`selfAttach` in setup: explicit configuration always wins. A test class in the default package,
-and a body run through `AsyncTestRunner` (whose invocation names the library's own class), get no
-default, because there is no project package to scope the weaving to
-([#1042](https://github.com/PIsberg/async-test-lib/issues/1042)). The log line
+`selfAttach` in setup: explicit configuration always wins. A body run through `AsyncTestRunner`
+is scoped by the package of the body's own class, since the invocation names the library's holder
+class ([#1042](https://github.com/PIsberg/async-test-lib/issues/1042)): a Java, Kotlin or Scala
+lambda, a Groovy closure and a Clojure `reify` are all compiled into the caller's package or
+namespace. A test class or a body in the default package gets no default, because there is no
+project package to scope the weaving to. The log line
 `runner.agent.attached source=classpath mode=runtime args="..." hint="..."` names what was chosen and
 points at the startup route.
 
