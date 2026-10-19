@@ -44,7 +44,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 47. Atomicity Violation Detector
 * **Severity**: `HIGH`
-* **Description**: Tracks compound "read-check-then-act" operations bracketed by start/end markers and cross-references concurrent field accesses observed from other threads mid-operation, flagging sequences that were assumed atomic but were not.
+* **Description**: Tracks compound "read-check-then-act" operations bracketed by start/end markers and cross-references concurrent field accesses observed from other threads mid-operation, flagging sequences that were assumed atomic but were not. A field whose every write stores the same constant is not an atomicity finding, since such writes cannot lose an update, but when one thread sets it and another thread only reads it with no lock and no happens-before edge in between, it is reported as an unordered flag publication: the missing-`volatile` stop flag (#1053). Instance fields only for now; a `static` flag is not judged yet.
 * **Buggy Code**:
   ```java
   if (map.containsKey(key)) {      // read

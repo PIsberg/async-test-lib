@@ -34,7 +34,7 @@ Checked on Windows 11 and JDK 26, three runs, every row identical in all three.
 |---|---|---|---|
 | 0, control | `count++` from two threads | `AtomicityValidator` | not applicable |
 | 1, `CONCURRENT_MODIFICATIONS` | one thread iterates an `ArrayList` while another adds to it | none; since #1052 `SharedCollectionDetector` | none |
-| 2, `VISIBILITY` | a constant (`data = 42`) published behind a plain `boolean` flag | none | none |
+| 2, `VISIBILITY` | a constant (`data = 42`) published behind a plain `boolean` flag | none; since #1053 `AtomicityValidator` | none |
 | 2b, `VISIBILITY` | a computed value published behind the same plain flag | `AtomicityValidator` | not run |
 | 3, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` | a `CompletableFuture` left pending on the exception path | none | none |
 | 4, `THREAD_POOL` | a saturated pool's `RejectedExecutionException` caught and dropped | none | none |
@@ -55,7 +55,10 @@ What the rows mean:
   constant, because such writes cannot lose an update, and in row 2 both `data = 42` and
   `ready = true` are constants. That excuse is right for atomicity and wrong for visibility: the
   classic missing-`volatile` stop flag, `running = false` read in another thread's loop, is a
-  constant write, and nothing reports it.
+  constant write, and nothing reported it. Since #1053 `AtomicityValidator` reports it as an
+  unordered flag publication when a thread that never writes the field reads it with no lock, no
+  happens-before edge and no volatile bit; on the corpus that added no finding on any of its 100
+  documented-thread-safe subjects or correct idioms. A `static` flag is not judged yet.
 - **The completion leak and the dropped rejection are gaps.** Nothing on the agent path sees a
   future's lifetime or a rejection.
 - **The thread leak was half covered.** `DaemonThreadHygieneDetector` reports the leaked thread for
@@ -74,7 +77,7 @@ test, and each flips its row here and in the test. The likely seams, not yet bui
   so `SharedCollectionDetector` sees the reader beside the writer, rather than feeding
   `ConcurrentModificationDetector`'s iteration start and end model, which needs an end event the
   weaver does not have.
-- **Visibility ([#1053](https://github.com/PIsberg/async-test-lib/issues/1053)):** report a plain field whose writes are a constant, written by one thread and
+- **Visibility ([#1053](https://github.com/PIsberg/async-test-lib/issues/1053), done for instance fields):** report a plain field whose writes are a constant, written by one thread and
   read by another with no lock and no happens-before edge between them, as a visibility finding
   rather than an atomicity one; the field stream already carries both accesses and the model, and
   the corpus idioms lane decides whether benign racy flags make it too noisy.
