@@ -318,7 +318,7 @@ public class ConcurrencyRunner {
         // -Dasynctest.agent=... gets the pipeline running for this very run rather than the next
         // one. Self-attach retransforms already-loaded classes, so test classes loaded before
         // this point are still woven.
-        AgentAutoAttach.attachIfRequested();
+        AgentAutoAttach.attachIfRequested(invocationContext.getTargetClass());
         AtomicityValidator telemetryTarget = phase2Context.sharedAtomicityValidator();
         boolean telemetryRunning = telemetryTarget != null && TelemetryRegistry.isRunning();
         // The JVM's jdk.VirtualThreadPinned events are filtered by the same worker set, plus the
