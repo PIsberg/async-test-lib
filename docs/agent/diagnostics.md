@@ -59,7 +59,9 @@ woven (the agent is not attached, `fields=true` and `collections=true` are off, 
 classes are outside `includes=`) and
 nothing called `AsyncTestContext.schedulePoint()`, so each worker ran its body whole and the round
 interleaved nothing. Every controlled round also logs `runner.schedule.round ... steps= switches=
-escapes=` at DEBUG; `escapes=0` is what makes its seed replay exactly.
+escapes= fallbacks=` at DEBUG; `escapes=0` is what makes its seed replay exactly. `fallbacks=` counts
+the grants made when every ready worker waited on a lock the schedule saw held: a deadlock in the
+body, or a hold the schedule did not see released, such as a wait the agent did not weave.
 
 `runner.pinning.unattributed test=... events=<n>` is logged per test rather than per JVM, because
 it is about that test's body. `VirtualThreadPinningDetector` reads the JVM's own

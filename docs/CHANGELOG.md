@@ -173,6 +173,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ProgrammaticRunAttachedByDefaultTest` (agent module, own JVM) was red ("should have attached
   it") and is green, with a guarded field beside the racing one staying silent.
 
+- **A controlled schedule no longer keeps a hold the waiter let go of (part of #1048).** Since #1022
+  the schedule passes over a worker whose next lock another worker holds, and falls back to running
+  one anyway only when every ready worker waits on a held lock. Two releases were invisible to it:
+  `Object.wait`, which lets the monitor go while waiting, and an exception leaving a `synchronized`
+  method, which passes no woven exit. The stale hold sent the round down that fallback while the
+  monitor was free. The woven wait now hands the waiter's holds back before waiting and takes them
+  again after, and each worker re-confirms its own recorded holds at its points and when its body
+  ends, on its own thread. Each fallback grant is now counted: `runner.schedule.round` carries
+  `fallbacks=`, and `ControlledSchedule.Summary` gains a `fallbacks` component, its four-argument
+  constructor kept. `Condition.await` is not woven yet and still leaves its lock listed. Tests:
+  `ControlledScheduleLockTest.aWovenWaitLetsTheMonitorGo` and
+  `aMonitorLeftByAnExceptionIsNotHeldForTheSchedule` logged `fallbacks=1` and are green.
+
 ### Fixed
 
 - **A controlled schedule counted a worker waiting on the scheduler's own lock as an escape

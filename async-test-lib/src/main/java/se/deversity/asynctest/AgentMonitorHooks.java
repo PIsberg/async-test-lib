@@ -4,6 +4,7 @@ import org.jspecify.annotations.Nullable;
 
 import se.deversity.asynctest.diagnostics.MissedSignalDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedNonFinalDetector;
+import se.deversity.asynctest.telemetry.ControlledSchedule;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
@@ -33,7 +34,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.12.2
  */
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.MONITOR_ENTRIES, loopBackEdge by name with a ()V descriptor, and monitorFieldEntered by FieldAccessWeaver with an (Object, Object, String)V descriptor, so none can change independently of the weaver. monitorFieldEntered runs before a MONITORENTER and must not throw: a null monitor is left for the MONITORENTER to reject with its own NullPointerException. Every hook must perform the original call on the receiver and propagate what it throws unchanged: InterruptedException, and the IllegalMonitorStateException of a call made without the monitor, which is why nothing is recorded unless Thread.holdsLock(receiver). Record the wait before wait() releases the monitor and the wakeup after it is reacquired, in a finally, so a notify is judged against the threads really waiting; record a notify before making it. loopBackEdge takes nothing and returns nothing because the weaver inserts it in front of a jump whose operands are already on the stack.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.MONITOR_ENTRIES, loopBackEdge by name with a ()V descriptor, and monitorFieldEntered by FieldAccessWeaver with an (Object, Object, String)V descriptor, so none can change independently of the weaver. monitorFieldEntered runs before a MONITORENTER and must not throw: a null monitor is left for the MONITORENTER to reject with its own NullPointerException. Every hook must perform the original call on the receiver and propagate what it throws unchanged: InterruptedException, and the IllegalMonitorStateException of a call made without the monitor, which is why nothing is recorded unless Thread.holdsLock(receiver). Record the wait before wait() releases the monitor and the wakeup after it is reacquired, in a finally, so a notify is judged against the threads really waiting; record a notify before making it. The same goes for a controlled schedule's record of the hold: releasingForWait before wait(), reacquiredAfterWait in an outer finally, so a peer waiting to enter the monitor is not passed over while it is free (#1048). loopBackEdge takes nothing and returns nothing because the weaver inserts it in front of a jump whose operands are already on the stack.")
 public final class AgentMonitorHooks {
 
     private AgentMonitorHooks() {
@@ -48,14 +49,19 @@ public final class AgentMonitorHooks {
     public static void monitorWait(Object receiver) throws InterruptedException {
         AgentConcurrencyUtilHooks.blocking("Object.wait", false);
         MissedSignalDetector detector = observing(receiver);
-        if (detector == null || !detector.recordObservedWait(receiver)) {
-            receiver.wait();
-            return;
-        }
+        int holds = ControlledSchedule.releasingForWait(receiver);
         try {
-            receiver.wait();
+            if (detector == null || !detector.recordObservedWait(receiver)) {
+                receiver.wait();
+                return;
+            }
+            try {
+                receiver.wait();
+            } finally {
+                detector.recordObservedWakeup(receiver);
+            }
         } finally {
-            detector.recordObservedWakeup(receiver);
+            ControlledSchedule.reacquiredAfterWait(receiver, holds);
         }
     }
 
@@ -69,14 +75,19 @@ public final class AgentMonitorHooks {
     public static void monitorWait(Object receiver, long timeoutMillis) throws InterruptedException {
         AgentConcurrencyUtilHooks.blocking("Object.wait", false);
         MissedSignalDetector detector = observing(receiver);
-        if (detector == null || !detector.recordObservedWait(receiver)) {
-            receiver.wait(timeoutMillis);
-            return;
-        }
+        int holds = ControlledSchedule.releasingForWait(receiver);
         try {
-            receiver.wait(timeoutMillis);
+            if (detector == null || !detector.recordObservedWait(receiver)) {
+                receiver.wait(timeoutMillis);
+                return;
+            }
+            try {
+                receiver.wait(timeoutMillis);
+            } finally {
+                detector.recordObservedWakeup(receiver);
+            }
         } finally {
-            detector.recordObservedWakeup(receiver);
+            ControlledSchedule.reacquiredAfterWait(receiver, holds);
         }
     }
 
@@ -92,14 +103,19 @@ public final class AgentMonitorHooks {
             throws InterruptedException {
         AgentConcurrencyUtilHooks.blocking("Object.wait", false);
         MissedSignalDetector detector = observing(receiver);
-        if (detector == null || !detector.recordObservedWait(receiver)) {
-            receiver.wait(timeoutMillis, nanos);
-            return;
-        }
+        int holds = ControlledSchedule.releasingForWait(receiver);
         try {
-            receiver.wait(timeoutMillis, nanos);
+            if (detector == null || !detector.recordObservedWait(receiver)) {
+                receiver.wait(timeoutMillis, nanos);
+                return;
+            }
+            try {
+                receiver.wait(timeoutMillis, nanos);
+            } finally {
+                detector.recordObservedWakeup(receiver);
+            }
         } finally {
-            detector.recordObservedWakeup(receiver);
+            ControlledSchedule.reacquiredAfterWait(receiver, holds);
         }
     }
 
