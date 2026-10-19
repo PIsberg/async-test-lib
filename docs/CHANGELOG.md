@@ -147,6 +147,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`ControlledScheduleTest.aFixedSeedReplaysTheSameInterleaving` failed once on a loaded CI
+  runner (#1063).** Exact replay is promised only for a round no worker escaped, and a worker that
+  stalls past the schedule's stall limit on a busy machine is counted as an escape precisely
+  because it voids that promise. The test compared every run regardless, so one stall read as a
+  broken replay. It now reads each round's `escapes=` from the `runner.schedule.round` event,
+  compares a pair only when both runs were escape-free, prints those events in the failure message,
+  and fails if fewer than 16 of the 20 pairs could be compared. Verified by replaying with a
+  different seed on purpose: the test still goes red with both rounds at `escapes=0`.
+
 - **A refused runtime attach blamed the wrong switch.** `AsyncTestAgent.selfAttach` and the
   runner's `runner.agent.attach.failed reason=attach-refused` hint said self-attachment was disabled
   and to set `-Djdk.attach.allowAttachSelf=true`. In a JVM that refuses runtime agent loading that
