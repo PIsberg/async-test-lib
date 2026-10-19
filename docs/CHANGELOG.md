@@ -18,7 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   route JEP 451 endorses. Those snippets are the build of the new
   `consumer-fixture-langs/quickstart`, which CI runs under Maven and Gradle; its test fails unless
   the agent arrived by `-javaagent:` and found the race, and `QuickStartAgentSnippetTest` fails if
-  the README and the fixture drift apart. With the artifact on the test classpath and no agent
+  the README and the fixture drift apart. The quick-start examples now declare `package com.example;`:
+  without it the class sat in the default package, which `includes=com.example` does not weave,
+  so a verbatim copy reported nothing while the fixture's copy, in a package, passed; the same test
+  now requires each example's package to sit under its snippet's prefix. With the artifact on the test classpath and no agent
   started with the JVM, the runner now loads it before the first round with
   `fields=true,collections=true,includes=` the first three segments of the test class's package, and
   logs `runner.agent.attached source=classpath mode=runtime` with a hint naming the startup route.

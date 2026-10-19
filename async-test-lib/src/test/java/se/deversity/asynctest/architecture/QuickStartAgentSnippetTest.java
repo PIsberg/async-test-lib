@@ -11,8 +11,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -44,6 +47,60 @@ class QuickStartAgentSnippetTest {
     @DisplayName("the README's Gradle agent snippet is the quick-start fixture's build")
     void gradleSnippetIsTheFixturesBuild() {
         assertSnippetIsIn(GRADLE_MARKER, "consumer-fixture-langs/quickstart/build.gradle.kts");
+    }
+
+    /** The example class every quick-start build section shows, and the fixture runs. */
+    private static final String EXAMPLE_CLASS = "class CounterTest {";
+
+    private static final Pattern INCLUDES = Pattern.compile("includes=([\\w.]+)");
+    private static final Pattern PACKAGE = Pattern.compile("^\\s*package\\s+([\\w.]+)\\s*;", Pattern.MULTILINE);
+
+    /**
+     * A user who copies the quick start verbatim must get a woven test. The agent weaves only classes
+     * under the snippet's {@code includes=} prefix, and the example used to have no {@code package}
+     * line at all: in the default package it was never woven, and reported nothing, while the
+     * fixture, whose copy sat in a package, passed. So every quick-start example must declare a
+     * package under the prefix, and the fixture's copy must use that same package.
+     */
+    @Test
+    @DisplayName("the README's quick-start example sits in the package its agent snippet weaves")
+    void theExampleIsInsideTheWovenPackage() {
+        Path root = repoRoot();
+        String readme = read(root.resolve("README.md"));
+        String fixturePackage = packageOf(read(root.resolve(
+                "consumer-fixture-langs/quickstart/src/test/java/com/example/CounterTest.java")));
+        for (String marker : List.of(MAVEN_MARKER, GRADLE_MARKER)) {
+            String snippet = String.join("\n", fencedBlockAfter(readme, marker));
+            Matcher includes = INCLUDES.matcher(snippet);
+            assertTrue(includes.find(), "the snippet after " + marker + " names no includes=");
+            List<String> example = exampleAfter(readme, marker);
+            assertFalse(example.isEmpty(), "no " + EXAMPLE_CLASS + " example follows " + marker);
+            String examplePackage = packageOf(String.join("\n", example));
+            assertTrue(examplePackage != null && (examplePackage + ".").startsWith(includes.group(1) + "."),
+                    "the quick-start example after " + marker + " is in "
+                            + (examplePackage == null ? "the default package" : "package " + examplePackage)
+                            + ", which includes=" + includes.group(1) + " does not weave, so a user who"
+                            + " copies it verbatim gets a run that reports nothing");
+            assertEquals(examplePackage, fixturePackage,
+                    "the fixture's CounterTest must be the README's example, package included");
+        }
+    }
+
+    private static String packageOf(String source) {
+        Matcher m = PACKAGE.matcher(source);
+        return m.find() ? m.group(1) : null;
+    }
+
+    /** The first fenced block after {@code marker} that declares the example class. */
+    private static List<String> exampleAfter(String text, String marker) {
+        String rest = text.substring(text.indexOf(marker) + marker.length());
+        int classAt = rest.indexOf(EXAMPLE_CLASS);
+        if (classAt < 0) {
+            return List.of();
+        }
+        int fence = rest.lastIndexOf("```", classAt);
+        int lineStart = rest.lastIndexOf('\n', fence); // the fence is indented inside a list item
+        return fencedBlockAfter(rest.substring(lineStart), "\n");
     }
 
     private static void assertSnippetIsIn(String marker, String fixture) {

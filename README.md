@@ -230,6 +230,8 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
 
 2. **Write your first stress test**:
    ```java
+   package com.example;
+
    import se.deversity.asynctest.AsyncTest;
    import se.deversity.asynctest.FailOn;
 
@@ -243,6 +245,10 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
        }
    }
    ```
+
+   The package matters: the agent weaves only classes under step 1's `includes=` prefix, and
+   a test in the default package is woven by nothing and reports nothing. Keep the two in
+   step when you move the test into your own package.
 
    `failOn = FailOn.CRITICAL` makes a finding fail the test. The default is
    `FailOn.NONE`, which prints findings and lets the test pass — useful when adding
@@ -304,6 +310,8 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
 
 2. **Write your first stress test**:
    ```java
+   package com.example;
+
    import se.deversity.asynctest.AsyncTest;
    import se.deversity.asynctest.FailOn;
 
@@ -318,8 +326,9 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    }
    ```
 
-   `failOn = FailOn.CRITICAL` makes a finding fail the test; the default `FailOn.NONE`
-   prints findings and passes.
+   The package must sit under step 1's `includes=` prefix: a test in the default package is
+   woven by nothing and reports nothing. `failOn = FailOn.CRITICAL` makes a finding fail the
+   test; the default `FailOn.NONE` prints findings and passes.
 
 3. **Run your tests**:
    ```bash
