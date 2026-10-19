@@ -239,9 +239,9 @@ one it learns to ignore. On a passing run a PROMPT or ADVISORY report prints as 
 tier, finding count, first finding) unless you pass `-Dasync-test.report.full=true`; listeners and
 the report files always get the full text.
 
-Severity is now worth gating on, which it was not before 1.9.7. Until then 86 of the 142
-detectors set no severity at all and `IssueSeverity.fromReport` returned `HIGH` for every one of
-them, so `failOn = HIGH` was close to "fail on anything". Every detector now states a severity
+Severity is now worth gating on, which it was not before 1.9.7. Until then 86 of the detectors
+shipping at the time, 142 in all, set no severity at all and `IssueSeverity.fromReport`
+returned `HIGH` for every one of them, so `failOn = HIGH` was close to "fail on anything". Every detector now states a severity
 per finding in its structured findings (since #801; before that some stated it in their report
 text or in `DetectorDefaultSeverity`, and they kept that severity), and
 `DetectorSeverityMarkerTest` fails the build if one does not. If you are upgrading and your gate
