@@ -247,7 +247,8 @@ public final class TelemetryRegistry {
      * @param volatileField     whether the field is declared {@code volatile}
      * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
      * @param afterVolatileRead whether a volatile field of the owner was read first
-     * @param staticField       whether the field is static, so its identity stays 0
+     * @param staticField       whether the field is static; its identity is then the declaring
+     *                          class's, or 0 when the weaver could not load the class constant
      * @since 1.9.8
      */
     public static void recordAccess(@Nullable Object receiver, @Nullable Object methodMonitor,
@@ -258,7 +259,10 @@ public final class TelemetryRegistry {
         if (STOPPED.get()) {
             return;
         }
-        int identity = staticField || receiver == null ? 0 : System.identityHashCode(receiver);
+        // A static field is one per class, so its declaring class keys it as a receiver keys an
+        // instance field, and keeps it out of the identity-0 bucket that pools accesses recorded
+        // without a receiver, where no per-object rule judges anything (#1053).
+        int identity = receiver == null ? 0 : System.identityHashCode(receiver);
         int ownMonitor = receiver != null && Thread.holdsLock(receiver)
                 ? System.identityHashCode(receiver) : 0;
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
@@ -432,7 +436,8 @@ public final class TelemetryRegistry {
      * @param volatileField     whether the field is declared {@code volatile}
      * @param constantTag       the constant stored, {@code Integer.MIN_VALUE} for none
      * @param afterVolatileRead whether a volatile field of the owner was read first
-     * @param staticField       whether the field is static, so its identity stays 0
+     * @param staticField       whether the field is static; its identity is then the declaring
+     *                          class's, or 0 when the weaver could not load the class constant
      * @since 1.9.8
      */
     public static void recordAccess(@Nullable Object receiver, @Nullable Object stored,
@@ -444,8 +449,11 @@ public final class TelemetryRegistry {
         if (STOPPED.get()) {
             return;
         }
-        int identity = staticField || receiver == null ? 0 : System.identityHashCode(receiver);
-        if (isWrite && identity != 0 && SpinLocks.isSpinField(qualifiedName)) {
+        // A static field is one per class, so its declaring class keys it as a receiver keys an
+        // instance field, and keeps it out of the identity-0 bucket that pools accesses recorded
+        // without a receiver, where no per-object rule judges anything (#1053).
+        int identity = receiver == null ? 0 : System.identityHashCode(receiver);
+        if (isWrite && !staticField && identity != 0 && SpinLocks.isSpinField(qualifiedName)) {
             // The holder writing its spinlock flag is the release (#554). Declared before the write
             // lands, so the lock never reads as held after it truly is not.
             SpinLocks.release(receiver, qualifiedName);
