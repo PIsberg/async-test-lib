@@ -134,6 +134,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   safely-published mark. On the corpus `AtomicityValidator` still draws nothing on 100
   documented-thread-safe subjects (22 of 39 unsafe, unchanged), and every correct idiom stays silent.
 
+- **A rejected submission the caller drops is reported (#1055).** A saturated pool's
+  `RejectedExecutionException` caught and dropped by the calling code loses the task silently, and
+  nothing reported it on unmodified code (`AgentFeedOverlapAuditTest` row 4). The woven `submit`
+  (all three overloads) and `execute` now record a rejection with the run's `ThreadPoolMonitor`
+  before rethrowing the same exception unchanged. The pool is not registered, so its bounds stay
+  undeclared and the rules that compare against a bound skip it; declaring zeros, tried first,
+  reported "All 0 threads busy" (#501), and the test now guards against it. `THREAD_POOL` moves to
+  the AGENT feed: 39 agent-fed, 105 recording-only. Tests: `DroppedRejectionAgentFeedTest` (the woven
+  call made by hand) was red ("Found: []") and is green, with the `CallerRunsPolicy` twin silent;
+  the audit's row 4 now pins `ThreadPoolMonitor`.
+
 ### Fixed
 
 - **A refused runtime attach blamed the wrong switch.** `AsyncTestAgent.selfAttach` and the

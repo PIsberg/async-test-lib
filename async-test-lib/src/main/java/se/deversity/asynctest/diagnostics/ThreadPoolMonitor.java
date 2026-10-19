@@ -20,6 +20,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - Worker thread starvation
  * - Queue imbalance across workers
  * - Long-running tasks blocking others
+ *
+ * <p>With the agent attached, task rejection needs no recording call: the woven {@code submit} and
+ * {@code execute} record a {@code RejectedExecutionException} as it passes through, before it is
+ * rethrown, so a rejection the calling code drops is still reported (#1055). Such a pool's bounds
+ * stay undeclared, so the rules that compare against a bound skip it (#501).
  */
 public class ThreadPoolMonitor extends AbstractInstanceDetector<ThreadPoolMonitor.PoolState> {
 

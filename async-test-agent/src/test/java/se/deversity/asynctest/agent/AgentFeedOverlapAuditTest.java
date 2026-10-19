@@ -173,7 +173,7 @@ class AgentFeedOverlapAuditTest {
     }
 
     @Test
-    void droppedRejection_isAGap() {
+    void droppedRejection_isReportedByThreadPoolMonitor() {
         FeedAuditSubjects.Pool pool = new FeedAuditSubjects.Pool();
         Runnable slow = () -> {
             try {
@@ -183,7 +183,7 @@ class AgentFeedOverlapAuditTest {
             }
         };
         try {
-            assertRow("4 THREAD_POOL buggy", Set.of(), detectorsReporting("4 THREAD_POOL buggy", slot -> {
+            assertRow("4 THREAD_POOL buggy", Set.of("ThreadPoolMonitor"), detectorsReporting("4 THREAD_POOL buggy", slot -> {
                 for (int i = 0; i < 4; i++) {
                     pool.submitDropping(slow);
                 }
