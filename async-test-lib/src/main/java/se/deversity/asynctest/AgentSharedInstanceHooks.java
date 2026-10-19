@@ -19,6 +19,7 @@ import java.util.Locale;
 import java.util.regex.Matcher;
 
 import se.deversity.asynctest.diagnostics.CalendarDetector;
+import se.deversity.asynctest.telemetry.ControlledSchedule;
 import se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector;
 import se.deversity.asynctest.diagnostics.SharedDecimalFormatDetector;
 import se.deversity.asynctest.diagnostics.SharedFormatterDetector;
@@ -72,6 +73,7 @@ public final class AgentSharedInstanceHooks {
      * @return the formatted text
      */
     public static String format(SimpleDateFormat receiver, Date date) {
+        ControlledSchedule.point();
         SimpleDateFormatDetector detector = AsyncTestContext.currentSimpleDateFormatDetector();
         if (detector != null) {
             detector.recordFormat(receiver, receiver.getClass().getName());
@@ -88,6 +90,7 @@ public final class AgentSharedInstanceHooks {
      * @throws ParseException if the text cannot be parsed
      */
     public static Date parse(SimpleDateFormat receiver, String source) throws ParseException {
+        ControlledSchedule.point();
         SimpleDateFormatDetector detector = AsyncTestContext.currentSimpleDateFormatDetector();
         if (detector != null) {
             detector.recordParse(receiver, receiver.getClass().getName());
@@ -108,6 +111,7 @@ public final class AgentSharedInstanceHooks {
      * @return the parsed date, or {@code null} if the text did not match
      */
     public static Date parse(SimpleDateFormat receiver, String source, ParsePosition position) {
+        ControlledSchedule.point();
         SimpleDateFormatDetector detector = AsyncTestContext.currentSimpleDateFormatDetector();
         if (detector != null) {
             detector.recordParse(receiver, receiver.getClass().getName());
@@ -131,6 +135,7 @@ public final class AgentSharedInstanceHooks {
      * @since 1.12.1
      */
     public static String format(DateFormat receiver, Date date) {
+        ControlledSchedule.point();
         if (receiver instanceof SimpleDateFormat simple) {
             SimpleDateFormatDetector detector = AsyncTestContext.currentSimpleDateFormatDetector();
             if (detector != null) {
@@ -151,6 +156,7 @@ public final class AgentSharedInstanceHooks {
      * @since 1.12.1
      */
     public static Date parse(DateFormat receiver, String source) throws ParseException {
+        ControlledSchedule.point();
         recordDateFormatParse(receiver);
         return receiver.parse(source);
     }
@@ -169,6 +175,7 @@ public final class AgentSharedInstanceHooks {
      * @since 1.12.1
      */
     public static Date parse(DateFormat receiver, String source, ParsePosition position) {
+        ControlledSchedule.point();
         recordDateFormatParse(receiver);
         return receiver.parse(source, position);
     }
@@ -189,6 +196,7 @@ public final class AgentSharedInstanceHooks {
      * @return whether a match was found
      */
     public static boolean find(Matcher receiver) {
+        ControlledSchedule.point();
         recordMatcher(receiver);
         return receiver.find();
     }
@@ -200,6 +208,7 @@ public final class AgentSharedInstanceHooks {
      * @return whether the whole region matched
      */
     public static boolean matches(Matcher receiver) {
+        ControlledSchedule.point();
         recordMatcher(receiver);
         return receiver.matches();
     }
@@ -211,6 +220,7 @@ public final class AgentSharedInstanceHooks {
      * @return the matched subsequence
      */
     public static String group(Matcher receiver) {
+        ControlledSchedule.point();
         recordMatcher(receiver);
         return receiver.group();
     }
@@ -227,6 +237,7 @@ public final class AgentSharedInstanceHooks {
      * @return the matched subsequence
      */
     public static String group(Matcher receiver, int group) {
+        ControlledSchedule.point();
         recordMatcher(receiver);
         return receiver.group(group);
     }
@@ -239,6 +250,7 @@ public final class AgentSharedInstanceHooks {
      * @return the matched subsequence
      */
     public static String group(Matcher receiver, String name) {
+        ControlledSchedule.point();
         recordMatcher(receiver);
         return receiver.group(name);
     }
@@ -251,6 +263,7 @@ public final class AgentSharedInstanceHooks {
      * @return whether a match was found
      */
     public static boolean find(Matcher receiver, int start) {
+        ControlledSchedule.point();
         recordMatcher(receiver);
         return receiver.find(start);
     }
@@ -269,6 +282,7 @@ public final class AgentSharedInstanceHooks {
      * @param input    the bytes to add
      */
     public static void update(MessageDigest receiver, byte[] input) {
+        ControlledSchedule.point();
         recordDigest(receiver);
         receiver.update(input);
     }
@@ -280,6 +294,7 @@ public final class AgentSharedInstanceHooks {
      * @return the computed hash
      */
     public static byte[] digest(MessageDigest receiver) {
+        ControlledSchedule.point();
         recordDigest(receiver);
         return receiver.digest();
     }
@@ -292,6 +307,7 @@ public final class AgentSharedInstanceHooks {
      * @return the computed hash
      */
     public static byte[] digest(MessageDigest receiver, byte[] input) {
+        ControlledSchedule.point();
         recordDigest(receiver);
         return receiver.digest(input);
     }
@@ -303,6 +319,7 @@ public final class AgentSharedInstanceHooks {
      * @param input    the byte to accumulate
      */
     public static void update(MessageDigest receiver, byte input) {
+        ControlledSchedule.point();
         recordDigest(receiver);
         receiver.update(input);
     }
@@ -316,6 +333,7 @@ public final class AgentSharedInstanceHooks {
      * @param length   how many bytes
      */
     public static void update(MessageDigest receiver, byte[] input, int offset, int length) {
+        ControlledSchedule.point();
         recordDigest(receiver);
         receiver.update(input, offset, length);
     }
@@ -327,6 +345,7 @@ public final class AgentSharedInstanceHooks {
      * @param input    the buffer to accumulate from
      */
     public static void update(MessageDigest receiver, ByteBuffer input) {
+        ControlledSchedule.point();
         recordDigest(receiver);
         receiver.update(input);
     }
@@ -343,6 +362,7 @@ public final class AgentSharedInstanceHooks {
      */
     public static int digest(MessageDigest receiver, byte[] output, int offset, int length)
             throws DigestException {
+        ControlledSchedule.point();
         recordDigest(receiver);
         return receiver.digest(output, offset, length);
     }
@@ -365,6 +385,7 @@ public final class AgentSharedInstanceHooks {
      * @return the field's value
      */
     public static int get(Calendar receiver, int field) {
+        ControlledSchedule.point();
         CalendarDetector detector = AsyncTestContext.currentCalendarDetector();
         if (detector != null) {
             detector.recordGet(receiver, receiver.getClass().getName());
@@ -380,6 +401,7 @@ public final class AgentSharedInstanceHooks {
      * @param value    the value to write
      */
     public static void set(Calendar receiver, int field, int value) {
+        ControlledSchedule.point();
         CalendarDetector detector = AsyncTestContext.currentCalendarDetector();
         if (detector != null) {
             detector.recordSet(receiver, receiver.getClass().getName());
@@ -400,6 +422,7 @@ public final class AgentSharedInstanceHooks {
      * @param date     the day of month
      */
     public static void set(Calendar receiver, int year, int month, int date) {
+        ControlledSchedule.point();
         recordCalendarSet(receiver);
         receiver.set(year, month, date);
     }
@@ -416,6 +439,7 @@ public final class AgentSharedInstanceHooks {
      */
     public static void set(Calendar receiver, int year, int month, int date, int hour,
                            int minute) {
+        ControlledSchedule.point();
         recordCalendarSet(receiver);
         receiver.set(year, month, date, hour, minute);
     }
@@ -433,6 +457,7 @@ public final class AgentSharedInstanceHooks {
      */
     public static void set(Calendar receiver, int year, int month, int date, int hour,
                            int minute, int second) {
+        ControlledSchedule.point();
         recordCalendarSet(receiver);
         receiver.set(year, month, date, hour, minute, second);
     }
@@ -455,6 +480,7 @@ public final class AgentSharedInstanceHooks {
      * @param amount   the amount to add
      */
     public static void add(Calendar receiver, int field, int amount) {
+        ControlledSchedule.point();
         CalendarDetector detector = AsyncTestContext.currentCalendarDetector();
         if (detector != null && !(amount == 0 && isGregorian(receiver))) {
             detector.recordAdd(receiver, receiver.getClass().getName(), field);
@@ -473,6 +499,7 @@ public final class AgentSharedInstanceHooks {
      * @param amount   the signed amount to roll by
      */
     public static void roll(Calendar receiver, int field, int amount) {
+        ControlledSchedule.point();
         if (!(amount == 0 && isGregorian(receiver))) {
             recordCalendarRoll(receiver, field);
         }
@@ -487,6 +514,7 @@ public final class AgentSharedInstanceHooks {
      * @param up       whether to roll up rather than down
      */
     public static void roll(Calendar receiver, int field, boolean up) {
+        ControlledSchedule.point();
         recordCalendarRoll(receiver, field);
         receiver.roll(field, up);
     }
@@ -498,6 +526,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the calendar
      */
     public static void clear(Calendar receiver) {
+        ControlledSchedule.point();
         recordCalendarSet(receiver);
         receiver.clear();
     }
@@ -509,6 +538,7 @@ public final class AgentSharedInstanceHooks {
      * @param field    the field to clear
      */
     public static void clear(Calendar receiver, int field) {
+        ControlledSchedule.point();
         recordCalendarSet(receiver);
         receiver.clear(field);
     }
@@ -521,6 +551,7 @@ public final class AgentSharedInstanceHooks {
      * @param date     the time to set
      */
     public static void setTime(Calendar receiver, Date date) {
+        ControlledSchedule.point();
         recordCalendarSetTime(receiver);
         receiver.setTime(date);
     }
@@ -532,6 +563,7 @@ public final class AgentSharedInstanceHooks {
      * @param millis   the time to set, in milliseconds since the epoch
      */
     public static void setTimeInMillis(Calendar receiver, long millis) {
+        ControlledSchedule.point();
         recordCalendarSetTime(receiver);
         receiver.setTimeInMillis(millis);
     }
@@ -544,6 +576,7 @@ public final class AgentSharedInstanceHooks {
      * @param zone     the time zone to set
      */
     public static void setTimeZone(Calendar receiver, java.util.TimeZone zone) {
+        ControlledSchedule.point();
         recordCalendarSet(receiver);
         receiver.setTimeZone(zone);
     }
@@ -590,6 +623,7 @@ public final class AgentSharedInstanceHooks {
      * @return the builder, so the call chain is unchanged
      */
     public static StringBuilder append(StringBuilder receiver, String value) {
+        ControlledSchedule.point();
         recordBuilder(receiver);
         return receiver.append(value);
     }
@@ -602,6 +636,7 @@ public final class AgentSharedInstanceHooks {
      * @return the builder, so the call chain is unchanged
      */
     public static StringBuilder append(StringBuilder receiver, int value) {
+        ControlledSchedule.point();
         recordBuilder(receiver);
         return receiver.append(value);
     }
@@ -621,6 +656,7 @@ public final class AgentSharedInstanceHooks {
      * @return the builder, so the call chain is unchanged
      */
     public static StringBuilder append(StringBuilder receiver, char value) {
+        ControlledSchedule.point();
         recordBuilder(receiver);
         return receiver.append(value);
     }
@@ -633,6 +669,7 @@ public final class AgentSharedInstanceHooks {
      * @return the builder, so the call chain is unchanged
      */
     public static StringBuilder append(StringBuilder receiver, long value) {
+        ControlledSchedule.point();
         recordBuilder(receiver);
         return receiver.append(value);
     }
@@ -645,6 +682,7 @@ public final class AgentSharedInstanceHooks {
      * @return the builder, so the call chain is unchanged
      */
     public static StringBuilder append(StringBuilder receiver, double value) {
+        ControlledSchedule.point();
         recordBuilder(receiver);
         return receiver.append(value);
     }
@@ -657,6 +695,7 @@ public final class AgentSharedInstanceHooks {
      * @return the builder, so the call chain is unchanged
      */
     public static StringBuilder append(StringBuilder receiver, boolean value) {
+        ControlledSchedule.point();
         recordBuilder(receiver);
         return receiver.append(value);
     }
@@ -669,6 +708,7 @@ public final class AgentSharedInstanceHooks {
      * @return the builder, so the call chain is unchanged
      */
     public static StringBuilder append(StringBuilder receiver, Object value) {
+        ControlledSchedule.point();
         recordBuilder(receiver);
         return receiver.append(value);
     }
@@ -681,6 +721,7 @@ public final class AgentSharedInstanceHooks {
      * @return the builder, so the call chain is unchanged
      */
     public static StringBuilder append(StringBuilder receiver, CharSequence value) {
+        ControlledSchedule.point();
         recordBuilder(receiver);
         return receiver.append(value);
     }
@@ -709,6 +750,7 @@ public final class AgentSharedInstanceHooks {
      * @since 1.12.1
      */
     public static Appendable append(Appendable receiver, CharSequence value) throws IOException {
+        ControlledSchedule.point();
         if (receiver instanceof StringBuilder builder) {
             recordBuilder(builder);
         }
@@ -726,6 +768,7 @@ public final class AgentSharedInstanceHooks {
      * @since 1.12.1
      */
     public static Appendable append(Appendable receiver, char value) throws IOException {
+        ControlledSchedule.point();
         if (receiver instanceof StringBuilder builder) {
             recordBuilder(builder);
         }
@@ -746,6 +789,7 @@ public final class AgentSharedInstanceHooks {
      */
     public static Appendable append(Appendable receiver, CharSequence value, int start, int end)
             throws IOException {
+        ControlledSchedule.point();
         if (receiver instanceof StringBuilder builder) {
             recordBuilder(builder);
         }
@@ -763,6 +807,7 @@ public final class AgentSharedInstanceHooks {
      * @return the formatted text
      */
     public static String format(NumberFormat receiver, long value) {
+        ControlledSchedule.point();
         recordNumberFormat(receiver);
         return receiver.format(value);
     }
@@ -775,6 +820,7 @@ public final class AgentSharedInstanceHooks {
      * @return the formatted text
      */
     public static String format(NumberFormat receiver, double value) {
+        ControlledSchedule.point();
         recordNumberFormat(receiver);
         return receiver.format(value);
     }
@@ -794,6 +840,7 @@ public final class AgentSharedInstanceHooks {
      * @since 1.12.1
      */
     public static Number parse(NumberFormat receiver, String source) throws ParseException {
+        ControlledSchedule.point();
         recordNumberFormat(receiver);
         return receiver.parse(source);
     }
@@ -808,6 +855,7 @@ public final class AgentSharedInstanceHooks {
      * @since 1.12.1
      */
     public static Number parse(NumberFormat receiver, String source, ParsePosition position) {
+        ControlledSchedule.point();
         recordNumberFormat(receiver);
         return receiver.parse(source, position);
     }
@@ -835,6 +883,7 @@ public final class AgentSharedInstanceHooks {
     // format argument and cannot see that it is the same value the user already passed, so the
     // finding is true of every substitution hook and false of all of them.
     public static Formatter format(Formatter receiver, String format, Object... args) {
+        ControlledSchedule.point();
         recordFormatter(receiver);
         return receiver.format(format, args);
     }
@@ -857,6 +906,7 @@ public final class AgentSharedInstanceHooks {
     // the original method unchanged.
     public static Formatter format(Formatter receiver, Locale locale, String format,
                                    Object... args) {
+        ControlledSchedule.point();
         recordFormatter(receiver);
         return receiver.format(locale, format, args);
     }
@@ -870,6 +920,7 @@ public final class AgentSharedInstanceHooks {
      * @since 1.13.2
      */
     public static void persistenceHandleUsed(Object handle) {
+        ControlledSchedule.point();
         JdbcConnectionSharedDetector detector = AsyncTestContext.currentJdbcConnectionSharedDetector();
         if (detector != null) {
             detector.recordAccess(handle, null, Thread.currentThread());
@@ -885,6 +936,7 @@ public final class AgentSharedInstanceHooks {
      * @since 1.13.2
      */
     public static void persistenceHandleClosed(Object handle) {
+        ControlledSchedule.point();
         JdbcConnectionSharedDetector detector = AsyncTestContext.currentJdbcConnectionSharedDetector();
         if (detector != null) {
             detector.recordAccess(handle, null, Thread.currentThread());

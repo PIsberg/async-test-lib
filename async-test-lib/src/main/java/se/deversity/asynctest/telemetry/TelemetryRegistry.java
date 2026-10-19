@@ -592,6 +592,7 @@ public final class TelemetryRegistry {
      */
     public static boolean compareAndSetInt(VarHandle handle, Object receiver, int expected,
                                            int update) {
+        ControlledSchedule.point();
         if (expected == 0 && update == 1) {
             SpinLocks.aboutToAcquire(receiver, handle);
         }
@@ -614,24 +615,28 @@ public final class TelemetryRegistry {
 
     /** Weaves {@code VarHandle.set} on an {@code int} field. @param handle the handle @param receiver the owner @param value the value */
     public static void setInt(VarHandle handle, Object receiver, int value) {
+        ControlledSchedule.point();
         releaseIfSpinLockField(handle, receiver);
         handle.withInvokeBehavior().set(receiver, value);
     }
 
     /** Weaves {@code VarHandle.setVolatile} on an {@code int} field. @param handle the handle @param receiver the owner @param value the value */
     public static void setVolatileInt(VarHandle handle, Object receiver, int value) {
+        ControlledSchedule.point();
         releaseIfSpinLockField(handle, receiver);
         handle.withInvokeBehavior().setVolatile(receiver, value);
     }
 
     /** Weaves {@code VarHandle.setRelease} on an {@code int} field. @param handle the handle @param receiver the owner @param value the value */
     public static void setReleaseInt(VarHandle handle, Object receiver, int value) {
+        ControlledSchedule.point();
         releaseIfSpinLockField(handle, receiver);
         handle.withInvokeBehavior().setRelease(receiver, value);
     }
 
     /** Weaves {@code VarHandle.setOpaque} on an {@code int} field. @param handle the handle @param receiver the owner @param value the value */
     public static void setOpaqueInt(VarHandle handle, Object receiver, int value) {
+        ControlledSchedule.point();
         releaseIfSpinLockField(handle, receiver);
         handle.withInvokeBehavior().setOpaque(receiver, value);
     }
@@ -670,6 +675,7 @@ public final class TelemetryRegistry {
      */
     public static boolean compareAndSetIntUpdater(AtomicIntegerFieldUpdater<?> updater,
                                                   Object receiver, int expected, int update) {
+        ControlledSchedule.point();
         if (expected == 0 && update == 1) {
             SpinLocks.aboutToAcquire(receiver, updater);
         }
@@ -692,6 +698,7 @@ public final class TelemetryRegistry {
     /** Weaves {@code AtomicIntegerFieldUpdater.set}, a release when the holder stores its flag. @param updater the updater @param receiver the owner @param value the value @since 1.12.1 */
     public static void setIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                      int value) {
+        ControlledSchedule.point();
         releaseIfSpinLockField(updater, receiver);
         erased(updater).set(receiver, value);
     }
@@ -699,6 +706,7 @@ public final class TelemetryRegistry {
     /** Weaves {@code AtomicIntegerFieldUpdater.lazySet}, a release when the holder stores its flag. @param updater the updater @param receiver the owner @param value the value @since 1.12.1 */
     public static void lazySetIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                          int value) {
+        ControlledSchedule.point();
         releaseIfSpinLockField(updater, receiver);
         erased(updater).lazySet(receiver, value);
     }
@@ -737,6 +745,7 @@ public final class TelemetryRegistry {
      */
     public static boolean compareAndSetAtomicBoolean(AtomicBoolean flag, boolean expected,
                                                      boolean update) {
+        ControlledSchedule.point();
         if (!expected && update) {
             SpinLocks.aboutToAcquire(flag);
         }
@@ -757,6 +766,7 @@ public final class TelemetryRegistry {
      * store @return the previous value @since 1.12.1
      */
     public static boolean getAndSetAtomicBoolean(AtomicBoolean flag, boolean value) {
+        ControlledSchedule.point();
         if (!value) {
             SpinLocks.release(flag);
         } else {
@@ -771,6 +781,7 @@ public final class TelemetryRegistry {
 
     /** Weaves {@code AtomicBoolean.set}; storing {@code false} releases. @param flag the atomic @param value the value @since 1.12.1 */
     public static void setAtomicBoolean(AtomicBoolean flag, boolean value) {
+        ControlledSchedule.point();
         if (!value) {
             SpinLocks.release(flag);
         }
@@ -779,6 +790,7 @@ public final class TelemetryRegistry {
 
     /** Weaves {@code AtomicBoolean.lazySet}; storing {@code false} releases. @param flag the atomic @param value the value @since 1.12.1 */
     public static void lazySetAtomicBoolean(AtomicBoolean flag, boolean value) {
+        ControlledSchedule.point();
         if (!value) {
             SpinLocks.release(flag);
         }
@@ -793,6 +805,7 @@ public final class TelemetryRegistry {
      * @param update the value to store @return whether the swap happened @since 1.12.1
      */
     public static boolean compareAndSetAtomicInteger(AtomicInteger count, int expected, int update) {
+        ControlledSchedule.point();
         if (expected == 0 && update == 1) {
             SpinLocks.aboutToAcquire(count);
         }
@@ -807,6 +820,7 @@ public final class TelemetryRegistry {
 
     /** Weaves {@code AtomicInteger.set}; storing 0 releases. @param count the atomic @param value the value @since 1.12.1 */
     public static void setAtomicInteger(AtomicInteger count, int value) {
+        ControlledSchedule.point();
         if (value == 0) {
             SpinLocks.release(count);
         }
@@ -815,6 +829,7 @@ public final class TelemetryRegistry {
 
     /** Weaves {@code AtomicInteger.lazySet}; storing 0 releases. @param count the atomic @param value the value @since 1.12.1 */
     public static void lazySetAtomicInteger(AtomicInteger count, int value) {
+        ControlledSchedule.point();
         if (value == 0) {
             SpinLocks.release(count);
         }
@@ -841,6 +856,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int getAndSetInt(VarHandle handle, Object receiver, int value) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndSet(receiver, value);
         if (value != 1) {
             releaseIfSpinLockField(handle, receiver);
@@ -858,6 +874,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int getAndAddInt(VarHandle handle, Object receiver, int delta) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndAdd(receiver, delta);
         if (previous + delta != 1) {
             releaseIfSpinLockField(handle, receiver);
@@ -878,6 +895,7 @@ public final class TelemetryRegistry {
      */
     public static int compareAndExchangeInt(VarHandle handle, Object receiver, int expected,
                                             int update) {
+        ControlledSchedule.point();
         int witness = (int) handle.withInvokeBehavior().compareAndExchange(receiver, expected, update);
         if (witness == expected && update != 1) {
             releaseIfSpinLockField(handle, receiver);
@@ -898,6 +916,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetInt(VarHandle handle, Object receiver, int expected,
                                                int update) {
+        ControlledSchedule.point();
         boolean won = handle.withInvokeBehavior().weakCompareAndSet(receiver, expected, update);
         if (won && update != 1) {
             releaseIfSpinLockField(handle, receiver);
@@ -918,6 +937,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetPlainInt(VarHandle handle, Object receiver, int expected,
                                                     int update) {
+        ControlledSchedule.point();
         boolean won = handle.withInvokeBehavior().weakCompareAndSetPlain(receiver, expected, update);
         if (won && update != 1) {
             releaseIfSpinLockField(handle, receiver);
@@ -936,6 +956,7 @@ public final class TelemetryRegistry {
      */
     public static int getAndSetIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                           int value) {
+        ControlledSchedule.point();
         int previous = erased(updater).getAndSet(receiver, value);
         if (value != 1) {
             releaseIfSpinLockField(updater, receiver);
@@ -954,6 +975,7 @@ public final class TelemetryRegistry {
      */
     public static int getAndAddIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                           int delta) {
+        ControlledSchedule.point();
         int previous = erased(updater).getAndAdd(receiver, delta);
         if (previous + delta != 1) {
             releaseIfSpinLockField(updater, receiver);
@@ -972,6 +994,7 @@ public final class TelemetryRegistry {
      */
     public static int addAndGetIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                           int delta) {
+        ControlledSchedule.point();
         int current = erased(updater).addAndGet(receiver, delta);
         if (current != 1) {
             releaseIfSpinLockField(updater, receiver);
@@ -989,6 +1012,7 @@ public final class TelemetryRegistry {
      */
     public static int getAndDecrementIntUpdater(AtomicIntegerFieldUpdater<?> updater,
                                                 Object receiver) {
+        ControlledSchedule.point();
         int previous = erased(updater).getAndDecrement(receiver);
         if (previous != 2) {
             releaseIfSpinLockField(updater, receiver);
@@ -1006,6 +1030,7 @@ public final class TelemetryRegistry {
      */
     public static int decrementAndGetIntUpdater(AtomicIntegerFieldUpdater<?> updater,
                                                 Object receiver) {
+        ControlledSchedule.point();
         int current = erased(updater).decrementAndGet(receiver);
         if (current != 1) {
             releaseIfSpinLockField(updater, receiver);
@@ -1026,6 +1051,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetIntUpdater(AtomicIntegerFieldUpdater<?> updater,
                                                       Object receiver, int expected, int update) {
+        ControlledSchedule.point();
         boolean won = erased(updater).weakCompareAndSet(receiver, expected, update);
         if (won && update != 1) {
             releaseIfSpinLockField(updater, receiver);
@@ -1042,6 +1068,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int getAndSetAtomicInteger(AtomicInteger count, int value) {
+        ControlledSchedule.point();
         int previous = count.getAndSet(value);
         if (value != 1) {
             SpinLocks.release(count);
@@ -1058,6 +1085,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int getAndAddAtomicInteger(AtomicInteger count, int delta) {
+        ControlledSchedule.point();
         int previous = count.getAndAdd(delta);
         if (previous + delta != 1) {
             SpinLocks.release(count);
@@ -1074,6 +1102,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int addAndGetAtomicInteger(AtomicInteger count, int delta) {
+        ControlledSchedule.point();
         int current = count.addAndGet(delta);
         if (current != 1) {
             SpinLocks.release(count);
@@ -1089,6 +1118,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int getAndDecrementAtomicInteger(AtomicInteger count) {
+        ControlledSchedule.point();
         int previous = count.getAndDecrement();
         if (previous != 2) {
             SpinLocks.release(count);
@@ -1104,6 +1134,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int decrementAndGetAtomicInteger(AtomicInteger count) {
+        ControlledSchedule.point();
         int current = count.decrementAndGet();
         if (current != 1) {
             SpinLocks.release(count);
@@ -1121,6 +1152,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int compareAndExchangeAtomicInteger(AtomicInteger count, int expected, int update) {
+        ControlledSchedule.point();
         int witness = count.compareAndExchange(expected, update);
         if (witness == expected && update != 1) {
             SpinLocks.release(count);
@@ -1139,6 +1171,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetPlainAtomicInteger(AtomicInteger count, int expected,
                                                               int update) {
+        ControlledSchedule.point();
         boolean won = count.weakCompareAndSetPlain(expected, update);
         if (won && update != 1) {
             SpinLocks.release(count);
@@ -1158,6 +1191,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetVolatileAtomicInteger(AtomicInteger count, int expected,
                                                                  int update) {
+        ControlledSchedule.point();
         boolean won = count.weakCompareAndSetVolatile(expected, update);
         if (won && update != 1) {
             SpinLocks.release(count);
@@ -1176,6 +1210,7 @@ public final class TelemetryRegistry {
      */
     public static boolean compareAndExchangeAtomicBoolean(AtomicBoolean flag, boolean expected,
                                                           boolean update) {
+        ControlledSchedule.point();
         boolean witness = flag.compareAndExchange(expected, update);
         if (witness == expected && !update) {
             SpinLocks.release(flag);
@@ -1194,6 +1229,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetPlainAtomicBoolean(AtomicBoolean flag, boolean expected,
                                                               boolean update) {
+        ControlledSchedule.point();
         boolean won = flag.weakCompareAndSetPlain(expected, update);
         if (won && !update) {
             SpinLocks.release(flag);
@@ -1212,6 +1248,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetVolatileAtomicBoolean(AtomicBoolean flag,
                                                                  boolean expected, boolean update) {
+        ControlledSchedule.point();
         boolean won = flag.weakCompareAndSetVolatile(expected, update);
         if (won && !update) {
             SpinLocks.release(flag);
@@ -1236,6 +1273,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndSetAcquireInt(VarHandle handle, Object receiver, int value) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndSetAcquire(receiver, value);
         releaseUnlessLocked(handle, receiver, value);
         return previous;
@@ -1251,6 +1289,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndSetReleaseInt(VarHandle handle, Object receiver, int value) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndSetRelease(receiver, value);
         releaseUnlessLocked(handle, receiver, value);
         return previous;
@@ -1266,6 +1305,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndAddAcquireInt(VarHandle handle, Object receiver, int delta) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndAddAcquire(receiver, delta);
         releaseUnlessLocked(handle, receiver, previous + delta);
         return previous;
@@ -1281,6 +1321,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndAddReleaseInt(VarHandle handle, Object receiver, int delta) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndAddRelease(receiver, delta);
         releaseUnlessLocked(handle, receiver, previous + delta);
         return previous;
@@ -1299,6 +1340,7 @@ public final class TelemetryRegistry {
      */
     public static int compareAndExchangeAcquireInt(VarHandle handle, Object receiver, int expected,
                                                    int update) {
+        ControlledSchedule.point();
         int witness = (int) handle.withInvokeBehavior()
                 .compareAndExchangeAcquire(receiver, expected, update);
         if (witness == expected) {
@@ -1320,6 +1362,7 @@ public final class TelemetryRegistry {
      */
     public static int compareAndExchangeReleaseInt(VarHandle handle, Object receiver, int expected,
                                                    int update) {
+        ControlledSchedule.point();
         int witness = (int) handle.withInvokeBehavior()
                 .compareAndExchangeRelease(receiver, expected, update);
         if (witness == expected) {
@@ -1341,6 +1384,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetAcquireInt(VarHandle handle, Object receiver, int expected,
                                                       int update) {
+        ControlledSchedule.point();
         boolean won = handle.withInvokeBehavior().weakCompareAndSetAcquire(receiver, expected, update);
         if (won) {
             releaseUnlessLocked(handle, receiver, update);
@@ -1361,6 +1405,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetReleaseInt(VarHandle handle, Object receiver, int expected,
                                                       int update) {
+        ControlledSchedule.point();
         boolean won = handle.withInvokeBehavior().weakCompareAndSetRelease(receiver, expected, update);
         if (won) {
             releaseUnlessLocked(handle, receiver, update);
@@ -1378,6 +1423,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseOrInt(VarHandle handle, Object receiver, int mask) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndBitwiseOr(receiver, mask);
         releaseUnlessLocked(handle, receiver, previous | mask);
         return previous;
@@ -1393,6 +1439,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseOrAcquireInt(VarHandle handle, Object receiver, int mask) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndBitwiseOrAcquire(receiver, mask);
         releaseUnlessLocked(handle, receiver, previous | mask);
         return previous;
@@ -1408,6 +1455,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseOrReleaseInt(VarHandle handle, Object receiver, int mask) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndBitwiseOrRelease(receiver, mask);
         releaseUnlessLocked(handle, receiver, previous | mask);
         return previous;
@@ -1423,6 +1471,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseAndInt(VarHandle handle, Object receiver, int mask) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndBitwiseAnd(receiver, mask);
         releaseUnlessLocked(handle, receiver, previous & mask);
         return previous;
@@ -1438,6 +1487,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseAndAcquireInt(VarHandle handle, Object receiver, int mask) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndBitwiseAndAcquire(receiver, mask);
         releaseUnlessLocked(handle, receiver, previous & mask);
         return previous;
@@ -1453,6 +1503,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseAndReleaseInt(VarHandle handle, Object receiver, int mask) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndBitwiseAndRelease(receiver, mask);
         releaseUnlessLocked(handle, receiver, previous & mask);
         return previous;
@@ -1468,6 +1519,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseXorInt(VarHandle handle, Object receiver, int mask) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndBitwiseXor(receiver, mask);
         releaseUnlessLocked(handle, receiver, previous ^ mask);
         return previous;
@@ -1483,6 +1535,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseXorAcquireInt(VarHandle handle, Object receiver, int mask) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndBitwiseXorAcquire(receiver, mask);
         releaseUnlessLocked(handle, receiver, previous ^ mask);
         return previous;
@@ -1498,6 +1551,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseXorReleaseInt(VarHandle handle, Object receiver, int mask) {
+        ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndBitwiseXorRelease(receiver, mask);
         releaseUnlessLocked(handle, receiver, previous ^ mask);
         return previous;
@@ -1527,6 +1581,7 @@ public final class TelemetryRegistry {
      */
     public static int getAndUpdateIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                              IntUnaryOperator function) {
+        ControlledSchedule.point();
         AtomicIntegerFieldUpdater<Object> target = erased(updater);
         int previous = target.getAndUpdate(receiver, function);
         if (target.get(receiver) != 1) {
@@ -1546,6 +1601,7 @@ public final class TelemetryRegistry {
      */
     public static int updateAndGetIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                              IntUnaryOperator function) {
+        ControlledSchedule.point();
         int current = erased(updater).updateAndGet(receiver, function);
         if (current != 1) {
             releaseIfSpinLockField(updater, receiver);
@@ -1567,6 +1623,7 @@ public final class TelemetryRegistry {
     public static int getAndAccumulateIntUpdater(AtomicIntegerFieldUpdater<?> updater,
                                                  Object receiver, int operand,
                                                  IntBinaryOperator function) {
+        ControlledSchedule.point();
         AtomicIntegerFieldUpdater<Object> target = erased(updater);
         int previous = target.getAndAccumulate(receiver, operand, function);
         if (target.get(receiver) != 1) {
@@ -1588,6 +1645,7 @@ public final class TelemetryRegistry {
     public static int accumulateAndGetIntUpdater(AtomicIntegerFieldUpdater<?> updater,
                                                  Object receiver, int operand,
                                                  IntBinaryOperator function) {
+        ControlledSchedule.point();
         int current = erased(updater).accumulateAndGet(receiver, operand, function);
         if (current != 1) {
             releaseIfSpinLockField(updater, receiver);
@@ -1603,6 +1661,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setPlainAtomicInteger(AtomicInteger count, int value) {
+        ControlledSchedule.point();
         if (value == 0) {
             SpinLocks.release(count);
         }
@@ -1617,6 +1676,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setOpaqueAtomicInteger(AtomicInteger count, int value) {
+        ControlledSchedule.point();
         if (value == 0) {
             SpinLocks.release(count);
         }
@@ -1631,6 +1691,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setReleaseAtomicInteger(AtomicInteger count, int value) {
+        ControlledSchedule.point();
         if (value == 0) {
             SpinLocks.release(count);
         }
@@ -1649,6 +1710,7 @@ public final class TelemetryRegistry {
      */
     @SuppressWarnings("deprecation")
     public static boolean weakCompareAndSetAtomicInteger(AtomicInteger count, int expected, int update) {
+        ControlledSchedule.point();
         boolean won = count.weakCompareAndSet(expected, update);
         if (won && update != 1) {
             SpinLocks.release(count);
@@ -1667,6 +1729,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetAcquireAtomicInteger(AtomicInteger count, int expected,
                                                                 int update) {
+        ControlledSchedule.point();
         boolean won = count.weakCompareAndSetAcquire(expected, update);
         if (won && update != 1) {
             SpinLocks.release(count);
@@ -1685,6 +1748,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetReleaseAtomicInteger(AtomicInteger count, int expected,
                                                                 int update) {
+        ControlledSchedule.point();
         boolean won = count.weakCompareAndSetRelease(expected, update);
         if (won && update != 1) {
             SpinLocks.release(count);
@@ -1703,6 +1767,7 @@ public final class TelemetryRegistry {
      */
     public static int compareAndExchangeAcquireAtomicInteger(AtomicInteger count, int expected,
                                                              int update) {
+        ControlledSchedule.point();
         int witness = count.compareAndExchangeAcquire(expected, update);
         if (witness == expected && update != 1) {
             SpinLocks.release(count);
@@ -1721,6 +1786,7 @@ public final class TelemetryRegistry {
      */
     public static int compareAndExchangeReleaseAtomicInteger(AtomicInteger count, int expected,
                                                              int update) {
+        ControlledSchedule.point();
         int witness = count.compareAndExchangeRelease(expected, update);
         if (witness == expected && update != 1) {
             SpinLocks.release(count);
@@ -1738,6 +1804,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndUpdateAtomicInteger(AtomicInteger count, IntUnaryOperator function) {
+        ControlledSchedule.point();
         int previous = count.getAndUpdate(function);
         if (count.get() != 1) {
             SpinLocks.release(count);
@@ -1754,6 +1821,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int updateAndGetAtomicInteger(AtomicInteger count, IntUnaryOperator function) {
+        ControlledSchedule.point();
         int current = count.updateAndGet(function);
         if (current != 1) {
             SpinLocks.release(count);
@@ -1773,6 +1841,7 @@ public final class TelemetryRegistry {
      */
     public static int getAndAccumulateAtomicInteger(AtomicInteger count, int operand,
                                                     IntBinaryOperator function) {
+        ControlledSchedule.point();
         int previous = count.getAndAccumulate(operand, function);
         if (count.get() != 1) {
             SpinLocks.release(count);
@@ -1791,6 +1860,7 @@ public final class TelemetryRegistry {
      */
     public static int accumulateAndGetAtomicInteger(AtomicInteger count, int operand,
                                                     IntBinaryOperator function) {
+        ControlledSchedule.point();
         int current = count.accumulateAndGet(operand, function);
         if (current != 1) {
             SpinLocks.release(count);
@@ -1806,6 +1876,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setPlainAtomicBoolean(AtomicBoolean flag, boolean value) {
+        ControlledSchedule.point();
         if (!value) {
             SpinLocks.release(flag);
         }
@@ -1820,6 +1891,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setOpaqueAtomicBoolean(AtomicBoolean flag, boolean value) {
+        ControlledSchedule.point();
         if (!value) {
             SpinLocks.release(flag);
         }
@@ -1834,6 +1906,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setReleaseAtomicBoolean(AtomicBoolean flag, boolean value) {
+        ControlledSchedule.point();
         if (!value) {
             SpinLocks.release(flag);
         }
@@ -1853,6 +1926,7 @@ public final class TelemetryRegistry {
     @SuppressWarnings("deprecation")
     public static boolean weakCompareAndSetAtomicBoolean(AtomicBoolean flag, boolean expected,
                                                          boolean update) {
+        ControlledSchedule.point();
         boolean won = flag.weakCompareAndSet(expected, update);
         if (won && !update) {
             SpinLocks.release(flag);
@@ -1871,6 +1945,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetAcquireAtomicBoolean(AtomicBoolean flag, boolean expected,
                                                                 boolean update) {
+        ControlledSchedule.point();
         boolean won = flag.weakCompareAndSetAcquire(expected, update);
         if (won && !update) {
             SpinLocks.release(flag);
@@ -1889,6 +1964,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetReleaseAtomicBoolean(AtomicBoolean flag, boolean expected,
                                                                 boolean update) {
+        ControlledSchedule.point();
         boolean won = flag.weakCompareAndSetRelease(expected, update);
         if (won && !update) {
             SpinLocks.release(flag);
@@ -1907,6 +1983,7 @@ public final class TelemetryRegistry {
      */
     public static boolean compareAndExchangeAcquireAtomicBoolean(AtomicBoolean flag, boolean expected,
                                                                  boolean update) {
+        ControlledSchedule.point();
         boolean witness = flag.compareAndExchangeAcquire(expected, update);
         if (witness == expected && !update) {
             SpinLocks.release(flag);
@@ -1925,6 +2002,7 @@ public final class TelemetryRegistry {
      */
     public static boolean compareAndExchangeReleaseAtomicBoolean(AtomicBoolean flag, boolean expected,
                                                                  boolean update) {
+        ControlledSchedule.point();
         boolean witness = flag.compareAndExchangeRelease(expected, update);
         if (witness == expected && !update) {
             SpinLocks.release(flag);
@@ -2266,6 +2344,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
+        ControlledSchedule.point();
         ownershipOffered(value, slot);
         slotStored(slot, value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
@@ -2285,6 +2364,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void lazySetAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
+        ControlledSchedule.point();
         ownershipOffered(value, slot);
         slotStored(slot, value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
@@ -2304,6 +2384,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setReleaseAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
+        ControlledSchedule.point();
         ownershipOffered(value, slot);
         slotStored(slot, value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
@@ -2328,6 +2409,7 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetAtomicReference(AtomicReference<Object> slot,
                                                        @Nullable Object expected,
                                                        @Nullable Object update) {
+        ControlledSchedule.point();
         ownershipOffered(update, slot);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         boolean swapped = aba == null ? slot.compareAndSet(expected, update)
@@ -2354,6 +2436,7 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getAndSetAtomicReference(AtomicReference<Object> slot,
                                                             @Nullable Object value) {
+        ControlledSchedule.point();
         slotStored(slot, value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         Object previous = aba == null ? slot.getAndSet(value) : aba.getAndSet(slot, value);
@@ -2388,6 +2471,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static @Nullable Object getAtomicReference(AtomicReference<Object> slot) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         Object value = aba == null ? slot.get() : aba.get(slot);
         HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
@@ -2403,6 +2487,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static @Nullable Object getAcquireAtomicReference(AtomicReference<Object> slot) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         Object value = aba == null ? slot.getAcquire() : aba.getAcquire(slot);
         HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
@@ -2420,6 +2505,7 @@ public final class TelemetryRegistry {
      */
     public static void setReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
                                            Object receiver, @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, receiver, System.identityHashCode(updater));
         slotReleased(receiver, ReferenceSlots.fieldOf(updater), value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
@@ -2441,6 +2527,7 @@ public final class TelemetryRegistry {
      */
     public static void lazySetReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
                                                Object receiver, @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, receiver, System.identityHashCode(updater));
         slotReleased(receiver, ReferenceSlots.fieldOf(updater), value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
@@ -2465,6 +2552,7 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetReferenceUpdater(
             AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
             @Nullable Object expected, @Nullable Object update) {
+        ControlledSchedule.point();
         slotOffered(update, receiver, System.identityHashCode(updater));
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
         boolean swapped = aba == null ? updater.compareAndSet(receiver, expected, update)
@@ -2488,6 +2576,7 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAndSetReferenceUpdater(
             AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
             @Nullable Object value) {
+        ControlledSchedule.point();
         slotReleased(receiver, ReferenceSlots.fieldOf(updater), value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
         Object previous = aba == null ? updater.getAndSet(receiver, value)
@@ -2506,6 +2595,7 @@ public final class TelemetryRegistry {
      */
     public static void setReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                          @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, slots, index);
         slotReleased(slots, ReferenceSlots.element(index), value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
@@ -2526,6 +2616,7 @@ public final class TelemetryRegistry {
      */
     public static void lazySetReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                              @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, slots, index);
         slotReleased(slots, ReferenceSlots.element(index), value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
@@ -2546,6 +2637,7 @@ public final class TelemetryRegistry {
      */
     public static void setReleaseReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                                 @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, slots, index);
         slotReleased(slots, ReferenceSlots.element(index), value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
@@ -2569,6 +2661,7 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                                       @Nullable Object expected,
                                                       @Nullable Object update) {
+        ControlledSchedule.point();
         slotOffered(update, slots, index);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
         boolean swapped = aba == null ? slots.compareAndSet(index, expected, update)
@@ -2591,6 +2684,7 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getAndSetReferenceArray(AtomicReferenceArray<Object> slots,
                                                            int index, @Nullable Object value) {
+        ControlledSchedule.point();
         slotReleased(slots, ReferenceSlots.element(index), value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
         Object previous = aba == null ? slots.getAndSet(index, value)
@@ -2609,6 +2703,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setReferenceHandle(VarHandle handle, Object receiver, @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, receiver, System.identityHashCode(handle));
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
         if (aba == null) {
@@ -2628,6 +2723,7 @@ public final class TelemetryRegistry {
      */
     public static void setVolatileReferenceHandle(VarHandle handle, Object receiver,
                                                   @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, receiver, System.identityHashCode(handle));
         slotReleased(receiver, ReferenceSlots.fieldOf(handle), value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
@@ -2648,6 +2744,7 @@ public final class TelemetryRegistry {
      */
     public static void setReleaseReferenceHandle(VarHandle handle, Object receiver,
                                                  @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, receiver, System.identityHashCode(handle));
         slotReleased(receiver, ReferenceSlots.fieldOf(handle), value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
@@ -2668,6 +2765,7 @@ public final class TelemetryRegistry {
      */
     public static void setOpaqueReferenceHandle(VarHandle handle, Object receiver,
                                                 @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, receiver, System.identityHashCode(handle));
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
         if (aba == null) {
@@ -2691,6 +2789,7 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetReferenceHandle(VarHandle handle, Object receiver,
                                                        @Nullable Object expected,
                                                        @Nullable Object update) {
+        ControlledSchedule.point();
         slotOffered(update, receiver, System.identityHashCode(handle));
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
         boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(receiver, expected, update)
@@ -2714,6 +2813,7 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getAndSetReferenceHandle(VarHandle handle, Object receiver,
                                                             @Nullable Object value) {
+        ControlledSchedule.point();
         slotReleased(receiver, ReferenceSlots.fieldOf(handle), value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
         Object previous = aba == null ? handle.withInvokeBehavior().getAndSet(receiver, value)
@@ -2732,6 +2832,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, handle, 0);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
         if (aba == null) {
@@ -2749,6 +2850,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setVolatileStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, handle, 0);
         slotReleased(handle, SLOT_VALUE, value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
@@ -2767,6 +2869,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setReleaseStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, handle, 0);
         slotReleased(handle, SLOT_VALUE, value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
@@ -2785,6 +2888,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setOpaqueStaticReferenceHandle(VarHandle handle, @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, handle, 0);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
         if (aba == null) {
@@ -2807,6 +2911,7 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetStaticReferenceHandle(VarHandle handle,
                                                              @Nullable Object expected,
                                                              @Nullable Object update) {
+        ControlledSchedule.point();
         slotOffered(update, handle, 0);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
         boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(expected, update)
@@ -2828,6 +2933,7 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getAndSetStaticReferenceHandle(VarHandle handle,
                                                                  @Nullable Object value) {
+        ControlledSchedule.point();
         slotReleased(handle, SLOT_VALUE, value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
         Object previous = aba == null ? handle.withInvokeBehavior().getAndSet(value)
@@ -2849,6 +2955,7 @@ public final class TelemetryRegistry {
      */
     public static void setArrayReferenceHandle(VarHandle handle, Object array, int index,
                                                @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, array, index);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
         if (aba == null) {
@@ -2869,6 +2976,7 @@ public final class TelemetryRegistry {
      */
     public static void setVolatileArrayReferenceHandle(VarHandle handle, Object array, int index,
                                                        @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, array, index);
         slotReleased(array, ReferenceSlots.element(index), value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
@@ -2890,6 +2998,7 @@ public final class TelemetryRegistry {
      */
     public static void setReleaseArrayReferenceHandle(VarHandle handle, Object array, int index,
                                                       @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, array, index);
         slotReleased(array, ReferenceSlots.element(index), value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
@@ -2911,6 +3020,7 @@ public final class TelemetryRegistry {
      */
     public static void setOpaqueArrayReferenceHandle(VarHandle handle, Object array, int index,
                                                      @Nullable Object value) {
+        ControlledSchedule.point();
         slotOffered(value, array, index);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
         if (aba == null) {
@@ -2934,6 +3044,7 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetArrayReferenceHandle(VarHandle handle, Object array,
                                                             int index, @Nullable Object expected,
                                                             @Nullable Object update) {
+        ControlledSchedule.point();
         slotOffered(update, array, index);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
         boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(array, index, expected, update)
@@ -2956,6 +3067,7 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getAndSetArrayReferenceHandle(VarHandle handle, Object array,
                                                                  int index, @Nullable Object value) {
+        ControlledSchedule.point();
         slotReleased(array, ReferenceSlots.element(index), value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
         Object previous = aba == null ? handle.withInvokeBehavior().getAndSet(array, index, value)
@@ -2979,6 +3091,7 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getStampedReference(AtomicStampedReference<Object> slot, int[] stampHolder) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         Object value = aba == null ? slot.get(stampHolder) : aba.getStamped(slot, stampHolder);
         HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
@@ -2993,6 +3106,7 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getReferenceStampedReference(AtomicStampedReference<Object> slot) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         Object value = aba == null ? slot.getReference() : aba.getStampedReference(slot);
         HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
@@ -3008,6 +3122,7 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static void setStampedReference(AtomicStampedReference<Object> slot, @Nullable Object value, int stamp) {
+        ControlledSchedule.point();
         HappensBefore.releaseVolatileReference(slot, SLOT_VALUE, value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         if (aba == null) {
@@ -3030,6 +3145,7 @@ public final class TelemetryRegistry {
      */
     public static boolean compareAndSetStampedReference(AtomicStampedReference<Object> slot, @Nullable Object expected,
                                                         @Nullable Object update, int expectedStamp, int newStamp) {
+        ControlledSchedule.point();
         return stampedSwap(slot, expected, update, expectedStamp, newStamp, false);
     }
 
@@ -3047,6 +3163,7 @@ public final class TelemetryRegistry {
     public static boolean weakCompareAndSetStampedReference(AtomicStampedReference<Object> slot,
                                                             @Nullable Object expected, @Nullable Object update,
                                                             int expectedStamp, int newStamp) {
+        ControlledSchedule.point();
         return stampedSwap(slot, expected, update, expectedStamp, newStamp, true);
     }
 
@@ -3077,6 +3194,7 @@ public final class TelemetryRegistry {
      */
     public static boolean attemptStampStampedReference(AtomicStampedReference<Object> slot, @Nullable Object expected,
                                                        int newStamp) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         boolean set = aba == null ? slot.attemptStamp(expected, newStamp) : aba.attemptStamp(slot, expected, newStamp);
         if (set) {
@@ -3144,6 +3262,7 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
                                                        Object receiver) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
         Object value = aba == null ? updater.get(receiver)
                 : aba.read(receiver, updater, 0, (h, s, i) -> asUpdater(s).get(h));
@@ -3160,6 +3279,7 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getReferenceArray(AtomicReferenceArray<Object> slots, int index) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
         Object value = aba == null ? slots.get(index)
                 : aba.read(slots, null, index, (h, s, i) -> asArray(h).get(i));
@@ -3176,6 +3296,7 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getAcquireReferenceArray(AtomicReferenceArray<Object> slots, int index) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
         Object value = aba == null ? slots.getAcquire(index)
                 : aba.read(slots, null, index, (h, s, i) -> asArray(h).getAcquire(i));
@@ -3192,6 +3313,7 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getVolatileReferenceHandle(VarHandle handle, Object receiver) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
         Object value = aba == null ? handle.withInvokeBehavior().getVolatile(receiver)
                 : aba.read(receiver, handle, 0, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h));
@@ -3208,6 +3330,7 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getAcquireReferenceHandle(VarHandle handle, Object receiver) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
         Object value = aba == null ? handle.withInvokeBehavior().getAcquire(receiver)
                 : aba.read(receiver, handle, 0, (h, s, i) -> asHandle(s).withInvokeBehavior().getAcquire(h));
@@ -3223,6 +3346,7 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getVolatileStaticReferenceHandle(VarHandle handle) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
         Object value = aba == null ? handle.withInvokeBehavior().getVolatile()
                 : aba.read(handle, null, 0, (h, s, i) -> asHandle(h).withInvokeBehavior().getVolatile());
@@ -3238,6 +3362,7 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getAcquireStaticReferenceHandle(VarHandle handle) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
         Object value = aba == null ? handle.withInvokeBehavior().getAcquire()
                 : aba.read(handle, null, 0, (h, s, i) -> asHandle(h).withInvokeBehavior().getAcquire());
@@ -3255,6 +3380,7 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getVolatileArrayReferenceHandle(VarHandle handle, Object array, int index) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
         Object value = aba == null ? handle.withInvokeBehavior().getVolatile(array, index)
                 : aba.read(array, handle, index, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h, i));
@@ -3272,6 +3398,7 @@ public final class TelemetryRegistry {
      * @since 1.12.4
      */
     public static @Nullable Object getAcquireArrayReferenceHandle(VarHandle handle, Object array, int index) {
+        ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
         Object value = aba == null ? handle.withInvokeBehavior().getAcquire(array, index)
                 : aba.read(array, handle, index, (h, s, i) -> asHandle(s).withInvokeBehavior().getAcquire(h, i));
