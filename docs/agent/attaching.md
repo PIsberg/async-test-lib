@@ -120,8 +120,15 @@ over to another worker, in an order the replay seed decides, so the read and the
 the agent substitutes, a collection call under `collections=true` or an atomic one under
 `fields=true`, is a point too, so a `containsKey` then `put` on a shared map is split and replayed
 the same way with no field access between them
-([#1023](https://github.com/PIsberg/async-test-lib/issues/1023)). Lock acquisitions are not points
-yet ([#1022](https://github.com/PIsberg/async-test-lib/issues/1022)).
+([#1023](https://github.com/PIsberg/async-test-lib/issues/1023)). Entering a monitor and taking a
+`ReentrantLock` or a write lock are points that name the lock, and the schedule knows which worker
+holds it, so a worker paused inside a critical section is never handed a peer that would only
+block on it: a `synchronized` or locked increment replays with no escape
+([#1022](https://github.com/PIsberg/async-test-lib/issues/1022)). Read locks, other `Lock`
+implementations and `StampedLock` are plain points, since they may be shared. The table does not
+see a monitor released inside `Object.wait`, `Condition.await`, or by an exception leaving a
+`synchronized` method; when that stale hold leaves no ready worker able to proceed, the round is
+handed out anyway, which costs at most an escape and never a stall.
 
 The call carries the receiver, so the analysis can tell six threads racing on one object from six
 threads each using their own, and — for a store of a reference type — the value being stored. That

@@ -66,8 +66,10 @@ at a time and change hands only at scheduling points (every field access the age
 ```
 
 and pasting the seed fails the same way every time, which is the difference between a flaky failure
-and one you can debug. When a worker blocked without reaching a point (on a lock a paused worker
-held, a sleep, a `get`) it left the schedule until its next point, and the line says how many times
+and one you can debug. A woven monitor or `ReentrantLock` held by a paused worker no longer costs
+anything: the schedule knows the holder and runs another worker. When a worker blocked without
+reaching a point (on a lock the schedule does not track, a sleep, a `get`) it left the schedule
+until its next point, and the line says how many times
 that happened, since only a round without such an escape is guaranteed to replay. Each round's
 `runner.schedule.round` event at DEBUG carries the same count as `escapes=`.
 
