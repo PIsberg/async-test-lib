@@ -43,6 +43,12 @@ import java.util.concurrent.locks.ReentrantLock;
  * waits for it ({@link #joining}), not a block outside the schedule, and a child whose thread has
  * ended is done rather than escaped.
  *
+ * <p>A worker waiting at {@code AsyncTestContext.rendezvous()} steps outside the round instead of
+ * blocking in it (#1021): {@link #stepOutside} hands the turn on without counting an escape, and
+ * {@link #rejoin} brings the worker back as ready once the rendezvous releases it. No grant is made
+ * while a worker is outside on its way back, or when the last worker steps out, so the order the
+ * rendezvous happens to release the workers in never decides who runs next.
+ *
  * <p>A worker can still stop running without reaching a point: it blocks on something the schedule
  * does not track, sleeps, waits on a future, or computes for longer than {@link #STALL_NANOS}. The waiting workers
  * notice, mark it escaped and hand the round to the next; it rejoins at its next point. That keeps
@@ -62,7 +68,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 @AICore(
     sensitivity = "High",
-    note = "A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read, and the lock holds and pending acquisitions grant() consults (#1022), which change only at acquiring(), itself a point, and in acquired() and released(), which a worker calls in its own program order; an escaped worker's acquire or release lands outside a turn, but its round has already counted the escape. grant() must keep handing the round out when every ready worker waits on a held lock: the hold may be stale (a monitor released inside Object.wait is not seen), and withholding the round then stalls correct wait/notify code until the round times out (ControlledScheduleLockTest). Only watch() may read the clock or Thread.getState(), and each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly, with one exception: an adopted child whose thread has terminated is marked done, not escaped (#1024), because while it ran to its end every peer was waiting, so the state the next grant reads is the same whenever watch() notices. Adopted children are ready from the moment they are adopted, so a grant never depends on how long the OS takes to start a thread. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise."
+    note = "A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read, and the lock holds and pending acquisitions grant() consults (#1022), which change only at acquiring(), itself a point, and in acquired() and released(), which a worker calls in its own program order; an escaped worker's acquire or release lands outside a turn, but its round has already counted the escape. grant() must keep handing the round out when every ready worker waits on a held lock: the hold may be stale (a monitor released inside Object.wait is not seen), and withholding the round then stalls correct wait/notify code until the round times out (ControlledScheduleLockTest). Only watch() may read the clock or Thread.getState(), and each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly, with one exception: an adopted child whose thread has terminated is marked done, not escaped (#1024), because while it ran to its end every peer was waiting, so the state the next grant reads is the same whenever watch() notices. Adopted children are ready from the moment they are adopted, so a grant never depends on how long the OS takes to start a thread. A worker waiting at a rendezvous is OUTSIDE, not escaped (#1021), and no grant is made while one is outside on its way back or when the last worker steps out, so the order a rendezvous releases workers in never decides who runs next. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise."
 )
 public final class ControlledSchedule {
 
@@ -93,7 +99,8 @@ public final class ControlledSchedule {
 
     private record Adoption(ControlledSchedule schedule, int slot) {}
 
-    private enum Status { ABSENT, READY, RUNNING, ESCAPED, DONE }
+    /** OUTSIDE: waiting in a wait the library runs, such as a rendezvous, and not escaped (#1021). */
+    private enum Status { ABSENT, READY, RUNNING, ESCAPED, OUTSIDE, DONE }
 
     private static final class Worker {
         final ControlledSchedule schedule;
@@ -225,6 +232,34 @@ public final class ControlledSchedule {
             return;
         }
         worker.schedule.step(worker, null);
+    }
+
+    /**
+     * Steps the calling worker out of the round for a wait the library runs itself, a rendezvous:
+     * the turn goes on to another worker without the wait counting as an escape. Pair with
+     * {@link #rejoin} in a {@code finally}.
+     *
+     * @return whether the worker stepped out, and so must rejoin
+     */
+    public static boolean stepOutside() {
+        if (OPEN.get() == 0) {
+            return false;
+        }
+        Worker worker = CURRENT.get();
+        if (worker == null || worker.inside || worker.free) {
+            return false;
+        }
+        worker.schedule.goOutside(worker);
+        return true;
+    }
+
+    /** Brings a worker that {@link #stepOutside stepped outside} back, and waits for its turn. */
+    public static void rejoin() {
+        Worker worker = CURRENT.get();
+        if (worker == null || worker.inside || worker.free) {
+            return;
+        }
+        worker.schedule.comeBack(worker);
     }
 
     /** A child's first point: it joins its round and waits for a turn like any worker. */
@@ -448,6 +483,70 @@ public final class ControlledSchedule {
             lock.unlock();
             worker.inside = false;
         }
+    }
+
+    private void goOutside(Worker worker) {
+        worker.inside = true;
+        lock.lock();
+        try {
+            if (closed) {
+                return;
+            }
+            int slot = worker.slot;
+            boolean wasRunning = running == slot;
+            status[slot] = Status.OUTSIDE;
+            pending[slot] = null;
+            joining[slot] = -1;
+            if (wasRunning) {
+                running = -1;
+                // The last worker out grants nothing: the rendezvous is about to release everyone,
+                // and the grant waits for them all to be back.
+                if (!everyWorkerOutsideOrDone()) {
+                    grant();
+                }
+            }
+        } finally {
+            lock.unlock();
+            worker.inside = false;
+        }
+    }
+
+    private void comeBack(Worker worker) {
+        worker.inside = true;
+        lock.lock();
+        try {
+            if (closed) {
+                return;
+            }
+            status[worker.slot] = Status.READY;
+            if (running < 0 && !anyOutside()) {
+                grant();
+            }
+            awaitTurn(worker);
+        } finally {
+            lock.unlock();
+            worker.inside = false;
+        }
+    }
+
+    /** Lock held. */
+    private boolean everyWorkerOutsideOrDone() {
+        for (int i = 0; i < workers; i++) {
+            if (status[i] != Status.OUTSIDE && status[i] != Status.DONE) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** Lock held. */
+    private boolean anyOutside() {
+        for (int i = 0; i < count; i++) {
+            if (status[i] == Status.OUTSIDE) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Joins the round as adopted child {@code slot}, from the child's own thread. */

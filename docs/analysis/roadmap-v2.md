@@ -218,8 +218,9 @@ that says what it would take.
   printed seed was pasted back. `@AsyncTest(controlledSchedule = true)` runs a round's workers one
   at a time and lets the seed pick, PCT-style, who runs at each woven field access and each
   `AsyncTestContext.schedulePoint()`; a seed that lost an update loses it on every replay. What it
-  does not cover yet is in #1021 (an exact rendezvous), #1022 (lock-aware points), #1023 (atomic
-  and collection hooks as points) and #1024 (threads the body starts).
+  did not cover at first was #1021 (an exact rendezvous), #1022 (lock-aware points), #1023 (atomic
+  and collection hooks as points) and #1024 (threads the body starts); all four were closed in
+  2026-10, with executor tasks still unscheduled (#1049).
 
 ## Overcoming the mechanical gates
 

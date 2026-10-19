@@ -1353,6 +1353,9 @@ public final class AsyncTestContext {
         long timeoutNanos = timeout != null
             ? timeout.toNanos()
             : Math.max(0L, ctx.roundDeadlineNanos - System.nanoTime());
+        // Under a controlled schedule the wait below is the library's own, not a block: step out of
+        // the round for it and rejoin after, so it costs no escape and replays exactly (#1021).
+        boolean outside = ControlledSchedule.stepOutside();
         int phase = rendezvous.arrive();
         try {
             if (phase < 0 || rendezvous.awaitAdvanceInterruptibly(phase, timeoutNanos, TimeUnit.NANOSECONDS) < 0) {
@@ -1372,6 +1375,10 @@ public final class AsyncTestContext {
             Thread.currentThread().interrupt();
             rendezvous.forceTermination();
             throw new AssertionError("Interrupted while waiting at the rendezvous; the round was cancelled.", e);
+        } finally {
+            if (outside) {
+                ControlledSchedule.rejoin();
+            }
         }
     }
 

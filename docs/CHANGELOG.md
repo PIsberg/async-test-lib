@@ -83,6 +83,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   losing and a keeping seed, replays each 10 of 10 with no escape, and went red with the hooks
   unwired ("seed 1 must lose the update on every replay").
 
+- **`rendezvous()` under a controlled schedule replays exactly (#1021).** A worker waiting at a
+  rendezvous is parked in a `Phaser`, outside any scheduling point, so the waiting workers marked it
+  escaped and every round with a rendezvous was reported as not guaranteed to replay; once the
+  phaser released them, the order they came back in decided who ran next. The rendezvous now steps
+  the worker out of the round (`ControlledSchedule.stepOutside`), so the turn goes on to the workers
+  that have not arrived and the wait costs no escape, and rejoins it afterwards; no grant is made
+  while a worker is outside on its way back, or when the last worker steps out. The phaser, its
+  timeouts and its broken-rendezvous errors are unchanged. Test: `ControlledScheduleRendezvousTest`
+  (read, `rendezvous()`, write on three workers, 12 seeds each run twice) went red ("seed 1 must
+  replay the same interleaving") and is green with every round at `escapes=0`; `RendezvousTest`,
+  `RendezvousFailureE2eTest` and the three linearizability suites that use a rendezvous stay green.
+
 ### Fixed
 
 - **A refused runtime attach blamed the wrong switch.** `AsyncTestAgent.selfAttach` and the
