@@ -163,6 +163,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A controlled schedule counted a worker waiting on the scheduler's own lock as an escape
+  (#1065).** `watch()` runs in a waiting worker that holds the schedule's lock. It read the
+  running worker's `inside` flag and then its thread state, so a worker that entered the
+  schedule's code between the two reads (a point, or the bookkeeping after a lock it took) was
+  seen `WAITING` on that very lock and counted as an escape, voiding the round's replay promise
+  for nothing. `watch()` now reads the state first and then skips a worker queued on the
+  schedule's lock. It showed up as `escapes=1` in a 0.366 s run of
+  `ControlledScheduleLockWeavingTest` on JDK 25 CI, far below the 500 ms stall limit, and is the
+  likely cause of #1063 as well. Test: `ControlledScheduleWatchTest` builds the state the race
+  leaves behind (the running worker queued on the lock with `inside` still false) and was red
+  ("expected: <0> but was: <1>"), then green.
+
 - **`ControlledScheduleTest.aFixedSeedReplaysTheSameInterleaving` failed once on a loaded CI
   runner (#1063).** Exact replay is promised only for a round no worker escaped, and a worker that
   stalls past the schedule's stall limit on a busy machine is counted as an escape precisely
