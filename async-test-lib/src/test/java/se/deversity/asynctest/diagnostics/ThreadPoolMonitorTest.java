@@ -1,6 +1,13 @@
 package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.report.Violation;
+
+import java.util.List;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -122,6 +129,94 @@ class ThreadPoolMonitorTest {
 
         assertEquals(viaAnalyzePoolHealth.hasIssues(), viaAnalyze.hasIssues());
         assertEquals(viaAnalyzePoolHealth.toString(), viaAnalyze.toString());
+    }
+
+    /** {@return the grade of the one finding whose line starts with {@code pool}} */
+    private static GradedFindings.Grade gradeOf(ThreadPoolMonitor.ThreadPoolReport report, String pool) {
+        List<GradedFindings.Grade> grades = assertInstanceOf(GradedFindings.class, report,
+                "the report must grade each finding by the path behind it: " + report).grades();
+        List<GradedFindings.Grade> matching = grades.stream()
+                .filter(g -> g.summary().startsWith(pool + ":")).toList();
+        assertEquals(1, matching.size(), pool + " in " + grades);
+        return matching.get(0);
+    }
+
+    @Test
+    void aRejectionTheExecutorThrewIsObservedAndARecordedOneAsserted() {
+        ThreadPoolMonitor monitor = new ThreadPoolMonitor();
+        Object recorded = new Object();
+        monitor.registerPool(recorded, "recorded", 1, 4, 10);
+        monitor.recordTaskRejected(recorded, "queue full");
+        // What the woven submit and execute hand over: the executor and the exception it threw.
+        ThreadPoolExecutor woven = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
+                new SynchronousQueue<>());
+        try {
+            monitor.recordRejectedExecution(woven, new RejectedExecutionException("saturated"));
+            ThreadPoolMonitor.ThreadPoolReport report = monitor.analyze();
+
+            GradedFindings.Grade thrown = gradeOf(report, "ThreadPoolExecutor@1");
+            assertEquals(DetectorTrust.Evidence.OBSERVED, thrown.evidence(), thrown.toString());
+            // The executor threw, but a caller may handle a rejection on purpose (a retry, a
+            // fallback), which the executor cannot tell: a fact, not a verdict.
+            assertEquals(TrustTier.FACT, thrown.tier(), thrown.toString());
+
+            GradedFindings.Grade asserted = gradeOf(report, "recorded");
+            assertEquals(DetectorTrust.Evidence.ASSERTED, asserted.evidence(), asserted.toString());
+            assertEquals(TrustTier.FACT, asserted.tier(), asserted.toString());
+
+            assertTrue(report.threadStarvation.isEmpty() && report.saturatedQueues.isEmpty(),
+                    "a pool known only through what it threw has no declared bounds: " + report);
+            for (Violation v : report.structuredViolations) {
+                assertEquals(v.severity(), gradeOf(report, v.message().substring(0, v.message().indexOf(':')))
+                        .severity(), "a grade keeps the severity the gate read before (#1061): " + v);
+            }
+        } finally {
+            woven.shutdownNow();
+        }
+    }
+
+    @Test
+    void theThresholdRulesArePrompts() {
+        ThreadPoolMonitor monitor = new ThreadPoolMonitor();
+        Object full = new Object();
+        monitor.registerPool(full, "full", 1, 1, 1);
+        monitor.recordTaskSubmitted(full);
+        monitor.recordTaskSubmitted(full);
+        monitor.recordTaskStarted(full);
+        Object slow = new Object();
+        monitor.registerPool(slow, "slow", 1, 4, 100);
+        monitor.recordTaskSubmitted(slow);
+        monitor.recordTaskStarted(slow);
+        monitor.recordTaskCompleted(slow, 60_000L);
+
+        List<GradedFindings.Grade> grades = ((GradedFindings) monitor.analyze()).grades();
+        assertEquals(3, grades.size(), "saturated queue and starvation on full, a long task on slow: " + grades);
+        for (GradedFindings.Grade grade : grades) {
+            assertEquals(TrustTier.PROMPT, grade.tier(), grade.toString());
+            assertEquals(DetectorTrust.Evidence.HEURISTIC, grade.evidence(), grade.toString());
+        }
+    }
+
+    @Test
+    void aPoolWithBothKindsOfRejectionIsGradedByTheObservedOne() {
+        ThreadPoolMonitor monitor = new ThreadPoolMonitor();
+        ThreadPoolExecutor pool = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
+                new SynchronousQueue<>());
+        try {
+            monitor.registerPool(pool, "both", 1, 1, 0);
+            monitor.recordTaskRejected(pool, "recorded by hand");
+            monitor.recordRejectedExecution(pool, new RejectedExecutionException("saturated"));
+            ThreadPoolMonitor.ThreadPoolReport report = monitor.analyze();
+            assertTrue(report.poolsWithRejections.contains("both: 2 tasks rejected"), report.toString());
+            assertEquals(DetectorTrust.Evidence.OBSERVED, gradeOf(report, "both").evidence());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void aCleanReportHasNoGrades() {
+        assertEquals(List.of(), ((GradedFindings) new ThreadPoolMonitor().analyze()).grades());
     }
 
     /** The detector releases a subject the code under test dropped (#918). */

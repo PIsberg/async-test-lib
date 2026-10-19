@@ -64,6 +64,10 @@ class DroppedRejectionAgentFeedTest {
         assertTrue(found.stream().anyMatch(v -> text(v).contains("tasks rejected")),
                 "a saturated pool rejected woven submissions the body swallowed; ThreadPoolMonitor must"
                         + " report it with no recordTaskRejected call. Found: " + found);
+        // The hook hands over the exception the executor threw, which the report grades OBSERVED
+        // apart from a recorded rejection (#1061); that path labels the pool by its class.
+        assertTrue(found.stream().anyMatch(v -> text(v).contains("- ThreadPoolExecutor@")),
+                "the woven path records through recordRejectedExecution, not recordTaskRejected: " + found);
         // The feed knows nothing of the pool's bounds, so no rule that compares against one may
         // fire: declaring zeros once made it report "All 0 threads busy" (#501).
         assertFalse(found.stream().anyMatch(v -> text(v).contains("threads busy")),

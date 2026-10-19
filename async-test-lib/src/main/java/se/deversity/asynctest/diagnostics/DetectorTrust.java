@@ -217,7 +217,7 @@ public final class DetectorTrust {
             row(DetectorType.ABA_PROBLEM, "ABAProblemDetector", "ABAProblem", TrustTier.FACT, Evidence.OBSERVED),
             row(DetectorType.LOCK_ORDER, "LockOrderValidator", "LockOrder", TrustTier.VERDICT, Evidence.OBSERVED),
             row(DetectorType.SYNCHRONIZERS, "SynchronizerMonitor", "Synchronizers", TrustTier.PROMPT, Evidence.ASSERTED),
-            row(DetectorType.THREAD_POOL, "ThreadPoolMonitor", "ThreadPool", TrustTier.PROMPT, Evidence.HEURISTIC),
+            row(DetectorType.THREAD_POOL, "ThreadPoolMonitor", "ThreadPool", TrustTier.PROMPT, Evidence.OBSERVED),
             row(DetectorType.MEMORY_ORDERING, "MemoryOrderingMonitor", "MemoryOrdering", TrustTier.PROMPT, Evidence.CONTEXT_FREE),
             row(DetectorType.ASYNC_PIPELINE, "PipelineMonitor", "AsyncPipeline", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.READ_WRITE_LOCK_FAIRNESS, "ReadWriteLockMonitor", "ReadWriteLockFairness", TrustTier.ADVISORY, Evidence.HEURISTIC),

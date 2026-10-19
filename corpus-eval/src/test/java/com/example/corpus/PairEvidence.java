@@ -290,8 +290,9 @@ final class PairEvidence {
                 + "observation of real synchronizer wait queues and completion");
         HELD_ON_MODEL.put(DetectorType.THREAD_POOL, "takes caller manual registration and explicit "
                 + "recordTaskRejected/recordTaskSubmitted calls on arbitrary objects at their word, "
-                + "never inspecting real ThreadPoolExecutor queues or handlers; needs real "
-                + "ExecutorService wrapping or instrumentation");
+                + "never inspecting real ThreadPoolExecutor queues or handlers; only the woven "
+                + "rejection sees a real executor (#1055, graded apart since #1061), and the pair "
+                + "does not use it; needs an agent pair for the rejection");
         HELD_ON_MODEL.put(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS, "tracks thread-local lifetimes "
                 + "via manual recordThreadLocalSet/recordThreadLocalRemoved calls with string names, "
                 + "ignoring natural garbage collection on virtual thread exit; needs JVM "

@@ -213,15 +213,10 @@ class DetectorEvidenceMatchesCodeTest {
                     + "the two apart"),
             entry(DetectorType.PROCESS_STREAM_STARVATION, "the woven waitFor asks the Process which "
                     + "outputs are pipes, but a taken pipe is assumed drained, not seen read, and "
-                    + "recordStreamTaken takes the caller's word for the take itself"),
-            entry(DetectorType.THREAD_POOL, "the woven submit and execute replace only "
-                    + "recordTaskRejected (#1055); the queue-saturation, starvation and long-task "
-                    + "rules still run on recordTaskSubmitted, recordTaskStarted and "
-                    + "recordTaskCompleted, which nothing woven calls, and the report does not grade "
-                    + "the rejection apart (#1061)"));
+                    + "recordStreamTaken takes the caller's word for the take itself"));
 
     /** How many entries {@link #FED_BELOW_OBSERVED} may hold; lower it when an entry leaves. */
-    private static final int FED_BELOW_OBSERVED_CEILING = 16;
+    private static final int FED_BELOW_OBSERVED_CEILING = 15;
 
     /**
      * Ungraded detectors above the PROMPT cap that name a threshold, each with why the threshold

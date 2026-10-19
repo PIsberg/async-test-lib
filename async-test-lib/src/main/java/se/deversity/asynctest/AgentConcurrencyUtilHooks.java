@@ -97,7 +97,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.10.0
  */
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.CONCURRENCY_ENTRIES and cannot change independently of it. Every hook must perform the original operation and propagate its exceptions unchanged, InterruptedException included - these types throw it as a matter of course and swallowing one would change the interruption semantics of the code under test. Record after acquiring and before releasing, the containment rule AgentLockHooks documents, and record nothing when the underlying call throws. offer, poll and the timed await must record their actual return value: the boolean a caller discards is the whole bug these detectors report. The observe* call must stay ahead of the operation: it is where LatchMisuseDetector and BlockingQueueDetector learn a subject exists at all, and the latch's starting count is only readable before this call decrements it. offerResultDiscarded is not an operation: the weaver substitutes it for the POP that follows an offer whose boolean the caller never read, so it is always the instruction after one of the offer hooks on the same thread, and it must stay that way - the detector correlates it to the offer recorded immediately before, and that correlation is exact only because the weaver emits it in place of the POP and nowhere else.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.CONCURRENCY_ENTRIES and cannot change independently of it. Every hook must perform the original operation and propagate its exceptions unchanged, InterruptedException included - these types throw it as a matter of course and swallowing one would change the interruption semantics of the code under test. Record after acquiring and before releasing, the containment rule AgentLockHooks documents, and record nothing when the underlying call throws, except that a submit or execute the executor refuses records the RejectedExecutionException with ThreadPoolMonitor before rethrowing that same exception (#1055). offer, poll and the timed await must record their actual return value: the boolean a caller discards is the whole bug these detectors report. The observe* call must stay ahead of the operation: it is where LatchMisuseDetector and BlockingQueueDetector learn a subject exists at all, and the latch's starting count is only readable before this call decrements it. offerResultDiscarded is not an operation: the weaver substitutes it for the POP that follows an offer whose boolean the caller never read, so it is always the instruction after one of the offer hooks on the same thread, and it must stay that way - the detector correlates it to the offer recorded immediately before, and that correlation is exact only because the weaver emits it in place of the POP and nowhere else.")
 public final class AgentConcurrencyUtilHooks {
 
     private AgentConcurrencyUtilHooks() {
@@ -3435,14 +3435,13 @@ public final class AgentConcurrencyUtilHooks {
      * anyway; one the calling code catches and drops loses the task silently, and this record is
      * the only trace of it. The pool is not registered: nothing here knows its bounds, and the
      * monitor skips its bound rules for a pool it only heard of through a rejection, where declaring
-     * zeros would report "All 0 threads busy" (#501). The type goes in the reason instead, built on
-     * the exception path only.
+     * zeros would report "All 0 threads busy" (#501). The exception itself is handed over, so the
+     * report grades the finding as the executor's own answer rather than the test's word (#1061).
      */
     private static RejectedExecutionException rejected(Object executor, RejectedExecutionException e) {
         ThreadPoolMonitor pools = AsyncTestContext.currentThreadPoolMonitor();
         if (pools != null) {
-            pools.recordTaskRejected(executor, "a woven submission to a "
-                    + executor.getClass().getSimpleName() + " was rejected");
+            pools.recordRejectedExecution(executor, e);
         }
         return e;
     }

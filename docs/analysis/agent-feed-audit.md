@@ -61,7 +61,8 @@ What the rows mean:
   documented-thread-safe subjects or correct idioms. A `static` flag is not judged yet.
 - **The completion leak is a gap; the dropped rejection was one.** Nothing on the agent path sees a
   future's lifetime. Since #1055 the woven `submit` and `execute` record a rejection as it passes
-  through, so `ThreadPoolMonitor` reports one the caller dropped.
+  through, so `ThreadPoolMonitor` reports one the caller dropped, graded FACT on `OBSERVED`
+  evidence apart from its threshold rules since #1061.
 - **The thread leak was half covered.** `DaemonThreadHygieneDetector` reports the leaked thread for
   its daemon status, which is a different finding from "this thread outlives the test", and
   `ThreadLeakDetector` stayed silent. It is agent-fed since #1056, the first port, and the row now

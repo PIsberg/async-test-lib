@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -24,7 +25,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>With the agent attached, task rejection needs no recording call: the woven {@code submit} and
  * {@code execute} record a {@code RejectedExecutionException} as it passes through, before it is
  * rethrown, so a rejection the calling code drops is still reported (#1055). Such a pool's bounds
- * stay undeclared, so the rules that compare against a bound skip it (#501).
+ * stay undeclared, so the rules that compare against a bound skip it (#501). The report grades
+ * each finding by the path behind it (#1061): see {@link ThreadPoolReport#grades()}.
  */
 public class ThreadPoolMonitor extends AbstractInstanceDetector<ThreadPoolMonitor.PoolState> {
 
@@ -38,6 +40,8 @@ public class ThreadPoolMonitor extends AbstractInstanceDetector<ThreadPoolMonito
         final AtomicInteger activeThreads = new AtomicInteger(0);
         final AtomicInteger completedTasks = new AtomicInteger(0);
         final AtomicInteger rejectedTasks = new AtomicInteger(0);
+        /** The rejections the executor itself threw, of {@code rejectedTasks}; see {@link #recordRejectedExecution}. */
+        final AtomicInteger thrownRejections = new AtomicInteger(0);
         final AtomicInteger queuedTasks = new AtomicInteger(0);
         volatile long peakQueueSize = 0;
         volatile long maxTaskDuration = 0;
@@ -148,6 +152,33 @@ public class ThreadPoolMonitor extends AbstractInstanceDetector<ThreadPoolMonito
     }
     
     /**
+     * Records a submission the executor refused, as the woven {@code submit} and {@code execute}
+     * see it: the executor and the {@link RejectedExecutionException} it threw, recorded before
+     * the hook rethrows it (#1055). Where {@link #recordTaskRejected} is the test saying a
+     * rejection happened, this is the executor's own answer, so the report grades the finding on
+     * {@link DetectorTrust.Evidence#OBSERVED} evidence (#1061). A pool first seen here is
+     * labelled by its class and has no declared bounds.
+     *
+     * @param executor  the executor that threw, tracked by identity
+     * @param rejection what it threw
+     * @since 1.13.3
+     */
+    public void recordRejectedExecution(Object executor, RejectedExecutionException rejection) {
+        if (!enabled || executor == null || rejection == null) return;
+
+        PoolState state = trackedState(executor);
+        if (state == null) {
+            state = stateFor(executor, null, executor.getClass().getSimpleName(),
+                    label -> new PoolState(label, 0, 0, false));
+        }
+
+        state.thrownRejections.incrementAndGet();
+        state.rejectedTasks.incrementAndGet();
+        state.rejections.add("the executor threw " + rejection.getClass().getSimpleName()
+                + " (queued: " + state.queuedTasks.get() + ")");
+    }
+
+    /**
      * Analyze pool health.
      *
      * @return the findings this detector collected during the run
@@ -157,10 +188,12 @@ public class ThreadPoolMonitor extends AbstractInstanceDetector<ThreadPoolMonito
         
         for (PoolState state : states()) {
             if (state.rejectedTasks.get() > 0) {
-                report.poolsWithRejections.add(String.format(
-                    "%s: %d tasks rejected",
-                    state.poolName, state.rejectedTasks.get()
-                ));
+                String finding = String.format("%s: %d tasks rejected",
+                    state.poolName, state.rejectedTasks.get());
+                report.poolsWithRejections.add(finding);
+                if (state.thrownRejections.get() > 0) {
+                    report.thrown.add(finding);
+                }
             }
             
             if (state.boundsDeclared && state.peakQueueSize > state.queueCapacity * 0.8) {
@@ -186,10 +219,7 @@ public class ThreadPoolMonitor extends AbstractInstanceDetector<ThreadPoolMonito
         }
         
         if (report.hasIssues()) {
-            // The severity the failOn gate read from this text before #801: a marker in it,
-            // else the value DetectorDefaultSeverity declared for the detector.
-            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
-                    .orElse(IssueSeverity.MEDIUM);
+            IssueSeverity severity = report.severity();
             for (String finding : report.poolsWithRejections) {
                 report.structuredViolations.add(new Violation("ThreadPoolMonitor", severity,
                         finding, List.of(), Map.of(), Instant.now()));
@@ -237,7 +267,7 @@ public class ThreadPoolMonitor extends AbstractInstanceDetector<ThreadPoolMonito
         enabled = true;
     }
     
-    public static class ThreadPoolReport {
+    public static class ThreadPoolReport implements GradedFindings {
         /** Pools that rejected at least one submission. */
         public final Set<String> poolsWithRejections = new HashSet<>();
         /** The findings as Violations, at the severity the text resolved to (#801). */
@@ -248,6 +278,8 @@ public class ThreadPoolMonitor extends AbstractInstanceDetector<ThreadPoolMonito
         public final Set<String> longRunningTasks = new HashSet<>();
         /** Pools where work waited because no worker was free. */
         public final Set<String> threadStarvation = new HashSet<>();
+        /** The rejection findings at least one of which the executor itself threw; see {@link #grades()}. */
+        final Set<String> thrown = new HashSet<>();
         
         /**
          * {@return whether there are issues}
@@ -257,6 +289,52 @@ public class ThreadPoolMonitor extends AbstractInstanceDetector<ThreadPoolMonito
                    !longRunningTasks.isEmpty() || !threadStarvation.isEmpty();
         }
         
+        /**
+         * The severity the {@code failOn} gate read from this text before #801: a marker in it,
+         * else the value DetectorDefaultSeverity declared for the detector.
+         */
+        IssueSeverity severity() {
+            return IssueSeverity.markedIn(toString()).orElse(IssueSeverity.MEDIUM);
+        }
+
+        /**
+         * One grade per finding, set by the path that produced it (#1061).
+         *
+         * <p>A rejection the woven {@code submit} or {@code execute} saw the executor throw is the
+         * executor's own answer, a {@link TrustTier#FACT} on
+         * {@link DetectorTrust.Evidence#OBSERVED} evidence. It stops at FACT because a caller may
+         * handle a rejection on purpose, with a retry or a fallback, which the executor cannot
+         * tell. A rejection only {@code recordTaskRejected} reported is the test's word, a FACT on
+         * {@link DetectorTrust.Evidence#ASSERTED}. A pool with both is graded by the thrown one.
+         * The saturated queue, the busy pool and the long task compare recorded counts against a
+         * bound or a threshold, so each is a {@link TrustTier#PROMPT} on
+         * {@link DetectorTrust.Evidence#HEURISTIC}. Every grade keeps the severity the gate has
+         * always read for this report.
+         */
+        @Override
+        public List<GradedFindings.Grade> grades() {
+            if (!hasIssues()) {
+                return List.of();
+            }
+            IssueSeverity severity = severity();
+            List<GradedFindings.Grade> out = new ArrayList<>();
+            for (String rejected : poolsWithRejections) {
+                out.add(thrown.contains(rejected)
+                        ? new GradedFindings.Grade(severity, TrustTier.FACT, rejected, DetectorTrust.Evidence.OBSERVED)
+                        : new GradedFindings.Grade(severity, TrustTier.FACT, rejected, DetectorTrust.Evidence.ASSERTED));
+            }
+            for (String finding : saturatedQueues) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.PROMPT, finding, DetectorTrust.Evidence.HEURISTIC));
+            }
+            for (String finding : longRunningTasks) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.PROMPT, finding, DetectorTrust.Evidence.HEURISTIC));
+            }
+            for (String finding : threadStarvation) {
+                out.add(new GradedFindings.Grade(severity, TrustTier.PROMPT, finding, DetectorTrust.Evidence.HEURISTIC));
+            }
+            return List.copyOf(out);
+        }
+
         @Override
         public String toString() {
             if (!hasIssues()) {
