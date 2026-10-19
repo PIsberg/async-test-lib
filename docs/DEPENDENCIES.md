@@ -53,7 +53,7 @@ Never published, never transitive.
 | `com.code-intelligence:jazzer-api` | `jazzer.version` | Entry points for the scheduled fuzzing workflow (`fuzzing.yml`), which throws generated input at the config and report parsers. |
 | IntelliJ Platform test framework (`testFramework(TestFrameworkType.Platform)`) | the platform version in `intellij-plugin/build.gradle.kts` | Boots a headless IDE for `FindingsToolWindowPlatformTest`, the only way to build the plugin's tool window, Refresh action and settings page in a test (#723). Test scope of the standalone `intellij-plugin` build; it never reaches the library. |
 | `junit:junit` 4 + `org.junit.vintage:junit-vintage-engine` | pinned in `intellij-plugin/build.gradle.kts` | `BasePlatformTestCase` is a JUnit 3 `TestCase`: JUnit 4 puts it on the classpath and the vintage engine runs it beside the plugin's Jupiter tests. `intellij-plugin` test scope only. |
-| `ch.qos.logback:logback-classic` | `logbackVersion` (in `build.gradle.kts` — no Maven twin, watched by the gradle Dependabot ecosystem) | The one test-only SLF4J backend, bound in the Gradle build so log-contract tests (`ConcurrencyRunnerLogContractTest`) can assert what the library actually logs. |
+| `ch.qos.logback:logback-classic` | `logbackVersion` (in `build.gradle.kts` — no Maven twin, watched by the gradle Dependabot ecosystem) | The one test-only SLF4J backend, bound in the Gradle build so log-contract tests (`ConcurrencyRunnerLogContractTest`, and in the agent module `AttachedByDefaultTest`) can assert what the library actually logs. Declared for the library's and the agent's tests; Maven reaches it transitively. |
 
 ## 4. Build toolchain
 
