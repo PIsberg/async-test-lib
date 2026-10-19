@@ -205,8 +205,10 @@ public @interface AsyncTest {
      * priority, the highest-priority worker that is ready runs, and at a few random points the one
      * running drops to the lowest priority, so each round tries a different interleaving.
      *
-     * <p>Scheduling points are every field access the agent weaves ({@code fields=true}) and every
-     * call to {@link AsyncTestContext#schedulePoint()}. Without either, workers never change hands
+     * <p>Scheduling points are every field access the agent weaves ({@code fields=true}), every
+     * collection, concurrency-utility, shared-instance and atomic call it substitutes (with
+     * {@code collections=true} or {@code fields=true}), and every call to
+     * {@link AsyncTestContext#schedulePoint()}. Without any of them, workers never change hands
      * mid-body, so the round interleaves nothing; the run says so once at INFO
      * ({@code runner.schedule.unpointed}).
      *

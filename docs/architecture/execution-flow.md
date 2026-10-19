@@ -104,7 +104,8 @@ seed fixes every round to that value. On its own the seed does not fix the threa
 `telemetry.ControlledSchedule` per round, seeded with the round's replay seed, immediately before the
 try whose finally closes it. Each worker joins it after the start barrier and leaves it in a finally
 around the body, so only one worker runs at a time and the round changes hands only at a scheduling
-point: `TelemetryRegistry`'s field-access hooks and `AsyncTestContext.schedulePoint()`. Who runs next
+point: `TelemetryRegistry`'s field-access hooks, every hook that replaces a substituted collection,
+concurrency-utility, shared-instance or atomic call, and `AsyncTestContext.schedulePoint()`. Who runs next
 is PCT's choice (random distinct priorities, two random priority drops per round), so it depends on
 the seed alone. A worker that blocks or stalls without reaching a point is marked escaped by the
 workers waiting for a turn, which keeps the round live and is counted in `runner.schedule.round`;

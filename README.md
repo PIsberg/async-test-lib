@@ -480,7 +480,7 @@ Full parameter reference: [docs/USAGE.md](docs/USAGE.md)
 | `excludeIds` | `{}` | Detectors to skip by id: a third-party detector's own `id()`, or a built-in's `DetectorType` name (1.13.0+) |
 | `failOn` | `FailOn.NONE` | Severity gate: findings at/above this level (`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`) fail the test; `NONE` = report-only |
 | `replaySeed` | 0 | Per-round seed. `0` = fresh per round (printed on failure); set explicitly to replay the seed's random choices, and with `controlledSchedule` the interleaving too |
-| `controlledSchedule` | false | Run each round's workers one at a time, switching only at scheduling points (woven field accesses, `AsyncTestContext.schedulePoint()`) in an order the replay seed decides, so a failing seed replays its interleaving (1.13.2+, experimental) |
+| `controlledSchedule` | false | Run each round's workers one at a time, switching only at scheduling points (woven field accesses and substituted collection and atomic calls, `AsyncTestContext.schedulePoint()`) in an order the replay seed decides, so a failing seed replays its interleaving (1.13.2+, experimental) |
 
 `@AsyncTest` can also be placed on a **class** (shared config for all `@TestTemplate`
 methods; method-level `@AsyncTest` wins) or on an **annotation** to compose reusable
@@ -631,8 +631,9 @@ class FlakyTest {
 
 The seed alone replays the body's random choices, not the thread schedule: the OS still decides
 which worker runs when. `controlledSchedule = true` hands that decision to the seed too. Workers run
-one at a time and change hands only at scheduling points, every field access the agent weaves with
-`fields=true` and every `AsyncTestContext.schedulePoint()`, so the seed a failing round prints
+one at a time and change hands only at scheduling points: every field access the agent weaves with
+`fields=true`, every collection, concurrency-utility and atomic call it substitutes, and every
+`AsyncTestContext.schedulePoint()`, so the seed a failing round prints
 replays its interleaving:
 
 ```java

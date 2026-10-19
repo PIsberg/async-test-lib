@@ -617,9 +617,9 @@ public class ConcurrencyRunner {
                             unpointedLogged = true;
                             log.info("runner.schedule.unpointed test={} reason=\"no worker reached a "
                                     + "scheduling point, so the controlled schedule ran each body whole "
-                                    + "and interleaved nothing\" hint=\"run with the agent's fields=true, "
-                                    + "or call AsyncTestContext.schedulePoint() where a worker may be "
-                                    + "interrupted\"", testMethod.getName());
+                                    + "and interleaved nothing\" hint=\"run with the agent's fields=true or "
+                                    + "collections=true, or call AsyncTestContext.schedulePoint() "
+                                    + "where a worker may be interrupted\"", testMethod.getName());
                         }
                     }
                     // Quiesce before teardown when the round failed. runSingleInvocationRound
