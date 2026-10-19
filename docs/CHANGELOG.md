@@ -46,8 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `-javaagent:` route. `SelfAttachRefusedTest` forks a JVM with the switch off and was red on the old
   message. `docs/agent/attaching.md` sections 3.3 and 3.4 said the same and are corrected.
 
-### Fixed
-
 - **`docs/analysis/comparison.md` said the library had 127 detectors and no happens-before race
   detection.** The enum has 148, and since 1.12.3 the agent-fed happens-before model orders the
   conflicting accesses the race detectors consult. The page now describes that, the experimental
