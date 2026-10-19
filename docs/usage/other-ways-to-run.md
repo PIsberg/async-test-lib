@@ -10,7 +10,11 @@ Detectors normally observe field access via explicit recording calls (e.g.
 agent — records getter/setter access **automatically, with no source changes**, and can feed
 those events straight into a live `AtomicityValidator` via `TelemetryBridge`.
 
-Attach it one of three ways:
+The simplest way is to add the `async-test-agent` artifact as a test dependency and nothing
+else: the runner then attaches it before the first `@AsyncTest` round, weaving field accesses and
+collection calls in the test's own project, and `-Dasynctest.agent=off` turns that off
+([attaching.md](../agent/attaching.md) has the rules and the cost).
+To choose the scope yourself, attach it one of these ways:
 
 ```
 # 1. Launch flag (static), optionally scoped:
@@ -25,7 +29,8 @@ static void attachAgent() {
 }
 ```
 
-It is strictly opt-in — if you do not attach the agent, nothing changes. See
+It is opt-in: without the artifact on the test classpath, or with `-Dasynctest.agent=off`, nothing
+changes. See
 **[AGENT.md](../AGENT.md)** for the full guide: the WHY (observer-effect / Heisenbug), all three
 attachment paths with Maven and Gradle snippets, consuming events via `TelemetryBridge`, scope
 and filtering, `debug=true` diagnostics, limitations, and a troubleshooting table.

@@ -93,7 +93,7 @@ retained for tests and documented examples but is not used on the hot path.
 **Package:** `se.deversity.asynctest.agent`  
 **Dependency:** `net.bytebuddy:byte-buddy`, `net.bytebuddy:byte-buddy-agent` (self-attach)
 
-> **User-facing guide:** [AGENT.md](../AGENT.md) — attachment (all three ways), event
+> **User-facing guide:** [AGENT.md](../AGENT.md) — attachment (by default, or three explicit ways), event
 > consumption, scope/filtering, diagnostics, limitations, and troubleshooting.
 
 #### Baseline limitation

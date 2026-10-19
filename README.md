@@ -189,7 +189,17 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
        <version>1.13.2</version>
        <scope>test</scope>
    </dependency>
+   <dependency>
+       <groupId>se.deversity.async-test-lib</groupId>
+       <artifactId>async-test-agent</artifactId>
+       <version>1.13.2</version>
+       <scope>test</scope>
+   </dependency>
    ```
+
+   The second artifact is the instrumentation agent. With it on the test classpath the
+   runner attaches it to the test JVM by itself, so the example below finds its race with
+   no further setup (see step 3).
 
 2. **Write your first stress test**:
    ```java
@@ -213,22 +223,24 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
 
 3. **Run your tests**:
    ```bash
-   mvn test -Dlicense.mock.mode=true -Dasynctest.agent=fields=true
+   mvn test -Dlicense.mock.mode=true
    ```
 
-   Two flags, both worth understanding before you drop them:
-
-   - **`-Dlicense.mock.mode=true`** — without a licence key the run stops with
+   - **`-Dlicense.mock.mode=true`**: without a licence key the run stops with
      `LICENSE DENIED`. CI sets mock mode automatically (`CI` or `GITHUB_ACTIONS` in the
      environment); a local run needs the flag. See [License](#license).
-   - **`-Dasynctest.agent=fields=true`** — attaches the instrumentation agent so a bare
-     `counter++` is observed. **Without it this example passes and reports nothing.**
-     `counter++` compiles to a field read and a field write with no method call, so
-     nothing can see it unless the bytecode is instrumented. Add
-     `async-test-agent` as a test dependency for this flag to find anything; the runner
-     logs `runner.agent.attach.failed` if the artifact is missing.
+   - **The agent attaches itself.** `counter++` compiles to a field read and a field write
+     with no method call between them, so only instrumented bytecode shows it. Because
+     `async-test-agent` is on the test classpath, the runner attaches it before the first
+     round, weaving field accesses and collection calls in your test's project (the first
+     three segments of the test class's package) and nothing else; the log says
+     `runner.agent.attached source=classpath`. **Without the agent artifact this example
+     passes and reports nothing.** The attach costs about 0.6 s once per JVM, and woven
+     code runs slower: a body making 200,000 synchronized calls took 3.4 s instead of
+     1.1 s. `-Dasynctest.agent=off` turns it off, and `-Dasynctest.agent=<args>` replaces
+     the defaults ([attaching the agent](docs/agent/attaching.md)).
 
-   Detection that needs neither flag: deadlocks, which are read from the JVM's own
+   Detection that needs no agent: deadlocks, which are read from the JVM's own
    thread state. If you want to see the library find something with zero setup, make two
    threads take two locks in opposite orders.
 
@@ -240,7 +252,10 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
 1. **Add the dependency** to `build.gradle.kts`:
    ```kotlin
    testImplementation("se.deversity.async-test-lib:async-test-lib:1.13.2")
+   testImplementation("se.deversity.async-test-lib:async-test-agent:1.13.2")
    ```
+
+   The second artifact is the instrumentation agent, which the runner attaches by itself.
 
 2. **Write your first stress test**:
    ```java
@@ -263,16 +278,16 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
 
 3. **Run your tests**:
    ```bash
-   ./gradlew test -Dlicense.mock.mode=true -Dasynctest.agent=fields=true
+   ./gradlew test -Dlicense.mock.mode=true
    ```
 
    `-Dlicense.mock.mode=true` is what a local run without a licence key needs (CI
-   activates mock mode by itself). `-Dasynctest.agent=fields=true` attaches the
-   instrumentation agent — **without it this example passes and reports nothing**,
-   because `counter++` is a field read and write with no method call for the weaver to
-   bind to. Add `async-test-agent` as a test dependency for the flag to do anything.
+   activates mock mode by itself). The runner attaches `async-test-agent` because it is on
+   the test classpath: **without that artifact this example passes and reports nothing**,
+   because `counter++` is a field read and write with no method call between them.
+   `-Dasynctest.agent=off` turns the attach off.
 
-   Deadlock detection needs neither flag; it reads the JVM's own thread state.
+   Deadlock detection needs no agent; it reads the JVM's own thread state.
 
 </details>
 

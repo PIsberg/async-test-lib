@@ -2,11 +2,47 @@
 
 Part of the [Agent Instrumentation Guide](../AGENT.md).
 
-## 3. How to attach (all three ways)
+## 3. How to attach (by default, or three explicit ways)
 
 The agent JAR (`async-test-agent`, not the library JAR — the manifest moved there in the
 module split) is the agent-capable artifact: its `MANIFEST.MF` declares `Premain-Class`,
 `Agent-Class`, `Can-Retransform-Classes: true`, and `Can-Redefine-Classes: true`.
+
+### 3.0 By default: the artifact on the test classpath
+
+With the `async-test-agent` artifact on the test classpath, the runner attaches the agent itself
+before the first round of the first `@AsyncTest` in the JVM, so you do not have to resolve the jar's path in your build. Which arguments it uses:
+
+| `-Dasynctest.agent` | Agent on the classpath | What the runner does |
+|---|---|---|
+| unset | yes | attaches with `fields=true,collections=true,includes=<the first three segments of the test class's package>` |
+| unset | no | nothing, and logs nothing |
+| `off` or `false` | either | nothing |
+| any other value, `""` included | either | attaches with that value verbatim, as after `-javaagent:...=` |
+
+The runner does nothing when an agent is already running, attached with `-javaagent:` or by a
+`selfAttach` in setup: explicit configuration always wins. A test class in the default package,
+and a body run through `AsyncTestRunner` (whose invocation names the library's own class), get no
+default, because there is no project package to scope the weaving to; set the property for those
+([#1042](https://github.com/PIsberg/async-test-lib/issues/1042) tracks inferring it for
+`AsyncTestRunner`).
+The include keeps the weaving off JUnit and the build tool, and the log line
+`runner.agent.attached source=classpath args="..."` names what was chosen.
+
+Measured on 2026-10-19 (Windows 11, JDK 26, one run of the agent module's test JVM, five times
+each way): the attach and the retransformation of the already-loaded classes took about 0.6 s,
+once per JVM. A body making 200 synchronized calls on a map-backed service, at `threads = 10,
+invocations = 100`, took 3.4 s with the default attach and 1.1 s with `-Dasynctest.agent=off`, so
+woven code ran roughly three times slower in that hot loop. On JDK 21 and later a dynamic attach
+also prints the JVM's `A Java agent has been loaded dynamically` warning;
+`-XX:+EnableDynamicAgentLoading` in the test JVM's arguments silences it.
+
+If the artifact is missing while the property is set, or the JVM forbids self-attachment, the
+runner logs `runner.agent.attach.failed` once and continues without instrumentation rather than
+failing the suite.
+
+The three ways below are for choosing the scope yourself, or for a JVM that forbids attaching
+at runtime.
 
 ### 3.1 Launch flag (static attach), plain
 
@@ -422,12 +458,6 @@ Three limits worth knowing before switching it on:
 - **`super` calls keep their dispatch.** Only virtual and interface invocations are rewritten. A
   decorator's `super.get(...)` must stay an `INVOKESPECIAL`, or the substitution would re-dispatch
   virtually into the override and recurse.
-
-**Reaching it without a `-javaagent` path.** `-Dasynctest.agent=fields=true` makes the runner
-attach the agent itself at the start of the run, so you do not have to resolve the jar's path in
-your build. It needs the `async-test-agent` artifact on the test classpath; if it is missing, or
-the JVM forbids self-attachment, the runner logs `runner.agent.attach.failed` once and continues
-without instrumentation rather than failing the suite.
 
 **Named modules.** Woven code calls into the library, so a woven class in a named module has to
 read the library's module. The JVM gives every transformed class a read edge to the unnamed module

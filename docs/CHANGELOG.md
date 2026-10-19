@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The runner attaches the agent by default when `async-test-agent` is on the test classpath.**
+  The README's first example, a bare `counter++`, passed and reported nothing unless the user also
+  passed `-Dasynctest.agent=fields=true`; adding the agent artifact was not enough. With the property
+  unset and the agent's entry point resolvable, the runner now attaches it before the first round
+  with `fields=true,collections=true,includes=` the first three segments of the test class's package,
+  so JUnit and the build tool are never woven, and logs `runner.agent.attached source=classpath`.
+  `-Dasynctest.agent=<args>` still passes through verbatim (`source=property`), `off` or `false`
+  opts out, and an agent already running (`-javaagent:`, a `selfAttach` in setup) is left alone. A
+  test in the default package, or a body run through `AsyncTestRunner`, gets no default (#1042). Cost,
+  measured on Windows 11 and JDK 26: about 0.6 s once per JVM for the attach, and a body of 200
+  synchronized map-backed calls at `threads = 10, invocations = 100` took 3.4 s instead of 1.1 s.
+  The README quick start now adds the agent dependency and drops the flag. Tests:
+  `AgentAutoAttachTest` (10 cases of the decision) and `AttachedByDefaultTest`, the README shape in
+  `com.example.autoattach` with no flag, which was red against the old runner and reports the racing
+  field while staying silent on its synchronized twin; it is also the first test of retransforming
+  a class loaded before a dynamic attach.
+
 ## [1.13.2] - 2026-10-18
 
 ### Added
