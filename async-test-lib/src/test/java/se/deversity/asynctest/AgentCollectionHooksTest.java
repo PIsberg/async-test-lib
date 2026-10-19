@@ -220,19 +220,22 @@ class AgentCollectionHooksTest {
     }
 
     @Test
-    @DisplayName("one writer and several readers through the hooks is reported; one reader is not")
+    @DisplayName("one writer beside other readers through the hooks is reported; a writer alone is not")
     void aWriterAndSeveralReadersAreReported() throws InterruptedException {
         // The read path of record(): every case above writes, so a hook that dropped the read
-        // half would leave a reader's access invisible. The detector's rule is one writer with
-        // more than one reader in a round, which is the visibility shape; a single reader is
-        // deliberately below it, and pinning that boundary is what keeps this from passing on a
-        // detector that reports every collection two threads touched.
+        // half would leave a reader's access invisible. Since #1052 the detector's rule is one
+        // writer beside any other thread reading in a round (one reader iterating while another
+        // adds is the concurrent-modification race); a writer with no reader is below it, and
+        // pinning that boundary is what keeps this from passing on a detector that reports
+        // every collection a thread touched.
         assertTrue(readersReport(2),
                 "a HashMap written by one thread and read by two others through the hooks is "
                         + "the visibility finding, and the read half of record() is what delivers "
                         + "the readers' accesses");
-        assertFalse(readersReport(1),
-                "one writer and one reader is below the detector's rule and must stay silent");
+        assertTrue(readersReport(1),
+                "one writer and one other reader is reported since #1052");
+        assertFalse(readersReport(0),
+                "a writer with no other thread reading races nobody and must stay silent");
     }
 
     /** One writer, then {@code readerCount} readers, each on its own thread, through the hooks. */
