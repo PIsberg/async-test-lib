@@ -223,6 +223,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The release build runs on the runner image's Maven again (#974).** Since #949 `publish.yml`
+  installed Maven 3.9.16, because under 3.10.0 `central-publishing-maven-plugin` 0.11.0 put
+  local-repository files in the Central bundle and the portal rejected v1.13.0. With plugin 0.12.0
+  the release profile's bundle, built with a dead upload URL, held the same 105 files under Maven
+  3.10.0 and 3.9.16 and none of `.locks/`, `_remote.repositories` or `maven-metadata-local.xml`, so
+  the pinned install step is gone. `PublishRunsOnPinnedMavenTest` became
+  `PublishBundlesOnASafeMavenTest`, which refuses the image's Maven with a plugin older than 0.12.0
+  and a pin at 3.10 or above; it went red with the plugin set back to 0.11.0. Not exercised: an
+  actual upload to the portal, which only the next release does.
+
 - **The Clojure language fixture's `@AsyncTest` tests ran 0 tests, green (#1078).** The module told
   Surefire to include `**/*Test.class`, since a gen-class is named by `:name`, and under Surefire
   3.6.0 a pattern ending in `.class` selects the classes and runs none, so `LostUpdateIsReportedTest`
