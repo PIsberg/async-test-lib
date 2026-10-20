@@ -113,6 +113,11 @@ final class LibraryReach {
                         + "needs a library method that blocks on its own event loop, and none of "
                         + "the corpus libraries does, so its pair blocks in the test body on a "
                         + "Netty thread class");
+        unreached(DetectorType.THREAD_POOL,
+                "agent-fed since #1055 through the rejection a woven submit or execute rethrows; a "
+                        + "firing library row needs a library method that submits to a saturated "
+                        + "pool and drops the RejectedExecutionException, and no corpus library "
+                        + "ships that defect");
     }
 
     private static void unreached(DetectorType type, String reason) {

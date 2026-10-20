@@ -2085,6 +2085,18 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link ThreadPoolMonitor} for the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>The woven {@code submit} and {@code execute} record a rejection here as it passes through,
+     * so one the calling code catches and drops is still reported (#1055).
+     */
+    static @Nullable ThreadPoolMonitor currentThreadPoolMonitor() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.threadPoolMonitor;
+    }
+
+    /**
      * {@return the {@link FutureIgnoredDetector} for the run the calling thread works for, or
      * {@code null}}
      *

@@ -127,7 +127,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 15. Thread Pool Health Detector
 * **Severity**: `MEDIUM`
-* **Description**: Tracks executor queue depth, task rejections, active-thread counts, and per-task duration to surface pool saturation, silent task rejection, and worker starvation before they manifest as user-visible timeouts.
+* **Description**: Tracks executor queue depth, task rejections, active-thread counts, and per-task duration to surface pool saturation, silent task rejection, and worker starvation before they manifest as user-visible timeouts. With the agent attached, rejections need no recording call: a `RejectedExecutionException` passing through a woven `submit` or `execute` is recorded before it is rethrown, so a rejection the calling code catches and drops is still reported (#1055). The other rules still need the recording API.
 * **Buggy Code**:
   ```java
   ExecutorService pool = new ThreadPoolExecutor(2, 2, 0, TimeUnit.SECONDS,

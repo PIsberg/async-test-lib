@@ -37,7 +37,7 @@ Checked on Windows 11 and JDK 26, three runs, every row identical in all three.
 | 2, `VISIBILITY` | a constant (`data = 42`) published behind a plain `boolean` flag | none; since #1053 `AtomicityValidator` | none |
 | 2b, `VISIBILITY` | a computed value published behind the same plain flag | `AtomicityValidator` | not run |
 | 3, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` | a `CompletableFuture` left pending on the exception path | none | none |
-| 4, `THREAD_POOL` | a saturated pool's `RejectedExecutionException` caught and dropped | none | none |
+| 4, `THREAD_POOL` | a saturated pool's `RejectedExecutionException` caught and dropped | none; since #1055 `ThreadPoolMonitor` | none |
 | 5, `THREAD_LEAKS` | a thread the body starts and never joins | `DaemonThreadHygieneDetector`; since #1056 also `ThreadLeakDetector` | none |
 
 What the rows mean:
@@ -59,8 +59,9 @@ What the rows mean:
   unordered flag publication when a thread that never writes the field reads it with no lock, no
   happens-before edge and no volatile bit; on the corpus that added no finding on any of its 100
   documented-thread-safe subjects or correct idioms. A `static` flag is not judged yet.
-- **The completion leak and the dropped rejection are gaps.** Nothing on the agent path sees a
-  future's lifetime or a rejection.
+- **The completion leak is a gap; the dropped rejection was one.** Nothing on the agent path sees a
+  future's lifetime. Since #1055 the woven `submit` and `execute` record a rejection as it passes
+  through, so `ThreadPoolMonitor` reports one the caller dropped.
 - **The thread leak was half covered.** `DaemonThreadHygieneDetector` reports the leaked thread for
   its daemon status, which is a different finding from "this thread outlives the test", and
   `ThreadLeakDetector` stayed silent. It is agent-fed since #1056, the first port, and the row now
@@ -83,7 +84,7 @@ test, and each flips its row here and in the test. The likely seams, not yet bui
   the corpus idioms lane decides whether benign racy flags make it too noisy.
 - **Completion leak ([#1054](https://github.com/PIsberg/async-test-lib/issues/1054)):** weave `new CompletableFuture<>()` and the completing calls, and report a
   future still pending when the round ends.
-- **Dropped rejection ([#1055](https://github.com/PIsberg/async-test-lib/issues/1055)):** weave `Executor.execute`/`submit` and report a
+- **Dropped rejection ([#1055](https://github.com/PIsberg/async-test-lib/issues/1055), done):** weave `Executor.execute`/`submit` and report a
   `RejectedExecutionException` the calling method catches without rethrowing.
 - **Thread leak ([#1056](https://github.com/PIsberg/async-test-lib/issues/1056), done):** feed `ThreadLeakDetector` from the woven start the runner already attributes
   (`AsyncTestContext.threadSpawned`). It sits in `Preset.ESSENTIALS`, so this adds a PROMPT-tier

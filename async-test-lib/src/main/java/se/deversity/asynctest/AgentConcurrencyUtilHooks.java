@@ -28,6 +28,7 @@ import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
@@ -42,6 +43,7 @@ import java.util.function.Supplier;
 
 import org.jspecify.annotations.Nullable;
 
+import se.deversity.asynctest.diagnostics.ThreadPoolMonitor;
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
 import se.deversity.asynctest.diagnostics.CompletableFutureBlockingCallbackDetector;
@@ -3056,11 +3058,15 @@ public final class AgentConcurrencyUtilHooks {
     public static Future<Object> submit(ExecutorService receiver, Callable<Object> task) {
         ControlledSchedule.point();
         taskSubmitted(receiver);
-        if (!wrapsInvisibly(receiver, task)) {
-            return receiver.submit(task);
+        try {
+            if (!wrapsInvisibly(receiver, task)) {
+                return receiver.submit(task);
+            }
+            HandedTask handed = new HandedTask(task);
+            return Submissions.remember(receiver.submit((Callable<Object>) handed), handed);
+        } catch (RejectedExecutionException e) {
+            throw rejected(receiver, e);
         }
-        HandedTask handed = new HandedTask(task);
-        return Submissions.remember(receiver.submit((Callable<Object>) handed), handed);
     }
 
     /**
@@ -3075,11 +3081,15 @@ public final class AgentConcurrencyUtilHooks {
     public static Future<?> submit(ExecutorService receiver, Runnable task) {
         ControlledSchedule.point();
         taskSubmitted(receiver);
-        if (!wrapsInvisibly(receiver, task)) {
-            return receiver.submit(task);
+        try {
+            if (!wrapsInvisibly(receiver, task)) {
+                return receiver.submit(task);
+            }
+            HandedTask handed = new HandedTask(task);
+            return Submissions.remember(receiver.submit((Runnable) handed), handed);
+        } catch (RejectedExecutionException e) {
+            throw rejected(receiver, e);
         }
-        HandedTask handed = new HandedTask(task);
-        return Submissions.remember(receiver.submit((Runnable) handed), handed);
     }
 
     /**
@@ -3097,11 +3107,15 @@ public final class AgentConcurrencyUtilHooks {
                                         @Nullable Object result) {
         ControlledSchedule.point();
         taskSubmitted(receiver);
-        if (!wrapsInvisibly(receiver, task)) {
-            return receiver.submit(task, result);
+        try {
+            if (!wrapsInvisibly(receiver, task)) {
+                return receiver.submit(task, result);
+            }
+            HandedTask handed = new HandedTask(task);
+            return Submissions.remember(receiver.submit((Runnable) handed, result), handed);
+        } catch (RejectedExecutionException e) {
+            throw rejected(receiver, e);
         }
-        HandedTask handed = new HandedTask(task);
-        return Submissions.remember(receiver.submit((Runnable) handed, result), handed);
     }
 
     /**
@@ -3404,11 +3418,33 @@ public final class AgentConcurrencyUtilHooks {
         // The NullPointerException the call itself throws for a missing task.
         Objects.requireNonNull(command);
         taskSubmitted(receiver);
-        if (!(command instanceof ForkJoinTask) && executesInvisibly(receiver)) {
-            receiver.execute(new HandedTask(command));
-            return;
+        try {
+            if (!(command instanceof ForkJoinTask) && executesInvisibly(receiver)) {
+                receiver.execute(new HandedTask(command));
+                return;
+            }
+            receiver.execute(command);
+        } catch (RejectedExecutionException e) {
+            throw rejected(receiver, e);
         }
-        receiver.execute(command);
+    }
+
+    /**
+     * Records a rejected submission with the run's {@code ThreadPoolMonitor} and hands the same
+     * exception back to be rethrown unchanged (#1055). A rejection that propagates fails the test
+     * anyway; one the calling code catches and drops loses the task silently, and this record is
+     * the only trace of it. The pool is not registered: nothing here knows its bounds, and the
+     * monitor skips its bound rules for a pool it only heard of through a rejection, where declaring
+     * zeros would report "All 0 threads busy" (#501). The type goes in the reason instead, built on
+     * the exception path only.
+     */
+    private static RejectedExecutionException rejected(Object executor, RejectedExecutionException e) {
+        ThreadPoolMonitor pools = AsyncTestContext.currentThreadPoolMonitor();
+        if (pools != null) {
+            pools.recordTaskRejected(executor, "a woven submission to a "
+                    + executor.getClass().getSimpleName() + " was rejected");
+        }
+        return e;
     }
 
     /** {@return whether {@code executor} is one whose tasks no caller can get back} */
