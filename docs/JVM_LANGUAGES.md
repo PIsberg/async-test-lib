@@ -136,8 +136,9 @@ default, `detectAll(true)` every detector), and a per-test identity (every progr
 `AsyncTestRunner$BodyHolder#run` in the log and the finding baseline). The body is a `reify` of
 `AsyncTestRunner$Body`, not a fn: `Body` declares `throws Throwable` and Clojure has no SAM
 conversion for fns. With `async-test-agent` on the test classpath and no flag, the runner attaches
-the agent scoped to the package of the body's own class (#1042), which for a lambda, a closure or a
-`reify` is the caller's package or namespace, so a bare field race in the body is reported the way
+the agent scoped to the package of the body's own class (#1042), which for a lambda or a `reify` is
+the caller's package or namespace; a dynamic-Groovy closure coerced to `Body` is a JDK proxy, so for
+one the runner uses the calling class instead (#1068), so a bare field race in the body is reported the way
 it is under `@AsyncTest`; see [docs/agent/attaching.md](agent/attaching.md). Fixture, both directions, run by `clojure-maven-plugin`'s `test` goal:
 [`consumer-fixture-langs/clojure/.../programmatic_runner_test.clj`](../consumer-fixture-langs/clojure/src/test/clojure/se/deversity/asynctest/fixture/programmatic_runner_test.clj).
 The same call works from a Spock `Specification`, a ScalaTest suite or a kotest spec; the

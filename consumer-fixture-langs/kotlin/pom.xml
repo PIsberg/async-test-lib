@@ -65,7 +65,24 @@
                          is scoped to the bean package so the two race-condition fixtures next door
                          keep running unwoven (#714). -->
                     <argLine>-javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=includes=com.example.kotlinfixture,collections=true</argLine>
+                    <!-- Needs a JVM with no agent started: it proves the runner's default attach. -->
+                    <excludes>
+                        <exclude>**/RunnerDefaultAttachTest.class</exclude>
+                    </excludes>
                 </configuration>
+                <executions>
+                    <!-- AsyncTestRunner from Kotlin with the agent only on the classpath (#1068):
+                         no -javaagent, so the runner attaches it, scoped to the package of the
+                         body's own class. -->
+                    <execution>
+                        <id>runner-default-attach</id>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <argLine combine.self="override"></argLine>
+                            <test>RunnerDefaultAttachTest</test>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

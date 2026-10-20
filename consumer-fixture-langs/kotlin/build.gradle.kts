@@ -19,7 +19,20 @@ dependencies {
     asyncTestAgent("se.deversity.async-test-lib:async-test-agent:${rootProject.extra["asyncTestVersion"]}")
 }
 
-tasks.withType<Test>().configureEach {
+// AsyncTestRunner from Kotlin with the agent only on the classpath (#1068): no -javaagent, so the
+// runner attaches it, scoped to the package of the body's own class. A JVM of its own, because the
+// default only applies while no agent is running. The maven twin is the runner-default-attach
+// surefire execution in kotlin/pom.xml.
+val runnerDefaultAttach = tasks.register<Test>("runnerDefaultAttach") {
+    description = "Runs RunnerDefaultAttachTest with async-test-agent on the classpath and not started."
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath + asyncTestAgent
+    filter { includeTestsMatching("com.example.kotlinrunner.RunnerDefaultAttachTest") }
+}
+
+tasks.named<Test>("test") {
+    filter { excludeTestsMatching("com.example.kotlinrunner.RunnerDefaultAttachTest") }
+    dependsOn(runnerDefaultAttach)
     // doFirst so the configuration is resolved when the task runs rather than while the build is
     // being configured. includes= is scoped to the bean package so the two race-condition
     // fixtures next door keep running unwoven.

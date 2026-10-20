@@ -174,6 +174,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ProgrammaticRunAttachedByDefaultTest` (agent module, own JVM) was red ("should have attached
   it") and is green, with a guarded field beside the racing one staying silent.
 
+- **The `AsyncTestRunner` default attach is proven from Kotlin, Scala, Groovy and Clojure, and a
+  Groovy closure body no longer scopes the weaving to `jdk.proxyN` (#1068).** Each
+  `consumer-fixture-langs` module has a `RunnerDefaultAttachTest` that runs a body in that
+  language with the agent only on the classpath, under Maven and, except Clojure, Gradle. The
+  Groovy one went red: a dynamic-Groovy closure coerced to `AsyncTestRunner.Body` is a JDK proxy,
+  so the include was `jdk.proxy2` and nothing of the caller's was woven. For a proxy body the runner
+  now takes the first caller frame outside `AsyncTestRunner`, the JDK and the Groovy runtime. Tests:
+  `AsyncTestRunnerCodeUnderTestTest` (red with the fallback disabled), and the Groovy fixture, red
+  before the fallback and green after; the Kotlin fixture goes red with `-Dasynctest.agent=off`.
+
 - **A controlled schedule no longer keeps a hold the waiter let go of (part of #1048).** Since #1022
   the schedule passes over a worker whose next lock another worker holds, and falls back to running
   one anyway only when every ready worker waits on a held lock. Two releases were invisible to it:
