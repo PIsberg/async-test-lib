@@ -36,6 +36,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against the old runner, also pins the fallback's log line; `CounterTest` in the quickstart
   fixture, red without the `argLine`.
 
+- **Every call the agent substitutes is a scheduling point of a controlled schedule (#1023).** Under
+  `controlledSchedule = true` only woven field accesses and `AsyncTestContext.schedulePoint()` could
+  hand a round to another worker, so a `containsKey` then `put` on a shared map, or a `get` then
+  `set` on an `AtomicInteger`, in unmodified code ran in one turn and no seed could split it. Each
+  hook that replaces a collection, concurrency-utility, shared-instance or atomic call now begins
+  with `ControlledSchedule.point()`, which costs one volatile read on a thread outside a controlled
+  round. Overload delegations and the inserted observations (the ownership and optimistic-read
+  hooks, `offerResultDiscarded`) are not points. `runner.schedule.unpointed` now names
+  `collections=true` in its hint. Lock acquisition is still not a point (#1022). Tests:
+  `ControlledScheduleHookPointsTest` finds a seed that splits each race and replays it 10 of 10
+  times, and went red ("no seed in 1..64 switched workers") before the hooks were points;
+  `SubstitutionHooksArePointsTest` reads the hook classes' bytecode and fails on any substitution
+  hook that never reaches a point. It found `compareAndSetInt`, which the first pass missed, and
+  went red with the point removed from `mapContainsKey`.
+
 ### Fixed
 
 - **A refused runtime attach blamed the wrong switch.** `AsyncTestAgent.selfAttach` and the

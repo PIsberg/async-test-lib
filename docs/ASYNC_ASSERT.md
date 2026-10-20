@@ -153,7 +153,8 @@ use `schedulePoint()` there instead.
 
 Under `@AsyncTest(controlledSchedule = true)` a round's workers run one at a time and change hands
 only at scheduling points, in an order the replay seed decides. Every field access the agent weaves
-with `fields=true` is a point; `AsyncTestContext.schedulePoint()` adds one where nothing is woven:
+with `fields=true` is a point, and so is every collection, concurrency-utility and atomic call it
+substitutes; `AsyncTestContext.schedulePoint()` adds one where nothing is woven:
 
 ```java
 @AsyncTest(threads = 2, controlledSchedule = true)

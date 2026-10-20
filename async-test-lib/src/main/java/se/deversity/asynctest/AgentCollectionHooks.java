@@ -22,6 +22,7 @@ import se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector;
 import se.deversity.asynctest.diagnostics.SharedCollectionDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedCollectionIterationDetector;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
+import se.deversity.asynctest.telemetry.ControlledSchedule;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
@@ -248,6 +249,7 @@ public final class AgentCollectionHooks {
      * @since 1.13.2
      */
     public static java.util.Iterator<Object> iterableIterator(Iterable<Object> receiver) {
+        ControlledSchedule.point();
         iterated(receiver);
         return receiver.iterator();
     }
@@ -260,6 +262,7 @@ public final class AgentCollectionHooks {
      * @since 1.13.2
      */
     public static java.util.stream.Stream<Object> collectionStream(Collection<Object> receiver) {
+        ControlledSchedule.point();
         iterated(receiver);
         return receiver.stream();
     }
@@ -273,6 +276,7 @@ public final class AgentCollectionHooks {
      * @since 1.13.2
      */
     public static java.util.Set<Object> mapKeySet(Map<Object, Object> receiver) {
+        ControlledSchedule.point();
         return viewOf(receiver.keySet(), receiver);
     }
 
@@ -284,6 +288,7 @@ public final class AgentCollectionHooks {
      * @since 1.13.2
      */
     public static Collection<Object> mapValues(Map<Object, Object> receiver) {
+        ControlledSchedule.point();
         return viewOf(receiver.values(), receiver);
     }
 
@@ -295,11 +300,13 @@ public final class AgentCollectionHooks {
      * @since 1.13.2
      */
     public static java.util.Set<Map.Entry<Object, Object>> mapEntrySet(Map<Object, Object> receiver) {
+        ControlledSchedule.point();
         return viewOf(receiver.entrySet(), receiver);
     }
 
     /** Weaves {@code Map.put}. @param receiver the map @param key the key @param value the value @return the previous value */
     public static @Nullable Object mapPut(Map<Object, Object> receiver, Object key, Object value) {
+        ControlledSchedule.point();
         record(receiver, "put", true);
         actHalf(receiver, key, value, false);
         // A concurrent map publishes the value to whoever later reads it (HappensBefore): the
@@ -312,6 +319,7 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Map.get}. @param receiver the map @param key the key @return the mapped value */
     public static @Nullable Object mapGet(Map<Object, Object> receiver, Object key) {
+        ControlledSchedule.point();
         record(receiver, "get", false);
         Object value = receiver.get(key);
         checkHalf(receiver, key, value == null, true);
@@ -320,6 +328,7 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Map.remove}. @param receiver the map @param key the key @return the removed value */
     public static @Nullable Object mapRemove(Map<Object, Object> receiver, Object key) {
+        ControlledSchedule.point();
         record(receiver, "remove", true);
         actHalf(receiver, key, null, true);
         return received(receiver, receiver.remove(key));
@@ -347,12 +356,14 @@ public final class AgentCollectionHooks {
      * @return whether the entry was removed
      */
     public static boolean mapRemove(Map<Object, Object> receiver, Object key, Object value) {
+        ControlledSchedule.point();
         record(receiver, "remove", true);
         return receiver.remove(key, value);
     }
 
     /** Weaves {@code Map.containsKey}. @param receiver the map @param key the key @return whether the key is present */
     public static boolean mapContainsKey(Map<Object, Object> receiver, Object key) {
+        ControlledSchedule.point();
         record(receiver, "containsKey", false);
         boolean present = receiver.containsKey(key);
         checkHalf(receiver, key, !present, false);
@@ -367,6 +378,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Collection.add}, with the enclosing method's own monitor (#796). @param receiver the collection @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return whether it changed */
     public static boolean collectionAdd(Collection<Object> receiver, Object element,
                                         @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "add", true);
         if (receiver instanceof Queue) {
             // Queue.add is an offer that throws instead of returning false (#630).
@@ -392,6 +404,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Collection.remove}, with the enclosing method's own monitor (#796). @param receiver the collection @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return whether it changed */
     public static boolean collectionRemove(Collection<Object> receiver, Object element,
                                            @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "remove", true);
         boolean removed = receiver.remove(element);
         if (removed && receiver instanceof Queue) {
@@ -443,6 +456,7 @@ public final class AgentCollectionHooks {
     public static boolean collectionAddAll(Collection<Object> receiver,
                                            Collection<? extends Object> elements,
                                            @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "addAll", true);
         if (receiver instanceof Queue && Boolean.TRUE.equals(ADDS_ONE_BY_ONE.get(receiver.getClass()))) {
             return addEach(receiver, elements, monitor);
@@ -538,6 +552,7 @@ public final class AgentCollectionHooks {
      */
     public static boolean collectionRemoveIf(Collection<Object> receiver,
                                              Predicate<? super Object> filter) {
+        ControlledSchedule.point();
         record(receiver, "removeIf", true);
         boolean removed = receiver.removeIf(filter);
         if (removed && receiver instanceof Queue) {
@@ -548,24 +563,28 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Collection.contains}. @param receiver the collection @param element the element @return whether present */
     public static boolean collectionContains(Collection<Object> receiver, Object element) {
+        ControlledSchedule.point();
         record(receiver, "contains", false);
         return receiver.contains(element);
     }
 
     /** Weaves {@code Collection.clear}. @param receiver the collection */
     public static void collectionClear(Collection<Object> receiver) {
+        ControlledSchedule.point();
         record(receiver, "clear", true);
         receiver.clear();
     }
 
     /** Weaves {@code List.get}. @param receiver the list @param index the index @return the element */
     public static @Nullable Object listGet(List<Object> receiver, int index) {
+        ControlledSchedule.point();
         record(receiver, "get", false);
         return receiver.get(index);
     }
 
     /** Weaves {@code List.set}. @param receiver the list @param index the index @param element the element @return the previous element */
     public static @Nullable Object listSet(List<Object> receiver, int index, Object element) {
+        ControlledSchedule.point();
         record(receiver, "set", true);
         return receiver.set(index, element);
     }
@@ -578,6 +597,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Queue.offer}, with the enclosing method's own monitor (#796). @param receiver the queue @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return whether it was accepted */
     public static boolean queueOffer(Queue<Object> receiver, Object element,
                                      @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "offer", true);
         // Before the offer, so the take that removes the element drains after it (#630).
         TelemetryRegistry.ownershipOffered(element, receiver, monitor);
@@ -596,6 +616,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Queue.poll}, with the enclosing method's own monitor (#796). @param receiver the queue @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the head, or null */
     public static @Nullable Object queuePoll(Queue<Object> receiver,
                                              @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "poll", true);
         Object taken = receiver.poll();
         // The element left the queue, so it is this thread's alone as far as the queue goes (#555).
@@ -605,6 +626,7 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code Queue.peek}. @param receiver the queue @return the head, or null */
     public static @Nullable Object queuePeek(Queue<Object> receiver) {
+        ControlledSchedule.point();
         record(receiver, "peek", false);
         return receiver.peek();
     }
@@ -620,6 +642,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Deque.offerFirst}, an offer at one end (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return whether it was accepted */
     public static boolean dequeOfferFirst(Deque<Object> receiver, Object element,
                                           @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "offerFirst", true);
         TelemetryRegistry.ownershipOffered(element, receiver, monitor);
         boolean accepted = receiver.offerFirst(element);
@@ -637,6 +660,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Deque.offerLast}, an offer at one end (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return whether it was accepted */
     public static boolean dequeOfferLast(Deque<Object> receiver, Object element,
                                          @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "offerLast", true);
         TelemetryRegistry.ownershipOffered(element, receiver, monitor);
         boolean accepted = receiver.offerLast(element);
@@ -654,6 +678,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Deque.addFirst}, an offer at one end (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none */
     public static void dequeAddFirst(Deque<Object> receiver, Object element,
                                      @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "addFirst", true);
         TelemetryRegistry.ownershipOffered(element, receiver, monitor);
         boolean accepted = false;
@@ -675,6 +700,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Deque.addLast}, an offer at one end (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none */
     public static void dequeAddLast(Deque<Object> receiver, Object element,
                                     @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "addLast", true);
         TelemetryRegistry.ownershipOffered(element, receiver, monitor);
         boolean accepted = false;
@@ -696,6 +722,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Deque.push}, an offer at one end (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param element the element @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none */
     public static void dequePush(Deque<Object> receiver, Object element,
                                  @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "push", true);
         TelemetryRegistry.ownershipOffered(element, receiver, monitor);
         boolean accepted = false;
@@ -717,6 +744,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Deque.pollFirst}, a take like {@code poll} (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the element taken */
     public static @Nullable Object dequePollFirst(Deque<Object> receiver,
                                                   @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "pollFirst", true);
         Object taken = receiver.pollFirst();
         TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
@@ -731,6 +759,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Deque.pollLast}, a take like {@code poll} (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the element taken */
     public static @Nullable Object dequePollLast(Deque<Object> receiver,
                                                  @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "pollLast", true);
         Object taken = receiver.pollLast();
         TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
@@ -745,6 +774,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Deque.removeFirst}, a take like {@code poll} (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the element taken */
     public static @Nullable Object dequeRemoveFirst(Deque<Object> receiver,
                                                     @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "removeFirst", true);
         Object taken = receiver.removeFirst();
         TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
@@ -759,6 +789,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Deque.removeLast}, a take like {@code poll} (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the element taken */
     public static @Nullable Object dequeRemoveLast(Deque<Object> receiver,
                                                    @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "removeLast", true);
         Object taken = receiver.removeLast();
         TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
@@ -773,6 +804,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Deque.pop}, a take like {@code poll} (#692), with the enclosing method's own monitor (#796). @param receiver the deque @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the element taken */
     public static @Nullable Object dequePop(Deque<Object> receiver,
                                             @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "pop", true);
         Object taken = receiver.pop();
         TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
@@ -787,6 +819,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code Queue.remove}, a take like {@code poll} (#692), with the enclosing method's own monitor (#796). @param receiver the queue @param monitor the enclosing method's own monitor, {@code this} or a static synchronized method's class, counted when this thread holds it; {@code null} for none @return the element taken */
     public static @Nullable Object queueRemove(Queue<Object> receiver,
                                                @Nullable Object monitor) {
+        ControlledSchedule.point();
         record(receiver, "remove", true);
         Object taken = receiver.remove();
         TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
@@ -796,6 +829,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code BlockingDeque.putFirst}, a blocking offer at one end (#692). @param receiver the deque @param element the element @throws InterruptedException if interrupted while waiting */
     public static void blockingDequePutFirst(BlockingDeque<Object> receiver, Object element)
             throws InterruptedException {
+        ControlledSchedule.point();
         record(receiver, "putFirst", true);
         TelemetryRegistry.ownershipOffered(element, receiver);
         boolean accepted = false;
@@ -812,6 +846,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code BlockingDeque.putLast}, a blocking offer at one end (#692). @param receiver the deque @param element the element @throws InterruptedException if interrupted while waiting */
     public static void blockingDequePutLast(BlockingDeque<Object> receiver, Object element)
             throws InterruptedException {
+        ControlledSchedule.point();
         record(receiver, "putLast", true);
         TelemetryRegistry.ownershipOffered(element, receiver);
         boolean accepted = false;
@@ -828,6 +863,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code BlockingDeque.offerFirst(E, long, TimeUnit)}, a timed offer at one end (#692). @param receiver the deque @param element the element @param timeout how long to wait @param unit the unit of {@code timeout} @return whether it was accepted @throws InterruptedException if interrupted while waiting */
     public static boolean blockingDequeOfferFirst(BlockingDeque<Object> receiver, Object element, long timeout,
                                    TimeUnit unit) throws InterruptedException {
+        ControlledSchedule.point();
         record(receiver, "offerFirst", true);
         TelemetryRegistry.ownershipOffered(element, receiver);
         boolean accepted = false;
@@ -844,6 +880,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code BlockingDeque.offerLast(E, long, TimeUnit)}, a timed offer at one end (#692). @param receiver the deque @param element the element @param timeout how long to wait @param unit the unit of {@code timeout} @return whether it was accepted @throws InterruptedException if interrupted while waiting */
     public static boolean blockingDequeOfferLast(BlockingDeque<Object> receiver, Object element, long timeout,
                                    TimeUnit unit) throws InterruptedException {
+        ControlledSchedule.point();
         record(receiver, "offerLast", true);
         TelemetryRegistry.ownershipOffered(element, receiver);
         boolean accepted = false;
@@ -859,6 +896,7 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code BlockingDeque.takeFirst}, a blocking take at one end (#692). @param receiver the deque @return the element taken @throws InterruptedException if interrupted while waiting */
     public static Object blockingDequeTakeFirst(BlockingDeque<Object> receiver) throws InterruptedException {
+        ControlledSchedule.point();
         record(receiver, "takeFirst", true);
         Object taken = receiver.takeFirst();
         TelemetryRegistry.ownershipTaken(taken, receiver);
@@ -867,6 +905,7 @@ public final class AgentCollectionHooks {
 
     /** Weaves {@code BlockingDeque.takeLast}, a blocking take at one end (#692). @param receiver the deque @return the element taken @throws InterruptedException if interrupted while waiting */
     public static Object blockingDequeTakeLast(BlockingDeque<Object> receiver) throws InterruptedException {
+        ControlledSchedule.point();
         record(receiver, "takeLast", true);
         Object taken = receiver.takeLast();
         TelemetryRegistry.ownershipTaken(taken, receiver);
@@ -876,6 +915,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code BlockingDeque.pollFirst(long, TimeUnit)}, a timed take at one end (#692). @param receiver the deque @param timeout how long to wait @param unit the unit of {@code timeout} @return the element taken, or null @throws InterruptedException if interrupted while waiting */
     public static @Nullable Object blockingDequePollFirst(BlockingDeque<Object> receiver, long timeout,
                                    TimeUnit unit) throws InterruptedException {
+        ControlledSchedule.point();
         record(receiver, "pollFirst", true);
         Object taken = receiver.pollFirst(timeout, unit);
         TelemetryRegistry.ownershipTaken(taken, receiver);
@@ -885,6 +925,7 @@ public final class AgentCollectionHooks {
     /** Weaves {@code BlockingDeque.pollLast(long, TimeUnit)}, a timed take at one end (#692). @param receiver the deque @param timeout how long to wait @param unit the unit of {@code timeout} @return the element taken, or null @throws InterruptedException if interrupted while waiting */
     public static @Nullable Object blockingDequePollLast(BlockingDeque<Object> receiver, long timeout,
                                    TimeUnit unit) throws InterruptedException {
+        ControlledSchedule.point();
         record(receiver, "pollLast", true);
         Object taken = receiver.pollLast(timeout, unit);
         TelemetryRegistry.ownershipTaken(taken, receiver);

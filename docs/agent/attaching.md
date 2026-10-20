@@ -116,7 +116,12 @@ The same observation call is a scheduling point of a controlled schedule
 (`@AsyncTest(controlledSchedule = true)`): before each woven field instruction the round may hand
 over to another worker, in an order the replay seed decides, so the read and the write of a bare
 `count++` are two places a lost update can be made to happen and replayed
-([results-and-practices.md](../usage/results-and-practices.md#reproducing-a-failure)).
+([results-and-practices.md](../usage/results-and-practices.md#reproducing-a-failure)). Every call
+the agent substitutes, a collection call under `collections=true` or an atomic one under
+`fields=true`, is a point too, so a `containsKey` then `put` on a shared map is split and replayed
+the same way with no field access between them
+([#1023](https://github.com/PIsberg/async-test-lib/issues/1023)). Lock acquisitions are not points
+yet ([#1022](https://github.com/PIsberg/async-test-lib/issues/1022)).
 
 The call carries the receiver, so the analysis can tell six threads racing on one object from six
 threads each using their own, and — for a store of a reference type — the value being stored. That

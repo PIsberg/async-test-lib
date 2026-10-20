@@ -30,8 +30,9 @@ import java.util.concurrent.locks.ReentrantLock;
  * longer guaranteed to replay. Each escape is counted, and {@link Summary#escapes()} is how the
  * runner knows whether a seed it prints replays exactly.
  *
- * <p>Points come from the agent's field-access hooks and from
- * {@code AsyncTestContext.schedulePoint()}. A point costs one volatile read on a thread outside a
+ * <p>Points come from the agent's field-access hooks, from every hook that replaces a collection,
+ * concurrency-utility, shared-instance or atomic call (#1023, kept true by the agent module's
+ * {@code SubstitutionHooksArePointsTest}), and from {@code AsyncTestContext.schedulePoint()}. A point costs one volatile read on a thread outside a
  * controlled round, so the hooks can call it unconditionally. The scheduler's own lock is never
  * woven: the agent does not instrument this library.
  *

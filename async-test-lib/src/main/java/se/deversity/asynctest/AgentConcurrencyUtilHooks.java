@@ -58,6 +58,7 @@ import se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector;
 import se.deversity.asynctest.diagnostics.ThreadLocalMonitor;
 import se.deversity.asynctest.diagnostics.SemaphoreMisuseDetector;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
+import se.deversity.asynctest.telemetry.ControlledSchedule;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
@@ -111,6 +112,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static ABAProblemDetector.@Nullable AgentSlot abaSlot(Object atomic) {
+        ControlledSchedule.point();
         ABAProblemDetector detector = AsyncTestContext.currentABAProblemDetector();
         return detector == null ? null : detector.agentSlot(atomic);
     }
@@ -128,6 +130,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.4
      */
     public static ABAProblemDetector.@Nullable AgentSlot abaSlot(Object holder, Object selector) {
+        ControlledSchedule.point();
         ABAProblemDetector detector = AsyncTestContext.currentABAProblemDetector();
         return detector == null ? null : detector.agentSlot(holder, selector);
     }
@@ -141,6 +144,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.4
      */
     public static ABAProblemDetector.@Nullable AgentSlot abaSlot(Object array, int index) {
+        ControlledSchedule.point();
         ABAProblemDetector detector = AsyncTestContext.currentABAProblemDetector();
         return detector == null ? null : detector.agentSlot(array, index);
     }
@@ -152,6 +156,7 @@ public final class AgentConcurrencyUtilHooks {
      * @throws InterruptedException if interrupted while waiting
      */
     public static void acquire(Semaphore receiver) throws InterruptedException {
+        ControlledSchedule.point();
         receiver.acquire();
         HappensBefore.acquire(receiver);
         SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
@@ -167,6 +172,7 @@ public final class AgentConcurrencyUtilHooks {
      * @return whether a permit was taken
      */
     public static boolean tryAcquire(Semaphore receiver) {
+        ControlledSchedule.point();
         boolean acquired = receiver.tryAcquire();
         if (acquired) {
             HappensBefore.acquire(receiver);
@@ -184,6 +190,7 @@ public final class AgentConcurrencyUtilHooks {
      * @param receiver the semaphore
      */
     public static void release(Semaphore receiver) {
+        ControlledSchedule.point();
         SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
         if (detector != null) {
             detector.recordRelease(receiver, receiver.getClass().getName());
@@ -207,6 +214,7 @@ public final class AgentConcurrencyUtilHooks {
      * @throws InterruptedException if interrupted while waiting
      */
     public static void acquire(Semaphore receiver, int permits) throws InterruptedException {
+        ControlledSchedule.point();
         receiver.acquire(permits);
         recordAcquired(receiver, permits);
     }
@@ -219,6 +227,7 @@ public final class AgentConcurrencyUtilHooks {
      * @return whether they were taken
      */
     public static boolean tryAcquire(Semaphore receiver, int permits) {
+        ControlledSchedule.point();
         boolean acquired = receiver.tryAcquire(permits);
         if (acquired) {
             recordAcquired(receiver, permits);
@@ -237,6 +246,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static boolean tryAcquire(Semaphore receiver, long timeout, TimeUnit unit)
             throws InterruptedException {
+        ControlledSchedule.point();
         boolean acquired = receiver.tryAcquire(timeout, unit);
         if (acquired) {
             recordAcquired(receiver, 1);
@@ -256,6 +266,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static boolean tryAcquire(Semaphore receiver, int permits, long timeout, TimeUnit unit)
             throws InterruptedException {
+        ControlledSchedule.point();
         boolean acquired = receiver.tryAcquire(permits, timeout, unit);
         if (acquired) {
             recordAcquired(receiver, permits);
@@ -270,6 +281,7 @@ public final class AgentConcurrencyUtilHooks {
      * @param permits  how many permits to return
      */
     public static void release(Semaphore receiver, int permits) {
+        ControlledSchedule.point();
         SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
         if (detector != null) {
             for (int i = 0; i < permits; i++) {
@@ -300,6 +312,7 @@ public final class AgentConcurrencyUtilHooks {
      * @param receiver the latch
      */
     public static void countDown(CountDownLatch receiver) {
+        ControlledSchedule.point();
         LatchMisuseDetector misuse = AsyncTestContext.currentLatchMisuseDetector();
         if (misuse != null) {
             misuse.observeLatch(receiver);
@@ -322,6 +335,7 @@ public final class AgentConcurrencyUtilHooks {
      * @throws InterruptedException if interrupted while waiting
      */
     public static void await(CountDownLatch receiver) throws InterruptedException {
+        ControlledSchedule.point();
         if (receiver.getCount() > 0) {
             blocking("CountDownLatch.await", false);
         }
@@ -357,6 +371,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static boolean await(CountDownLatch receiver, long timeout, TimeUnit unit)
             throws InterruptedException {
+        ControlledSchedule.point();
         LatchMisuseDetector misuse = AsyncTestContext.currentLatchMisuseDetector();
         if (misuse != null) {
             misuse.observeLatch(receiver);
@@ -392,6 +407,7 @@ public final class AgentConcurrencyUtilHooks {
      * @return whether the element was added
      */
     public static boolean offer(BlockingQueue<Object> receiver, Object element) {
+        ControlledSchedule.point();
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
         if (detector != null) {
             detector.observeQueue(receiver);
@@ -425,6 +441,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static boolean offer(BlockingQueue<Object> receiver, Object element, long timeout,
                                 TimeUnit unit) throws InterruptedException {
+        ControlledSchedule.point();
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
         if (detector != null) {
             detector.observeQueue(receiver);
@@ -477,6 +494,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static Object poll(BlockingQueue<Object> receiver, long timeout, TimeUnit unit)
             throws InterruptedException {
+        ControlledSchedule.point();
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
         if (detector != null) {
             detector.observeQueue(receiver);
@@ -496,6 +514,7 @@ public final class AgentConcurrencyUtilHooks {
      * @return the head of the queue, or {@code null} when it was empty
      */
     public static Object poll(BlockingQueue<Object> receiver) {
+        ControlledSchedule.point();
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
         if (detector != null) {
             detector.observeQueue(receiver);
@@ -522,6 +541,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.2
      */
     public static Object take(BlockingQueue<Object> receiver) throws InterruptedException {
+        ControlledSchedule.point();
         if (receiver.isEmpty()) {
             blocking("BlockingQueue.take", false);
         }
@@ -549,6 +569,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.2
      */
     public static int drainTo(BlockingQueue<Object> receiver, Collection<Object> target) {
+        ControlledSchedule.point();
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
         if (detector != null) {
             detector.observeQueue(receiver);
@@ -569,6 +590,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static int drainTo(BlockingQueue<Object> receiver, Collection<Object> target,
                               int maxElements) {
+        ControlledSchedule.point();
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
         if (detector != null) {
             detector.observeQueue(receiver);
@@ -587,6 +609,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static void put(BlockingQueue<Object> receiver, Object element)
             throws InterruptedException {
+        ControlledSchedule.point();
         BlockingQueueDetector detector = AsyncTestContext.currentBlockingQueueDetector();
         if (detector != null) {
             detector.observeQueue(receiver);
@@ -625,6 +648,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static boolean complete(CompletableFuture<Object> receiver, @Nullable Object value) {
+        ControlledSchedule.point();
         HappensBefore.release(receiver);
         boolean completed = false;
         try {
@@ -648,6 +672,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static boolean completeExceptionally(CompletableFuture<Object> receiver,
                                                 Throwable failure) {
+        ControlledSchedule.point();
         HappensBefore.release(receiver);
         boolean completed = false;
         try {
@@ -669,6 +694,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static void obtrudeValue(CompletableFuture<Object> receiver, @Nullable Object value) {
+        ControlledSchedule.point();
         HappensBefore.release(receiver);
         boolean obtruded = false;
         try {
@@ -690,6 +716,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static void obtrudeException(CompletableFuture<Object> receiver, Throwable failure) {
+        ControlledSchedule.point();
         HappensBefore.release(receiver);
         boolean obtruded = false;
         try {
@@ -711,6 +738,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static @Nullable Object join(CompletableFuture<Object> receiver) {
+        ControlledSchedule.point();
         if (!receiver.isDone()) {
             blocking("CompletableFuture.join", true);
         }
@@ -738,6 +766,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static @Nullable Object get(Future<Object> receiver)
             throws InterruptedException, ExecutionException {
+        ControlledSchedule.point();
         if (!receiver.isDone()) {
             blockingOn(receiver);
         }
@@ -767,6 +796,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static @Nullable Object get(Future<Object> receiver, long timeout, TimeUnit unit)
             throws InterruptedException, ExecutionException, TimeoutException {
+        ControlledSchedule.point();
         if (!receiver.isDone()) {
             blockingOn(receiver);
         }
@@ -792,6 +822,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static Process processBuilderStart(ProcessBuilder receiver) throws IOException {
+        ControlledSchedule.point();
         Process process = receiver.start();
         started(receiver, process);
         return process;
@@ -808,6 +839,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static List<Process> processBuilderStartPipeline(List<ProcessBuilder> builders)
             throws IOException {
+        ControlledSchedule.point();
         List<Process> processes = ProcessBuilder.startPipeline(builders);
         for (int i = 0; i < processes.size() && i < builders.size(); i++) {
             started(builders.get(i), processes.get(i));
@@ -825,6 +857,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static int processWaitFor(Process receiver) throws InterruptedException {
+        ControlledSchedule.point();
         waitingFor(receiver);
         return receiver.waitFor();
     }
@@ -842,6 +875,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static boolean processWaitFor(Process receiver, long timeout, TimeUnit unit)
             throws InterruptedException {
+        ControlledSchedule.point();
         waitingFor(receiver);
         return receiver.waitFor(timeout, unit);
     }
@@ -860,6 +894,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static boolean processWaitFor(Process receiver, Duration duration)
             throws InterruptedException {
+        ControlledSchedule.point();
         waitingFor(receiver);
         MethodHandle waitFor = WAIT_FOR_DURATION;
         if (waitFor == null) {
@@ -897,6 +932,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static InputStream processInputStream(Process receiver) {
+        ControlledSchedule.point();
         return observed(receiver, ProcessStreamStarvationDetector.Stream.STDOUT, receiver.getInputStream());
     }
 
@@ -908,6 +944,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static InputStream processErrorStream(Process receiver) {
+        ControlledSchedule.point();
         return observed(receiver, ProcessStreamStarvationDetector.Stream.STDERR, receiver.getErrorStream());
     }
 
@@ -919,6 +956,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static BufferedReader processInputReader(Process receiver) {
+        ControlledSchedule.point();
         streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDOUT);
         return receiver.inputReader();
     }
@@ -932,6 +970,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static BufferedReader processInputReader(Process receiver, Charset charset) {
+        ControlledSchedule.point();
         streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDOUT);
         return receiver.inputReader(charset);
     }
@@ -944,6 +983,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static BufferedReader processErrorReader(Process receiver) {
+        ControlledSchedule.point();
         streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDERR);
         return receiver.errorReader();
     }
@@ -957,6 +997,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static BufferedReader processErrorReader(Process receiver, Charset charset) {
+        ControlledSchedule.point();
         streamTaken(receiver, ProcessStreamStarvationDetector.Stream.STDERR);
         return receiver.errorReader(charset);
     }
@@ -985,6 +1026,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static void pipedWrite(java.io.PipedOutputStream receiver, int b) throws IOException {
+        ControlledSchedule.point();
         pipeWritten(receiver);
         receiver.write(b);
     }
@@ -1001,6 +1043,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static void pipedWrite(java.io.PipedOutputStream receiver, byte[] b, int off, int len)
             throws IOException {
+        ControlledSchedule.point();
         pipeWritten(receiver);
         receiver.write(b, off, len);
     }
@@ -1014,6 +1057,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static void pipedWrite(java.io.PipedOutputStream receiver, byte[] b) throws IOException {
+        ControlledSchedule.point();
         pipeWritten(receiver);
         receiver.write(b);
     }
@@ -1027,6 +1071,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static int pipedRead(java.io.PipedInputStream receiver) throws IOException {
+        ControlledSchedule.point();
         pipeRead(receiver);
         return receiver.read();
     }
@@ -1044,6 +1089,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static int pipedRead(java.io.PipedInputStream receiver, byte[] b, int off, int len)
             throws IOException {
+        ControlledSchedule.point();
         pipeRead(receiver);
         return receiver.read(b, off, len);
     }
@@ -1058,6 +1104,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static int pipedRead(java.io.PipedInputStream receiver, byte[] b) throws IOException {
+        ControlledSchedule.point();
         pipeRead(receiver);
         return receiver.read(b);
     }
@@ -1102,6 +1149,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Object> thenApply(
             CompletableFuture<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(receiver.thenApply(stage), stage);
     }
@@ -1118,6 +1166,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Object> thenApplyAsync(
             CompletableFuture<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(receiver.thenApplyAsync(stage), stage);
     }
@@ -1136,6 +1185,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             Function<Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(receiver.thenApplyAsync(stage, executor), stage);
     }
@@ -1153,6 +1203,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Void> thenAccept(
             CompletableFuture<Object> receiver,
             Consumer<Object> action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, null);
         return Submissions.remember(receiver.thenAccept(stage), stage);
     }
@@ -1169,6 +1220,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Void> thenAcceptAsync(
             CompletableFuture<Object> receiver,
             Consumer<Object> action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, null);
         return Submissions.remember(receiver.thenAcceptAsync(stage), stage);
     }
@@ -1187,6 +1239,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             Consumer<Object> action,
             Executor executor) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, null);
         return Submissions.remember(receiver.thenAcceptAsync(stage, executor), stage);
     }
@@ -1204,6 +1257,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Void> thenRun(
             CompletableFuture<Object> receiver,
             Runnable action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, null);
         return Submissions.remember(receiver.thenRun(stage), stage);
     }
@@ -1220,6 +1274,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Void> thenRunAsync(
             CompletableFuture<Object> receiver,
             Runnable action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, null);
         return Submissions.remember(receiver.thenRunAsync(stage), stage);
     }
@@ -1238,6 +1293,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             Runnable action,
             Executor executor) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, null);
         return Submissions.remember(receiver.thenRunAsync(stage, executor), stage);
     }
@@ -1257,6 +1313,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             CompletionStage<Object> other,
             BiFunction<Object, Object, Object> function) {
+        ControlledSchedule.point();
         StageBiFunction stage =
                 new StageBiFunction(Objects.requireNonNull(function), receiver, other);
         return Submissions.remember(receiver.thenCombine(other, stage), stage);
@@ -1276,6 +1333,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             CompletionStage<Object> other,
             BiFunction<Object, Object, Object> function) {
+        ControlledSchedule.point();
         StageBiFunction stage =
                 new StageBiFunction(Objects.requireNonNull(function), receiver, other);
         return Submissions.remember(receiver.thenCombineAsync(other, stage), stage);
@@ -1297,6 +1355,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> other,
             BiFunction<Object, Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         StageBiFunction stage =
                 new StageBiFunction(Objects.requireNonNull(function), receiver, other);
         return Submissions.remember(receiver.thenCombineAsync(other, stage, executor), stage);
@@ -1317,6 +1376,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             CompletionStage<Object> other,
             BiConsumer<Object, Object> action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, other);
         return Submissions.remember(receiver.thenAcceptBoth(other, stage), stage);
     }
@@ -1335,6 +1395,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             CompletionStage<Object> other,
             BiConsumer<Object, Object> action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, other);
         return Submissions.remember(receiver.thenAcceptBothAsync(other, stage), stage);
     }
@@ -1355,6 +1416,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> other,
             BiConsumer<Object, Object> action,
             Executor executor) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, other);
         return Submissions.remember(receiver.thenAcceptBothAsync(other, stage, executor), stage);
     }
@@ -1374,6 +1436,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             CompletionStage<Object> other,
             Runnable action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, other);
         return Submissions.remember(receiver.runAfterBoth(other, stage), stage);
     }
@@ -1392,6 +1455,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             CompletionStage<Object> other,
             Runnable action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, other);
         return Submissions.remember(receiver.runAfterBothAsync(other, stage), stage);
     }
@@ -1412,6 +1476,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> other,
             Runnable action,
             Executor executor) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, other);
         return Submissions.remember(receiver.runAfterBothAsync(other, stage, executor), stage);
     }
@@ -1431,6 +1496,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             CompletionStage<Object> other,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), null, null);
         return Submissions.remember(receiver.applyToEither(other, stage), stage);
     }
@@ -1449,6 +1515,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             CompletionStage<Object> other,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), null, null);
         return Submissions.remember(receiver.applyToEitherAsync(other, stage), stage);
     }
@@ -1469,6 +1536,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> other,
             Function<Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), null, null);
         return Submissions.remember(receiver.applyToEitherAsync(other, stage, executor), stage);
     }
@@ -1488,6 +1556,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             CompletionStage<Object> other,
             Consumer<Object> action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), null, null);
         return Submissions.remember(receiver.acceptEither(other, stage), stage);
     }
@@ -1506,6 +1575,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             CompletionStage<Object> other,
             Consumer<Object> action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), null, null);
         return Submissions.remember(receiver.acceptEitherAsync(other, stage), stage);
     }
@@ -1526,6 +1596,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> other,
             Consumer<Object> action,
             Executor executor) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), null, null);
         return Submissions.remember(receiver.acceptEitherAsync(other, stage, executor), stage);
     }
@@ -1545,6 +1616,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             CompletionStage<Object> other,
             Runnable action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), null, null);
         return Submissions.remember(receiver.runAfterEither(other, stage), stage);
     }
@@ -1563,6 +1635,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             CompletionStage<Object> other,
             Runnable action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), null, null);
         return Submissions.remember(receiver.runAfterEitherAsync(other, stage), stage);
     }
@@ -1583,6 +1656,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> other,
             Runnable action,
             Executor executor) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), null, null);
         return Submissions.remember(receiver.runAfterEitherAsync(other, stage, executor), stage);
     }
@@ -1600,6 +1674,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Object> thenCompose(
             CompletableFuture<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(receiver.thenCompose(stage.composing()), stage);
     }
@@ -1616,6 +1691,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Object> thenComposeAsync(
             CompletableFuture<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(receiver.thenComposeAsync(stage.composing()), stage);
     }
@@ -1634,6 +1710,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             Function<Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(receiver.thenComposeAsync(stage.composing(), executor), stage);
     }
@@ -1651,6 +1728,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Object> whenComplete(
             CompletableFuture<Object> receiver,
             BiConsumer<Object, Object> action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, null);
         return Submissions.remember(receiver.whenComplete(stage), stage);
     }
@@ -1667,6 +1745,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Object> whenCompleteAsync(
             CompletableFuture<Object> receiver,
             BiConsumer<Object, Object> action) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, null);
         return Submissions.remember(receiver.whenCompleteAsync(stage), stage);
     }
@@ -1685,6 +1764,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             BiConsumer<Object, Object> action,
             Executor executor) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(action), receiver, null);
         return Submissions.remember(receiver.whenCompleteAsync(stage, executor), stage);
     }
@@ -1702,6 +1782,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Object> handle(
             CompletableFuture<Object> receiver,
             BiFunction<Object, Object, Object> function) {
+        ControlledSchedule.point();
         StageBiFunction stage =
                 new StageBiFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(receiver.handle(stage.handling()), stage);
@@ -1719,6 +1800,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Object> handleAsync(
             CompletableFuture<Object> receiver,
             BiFunction<Object, Object, Object> function) {
+        ControlledSchedule.point();
         StageBiFunction stage =
                 new StageBiFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(receiver.handleAsync(stage.handling()), stage);
@@ -1738,6 +1820,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             BiFunction<Object, Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         StageBiFunction stage =
                 new StageBiFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(receiver.handleAsync(stage.handling(), executor), stage);
@@ -1756,6 +1839,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Object> exceptionally(
             CompletableFuture<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(receiver.exceptionally(stage.recovering()), stage);
     }
@@ -1772,6 +1856,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Object> exceptionallyAsync(
             CompletableFuture<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(receiver.exceptionallyAsync(stage.recovering()), stage);
     }
@@ -1790,6 +1875,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             Function<Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(
                 receiver.exceptionallyAsync(stage.recovering(), executor), stage);
@@ -1808,6 +1894,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Object> exceptionallyCompose(
             CompletableFuture<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(receiver.exceptionallyCompose(stage.recoveringBy()), stage);
     }
@@ -1824,6 +1911,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Object> exceptionallyComposeAsync(
             CompletableFuture<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(
                 receiver.exceptionallyComposeAsync(stage.recoveringBy()), stage);
@@ -1843,6 +1931,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletableFuture<Object> receiver,
             Function<Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         StageFunction stage = new StageFunction(Objects.requireNonNull(function), receiver, null);
         return Submissions.remember(
                 receiver.exceptionallyComposeAsync(stage.recoveringBy(), executor), stage);
@@ -1861,6 +1950,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Object> thenApply(
             CompletionStage<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenApply(future, function);
         }
@@ -1880,6 +1970,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Object> thenApplyAsync(
             CompletionStage<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenApplyAsync(future, function);
         }
@@ -1901,6 +1992,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             Function<Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenApplyAsync(future, function, executor);
         }
@@ -1920,6 +2012,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Void> thenAccept(
             CompletionStage<Object> receiver,
             Consumer<Object> action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenAccept(future, action);
         }
@@ -1939,6 +2032,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Void> thenAcceptAsync(
             CompletionStage<Object> receiver,
             Consumer<Object> action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenAcceptAsync(future, action);
         }
@@ -1960,6 +2054,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             Consumer<Object> action,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenAcceptAsync(future, action, executor);
         }
@@ -1979,6 +2074,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Void> thenRun(
             CompletionStage<Object> receiver,
             Runnable action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenRun(future, action);
         }
@@ -1998,6 +2094,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Void> thenRunAsync(
             CompletionStage<Object> receiver,
             Runnable action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenRunAsync(future, action);
         }
@@ -2019,6 +2116,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             Runnable action,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenRunAsync(future, action, executor);
         }
@@ -2040,6 +2138,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             CompletionStage<Object> other,
             BiFunction<Object, Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenCombine(future, other, function);
         }
@@ -2062,6 +2161,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             CompletionStage<Object> other,
             BiFunction<Object, Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenCombineAsync(future, other, function);
         }
@@ -2086,6 +2186,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> other,
             BiFunction<Object, Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenCombineAsync(future, other, function, executor);
         }
@@ -2108,6 +2209,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             CompletionStage<Object> other,
             BiConsumer<Object, Object> action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenAcceptBoth(future, other, action);
         }
@@ -2130,6 +2232,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             CompletionStage<Object> other,
             BiConsumer<Object, Object> action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenAcceptBothAsync(future, other, action);
         }
@@ -2154,6 +2257,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> other,
             BiConsumer<Object, Object> action,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenAcceptBothAsync(future, other, action, executor);
         }
@@ -2175,6 +2279,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             CompletionStage<Object> other,
             Runnable action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return runAfterBoth(future, other, action);
         }
@@ -2197,6 +2302,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             CompletionStage<Object> other,
             Runnable action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return runAfterBothAsync(future, other, action);
         }
@@ -2221,6 +2327,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> other,
             Runnable action,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return runAfterBothAsync(future, other, action, executor);
         }
@@ -2242,6 +2349,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             CompletionStage<Object> other,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return applyToEither(future, other, function);
         }
@@ -2264,6 +2372,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             CompletionStage<Object> other,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return applyToEitherAsync(future, other, function);
         }
@@ -2288,6 +2397,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> other,
             Function<Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return applyToEitherAsync(future, other, function, executor);
         }
@@ -2309,6 +2419,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             CompletionStage<Object> other,
             Consumer<Object> action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return acceptEither(future, other, action);
         }
@@ -2331,6 +2442,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             CompletionStage<Object> other,
             Consumer<Object> action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return acceptEitherAsync(future, other, action);
         }
@@ -2355,6 +2467,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> other,
             Consumer<Object> action,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return acceptEitherAsync(future, other, action, executor);
         }
@@ -2376,6 +2489,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             CompletionStage<Object> other,
             Runnable action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return runAfterEither(future, other, action);
         }
@@ -2398,6 +2512,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             CompletionStage<Object> other,
             Runnable action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return runAfterEitherAsync(future, other, action);
         }
@@ -2422,6 +2537,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> other,
             Runnable action,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return runAfterEitherAsync(future, other, action, executor);
         }
@@ -2442,6 +2558,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Object> thenCompose(
             CompletionStage<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenCompose(future, function);
         }
@@ -2463,6 +2580,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Object> thenComposeAsync(
             CompletionStage<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenComposeAsync(future, function);
         }
@@ -2486,6 +2604,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             Function<Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return thenComposeAsync(future, function, executor);
         }
@@ -2506,6 +2625,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Object> whenComplete(
             CompletionStage<Object> receiver,
             BiConsumer<Object, Object> action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return whenComplete(future, action);
         }
@@ -2525,6 +2645,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Object> whenCompleteAsync(
             CompletionStage<Object> receiver,
             BiConsumer<Object, Object> action) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return whenCompleteAsync(future, action);
         }
@@ -2546,6 +2667,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             BiConsumer<Object, Object> action,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return whenCompleteAsync(future, action, executor);
         }
@@ -2566,6 +2688,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Object> handle(
             CompletionStage<Object> receiver,
             BiFunction<Object, Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return handle(future, function);
         }
@@ -2587,6 +2710,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Object> handleAsync(
             CompletionStage<Object> receiver,
             BiFunction<Object, Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return handleAsync(future, function);
         }
@@ -2610,6 +2734,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             BiFunction<Object, Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return handleAsync(future, function, executor);
         }
@@ -2631,6 +2756,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Object> exceptionally(
             CompletionStage<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return exceptionally(future, function);
         }
@@ -2651,6 +2777,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Object> exceptionallyAsync(
             CompletionStage<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return exceptionallyAsync(future, function);
         }
@@ -2674,6 +2801,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             Function<Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return exceptionallyAsync(future, function, executor);
         }
@@ -2695,6 +2823,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Object> exceptionallyCompose(
             CompletionStage<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return exceptionallyCompose(future, function);
         }
@@ -2716,6 +2845,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletionStage<Object> exceptionallyComposeAsync(
             CompletionStage<Object> receiver,
             Function<Object, Object> function) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return exceptionallyComposeAsync(future, function);
         }
@@ -2740,6 +2870,7 @@ public final class AgentConcurrencyUtilHooks {
             CompletionStage<Object> receiver,
             Function<Object, Object> function,
             Executor executor) {
+        ControlledSchedule.point();
         if (receiver instanceof CompletableFuture<Object> future) {
             return exceptionallyComposeAsync(future, function, executor);
         }
@@ -2757,6 +2888,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static CompletableFuture<Object> supplyAsync(Supplier<Object> supplier) {
+        ControlledSchedule.point();
         // The NullPointerException the call itself throws for a missing function.
         HandedTask handed = new HandedTask(Objects.requireNonNull(supplier)).onTheCommonPool();
         return Submissions.remember(CompletableFuture.supplyAsync(handed), handed);
@@ -2774,6 +2906,7 @@ public final class AgentConcurrencyUtilHooks {
     @SuppressWarnings("ReferenceEquality") // the common pool, by identity
     public static CompletableFuture<Object> supplyAsync(Supplier<Object> supplier,
                                                         Executor executor) {
+        ControlledSchedule.point();
         // The NullPointerException the call itself throws for a missing function.
         HandedTask handed = new HandedTask(Objects.requireNonNull(supplier));
         if (executor == ForkJoinPool.commonPool()) { // NOPMD CompareObjectsWithEquals - the one pool, by identity
@@ -2791,6 +2924,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static CompletableFuture<Void> runAsync(Runnable task) {
+        ControlledSchedule.point();
         // The NullPointerException the call itself throws for a missing function.
         HandedTask handed = new HandedTask(Objects.requireNonNull(task)).onTheCommonPool();
         return Submissions.remember(CompletableFuture.runAsync(handed), handed);
@@ -2808,6 +2942,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     @SuppressWarnings("ReferenceEquality") // the common pool, by identity
     public static CompletableFuture<Void> runAsync(Runnable task, Executor executor) {
+        ControlledSchedule.point();
         // The NullPointerException the call itself throws for a missing function.
         HandedTask handed = new HandedTask(Objects.requireNonNull(task));
         if (executor == ForkJoinPool.commonPool()) { // NOPMD CompareObjectsWithEquals - the one pool, by identity
@@ -2825,6 +2960,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static void asyncResultDiscarded(CompletableFuture<?> future) {
+        ControlledSchedule.point();
         CompletableFutureExceptionDetector detector =
                 AsyncTestContext.currentCompletableFutureExceptionDetector();
         if (detector != null) {
@@ -2918,6 +3054,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static Future<Object> submit(ExecutorService receiver, Callable<Object> task) {
+        ControlledSchedule.point();
         taskSubmitted(receiver);
         if (!wrapsInvisibly(receiver, task)) {
             return receiver.submit(task);
@@ -2936,6 +3073,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static Future<?> submit(ExecutorService receiver, Runnable task) {
+        ControlledSchedule.point();
         taskSubmitted(receiver);
         if (!wrapsInvisibly(receiver, task)) {
             return receiver.submit(task);
@@ -2957,6 +3095,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static Future<Object> submit(ExecutorService receiver, Runnable task,
                                         @Nullable Object result) {
+        ControlledSchedule.point();
         taskSubmitted(receiver);
         if (!wrapsInvisibly(receiver, task)) {
             return receiver.submit(task, result);
@@ -2974,6 +3113,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static void submitResultDiscarded(Future<?> future) {
+        ControlledSchedule.point();
         FutureIgnoredDetector detector = AsyncTestContext.currentFutureIgnoredDetector();
         if (detector != null) {
             detector.recordDiscarded(future, Thread.currentThread(), "ExecutorService.submit");
@@ -3023,6 +3163,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ExecutorService newFixedThreadPool(int threads) {
+        ControlledSchedule.point();
         return created(Executors.newFixedThreadPool(threads));
     }
 
@@ -3035,6 +3176,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ExecutorService newFixedThreadPool(int threads, ThreadFactory factory) {
+        ControlledSchedule.point();
         return created(Executors.newFixedThreadPool(threads, factory));
     }
 
@@ -3045,6 +3187,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ExecutorService newCachedThreadPool() {
+        ControlledSchedule.point();
         return created(Executors.newCachedThreadPool());
     }
 
@@ -3056,6 +3199,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ExecutorService newCachedThreadPool(ThreadFactory factory) {
+        ControlledSchedule.point();
         return created(Executors.newCachedThreadPool(factory));
     }
 
@@ -3066,6 +3210,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ExecutorService newSingleThreadExecutor() {
+        ControlledSchedule.point();
         return created(Executors.newSingleThreadExecutor());
     }
 
@@ -3077,6 +3222,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ExecutorService newSingleThreadExecutor(ThreadFactory factory) {
+        ControlledSchedule.point();
         return created(Executors.newSingleThreadExecutor(factory));
     }
 
@@ -3088,6 +3234,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ScheduledExecutorService newScheduledThreadPool(int coreThreads) {
+        ControlledSchedule.point();
         return created(Executors.newScheduledThreadPool(coreThreads));
     }
 
@@ -3100,6 +3247,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ScheduledExecutorService newScheduledThreadPool(int coreThreads, ThreadFactory factory) {
+        ControlledSchedule.point();
         return created(Executors.newScheduledThreadPool(coreThreads, factory));
     }
 
@@ -3110,6 +3258,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ScheduledExecutorService newSingleThreadScheduledExecutor() {
+        ControlledSchedule.point();
         return created(Executors.newSingleThreadScheduledExecutor());
     }
 
@@ -3121,6 +3270,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ScheduledExecutorService newSingleThreadScheduledExecutor(ThreadFactory factory) {
+        ControlledSchedule.point();
         return created(Executors.newSingleThreadScheduledExecutor(factory));
     }
 
@@ -3131,6 +3281,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ExecutorService newWorkStealingPool() {
+        ControlledSchedule.point();
         return created(Executors.newWorkStealingPool());
     }
 
@@ -3142,6 +3293,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ExecutorService newWorkStealingPool(int parallelism) {
+        ControlledSchedule.point();
         return created(Executors.newWorkStealingPool(parallelism));
     }
 
@@ -3152,6 +3304,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ExecutorService newVirtualThreadPerTaskExecutor() {
+        ControlledSchedule.point();
         return created(Executors.newVirtualThreadPerTaskExecutor());
     }
 
@@ -3163,6 +3316,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static ExecutorService newThreadPerTaskExecutor(ThreadFactory factory) {
+        ControlledSchedule.point();
         return created(Executors.newThreadPerTaskExecutor(factory));
     }
 
@@ -3179,6 +3333,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static @Nullable Object exchange(Exchanger<Object> receiver, @Nullable Object item)
             throws InterruptedException {
+        ControlledSchedule.point();
         HappensBefore.release(item);
         Object received;
         boolean exchanged = false;
@@ -3210,6 +3365,7 @@ public final class AgentConcurrencyUtilHooks {
     public static @Nullable Object exchange(Exchanger<Object> receiver, @Nullable Object item,
                                             long timeout, TimeUnit unit)
             throws InterruptedException, TimeoutException {
+        ControlledSchedule.point();
         HappensBefore.release(item);
         Object received;
         boolean exchanged = false;
@@ -3244,6 +3400,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.4
      */
     public static void execute(Executor receiver, Runnable command) {
+        ControlledSchedule.point();
         // The NullPointerException the call itself throws for a missing task.
         Objects.requireNonNull(command);
         taskSubmitted(receiver);
@@ -3340,6 +3497,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static @Nullable Object threadLocalGet(ThreadLocal<?> receiver) {
+        ControlledSchedule.point();
         Object value = receiver.get();
         long task = RUNNING_TASK.get()[0];
         if (task != 0) {
@@ -3361,6 +3519,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     @SuppressWarnings("unchecked")
     public static void threadLocalSet(ThreadLocal<?> receiver, @Nullable Object value) {
+        ControlledSchedule.point();
         ((ThreadLocal<Object>) receiver).set(value);
         long task = RUNNING_TASK.get()[0];
         if (task != 0) {
@@ -3378,6 +3537,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static void threadLocalRemove(ThreadLocal<?> receiver) {
+        ControlledSchedule.point();
         receiver.remove();
         ThreadLocalMonitor monitor = AsyncTestContext.currentThreadLocalMonitor();
         if (monitor != null) {
