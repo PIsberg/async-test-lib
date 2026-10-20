@@ -51,6 +51,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hook that never reaches a point. It found `compareAndSetInt`, which the first pass missed, and
   went red with the point removed from `mapContainsKey`.
 
+- **A controlled schedule knows which worker holds which lock (#1022).** A worker paused at a point
+  inside `synchronized` still holds the monitor, and the schedule used to hand the round to a peer
+  whose next step entered it; the peer blocked, was marked escaped, and the round lost its exact
+  replay, so every body that contended on a lock paid an escape. Entering a woven monitor, and
+  `ReentrantLock.lock`/`lockInterruptibly` or a write lock, is now a point that names the lock; the
+  worker granted the round with that step pending is recorded as the holder, `monitorExited` and
+  `unlock` release it, and `tryLock` and a `synchronized` method's entry record a hold without a
+  point. The grant passes over a ready worker whose pending lock another worker holds, and when
+  every ready worker waits on a held lock it hands the round out anyway, so a real deadlock still
+  happens and a stale hold (a monitor released inside `Object.wait` is not seen) costs at most an
+  escape. Read locks, other `Lock` implementations and `StampedLock` are plain points, since they
+  may be shared. Tests: `ControlledScheduleLockTest` (the woven calls made by hand: a monitor, a
+  `ReentrantLock`, a reentrant entry, a real deadlock, and wait/notify) went red on the first three
+  ("must not cost an escape"), and the wait/notify case times out with the grant fallback removed;
+  `ControlledScheduleLockWeavingTest` runs a `synchronized` and a `ReentrantLock` increment through
+  the real weaver, 20 seeds each with no escape, and went red with the hooks unwired.
+
 ### Fixed
 
 - **A refused runtime attach blamed the wrong switch.** `AsyncTestAgent.selfAttach` and the

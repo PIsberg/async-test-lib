@@ -213,8 +213,10 @@ public @interface AsyncTest {
      * ({@code runner.schedule.unpointed}).
      *
      * <p>Limits, all by design. Workers run one at a time, so the round explores interleavings under
-     * sequential consistency and cannot show a stale read the memory model allows. A worker that
-     * blocks outside a point (on a lock a paused worker holds, a sleep, a {@code get}) leaves the
+     * sequential consistency and cannot show a stale read the memory model allows. A woven monitor
+     * or {@code ReentrantLock} a paused worker holds is no longer one of them: the schedule knows the
+     * holder and runs someone else (#1022). A worker that blocks outside a point (on a lock the
+     * schedule does not track, a sleep, a {@code get}) leaves the
      * schedule until its next point, and runs alongside the next worker until then; each such
      * escape is counted ({@code runner.schedule.round escapes=N}), and only a round with none is
      * guaranteed to replay exactly. Threads the body starts are not scheduled.
