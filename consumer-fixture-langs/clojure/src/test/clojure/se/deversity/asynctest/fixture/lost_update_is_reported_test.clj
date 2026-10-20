@@ -13,7 +13,9 @@
 ;;      vector, not on the method name. On the name it compiles to an instance method and JUnit
 ;;      refuses it.
 ;;   3. The namespace must be AOT-compiled (clojure-maven-plugin testCompile) and Surefire must
-;;      be told to include **/*Test.class, because the class name comes from :name, not the file.
+;;      be told to include **/*Test, because the class name comes from :name, not the file. Not
+;;      **/*Test.class: Surefire 3.6.0 selects the classes that pattern matches and runs none
+;;      (#1078).
 ;;
 ;; The finding is asserted in @AfterAll because detectors analyse after the last round.
 (ns se.deversity.asynctest.fixture.lost-update-is-reported-test

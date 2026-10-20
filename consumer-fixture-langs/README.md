@@ -136,7 +136,10 @@ metadata on the method signatures. Three things that are not obvious:
   `^{:static true} [^{org.junit.jupiter.api.AfterAll {}} afterAll [] void]`. On the name it
   compiles to an instance method and JUnit refuses it.
 - The namespace must be AOT-compiled (`clojure-maven-plugin` `testCompile`), and Surefire must
-  include `**/*Test.class`, because the class is named by `:name`, not by the file.
+  include `**/*Test`, because the class is named by `:name`, not by the file. Not
+  `**/*Test.class`: Surefire 3.6.0 lists the classes that pattern matches and then runs none, and
+  the gen-class pair ran 0 tests, green, until #1078. The parent `pom.xml` now sets
+  `failIfNoTests`, so a module that runs nothing fails.
 `clojure.test` `deftest` cannot use `@AsyncTest`; `programmatic_runner_test.clj` runs the same
 two directions through `AsyncTestRunner.run(config, body)` from plain deftests, executed by
 `clojure-maven-plugin`'s `test` goal in a forked Clojure process (so `licenseMockMode` is set on

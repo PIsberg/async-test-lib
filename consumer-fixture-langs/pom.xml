@@ -64,6 +64,9 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>${maven-surefire-plugin.version}</version>
                     <configuration>
+                        <!-- A fixture that runs nothing is not a passing fixture. The Clojure
+                             module's gen-class tests ran 0 tests, green, until #1078. -->
+                        <failIfNoTests>true</failIfNoTests>
                         <systemPropertyVariables>
                             <!-- Skip the LicenseGuard's network gate (the fixture is offline).
                                  The tests also set licenseMockMode = true on the annotation, so a

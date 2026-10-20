@@ -65,9 +65,11 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <!-- The generated class is named by :name in gen-class, not by the file, so
-                         Surefire's default *Test pattern must be told to look at class files. -->
+                         Surefire's default *Test pattern must be told to look at class files. No
+                         .class suffix: Surefire 3.6.0 lists a class that **/*Test.class matches and
+                         then runs nothing, and this module ran 0 tests, green, until #1078. -->
                     <includes>
-                        <include>**/*Test.class</include>
+                        <include>**/*Test</include>
                     </includes>
                     <!-- In a JVM of its own, below: the runner decides the default attach once per
                          JVM, at the first run, which here would be a library-package fixture. -->

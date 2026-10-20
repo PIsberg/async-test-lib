@@ -223,6 +223,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Clojure language fixture's `@AsyncTest` tests ran 0 tests, green (#1078).** The module told
+  Surefire to include `**/*Test.class`, since a gen-class is named by `:name`, and under Surefire
+  3.6.0 a pattern ending in `.class` selects the classes and runs none, so `LostUpdateIsReportedTest`
+  and `GuardedCounterStaysSilentTest` did not run, on main too (Consumer Fixture job of run
+  39263416568). The include is now `**/*Test`, both classes run, and removing the guarded twin's
+  `locking` turns it red again. The language fixtures' parent `pom.xml` sets `failIfNoTests`, which
+  failed this module ("No tests were executed!") before the include was fixed.
+
 - **A controlled schedule counted a worker waiting on the scheduler's own lock as an escape
   (#1065).** `watch()` runs in a waiting worker that holds the schedule's lock. It read the
   running worker's `inside` flag and then its thread state, so a worker that entered the
