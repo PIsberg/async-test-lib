@@ -71,7 +71,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  */
 @AICore(
     sensitivity = "High",
-    note = "A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read, and the lock holds and pending acquisitions grant() consults (#1022), which change only at acquiring(), itself a point, and in acquired() and released(), which a worker calls in its own program order; an escaped worker's acquire or release lands outside a turn, but its round has already counted the escape. grant() must keep handing the round out when every ready worker waits on a held lock: the hold may be stale (a monitor released inside Object.wait is not seen), and withholding the round then stalls correct wait/notify code until the round times out (ControlledScheduleLockTest); each such grant is counted as a fallback. To keep holds from going stale, a woven Object.wait or Condition.await hands its holds back before waiting and takes them again after (releasingForWait, reacquiredAfterWait; lockOf finds a condition's ReentrantLock by asking it), and a worker re-confirms its own recorded holds with Thread.holdsLock or isHeldByCurrentThread at each of its points and at leave(), on its own thread, so the answer follows its program order and grant() still reads no thread state (#1048). Only watch() may read the clock or Thread.getState(), and it reads the state before asking whether the running worker, or an adopted child still arriving, is queued on the schedule's own lock, which is the scheduler's wait and never an escape (#1065, #1072); each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly, with one exception: an adopted child whose thread has terminated is marked done, not escaped (#1024), because while it ran to its end every peer was waiting, so the state the next grant reads is the same whenever watch() notices. Adopted children are ready from the moment they are adopted, so a grant never depends on how long the OS takes to start a thread. A worker waiting at a rendezvous is OUTSIDE, not escaped (#1021), and no grant is made while one is outside on its way back or when the last worker steps out, so the order a rendezvous releases workers in never decides who runs next. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise."
+    note = "A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read, and the lock holds and pending acquisitions grant() consults (#1022), which change only at acquiring(), itself a point, and in acquired() and released(), which a worker calls in its own program order; an escaped worker's acquire or release lands outside a turn, but its round has already counted the escape. grant() must keep handing the round out when every ready worker waits on a held lock: the hold may be stale (a monitor released inside Object.wait is not seen), and withholding the round then stalls correct wait/notify code until the round times out (ControlledScheduleLockTest); each such grant is counted as a fallback. To keep holds from going stale, a woven Object.wait or Condition.await hands its holds back before waiting and takes them again after (releasingForWait, reacquiredAfterWait; lockOf finds a condition's ReentrantLock by asking it), and a worker re-confirms its own recorded holds with Thread.holdsLock or isHeldByCurrentThread at each of its points and at leave(), on its own thread, so the answer follows its program order and grant() still reads no thread state (#1048). Only watch() may read the clock or Thread.getState(), and it reads the state before asking whether the running worker, or an adopted child still arriving, is queued on the schedule's own lock, which is the scheduler's wait and never an escape (#1065, #1072); each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly, with one exception: an adopted child whose thread has terminated is marked done, not escaped (#1024), because while it ran to its end every peer was waiting, so the state the next grant reads is the same whenever watch() notices. Adopted children are ready from the moment they are adopted, so a grant never depends on how long the OS takes to start a thread; an adopted executor task (#1049) is ready from its woven submission the same way, joins at taskStarting on the pool thread and leaves at taskEnded, and one that has not started within STALL_NANOS is counted as an escape, since its executor may never run it. A worker waiting at a rendezvous is OUTSIDE, not escaped (#1021), and no grant is made while one is outside on its way back or when the last worker steps out, so the order a rendezvous releases workers in never decides who runs next. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise."
 )
 public final class ControlledSchedule {
 
@@ -305,6 +305,98 @@ public final class ControlledSchedule {
             return;
         }
         worker.schedule.adopt(worker, child);
+    }
+
+    /**
+     * Adopts a task the calling worker is handing to an executor into its round under the next
+     * slot, as {@link #starting} adopts a thread (#1049). Not a point. Pass what it returns to
+     * {@link #taskStarting} where the task begins to run, and to {@link #awaitingTask} before a
+     * wait for its result.
+     *
+     * @return the adoption, or {@code null} outside a controlled round
+     */
+    public static @Nullable Object submitting() {
+        if (OPEN.get() == 0) {
+            return null;
+        }
+        Worker worker = CURRENT.get();
+        if (worker == null || worker.inside || worker.free) {
+            return null;
+        }
+        return worker.schedule.adoptTask(worker);
+    }
+
+    /**
+     * Joins the adopted task's round on the thread that runs it, and waits for the task's turn. A
+     * task run on a thread already in a round, such as the submitter under a caller-runs policy,
+     * runs inline as part of that thread's turn, and its slot is done at once. Pair with
+     * {@link #taskEnded} in a {@code finally}.
+     *
+     * @param adoption what {@link #submitting} returned for the task, or {@code null}
+     * @return what to hand {@link #taskEnded}
+     */
+    public static @Nullable Object taskStarting(@Nullable Object adoption) {
+        if (!(adoption instanceof Adoption task)) {
+            return null;
+        }
+        if (CURRENT.get() != null) {
+            task.schedule().taskDone(task.slot());
+            return null;
+        }
+        task.schedule().join(task.slot());
+        return task;
+    }
+
+    /**
+     * Leaves the round the task joined in {@link #taskStarting}, so the pool thread carries
+     * nothing into the next task it runs.
+     *
+     * @param started what {@link #taskStarting} returned
+     */
+    public static void taskEnded(@Nullable Object started) {
+        if (started instanceof Adoption task) {
+            task.schedule().leave();
+        }
+    }
+
+    /**
+     * Marks an adopted task that will never run as done, such as one its executor rejected, so no
+     * grant waits for it to arrive.
+     *
+     * @param adoption what {@link #submitting} returned, or {@code null}
+     */
+    public static void taskAbandoned(@Nullable Object adoption) {
+        if (adoption instanceof Adoption task) {
+            task.schedule().taskDone(task.slot());
+        }
+    }
+
+    /**
+     * A scheduling point before the calling worker waits for a task's result, {@code Future.get} or
+     * {@code CompletableFuture.join}: when the task was adopted into this round, the worker gets the
+     * round back only once the task is done, so the wait never blocks outside the schedule. Any
+     * other wait is a plain point.
+     *
+     * @param adoption what {@link #submitting} returned for the task behind the future, or
+     *                 {@code null} when it is not known
+     */
+    public static void awaitingTask(@Nullable Object adoption) {
+        if (OPEN.get() == 0) {
+            return;
+        }
+        Worker worker = CURRENT.get();
+        if (worker == null) {
+            joinIfAdopted();
+            return;
+        }
+        if (worker.inside || worker.free) {
+            return;
+        }
+        if (adoption instanceof Adoption task && task.schedule() == worker.schedule) { // NOPMD CompareObjectsWithEquals - identity
+            worker.schedule.stepJoiningSlot(worker, task.slot());
+        } else {
+            worker.schedule.step(worker, null);
+        }
     }
 
     /**
@@ -632,6 +724,9 @@ public final class ControlledSchedule {
 
     /** Joins the round as adopted child {@code slot}, from the child's own thread. */
     private void join(int slot) {
+        if (slot < 0) {
+            return;
+        }
         Worker worker = new Worker(this, slot, Thread.currentThread());
         CURRENT.set(worker);
         worker.inside = true;
@@ -688,6 +783,60 @@ public final class ControlledSchedule {
         }
     }
 
+    /**
+     * Adopts a task under the next slot, as {@link #adopt} does a thread, with no thread to watch:
+     * the task's thread is only known when it starts. Ready from the start, so a grant never
+     * depends on when the executor runs it.
+     */
+    private Adoption adoptTask(Worker worker) {
+        worker.inside = true;
+        lock.lock();
+        try {
+            int slot = count;
+            if (closed) {
+                return new Adoption(this, -1);
+            }
+            grow(slot + 1);
+            count = slot + 1;
+            children[slot] = null;
+            int rank = new SplittableRandom(seed ^ (0x9E3779B97F4A7C15L * (slot + 1))).nextInt(slot + 1);
+            for (int i = 0; i < slot; i++) {
+                if (priority[i] >= DEPTH + rank) {
+                    priority[i]++;
+                }
+            }
+            priority[slot] = DEPTH + rank;
+            status[slot] = Status.READY;
+            return new Adoption(this, slot);
+        } finally {
+            lock.unlock();
+            worker.inside = false;
+        }
+    }
+
+    /** Marks adopted slot {@code slot} done without it joining: run inline, or never to run. */
+    private void taskDone(int slot) {
+        if (slot < 0) {
+            return;
+        }
+        lock.lock();
+        try {
+            if (status[slot] == Status.DONE) {
+                return;
+            }
+            status[slot] = Status.DONE;
+            pending[slot] = null;
+            if (running == slot) {
+                running = -1;
+                grant();
+            } else if (running < 0) {
+                grant();
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
     private void stepJoining(Worker worker, Thread target) {
         int child = -1;
         lock.lock();
@@ -700,6 +849,11 @@ public final class ControlledSchedule {
         } finally {
             lock.unlock();
         }
+        stepJoiningSlot(worker, child);
+    }
+
+    /** The point before waiting for adopted slot {@code child}, a thread or a task; -1 for none. */
+    private void stepJoiningSlot(Worker worker, int child) {
         step(worker, null);
         if (child < 0) {
             return;
@@ -769,6 +923,15 @@ public final class ControlledSchedule {
     private void watchArriving(long now) {
         Thread child = children[running];
         if (child == null) {
+            // An adopted task, whose thread is known only once it starts (#1049): its executor may
+            // be busy or shut down, so a task that has not arrived within the stall bound escapes
+            // like a worker that stalled, and rejoins when it does arrive.
+            if (now - lastProgress > STALL_NANOS) {
+                status[running] = Status.ESCAPED;
+                escapes++;
+                running = -1;
+                grant();
+            }
             return;
         }
         Thread.State state = child.getState();

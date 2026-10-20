@@ -221,6 +221,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the 100 documented-thread-safe subjects through the agent and draws no finding on any, with
   every other row unchanged.
 
+- **A controlled schedule schedules the tasks the body hands to an executor (#1049).** A thread the
+  body started joined the round since #1024, but a task given to an executor ran on a pool thread
+  beside whichever worker held the turn, and a `get` on its future blocked outside the schedule.
+  Most code starts work that way. A task handed to one of the JDK's executors through a woven
+  `submit`, `execute`, `supplyAsync` or `runAsync` is now adopted at the submission, joins the round
+  when it starts on the pool thread and leaves when it ends, and a woven `get` or `join` on its
+  future waits inside the schedule. A rejected task leaves the round, one its executor has not
+  started within the stall bound escapes, and one run inline under a caller-runs policy is part of
+  the submitter's turn. `SubstitutionHooksArePointsTest` counts the schedule's named points
+  (`acquiring`, `joining`, `awaitingTask`) as well as `point`. Tests: `ControlledScheduleTaskTest`
+  (the hooks by hand) was red ("no seed in 1..64 split the worker's increment and its task's") and
+  is green, a losing and a keeping seed each replaying 10 times with no escape, a pool thread
+  carrying nothing into later work; `ControlledScheduleTaskWeavingTest` does the same through the
+  weaver with one pool across rounds, and both go red with adoption disabled.
+
 - **A failing drawn linearizability round is shrunk by re-running it (#1025).** For a round whose
   operations `OperationHistory.generate` drew, `assertLinearizable` now replays the drawn scenario
   with operations left out, delta debugging style, each attempt an `AsyncTestRunner.run` of a probe

@@ -221,8 +221,11 @@ public @interface AsyncTest {
      * escape is counted ({@code runner.schedule.round escapes=N}), and only a round with none is
      * guaranteed to replay exactly. A thread the body starts with a woven {@code Thread.start}
      * joins the round at its first point and is interleaved like a worker, and an untimed
-     * {@code join} on it waits inside the schedule (#1024); tasks handed to an executor are not
-     * scheduled.
+     * {@code join} on it waits inside the schedule (#1024). So does a task the body hands to one of
+     * the JDK's executors through a woven {@code submit}, {@code execute}, {@code supplyAsync} or
+     * {@code runAsync}: it joins the round when it starts on the pool thread and leaves when it
+     * ends, and a woven {@code get} or {@code join} on its future waits inside the schedule
+     * (#1049); a task given to another executor runs outside it.
      *
      * @since 1.13.2
      *
