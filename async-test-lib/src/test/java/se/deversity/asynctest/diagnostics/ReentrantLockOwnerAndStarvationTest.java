@@ -165,6 +165,9 @@ class ReentrantLockOwnerAndStarvationTest {
 
     // ---- #608: starvation the lock corroborates ----
 
+    /** How many times the barging scenario is tried before its premise counts as failed (#1085). */
+    private static final int BARGING_ATTEMPTS = 200;
+
     /**
      * One attempt at the barging scenario: {@code starved} parks in {@code lock()} while
      * {@code barger} holds the lock, then {@code barger} releases and re-takes it twice.
@@ -231,7 +234,11 @@ class ReentrantLockOwnerAndStarvationTest {
     @Test
     @DisplayName("a waiter a non-fair lock let another thread barge past twice is starvation the lock saw")
     void aWaiterBargedPastOnANonFairLockFires() throws InterruptedException {
-        for (int attempt = 0; attempt < 5; attempt++) {
+        // Whether the barger's re-lock beats the woken waiter is the OS scheduler's call, so the
+        // premise is retried rather than forced. Measured on 2026-10-20 with twice as many busy
+        // threads as cores: 61 of 300 attempts lost the race. Five tries failed a CI run (#1085);
+        // 200, each a few milliseconds, leave a 90% loss rate a chance of about 7e-10.
+        for (int attempt = 0; attempt < BARGING_ATTEMPTS; attempt++) {
             ReentrantLockDetector detector = new ReentrantLockDetector();
             ReentrantLock lock = new ReentrantLock(false);
             if (!bargeTwice(detector, lock)) {
@@ -244,7 +251,7 @@ class ReentrantLockOwnerAndStarvationTest {
             assertTrue(report.toString().contains("starved"), report::toString);
             return;
         }
-        throw new AssertionError("the barging premise failed five times in a row");
+        throw new AssertionError("the barging premise failed " + BARGING_ATTEMPTS + " times in a row");
     }
 
     @Test
