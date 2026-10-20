@@ -15,6 +15,7 @@ import se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector;
 import se.deversity.asynctest.diagnostics.InterruptMonitor;
 import se.deversity.asynctest.diagnostics.InterruptSwallowingDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
+import se.deversity.asynctest.telemetry.ControlledSchedule;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.vibetags.annotations.AIContract;
 
@@ -298,6 +299,7 @@ public final class AgentThreadHooks {
      */
     private static void forkAndAttribute(Thread thread) {
         if (thread.getState() == Thread.State.NEW) {
+            ControlledSchedule.starting(thread); // a controlled round adopts the child (#1024)
             HappensBefore.fork(thread);
             TelemetryRegistry.threadStarting(thread);
             AsyncTestContext.threadSpawned(thread);
@@ -359,6 +361,8 @@ public final class AgentThreadHooks {
      * @throws InterruptedException if interrupted while waiting
      */
     public static void threadJoin(Thread receiver) throws InterruptedException {
+        // A point that, for a child of a controlled round, waits inside the schedule (#1024).
+        ControlledSchedule.joining(receiver);
         receiver.join();
         HappensBefore.join(receiver);
     }

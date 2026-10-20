@@ -219,7 +219,10 @@ public @interface AsyncTest {
      * schedule does not track, a sleep, a {@code get}) leaves the
      * schedule until its next point, and runs alongside the next worker until then; each such
      * escape is counted ({@code runner.schedule.round escapes=N}), and only a round with none is
-     * guaranteed to replay exactly. Threads the body starts are not scheduled.
+     * guaranteed to replay exactly. A thread the body starts with a woven {@code Thread.start}
+     * joins the round at its first point and is interleaved like a worker, and an untimed
+     * {@code join} on it waits inside the schedule (#1024); tasks handed to an executor are not
+     * scheduled.
      *
      * @since 1.13.2
      *

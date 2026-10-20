@@ -165,8 +165,11 @@ void increment() {
 }
 ```
 
-Outside a controlled round, and on a thread the body started, it does nothing, so it can stay in a
-body that also runs uncontrolled. A controlled run whose workers reach no point at all interleaves
+Outside a controlled round it does nothing, so it can stay in a body that also runs uncontrolled.
+A thread the body starts through a woven `Thread.start` joins the round at its first point and is
+interleaved like a worker, and an untimed `join` on it waits inside the schedule
+([#1024](https://github.com/PIsberg/async-test-lib/issues/1024)); on a thread the agent did not
+see started, such as an executor's, it does nothing. A controlled run whose workers reach no point at all interleaves
 nothing, and says so once at INFO (`runner.schedule.unpointed`).
 
 ## Checking that results are linearizable: `OperationHistory` (1.13.0, experimental)

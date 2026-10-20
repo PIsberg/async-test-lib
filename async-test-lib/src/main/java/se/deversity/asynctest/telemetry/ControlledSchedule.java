@@ -7,6 +7,7 @@ import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.SplittableRandom;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
@@ -34,6 +35,14 @@ import java.util.concurrent.locks.ReentrantLock;
  * it. When every ready worker waits on a lock another holds, that is a real deadlock, and the round
  * is handed out anyway so it happens and is reported.
  *
+ * <p>Threads the body starts join the round too (#1024). A woven {@code Thread.start} adopts the
+ * child into the starting worker's round under the next slot ({@link #starting}), which the
+ * schedule assigns in the order the starts happen, so the seed decides the child's priority as it
+ * does a worker's. The child joins at its first scheduling point: it touches nothing woven before
+ * then, since every woven access is a point. An untimed {@code join} on a child is a point that
+ * waits for it ({@link #joining}), not a block outside the schedule, and a child whose thread has
+ * ended is done rather than escaped.
+ *
  * <p>A worker can still stop running without reaching a point: it blocks on something the schedule
  * does not track, sleeps, waits on a future, or computes for longer than {@link #STALL_NANOS}. The waiting workers
  * notice, mark it escaped and hand the round to the next; it rejoins at its next point. That keeps
@@ -53,7 +62,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 @AICore(
     sensitivity = "High",
-    note = "A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read, and the lock holds and pending acquisitions grant() consults (#1022), which change only at acquiring(), itself a point, and in acquired() and released(), which a worker calls in its own program order; an escaped worker's acquire or release lands outside a turn, but its round has already counted the escape. grant() must keep handing the round out when every ready worker waits on a held lock: the hold may be stale (a monitor released inside Object.wait is not seen), and withholding the round then stalls correct wait/notify code until the round times out (ControlledScheduleLockTest). Only watch() may read the clock or Thread.getState(), and each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise."
+    note = "A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read, and the lock holds and pending acquisitions grant() consults (#1022), which change only at acquiring(), itself a point, and in acquired() and released(), which a worker calls in its own program order; an escaped worker's acquire or release lands outside a turn, but its round has already counted the escape. grant() must keep handing the round out when every ready worker waits on a held lock: the hold may be stale (a monitor released inside Object.wait is not seen), and withholding the round then stalls correct wait/notify code until the round times out (ControlledScheduleLockTest). Only watch() may read the clock or Thread.getState(), and each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly, with one exception: an adopted child whose thread has terminated is marked done, not escaped (#1024), because while it ran to its end every peer was waiting, so the state the next grant reads is the same whenever watch() notices. Adopted children are ready from the moment they are adopted, so a grant never depends on how long the OS takes to start a thread. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise."
 )
 public final class ControlledSchedule {
 
@@ -78,6 +87,11 @@ public final class ControlledSchedule {
 
     /** The calling thread's place in the round it joined, between {@link #enter} and {@link #leave}. */
     private static final ThreadLocal<Worker> CURRENT = new ThreadLocal<>();
+
+    /** Threads started by a controlled round's workers, before their first point: thread to round. */
+    private static final Map<Thread, Adoption> ADOPTED = new ConcurrentHashMap<>();
+
+    private record Adoption(ControlledSchedule schedule, int slot) {}
 
     private enum Status { ABSENT, READY, RUNNING, ESCAPED, DONE }
 
@@ -111,12 +125,19 @@ public final class ControlledSchedule {
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition turn = lock.newCondition();
     private final long seed;
+    /** The runner's workers: the round starts once this many have joined. */
     private final int workers;
-    private final @Nullable Worker[] slots;
-    private final Status[] status;
-    private final int[] priority;
+    /** Slots in use: the workers, then each adopted child in the order it was started. */
+    private int count;
+    private @Nullable Worker[] slots;
+    private Status[] status;
+    private int[] priority;
     /** The exclusive lock each worker's pending step acquires, or {@code null}. */
-    private final @Nullable Object[] pending;
+    private @Nullable Object[] pending;
+    /** The child slot each worker's pending step joins, or -1. */
+    private int[] joining;
+    /** The thread of each adopted child, so a child that ends before its first point is seen. */
+    private @Nullable Thread[] children;
     /** Exclusive locks the round's workers hold: lock to {holding slot, hold count}. */
     private final Map<Object, int[]> owners = new IdentityHashMap<>();
     private final long[] changePoints;
@@ -138,10 +159,14 @@ public final class ControlledSchedule {
     private ControlledSchedule(int workers, long seed) {
         this.seed = seed;
         this.workers = workers;
+        this.count = workers;
         this.slots = new Worker[workers];
         this.status = new Status[workers];
         Arrays.fill(status, Status.ABSENT);
         this.pending = new Object[workers];
+        this.joining = new int[workers];
+        Arrays.fill(joining, -1);
+        this.children = new Thread[workers];
         SplittableRandom random = new SplittableRandom(seed ^ 0x5DEECE66DL);
         int[] order = new int[workers];
         for (int i = 0; i < workers; i++) {
@@ -192,10 +217,61 @@ public final class ControlledSchedule {
             return;
         }
         Worker worker = CURRENT.get();
-        if (worker == null || worker.inside || worker.free) {
+        if (worker == null) {
+            joinIfAdopted();
+            return;
+        }
+        if (worker.inside || worker.free) {
             return;
         }
         worker.schedule.step(worker, null);
+    }
+
+    /** A child's first point: it joins its round and waits for a turn like any worker. */
+    private static void joinIfAdopted() {
+        Adoption adoption = ADOPTED.remove(Thread.currentThread());
+        if (adoption != null) {
+            adoption.schedule().join(adoption.slot());
+        }
+    }
+
+    /**
+     * Adopts {@code child}, about to be started by the calling worker, into the worker's round
+     * under the next slot. Not a point. Does nothing outside a controlled round.
+     *
+     * @param child the thread about to start
+     */
+    public static void starting(Thread child) {
+        if (OPEN.get() == 0) {
+            return;
+        }
+        Worker worker = CURRENT.get();
+        if (worker == null || worker.inside || worker.free) {
+            return;
+        }
+        worker.schedule.adopt(worker, child);
+    }
+
+    /**
+     * A scheduling point before the calling worker joins {@code target}: when the target is a child
+     * of this round, the worker gets the round back only once the child is done, so the join never
+     * blocks outside the schedule. Any other target is a plain point.
+     *
+     * @param target the thread about to be joined
+     */
+    public static void joining(Thread target) {
+        if (OPEN.get() == 0) {
+            return;
+        }
+        Worker worker = CURRENT.get();
+        if (worker == null) {
+            joinIfAdopted();
+            return;
+        }
+        if (worker.inside || worker.free) {
+            return;
+        }
+        worker.schedule.stepJoining(worker, target);
     }
 
     /**
@@ -210,7 +286,14 @@ public final class ControlledSchedule {
             return;
         }
         Worker worker = CURRENT.get();
-        if (worker == null || worker.inside || worker.free) {
+        if (worker == null) {
+            joinIfAdopted();
+            worker = CURRENT.get();
+            if (worker == null) {
+                return;
+            }
+        }
+        if (worker.inside || worker.free) {
             return;
         }
         // A null monitor makes MONITORENTER throw; there is nothing to hold, only a point.
@@ -314,6 +397,7 @@ public final class ControlledSchedule {
         } finally {
             lock.unlock();
         }
+        ADOPTED.values().removeIf(adoption -> adoption.schedule() == this); // NOPMD - identity
         OPEN.decrementAndGet();
     }
 
@@ -336,6 +420,7 @@ public final class ControlledSchedule {
             }
             int slot = worker.slot;
             pending[slot] = acquiring;
+            joining[slot] = -1;
             if (running == slot) {
                 steps++;
                 streak++;
@@ -362,6 +447,162 @@ public final class ControlledSchedule {
         } finally {
             lock.unlock();
             worker.inside = false;
+        }
+    }
+
+    /** Joins the round as adopted child {@code slot}, from the child's own thread. */
+    private void join(int slot) {
+        Worker worker = new Worker(this, slot, Thread.currentThread());
+        CURRENT.set(worker);
+        worker.inside = true;
+        lock.lock();
+        try {
+            if (closed) {
+                return;
+            }
+            slots[slot] = worker;
+            // Adopted as ready, the child may already hold the turn (granted before it arrived) or
+            // still wait for one; only a child escaped before arriving rejoins like a worker.
+            if (status[slot] == Status.ESCAPED) {
+                status[slot] = Status.READY;
+                if (running < 0) {
+                    grant();
+                }
+            }
+            awaitTurn(worker);
+        } finally {
+            lock.unlock();
+            worker.inside = false;
+        }
+    }
+
+    private void adopt(Worker worker, Thread child) {
+        worker.inside = true;
+        lock.lock();
+        try {
+            if (closed) {
+                return;
+            }
+            int slot = count;
+            grow(slot + 1);
+            count = slot + 1;
+            children[slot] = child;
+            // A rank among the slots already in the round, drawn from the seed and the slot, which
+            // the order of the starts decides: PCT's random priority, given later. The ranks above
+            // it move up one, so the unlowered priorities stay DEPTH, DEPTH + 1, ... with no tie,
+            // and a lowered priority (below DEPTH) stays below every rank.
+            int rank = new SplittableRandom(seed ^ (0x9E3779B97F4A7C15L * (slot + 1))).nextInt(slot + 1);
+            for (int i = 0; i < slot; i++) {
+                if (priority[i] >= DEPTH + rank) {
+                    priority[i]++;
+                }
+            }
+            priority[slot] = DEPTH + rank;
+            // A candidate from the start, so who runs next never depends on how long the OS takes
+            // to start the thread: a child granted before it arrives is waited for.
+            status[slot] = Status.READY;
+            ADOPTED.put(child, new Adoption(this, slot));
+        } finally {
+            lock.unlock();
+            worker.inside = false;
+        }
+    }
+
+    private void stepJoining(Worker worker, Thread target) {
+        int child = -1;
+        lock.lock();
+        try {
+            for (int i = workers; i < count; i++) {
+                if (target.equals(children[i])) { // Thread keeps Object.equals: identity
+                    child = i;
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+        step(worker, null);
+        if (child < 0) {
+            return;
+        }
+        // The point above may have handed the round on; now wait until the child is done.
+        worker.inside = true;
+        lock.lock();
+        try {
+            if (closed || status[child] == Status.DONE) {
+                return;
+            }
+            int slot = worker.slot;
+            status[slot] = Status.READY;
+            joining[slot] = child;
+            running = -1;
+            grant();
+            awaitTurn(worker);
+        } finally {
+            lock.unlock();
+            worker.inside = false;
+        }
+    }
+
+    /** Makes room for {@code size} slots. Lock held. */
+    private void grow(int size) {
+        if (size <= slots.length) {
+            return;
+        }
+        int from = slots.length;
+        int capacity = Math.max(size, from * 2);
+        slots = Arrays.copyOf(slots, capacity);
+        status = Arrays.copyOf(status, capacity);
+        Arrays.fill(status, from, capacity, Status.ABSENT);
+        priority = Arrays.copyOf(priority, capacity);
+        pending = Arrays.copyOf(pending, capacity);
+        joining = Arrays.copyOf(joining, capacity);
+        Arrays.fill(joining, from, capacity, -1);
+        children = Arrays.copyOf(children, capacity);
+    }
+
+    /**
+     * Marks done every adopted child that is not running and whose thread has ended, so a worker
+     * joining it is not left waiting. Run by a waiting worker, lock held. Not an escape: an ended
+     * child changes no state any later decision reads but its own status.
+     *
+     * @return whether a child was marked done
+     */
+    private boolean childEnded() {
+        boolean ended = false;
+        for (int i = workers; i < count; i++) {
+            Thread child = children[i];
+            if (status[i] != Status.DONE && status[i] != Status.RUNNING && child != null
+                    && child.getState() == Thread.State.TERMINATED) {
+                status[i] = Status.DONE;
+                ADOPTED.remove(child);
+                ended = true;
+            }
+        }
+        return ended;
+    }
+
+    /**
+     * Watches a child granted the round before its thread reached its first point. Lock held. It
+     * ends there (done), or stops on something before it (escaped, as a worker would be), or simply
+     * has not arrived yet (wait).
+     */
+    private void watchArriving(long now) {
+        Thread child = children[running];
+        if (child == null) {
+            return;
+        }
+        Thread.State state = child.getState();
+        if (state == Thread.State.TERMINATED) {
+            status[running] = Status.DONE;
+            ADOPTED.remove(child);
+            running = -1;
+            grant();
+        } else if (state == Thread.State.BLOCKED || state == Thread.State.WAITING
+                || state == Thread.State.TIMED_WAITING || now - lastProgress > STALL_NANOS) {
+            status[running] = Status.ESCAPED;
+            escapes++;
+            running = -1;
+            grant();
         }
     }
 
@@ -409,8 +650,12 @@ public final class ControlledSchedule {
         }
     }
 
-    /** Whether worker {@code slot}'s pending step can take its lock now. Lock held. */
+    /** Whether worker {@code slot}'s pending step can proceed now. Lock held. */
     private boolean canProceed(int slot) {
+        int child = joining[slot];
+        if (child >= 0 && status[child] != Status.DONE) {
+            return false;
+        }
         Object wanted = pending[slot];
         if (wanted == null) {
             return true;
@@ -427,11 +672,13 @@ public final class ControlledSchedule {
     private void grant() {
         int best = -1;
         int anyReady = -1;
-        for (int i = 0; i < workers; i++) {
+        for (int i = 0; i < count; i++) {
             if (status[i] != Status.READY) {
                 continue;
             }
-            if (anyReady < 0 || priority[i] > priority[anyReady]) {
+            // A worker joining a child that is not done waits for it, fallback or not: the child is
+            // either running or will join at its first point, and watch() sees one that ends first.
+            if (joining[i] < 0 && (anyReady < 0 || priority[i] > priority[anyReady])) {
                 anyReady = i;
             }
             if (canProceed(i) && (best < 0 || priority[i] > priority[best])) {
@@ -451,6 +698,7 @@ public final class ControlledSchedule {
                 }
                 pending[best] = null;
             }
+            joining[best] = -1;
             status[best] = Status.RUNNING;
             if (best != last) {
                 if (last >= 0) {
@@ -497,10 +745,22 @@ public final class ControlledSchedule {
         long now = System.nanoTime();
         if (running >= 0) {
             Worker current = slots[running];
+            if (current == null && running >= workers) {
+                watchArriving(now);
+                return;
+            }
             if (!acknowledged || current == null || current.inside) {
                 return;
             }
             Thread.State state = current.thread.getState();
+            if (state == Thread.State.TERMINATED) {
+                // A child has no leave(): its thread ending is its leave. Not an escape: nothing ran
+                // between its last point and its end but its own code, while every peer waited.
+                status[running] = Status.DONE;
+                running = -1;
+                grant();
+                return;
+            }
             boolean blocked = state == Thread.State.BLOCKED || state == Thread.State.WAITING
                     || state == Thread.State.TIMED_WAITING;
             if (blocked || now - acknowledgedAt > STALL_NANOS) {
@@ -509,6 +769,8 @@ public final class ControlledSchedule {
                 running = -1;
                 grant();
             }
+        } else if (started && childEnded()) {
+            grant();
         } else if (!started && now - lastProgress > STALL_NANOS) {
             // A worker that never joined, most likely one that failed before the body: start
             // without it rather than wait out the round.

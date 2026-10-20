@@ -68,6 +68,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ControlledScheduleLockWeavingTest` runs a `synchronized` and a `ReentrantLock` increment through
   the real weaver, 20 seeds each with no escape, and went red with the hooks unwired.
 
+- **Threads the body starts join the controlled schedule (#1024).** A controlled schedule ran only
+  the runner's workers, so a thread the body started ran beside whichever worker held the turn: a
+  race between a worker and its own child was neither forced nor replayed, and the worker's `join`
+  blocked outside the schedule and cost an escape. A woven `Thread.start` now adopts the child into
+  the round under the next slot, at a rank among the existing priorities drawn from the seed, so the
+  order of the starts decides it. The child is a candidate from the moment it is adopted, so who
+  runs never depends on how long the OS takes to start a thread; it joins at its first point, and
+  touches nothing woven before then. An untimed `join` on a child waits inside the schedule, and a
+  child whose thread has ended is done rather than escaped. Executor tasks are not scheduled. Tests:
+  `ControlledScheduleChildThreadTest` (the woven start and join made by hand) went red ("no seed in
+  1..64 lost the update between a worker and its child"); `ControlledScheduleChildThreadWeavingTest`
+  runs `new Thread(...).start()` and `join()` in unmodified code through the real weaver, finds a
+  losing and a keeping seed, replays each 10 of 10 with no escape, and went red with the hooks
+  unwired ("seed 1 must lose the update on every replay").
+
 ### Fixed
 
 - **A refused runtime attach blamed the wrong switch.** `AsyncTestAgent.selfAttach` and the
