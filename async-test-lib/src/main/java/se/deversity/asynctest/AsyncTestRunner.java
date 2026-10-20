@@ -136,7 +136,9 @@ public final class AsyncTestRunner {
         // assert on them.
         AsyncFindings findings = AsyncFindings.collect();
         try {
-            ConcurrencyRunner.execute(context, config);
+            // The context names BodyHolder, in this library's package; the body's own class is in
+            // the caller's, which is what the default agent attach weaves (#1042).
+            ConcurrencyRunner.executeForCodeIn(context, config, body.getClass());
         } finally {
             findings.close();
         }
