@@ -204,6 +204,17 @@
         <Class name="se.deversity.asynctest.agent.AgentOptions"/>
     </Match>
 
+    <!-- IMPROPER_UNICODE - the same reasoning for the runner's side of the agent arguments.
+         AgentAutoAttach.plan compares -Dasynctest.agent to "off" and "false" with
+         equalsIgnoreCase, and the rule fires on equalsIgnoreCase whatever it compares. The
+         result only decides whether the developer's own test JVM attaches the agent; no
+         privilege depends on it. Scoped to the one method. -->
+    <Match>
+        <Bug pattern="IMPROPER_UNICODE"/>
+        <Class name="se.deversity.asynctest.runner.AgentAutoAttach"/>
+        <Method name="plan"/>
+    </Match>
+
     <!-- INFORMATION_EXPOSURE_THROUGH_AN_ERROR_MESSAGE — printing the failure is the
          method's entire job. Byte Buddy calls onError when it cannot instrument a
          class, and the agent's contract is to say which class and why on the

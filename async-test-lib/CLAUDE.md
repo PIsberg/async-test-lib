@@ -106,7 +106,7 @@ you are editing here.
     <element path="se.deversity.asynctest.diagnostics.SiteCapture.Site" rules=".claude/rules/async-test-detectors.md"/>
     <elements in="se.deversity.asynctest.extension" rules=".claude/rules/async-test-runtime-core.md">AsyncTestExtension, AsyncTestInvocationInterceptor</elements>
     <elements in="se.deversity.asynctest.report" rules=".claude/rules/async-test-public-api.md">Formatter, JUnitXmlReportListener, JsonFormatter, JsonReportListener, MarkdownFormatter, SarifFormatter, Violation</elements>
-    <elements in="se.deversity.asynctest.runner" rules=".claude/rules/async-test-runtime-core.md">ConcurrencyRunner, LicenseGuard, LicenseValidationCache</elements>
+    <elements in="se.deversity.asynctest.runner" rules=".claude/rules/async-test-runtime-core.md">AgentAutoAttach, ConcurrencyRunner, LicenseGuard, LicenseValidationCache</elements>
     <elements in="se.deversity.asynctest.spi" rules=".claude/rules/async-test-public-api.md">Detector, DetectorFactory, DetectorRegistry</elements>
     <element path="se.deversity.asynctest.telemetry.TelemetryBridge" rules=".claude/rules/async-test-instrumentation.md"/>
   </scoped_rules>

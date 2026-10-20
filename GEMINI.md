@@ -93,7 +93,7 @@ Detailed per-element guardrails live in scoped rule files that Gemini CLI does n
 - `se.deversity.asynctest.diagnostics.SiteCapture.Site` → `.gemini/rules/async-test-detectors.md`
 - `se.deversity.asynctest.extension`: `AsyncTestExtension`, `AsyncTestInvocationInterceptor` → `.gemini/rules/async-test-runtime-core.md`
 - `se.deversity.asynctest.report`: `Formatter`, `JUnitXmlReportListener`, `JsonFormatter`, `JsonReportListener`, `MarkdownFormatter`, `SarifFormatter`, `Violation` → `.gemini/rules/async-test-public-api.md`
-- `se.deversity.asynctest.runner`: `ConcurrencyRunner`, `LicenseGuard`, `LicenseValidationCache` → `.gemini/rules/async-test-runtime-core.md`
+- `se.deversity.asynctest.runner`: `AgentAutoAttach`, `ConcurrencyRunner`, `LicenseGuard`, `LicenseValidationCache` → `.gemini/rules/async-test-runtime-core.md`
 - `se.deversity.asynctest.spi`: `Detector`, `DetectorFactory`, `DetectorRegistry` → `.gemini/rules/async-test-public-api.md`
 - `se.deversity.asynctest.telemetry.TelemetryBridge` → `.gemini/rules/async-test-instrumentation.md`
 <!-- VIBETAGS-END -->

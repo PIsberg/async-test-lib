@@ -2,11 +2,71 @@
 
 Part of the [Agent Instrumentation Guide](../AGENT.md).
 
-## 3. How to attach (all three ways)
+## 3. How to attach (at startup, as a runtime fallback, or three explicit ways)
 
 The agent JAR (`async-test-agent`, not the library JAR — the manifest moved there in the
 module split) is the agent-capable artifact: its `MANIFEST.MF` declares `Premain-Class`,
 `Agent-Class`, `Can-Retransform-Classes: true`, and `Can-Redefine-Classes: true`.
+
+### 3.0 Recommended: at startup, from the build
+
+Start the test JVM with `-javaagent:` and every class loads already woven. This is the route
+[JEP 451](https://openjdk.org/jeps/451) endorses: loading an agent into a running JVM prints a
+warning on JDK 21 and later, and a future JDK will refuse it by default. The build has to name the
+agent jar's path, which the README quick start does in two plugin blocks for Maven
+(`dependency:properties`, then surefire's `argLine`) and a configuration for Gradle. Those snippets
+are the build of [`consumer-fixture-langs/quickstart`](../../consumer-fixture-langs/quickstart),
+which CI runs under Maven and Gradle, and `QuickStartAgentSnippetTest` fails if the README and the
+fixture drift apart. The fixture's test fails unless the agent arrived by `-javaagent:` and found
+the README's race.
+
+The quick start passes `fields=true,collections=true,includes=com.example`: field instructions and
+collection calls, woven only in classes under your own package prefix, so JUnit and the build tool
+stay unwoven. If JaCoCo or another plugin also sets surefire's `argLine`, start yours with
+`@{argLine} `.
+
+### 3.0.1 Fallback: loaded at runtime by the runner
+
+With the `async-test-agent` artifact on the test classpath but no agent started with the JVM, the
+runner loads it into the running JVM before the first round of the first `@AsyncTest`. Which
+arguments it uses:
+
+| `-Dasynctest.agent` | Agent on the classpath | What the runner does |
+|---|---|---|
+| unset | yes | loads it with `fields=true,collections=true,includes=<the first three segments of the test class's package>` |
+| unset | no | nothing, and logs nothing |
+| `off` or `false` | either | nothing |
+| any other value, `""` included | either | loads it with that value verbatim, as after `-javaagent:...=` |
+
+The runner does nothing when an agent is already running, attached with `-javaagent:` or by a
+`selfAttach` in setup: explicit configuration always wins. A test class in the default package,
+and a body run through `AsyncTestRunner` (whose invocation names the library's own class), get no
+default, because there is no project package to scope the weaving to
+([#1042](https://github.com/PIsberg/async-test-lib/issues/1042)). The log line
+`runner.agent.attached source=classpath mode=runtime args="..." hint="..."` names what was chosen and
+points at the startup route.
+
+It is a fallback, not a setup. Checked on 2026-10-19 with a program that calls `selfAttach` and
+nothing else: on JDK 21.0.9 and on JDK 26 the load succeeds and the JVM prints four `WARNING` lines,
+the last one "Dynamic loading of agents will be disallowed by default in a future release". Started
+with `-XX:-EnableDynamicAgentLoading`, which is that future default, the same JDK 26 refuses it,
+`selfAttach` throws (`SelfAttachRefusedTest` reproduces this), and the runner logs
+`runner.agent.attach.failed reason=attach-refused` and runs uninstrumented: the README's example
+would report nothing again. `-XX:+EnableDynamicAgentLoading` in the test JVM's arguments silences
+the warning and keeps the fallback working on such a JDK, but a build that can add a JVM argument
+can add `-javaagent:` instead.
+
+Measured with this fallback on 2026-10-19 (Windows 11, JDK 26, five runs each way): the load and the
+retransformation of the already-loaded classes took about 0.6 s, once per JVM. A body making 200
+synchronized calls on a map-backed service, at `threads = 10, invocations = 100`, took 3.4 s with the
+agent and 1.1 s with `-Dasynctest.agent=off`, so woven code ran roughly three times slower in that
+hot loop. The startup route skips the retransformation; the woven code is the same.
+
+If the artifact is missing while the property is set, or the JVM refuses the load, the runner logs
+`runner.agent.attach.failed` once and continues without instrumentation rather than failing the
+suite.
+
+The three ways below are the explicit forms.
 
 ### 3.1 Launch flag (static attach), plain
 
@@ -423,12 +483,6 @@ Three limits worth knowing before switching it on:
   decorator's `super.get(...)` must stay an `INVOKESPECIAL`, or the substitution would re-dispatch
   virtually into the override and recurse.
 
-**Reaching it without a `-javaagent` path.** `-Dasynctest.agent=fields=true` makes the runner
-attach the agent itself at the start of the run, so you do not have to resolve the jar's path in
-your build. It needs the `async-test-agent` artifact on the test classpath; if it is missing, or
-the JVM forbids self-attachment, the runner logs `runner.agent.attach.failed` once and continues
-without instrumentation rather than failing the suite.
-
 **Named modules.** Woven code calls into the library, so a woven class in a named module has to
 read the library's module. The JVM gives every transformed class a read edge to the unnamed module
 of the agent's loader, which covers a library on the class path. For a library on a module path
@@ -536,14 +590,19 @@ double-weaving. `selfAttach()` is therefore safe to call unconditionally even wh
 `-javaagent:` flag may already be present, and safe to call concurrently from multiple
 threads.
 
-**If the JVM forbids self-attach.** Self-attachment is disabled by default on JDK 9+ unless
-the JVM was started with `-Djdk.attach.allowAttachSelf=true`. When attachment is refused,
-`selfAttach` throws an `IllegalStateException` (it does **not** swallow the failure) whose
-message directs you to set that flag or fall back to the `-javaagent:` launch flag.
+**If the JVM refuses the load.** A JVM started with `-XX:-EnableDynamicAgentLoading`, the
+default JEP 451 announces for a future JDK, refuses any agent loaded at runtime. `selfAttach` then
+throws an `IllegalStateException` (it does **not** swallow the failure) whose message names that
+switch and the `-javaagent:` launch flag, which keeps working (`SelfAttachRefusedTest`).
+`-Djdk.attach.allowAttachSelf` is not what decides it: with self-attach off, Byte Buddy attaches
+from a helper process instead.
 
 ### 3.4 Build snippets for self-attach
 
-Self-attach needs `-Djdk.attach.allowAttachSelf=true` on the test JVM.
+These keep a runtime attach quiet and working: `-Djdk.attach.allowAttachSelf=true` lets Byte
+Buddy attach in-process instead of from a helper process, and `-XX:+EnableDynamicAgentLoading`
+hides the JDK 21+ warning and keeps the load allowed once a JDK refuses it by default. Prefer
+[section 3.0](#30-recommended-at-startup-from-the-build) where you can.
 
 **Maven (surefire):**
 

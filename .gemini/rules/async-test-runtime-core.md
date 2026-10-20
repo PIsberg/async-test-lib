@@ -91,8 +91,11 @@ When modifying these elements, audit for:
 - **Reason**: Holds the licence key and the licensed user's email, and the record's generated toString() prints both, so never log or format a Fingerprint whole. The email may reach the licence provider (Keygen user scope, LemonSqueezy binding) and a denial message in that user's own build; disk sees either value only inside the SHA-256 LicenseValidationCache stores. Never put one in an INFO line, a report, SARIF or JUnit XML: those end up in CI logs and published artifacts.
 
 ## Contract-Frozen Signature
+- **Constraint**: You may change internal logic, but MUST NOT modify the method name, parameters, return type, or checked exceptions.
 
 ### se.deversity.asynctest.extension.AsyncTestExtension
-- **Constraint**: You may change internal logic, but MUST NOT modify the method name, parameters, return type, or checked exceptions.
 - **Reason**: JUnit 5 TestTemplateInvocationContextProvider SPI. The two overridden methods (supportsTestTemplate, provideTestTemplateInvocationContexts) must preserve their exact signatures as mandated by JUnit.
+
+### se.deversity.asynctest.runner.AgentAutoAttach
+- **Reason**: The -Dasynctest.agent values are typed in users' builds and in this repository's own: corpus-eval's recording and agent-off lanes set it to off, and each lane is valid only while the agent stays detached, so renaming or dropping the opt-out silently attaches the agent there and voids both lanes' measurements. This is the fallback, not the recommended route: loading an agent into a running JVM warns on JDK 21+ and JEP 451 says a future JDK will refuse it, so the README quick start attaches at startup with -javaagent and this class must keep logging mode=runtime with a hint naming that route (AttachedByDefaultTest). Its default arguments (fields=true,collections=true, includes= the first three segments of the test class's package) are documented in docs/agent/attaching.md section 3.0.1 with measured costs. The default must never attach without an include: an empty includes= weaves JUnit and the build tool in every consumer's test JVM.
 <!-- VIBETAGS-END -->

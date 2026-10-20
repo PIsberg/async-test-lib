@@ -242,6 +242,10 @@
                                 <license.mock.mode>true</license.mock.mode>
                                 <async-test.strict-detectors>true</async-test.strict-detectors>
                                 <corpus.lane>recording</corpus.lane>
+                                <!-- The agent is a dependency of this module, and the runner attaches it
+                                     by default when it is on the test classpath; this lane is defined by
+                                     its absence. -->
+                                <asynctest.agent>off</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>
@@ -345,6 +349,10 @@
                                 <license.mock.mode>true</license.mock.mode>
                                 <async-test.strict-detectors>true</async-test.strict-detectors>
                                 <corpus.lane>agent-off</corpus.lane>
+                                <!-- The agent is a dependency of this module, and the runner attaches it
+                                     by default when it is on the test classpath; this lane is defined by
+                                     its absence. -->
+                                <asynctest.agent>off</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>

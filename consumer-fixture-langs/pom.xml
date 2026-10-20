@@ -33,6 +33,7 @@
         <module>groovy</module>
         <module>scala</module>
         <module>clojure</module>
+        <module>quickstart</module>
     </modules>
 
     <properties>

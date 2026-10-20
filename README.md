@@ -189,10 +189,49 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
        <version>1.13.2</version>
        <scope>test</scope>
    </dependency>
+   <dependency>
+       <groupId>se.deversity.async-test-lib</groupId>
+       <artifactId>async-test-agent</artifactId>
+       <version>1.13.2</version>
+       <scope>test</scope>
+   </dependency>
    ```
+
+   The second artifact is the instrumentation agent. Start the test JVM with it, in
+   `<build><plugins>`: `dependency:properties` puts the agent jar's path in a property, and
+   surefire's `argLine` hands it to `-javaagent:`.
+
+   <!-- quickstart-agent-maven: kept equal to consumer-fixture-langs/quickstart/pom.xml -->
+   ```xml
+   <plugin>
+       <groupId>org.apache.maven.plugins</groupId>
+       <artifactId>maven-dependency-plugin</artifactId>
+       <version>3.11.0</version>
+       <executions>
+           <execution>
+               <goals><goal>properties</goal></goals>
+           </execution>
+       </executions>
+   </plugin>
+   <plugin>
+       <groupId>org.apache.maven.plugins</groupId>
+       <artifactId>maven-surefire-plugin</artifactId>
+       <configuration>
+           <argLine>-javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=fields=true,collections=true,includes=com.example</argLine>
+       </configuration>
+   </plugin>
+   ```
+
+   Replace `com.example` with your own package prefix: the agent weaves only classes whose
+   name starts with it. If JaCoCo or another plugin also sets `argLine`, start the line with
+   `@{argLine} ` so both agents load. CI builds this exact snippet in
+   [`consumer-fixture-langs/quickstart`](consumer-fixture-langs/quickstart) and fails if it
+   stops attaching the agent or stops finding the example's race.
 
 2. **Write your first stress test**:
    ```java
+   package com.example;
+
    import se.deversity.asynctest.AsyncTest;
    import se.deversity.asynctest.FailOn;
 
@@ -207,28 +246,35 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    }
    ```
 
+   The package matters: the agent weaves only classes under step 1's `includes=` prefix, and
+   a test in the default package is woven by nothing and reports nothing. Keep the two in
+   step when you move the test into your own package.
+
    `failOn = FailOn.CRITICAL` makes a finding fail the test. The default is
    `FailOn.NONE`, which prints findings and lets the test pass — useful when adding
    `@AsyncTest` to an existing suite, surprising as a first experience.
 
 3. **Run your tests**:
    ```bash
-   mvn test -Dlicense.mock.mode=true -Dasynctest.agent=fields=true
+   mvn test -Dlicense.mock.mode=true
    ```
 
-   Two flags, both worth understanding before you drop them:
-
-   - **`-Dlicense.mock.mode=true`** — without a licence key the run stops with
+   - **`-Dlicense.mock.mode=true`**: without a licence key the run stops with
      `LICENSE DENIED`. CI sets mock mode automatically (`CI` or `GITHUB_ACTIONS` in the
      environment); a local run needs the flag. See [License](#license).
-   - **`-Dasynctest.agent=fields=true`** — attaches the instrumentation agent so a bare
-     `counter++` is observed. **Without it this example passes and reports nothing.**
-     `counter++` compiles to a field read and a field write with no method call, so
-     nothing can see it unless the bytecode is instrumented. Add
-     `async-test-agent` as a test dependency for this flag to find anything; the runner
-     logs `runner.agent.attach.failed` if the artifact is missing.
+   - **The agent is what sees `counter++`.** It compiles to a field read and a field write
+     with no method call between them, so only instrumented bytecode shows it. **Without
+     the agent this example passes and reports nothing.** Woven code runs slower: a body
+     making 200,000 synchronized calls took 3.4 s instead of 1.1 s.
+   - **Skipped the plugin blocks?** With `async-test-agent` on the test classpath but not on
+     the command line, the runner loads it into the running JVM before the first round
+     instead, and logs `runner.agent.attached source=classpath`. That works on JDK 21 to 26,
+     but the JVM prints a four-line `WARNING` about it, and JEP 451 says a future JDK will
+     refuse it; the runner then logs `runner.agent.attach.failed` and the example reports
+     nothing again. Treat it as a fallback, not a setup. `-Dasynctest.agent=off` turns it
+     off ([attaching the agent](docs/agent/attaching.md)).
 
-   Detection that needs neither flag: deadlocks, which are read from the JVM's own
+   Detection that needs no agent: deadlocks, which are read from the JVM's own
    thread state. If you want to see the library find something with zero setup, make two
    threads take two locks in opposite orders.
 
@@ -238,12 +284,34 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
 <summary><b>Gradle</b></summary>
 
 1. **Add the dependency** to `build.gradle.kts`:
+   <!-- quickstart-agent-gradle: kept equal to consumer-fixture-langs/quickstart/build.gradle.kts -->
    ```kotlin
-   testImplementation("se.deversity.async-test-lib:async-test-lib:1.13.2")
+   val asyncTestAgent = configurations.create("asyncTestAgent") {
+       isTransitive = false
+   }
+
+   dependencies {
+       testImplementation("se.deversity.async-test-lib:async-test-lib:1.13.2")
+       asyncTestAgent("se.deversity.async-test-lib:async-test-agent:1.13.2")
+   }
+
+   tasks.test {
+       useJUnitPlatform()
+       doFirst {
+           jvmArgs("-javaagent:${asyncTestAgent.singleFile}=fields=true,collections=true,includes=com.example")
+       }
+   }
    ```
+
+   The second artifact is the instrumentation agent, given its own configuration so the test
+   JVM can be started with it (`-javaagent:`). Replace `com.example` with your own package
+   prefix: the agent weaves only classes whose name starts with it. CI builds this exact
+   snippet in [`consumer-fixture-langs/quickstart`](consumer-fixture-langs/quickstart).
 
 2. **Write your first stress test**:
    ```java
+   package com.example;
+
    import se.deversity.asynctest.AsyncTest;
    import se.deversity.asynctest.FailOn;
 
@@ -258,21 +326,21 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    }
    ```
 
-   `failOn = FailOn.CRITICAL` makes a finding fail the test; the default `FailOn.NONE`
-   prints findings and passes.
+   The package must sit under step 1's `includes=` prefix: a test in the default package is
+   woven by nothing and reports nothing. `failOn = FailOn.CRITICAL` makes a finding fail the
+   test; the default `FailOn.NONE` prints findings and passes.
 
 3. **Run your tests**:
    ```bash
-   ./gradlew test -Dlicense.mock.mode=true -Dasynctest.agent=fields=true
+   ./gradlew test -Dlicense.mock.mode=true
    ```
 
    `-Dlicense.mock.mode=true` is what a local run without a licence key needs (CI
-   activates mock mode by itself). `-Dasynctest.agent=fields=true` attaches the
-   instrumentation agent — **without it this example passes and reports nothing**,
-   because `counter++` is a field read and write with no method call for the weaver to
-   bind to. Add `async-test-agent` as a test dependency for the flag to do anything.
+   activates mock mode by itself). The `-javaagent:` from step 1 is what sees `counter++`,
+   a field read and write with no method call between them: **without it this example
+   passes and reports nothing**.
 
-   Deadlock detection needs neither flag; it reads the JVM's own thread state.
+   Deadlock detection needs no agent; it reads the JVM's own thread state.
 
 </details>
 
