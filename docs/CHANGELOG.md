@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The Inquisitor runs on a Claude subscription token, as it does in vibetags.** Its preflight
+  looked only for `ANTHROPIC_API_KEY`, which this repository does not carry, so every run concluded
+  success with the Adversarial Review job skipped: the adversarial lane had never reviewed a pull
+  request here. It now also accepts `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) and hands
+  both to `claude-code-action`, whose pinned commit declares the `claude_code_oauth_token` input.
+  `InquisitorCredentialGateTest` fails when the preflight and the review step stop agreeing; it was
+  red on the old preflight, and red again with only the step's token input removed. The lane stays
+  advisory, outside the required checks.
 - **The README quick start attaches the agent at JVM startup, and the runner loads it at runtime
   only as a fallback.** The README's first example, a bare `counter++`, passed and reported nothing
   unless the user also passed `-Dasynctest.agent=fields=true`; adding the agent artifact was not
