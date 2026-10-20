@@ -106,7 +106,8 @@ draws the same 12 per-worker sequences, another seed draws others, and dropping 
 the seed (workers sharing one stream) turns that test red. In both directions, a drawn mix of
 `increment` and `get` on an `AtomicInteger` stays linearizable over 10 rounds, and the same mix on a
 counter that reads, sleeps 1 ms and writes fails, with no interleaving scripted by the test. Unlike
-Lincheck, the runner does not search over scenarios or shrink a failing one; it draws per round.
+Lincheck, the runner does not enumerate scenarios; it draws per round. A failing drawn round is
+shrunk by re-running it, below.
 
 ## Reporting through the run (#934)
 
@@ -188,6 +189,35 @@ are the read-modify-write users write over commons-lang3's `MutableInt` (`getVal
 `setValue(read + 1)`), alone and inside a `ConcurrentHashMap`, and are reported as not linearizable,
 not merely as over the size bound. Each was run 3 times pinned to 2 CPUs and 3 times on 16.
 
+### The smallest failing scenario (#1025)
+
+The prefix shrinks what was observed. For a round whose operations were drawn with `generate`,
+`assertLinearizable` also shrinks what was run: it replays the round's drawn scenario with
+operations left out and reports the smallest one that still fails, under a line such as
+`Shrunk by re-running the drawn scenario under the round's seed and a controlled schedule: 2 of the
+18 drawn operations still fail, under replaySeed = ...L`, then one line per worker.
+
+Each attempt is one `AsyncTestRunner.run` of a probe history holding the same declared operations,
+with `controlledSchedule = true`, one round, and only the workers the candidate uses, so the user's
+history records nothing and a subset under a seed replays one interleaving. The search is delta
+debugging (Zeller's ddmin) over the drawn operations, each worker's kept in its order. A candidate
+counts as failing when it fails under any of 64 seeds, the round's own first: leaving an operation
+out moves every later scheduling step, so the interleaving that broke the full scenario is not the
+one a smaller scenario replays under the same seed. The search stops after 2,000 runs and says so.
+
+Three things it does not do. It shrinks only drawn rounds: operations recorded with `call` were not
+drawn, so there is no scenario to replay. It runs only from `assertLinearizable`, after the test's
+rounds; `verifiedAgainst` checks at analysis, inside the run, where a nested run cannot start. And
+a failure that depends on timing outside the schedule, such as a `Thread.sleep` between a read and
+a write, may not replay; the report then says the scenario did not fail when re-run.
+
+`LinearizabilityScenarioShrinkTest` covers it: a counter whose increment reads, reaches a
+scheduling point and writes, drawn with `get`s as noise over three workers, shrinks from 18
+operations to two increments on two workers. A round recorded with `call` is not shrunk, and a
+linearizable round re-runs nothing. Two defects the test found on the way: steps were compared by
+value, so removing one of a worker's two `increment()`s removed both and the pair was never tried;
+and an idle third worker in every attempt changed which interleavings a seed reached.
+
 ## Limits
 
 - **Observation cannot force a race.** The check proves a history impossible; it cannot make a
@@ -197,7 +227,6 @@ not merely as over the size bound. Each was run 3 times pinned to 2 CPUs and 3 t
   `controlledSchedule = true` is the other way: with a `schedulePoint()` (or a woven field access)
   between the read and the write, the replay seed decides whether the round switches workers there,
   and a seed that broke the object breaks it on every replay.
-- **No scenario search, and shrinking only by prefix.** `generate` draws a scenario per round from
-  the replay seed; unlike Lincheck it does not explore scenarios systematically, and it does not
-  re-run a failing scenario with operations removed. The report cuts the observed history to its
-  shortest impossible prefix, which needs no re-run. Both are #1025.
+- **No systematic scenario search.** `generate` draws a scenario per round from the replay seed;
+  unlike Lincheck it does not enumerate small scenarios. A failing drawn round is shrunk by re-running
+  it (#1025), but a scenario no round drew is never tried.

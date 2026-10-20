@@ -221,6 +221,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the 100 documented-thread-safe subjects through the agent and draws no finding on any, with
   every other row unchanged.
 
+- **A failing drawn linearizability round is shrunk by re-running it (#1025).** For a round whose
+  operations `OperationHistory.generate` drew, `assertLinearizable` now replays the drawn scenario
+  with operations left out, delta debugging style, each attempt an `AsyncTestRunner.run` of a probe
+  history under a controlled schedule and one of 64 seeds, and appends the smallest scenario that
+  still fails, per worker, with the seed that reproduces it, beside the shortest impossible prefix.
+  The probe records nothing into the test's history. Rounds recorded with `call`, and checks made
+  with `verifiedAgainst` at analysis, are not shrunk. `AsyncTestContext.Round` now carries its worker
+  count and the context its run's licence mode, which the re-runs repeat. Test:
+  `LinearizabilityScenarioShrinkTest`, red ("the failure must carry the shrunk scenario"), then green
+  with 18 drawn operations shrunk to two increments on two workers.
+
 ### Fixed
 
 - **The release build runs on the runner image's Maven again (#974).** Since #949 `publish.yml`
