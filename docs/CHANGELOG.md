@@ -210,6 +210,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leaves behind (the running worker queued on the lock with `inside` still false) and was red
   ("expected: <0> but was: <1>"), then green.
 
+- **An arriving child thread waiting on the scheduler's own lock was counted as an escape (#1072).**
+  The same race on the path of a child the body started (#1024): a child granted the turn arrives
+  through the schedule's lock before it has a slot, and `watchArriving()` read it `WAITING` there
+  as an escape. Seen once as `escapes=1` in `ControlledScheduleChildThreadTest` under parallel load.
+  Test: `ControlledScheduleWatchTest.anArrivingChildQueuedOnTheSchedulesOwnLockHasNotEscaped` was
+  red ("expected: <0> but was: <1>"), then green.
+
 - **`ControlledScheduleTest.aFixedSeedReplaysTheSameInterleaving` failed once on a loaded CI
   runner (#1063).** Exact replay is promised only for a round no worker escaped, and a worker that
   stalls past the schedule's stall limit on a busy machine is counted as an escape precisely

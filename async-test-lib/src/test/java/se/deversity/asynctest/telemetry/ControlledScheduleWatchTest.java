@@ -78,4 +78,53 @@ class ControlledScheduleWatchTest {
             schedule.close();
         }
     }
+
+    @Test
+    void anArrivingChildQueuedOnTheSchedulesOwnLockHasNotEscaped() throws Exception {
+        // The same race on the child path (#1072): a child granted the turn arrives through join(),
+        // which takes the schedule's lock before it fills its slot, so watch() takes the
+        // watchArriving branch and must not read that wait as an escape.
+        ControlledSchedule schedule = ControlledSchedule.open(1, 7L);
+        Field lockField = ControlledSchedule.class.getDeclaredField("lock");
+        lockField.setAccessible(true);
+        ReentrantLock lock = (ReentrantLock) lockField.get(schedule);
+        Method watch = ControlledSchedule.class.getDeclaredMethod("watch");
+        watch.setAccessible(true);
+
+        Thread child = new Thread(() -> {
+            // What join() does first: take the schedule's lock, before the child has a slot.
+            lock.lock();
+            lock.unlock();
+        }, "arriving-child");
+        Thread worker = new Thread(() -> {
+            schedule.enter(0);
+            ControlledSchedule.starting(child);
+            schedule.leave(); // the round goes to the only ready slot: the child
+        }, "adopting-worker");
+        try {
+            worker.start();
+            worker.join(TimeUnit.SECONDS.toMillis(10));
+            lock.lock();
+            try {
+                child.start();
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                while (!(lock.hasQueuedThread(child) && child.getState() == Thread.State.WAITING)
+                        && System.nanoTime() < deadline) {
+                    Thread.onSpinWait();
+                }
+                assertTrue(lock.hasQueuedThread(child), "the child queues on the schedule's lock");
+
+                watch.invoke(schedule);
+
+                assertEquals(0, schedule.summary().escapes(),
+                        "the arriving child waits for nothing but the schedule's own lock, which the"
+                                + " watching worker holds; that is not an escape");
+            } finally {
+                lock.unlock();
+            }
+            child.join(TimeUnit.SECONDS.toMillis(10));
+        } finally {
+            schedule.close();
+        }
+    }
 }
