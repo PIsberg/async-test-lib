@@ -51,6 +51,16 @@ class DetectorCatalogCoverageTest {
     private static final String ANALYSIS_DIR = "analysis";
 
     /**
+     * Pages under {@code docs/analysis/} that are current claims rather than a record.
+     *
+     * <p>{@code comparison.md} is the user-facing comparison with other tools, routed from
+     * {@code INDEX.md} beside the guides, and it lives in {@code analysis/} only because it was
+     * extracted from an old README. The blanket exemption let it say "127 detectors" while the enum
+     * had 148.
+     */
+    private static final List<String> CURRENT_ANALYSIS = List.of("comparison.md");
+
+    /**
      * Counts that are about somebody else's detectors.
      *
      * <p>Currently one: find-sec-bugs ships 121 detectors of its own, counted from the plugin
@@ -88,9 +98,13 @@ class DetectorCatalogCoverageTest {
      * next to the word: "Phase 10 detectors" is a phase label, and "JDK 25/26 detectors" is a
      * platform version. Both were flagged by a first version of this pattern, which is a good
      * reminder that a gate reporting things that are not defects gets switched off.
+     *
+     * <p>Any whitespace separates the number from the word, a line break included: prose is wrapped
+     * at a fixed width, and a literal space let {@code comparison.md}'s "127" and
+     * {@code CI_INTEGRATION.md}'s "142" sit unseen at the end of a line.
      */
     private static final Pattern CLAIM =
-            Pattern.compile("(?<!Phase )(?<!JDK )(?<![0-9]/)\\b(\\d{2,4}) detector");
+            Pattern.compile("(?<!Phase )(?<!JDK )(?<![0-9]/)\\b(\\d{2,4})\\s+detector");
 
     /**
      * The same claim made about the enum instead of the word "detector".
@@ -152,7 +166,8 @@ class DetectorCatalogCoverageTest {
         Map<String, List<String>> wrong = new LinkedHashMap<>();
         for (Path file : markdownFiles(docs)) {
             String name = file.getFileName().toString();
-            if (HISTORICAL.contains(name) || file.getParent().endsWith(ANALYSIS_DIR)) {
+            if (HISTORICAL.contains(name)
+                    || (file.getParent().endsWith(ANALYSIS_DIR) && !CURRENT_ANALYSIS.contains(name))) {
                 continue;
             }
             collectWrongClaims(read(file), expected, name,
@@ -184,6 +199,18 @@ class DetectorCatalogCoverageTest {
                         + "or if the count genuinely changed, let this test tell you every place "
                         + "that needs to follow. Historical statements belong in "
                         + HISTORICAL + ", which is exempt.");
+    }
+
+    @Test
+    @DisplayName("a count wrapped onto the next line is still a count")
+    void aClaimSplitByALineBreakIsCaught() {
+        Map<String, List<String>> wrong = new LinkedHashMap<>();
+
+        collectWrongClaims("Most of its 127\n  detectors observe only what", 148, "x.md", "x.md", wrong);
+
+        assertTrue(wrong.containsKey("x.md"),
+                "prose is wrapped at a fixed width, so the number and the word land on two lines "
+                        + "as often as on one; comparison.md hid a stale 127 that way");
     }
 
     private static void collectWrongClaims(String body, int expected, String fileName,

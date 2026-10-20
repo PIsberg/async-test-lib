@@ -46,6 +46,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `-javaagent:` route. `SelfAttachRefusedTest` forks a JVM with the switch off and was red on the old
   message. `docs/agent/attaching.md` sections 3.3 and 3.4 said the same and are corrected.
 
+- **`docs/analysis/comparison.md` said the library had 127 detectors and no happens-before race
+  detection.** The enum has 148, and since 1.12.3 the agent-fed happens-before model orders the
+  conflicting accesses the race detectors consult. The page now describes that, the experimental
+  `OperationHistory` linearizability check beside Lincheck, and names no detector count. The count
+  gate missed it twice over: `DetectorCatalogCoverageTest` exempted all of `docs/analysis/` as
+  historical, and its pattern required a literal space between the number and "detector", so a
+  number wrapped onto the next line was invisible. The gate now checks `comparison.md` (the one
+  current page in that directory) and accepts any whitespace; widening the pattern also surfaced
+  `docs/CI_INTEGRATION.md`'s historical "86 of the 142 detectors", rephrased so it no longer reads
+  as a current count. Test: `aClaimSplitByALineBreakIsCaught`, red before the pattern change, and
+  the prose test went red on both files before the prose was fixed.
+
 ## [1.13.2] - 2026-10-18
 
 ### Added
