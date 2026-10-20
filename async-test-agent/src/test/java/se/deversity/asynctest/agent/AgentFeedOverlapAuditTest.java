@@ -126,9 +126,9 @@ class AgentFeedOverlapAuditTest {
     }
 
     @Test
-    void visibility_isAGap() {
+    void visibility_constantFlagIsReported() {
         FeedAuditSubjects.Publication buggy = new FeedAuditSubjects.Publication();
-        assertRow("2 VISIBILITY buggy", Set.of(), detectorsReporting("2 VISIBILITY buggy", slot -> {
+        assertRow("2 VISIBILITY buggy", Set.of("AtomicityValidator"), detectorsReporting("2 VISIBILITY buggy", slot -> {
             if (slot == 0) {
                 buggy.publish();
             } else {

@@ -1387,6 +1387,17 @@ public class AtomicityValidator {
                             && noLockCoveredTheRound(roundAccesses)
                             && !locks.isSafePublication(roundAccesses)
                             && !locks.writesOnlyOneConstant());
+                // The constant-write excuse answers atomicity only (#1053): a flag every write sets
+                // to one constant cannot lose an update, but a thread that only reads it, with no
+                // lock and no edge in between, may never see the write. Judged on a known receiver
+                // only: identity 0 also pools unrelated objects recorded without one. Any volatile
+                // bit rules it out, the declared kind and the bridge's safely-published mark on a
+                // read that followed a volatile read of the same object alike: either reader sees
+                // the write, and a constant rewritten beside it changes nothing it can observe.
+                boolean unguardedConstantFlag = locks != null && groupIdentity != 0
+                        && locks.writesOnlyOneConstant() && !locks.isVolatileField()
+                        && locks.sawUnguardedAccess() && noLockCoveredTheRound(roundAccesses)
+                        && !locks.isSafePublication(roundAccesses);
                 // The per-instance excuses need a group that is one object's accesses. Identity 0
                 // normally is not: it is the "not known" bucket, where every pre-agent caller's
                 // accesses pool together, and excusing a pool of unrelated receivers because the
@@ -1431,6 +1442,17 @@ public class AtomicityValidator {
                 // Only claim to have looked at locks when an owner was actually supplied.
                 String note = anyOwnerKnown ? SelfGuard.REPORT_NOTE : "";
 
+                if (unguardedConstantFlag && aReaderThatNeverWrote(roundAccesses)
+                        && !HappensBefore.everyConflictOrdered(roundAccesses, true)) {
+                    report.add(report.unorderedPublications, "unorderedPublication", String.format(
+                        "%s: set to one constant by one thread and read by another with no lock and no"
+                                + " happens-before edge between them, so the reader may never see the"
+                                + " write; declare it volatile%s",
+                        entry.getKey(),
+                        note
+                    ));
+                }
+
                 if (threads.size() > 1 && hasRead && hasWrite && sawUnguarded) {
                     report.add(report.unsafeFieldAccesses, "unsafeCompoundAccess", String.format(
                         "%s: mixed read/write compound access across %d threads%s",
@@ -1451,6 +1473,25 @@ public class AtomicityValidator {
         }
 
         return DetectorFailurePolicy.checkedReport(this, report);
+    }
+
+    /** {@return whether some thread in the round read the field and never wrote it} */
+    private static boolean aReaderThatNeverWrote(List<FieldAccessRecord> accesses) {
+        Set<Long> writers = new HashSet<>();
+        for (FieldAccessRecord access : accesses) {
+            if (access.write) {
+                writers.add(access.threadId);
+            }
+        }
+        if (writers.isEmpty()) {
+            return false;
+        }
+        for (FieldAccessRecord access : accesses) {
+            if (!access.write && !writers.contains(access.threadId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** {@return how many distinct threads wrote in {@code accesses}} */
@@ -2023,6 +2064,12 @@ public class AtomicityValidator {
         /** Fields whose state changed between the check and the use (TOCTOU). The field name misspells the acronym; it is public API and kept as-is for compatibility. */
         public final Set<String> totcouRaces = new HashSet<>();
         /**
+         * Plain fields every write sets to one constant, read by another thread with no lock and
+         * no happens-before edge: a visibility defect, the missing-{@code volatile} stop flag,
+         * which the constant-write excuse keeps out of {@link #unsafeFieldAccesses} (#1053).
+         */
+        public final Set<String> unorderedPublications = new HashSet<>();
+        /**
          * The same findings as {@link Violation}s, each {@code HIGH}: the severity the text has
          * always resolved to, stated where the {@code failOn} gate reads first.
          */
@@ -2042,7 +2089,8 @@ public class AtomicityValidator {
         public boolean hasIssues() {
             return !checkThenActViolations.isEmpty()
                 || !unsafeFieldAccesses.isEmpty()
-                || !totcouRaces.isEmpty();
+                || !totcouRaces.isEmpty()
+                || !unorderedPublications.isEmpty();
         }
 
         @Override
@@ -2068,6 +2116,12 @@ public class AtomicityValidator {
                 sb.append("\nTOCTOU windows:\n");
                 for (String race : totcouRaces) {
                     sb.append("  - ").append(race).append('\n');
+                }
+            }
+            if (!unorderedPublications.isEmpty()) {
+                sb.append("\nUnordered flag publications (visibility):\n");
+                for (String publication : unorderedPublications) {
+                    sb.append("  - ").append(publication).append('\n');
                 }
             }
             sb.append("\nFix: synchronize the full compound operation or use CAS-based primitives");
