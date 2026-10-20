@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -96,15 +98,41 @@ class ControlledScheduleTest {
         return false;
     }
 
+    /** {@return the escapes the last controlled round counted, from its DEBUG event} */
+    private int lastRoundEscapes() {
+        List<String> rounds = events("runner.schedule.round");
+        Matcher m = Pattern.compile("escapes=(\\d+)")
+                .matcher(rounds.get(rounds.size() - 1));
+        assertTrue(m.find(), "the round event carries escapes=: " + rounds);
+        return Integer.parseInt(m.group(1));
+    }
+
     @Test
     void aFixedSeedReplaysTheSameInterleaving() throws Throwable {
+        // The promise is exact replay for a round no worker escaped; an escape (a worker that
+        // blocked, or stalled past STALL_NANOS on a loaded machine) is counted precisely because
+        // it voids it. So a pair of runs is compared whenever both were escape-free, and an
+        // escaped one is set aside rather than read as a broken replay (#1063). A real
+        // nondeterminism with no escape still fails here.
+        int compared = 0;
+        List<String> setAside = new ArrayList<>();
         for (long seed = 1; seed <= 5; seed++) {
             List<String> first = trace(seed);
+            boolean firstExact = lastRoundEscapes() == 0;
             assertEquals(12, first.size(), first.toString());
             for (int run = 0; run < 4; run++) {
-                assertEquals(first, trace(seed), "seed " + seed + " must replay its interleaving");
+                List<String> again = trace(seed);
+                if (firstExact && lastRoundEscapes() == 0) {
+                    assertEquals(first, again, "seed " + seed + " must replay its interleaving, and neither"
+                            + " run escaped: " + events("runner.schedule.round"));
+                    compared++;
+                } else {
+                    setAside.add("seed " + seed + " run " + run);
+                }
             }
         }
+        assertTrue(compared >= 16, "too few escape-free pairs to test replay (" + compared + " of 20); set"
+                + " aside: " + setAside + "; rounds: " + events("runner.schedule.round"));
     }
 
     @Test
