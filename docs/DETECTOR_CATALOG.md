@@ -259,6 +259,11 @@ the probed executor `OBSERVED`; the structural note `CONTEXT_FREE` and the churn
 described through `recordPinningEvent` is PROMPT on `ASSERTED`; the row is PROMPT, its weaker path,
 on `OBSERVED`. The observed pin stops at FACT because the JVM says the thread could not unmount,
 not that the cost matters. Its corpus pair is in the agent lane.
+`THREAD_POOL` grades the same way since #1061: a rejection the woven `submit` or `execute` saw the
+executor throw is FACT on `OBSERVED` evidence, one reported through `recordTaskRejected` is FACT on
+`ASSERTED`, and the saturated queue, the busy pool and the long task are PROMPT on `HEURISTIC`; the
+row is PROMPT, its weakest path, on `OBSERVED`. The observed rejection stops at FACT because a
+caller may handle a rejection on purpose, with a retry or a fallback, which the executor cannot tell.
 
 **Advisory tier:** `SHARED_RANDOM` and `SHARED_SECURE_RANDOM`. `Random` and `SecureRandom` are
 thread-safe, so their finding is about contention on one instance rather than corruption of it,
@@ -549,9 +554,11 @@ visitor, which is the argument for having built the path as a mechanism. What re
 static entry has to be worth its instruction, the same bar the virtual ones meet.
 
 **The input is not a call.** `VisibilityMonitor` needs field reads and writes, which is the field
-weaver's stream rather than a call site. `ThreadPoolMonitor` and the rest of the `CompletableFuture`
-family need a task's start and completion as events of their own, and a substituted `submit` sees
-neither: the task runs later, somewhere else. `LazyInitRaceDetector` and `ThisEscapeDetector`
+weaver's stream rather than a call site. The `CompletableFuture` family needs a task's start and
+completion as events of their own, and a substituted `submit` sees neither: the task runs later,
+somewhere else. The same holds for `ThreadPoolMonitor`'s queue, busy-pool and long-task rules,
+which is why only its rejection rule is agent-fed: the refusal happens inside the `submit` call
+itself (#1055). `LazyInitRaceDetector` and `ThisEscapeDetector`
 describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.

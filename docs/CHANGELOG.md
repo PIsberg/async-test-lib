@@ -145,6 +145,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   call made by hand) was red ("Found: []") and is green, with the `CallerRunsPolicy` twin silent;
   the audit's row 4 now pins `ThreadPoolMonitor`.
 
+- **`ThreadPoolMonitor` grades each finding by the path behind it (#1061).** The woven rejection is
+  the executor's own answer, while the detector's other rules compare recorded counts against a
+  bound or a threshold, and the report graded all of them with the one `HEURISTIC` class. The woven
+  `submit` and `execute` now hand the exception to the new
+  `ThreadPoolMonitor.recordRejectedExecution(executor, rejection)`, and the report implements
+  `GradedFindings`: a rejection the executor threw is FACT on `OBSERVED` evidence, one only
+  `recordTaskRejected` reported is FACT on `ASSERTED`, and the saturated queue, the busy pool and the
+  long task are PROMPT on `HEURISTIC`. The observed rejection stops at FACT because a caller may
+  handle a rejection on purpose, with a retry or a fallback, which the executor cannot tell. The
+  `THREAD_POOL` row is PROMPT, its weakest path, on `OBSERVED`, and its
+  `DetectorEvidenceMatchesCodeTest` exemption is gone (ceiling 16 to 15). The hooks' frozen contract
+  said a hook records nothing when the underlying call throws; it now names the rejection as the
+  one exception. Every grade keeps the severity the gate read before. Tests: four new
+  `ThreadPoolMonitorTest` cases and a `DroppedRejectionAgentFeedTest` assertion that the woven path
+  uses the new method, red against a stub that only delegated to `recordTaskRejected`, then green.
+
 ### Fixed
 
 - **`ControlledScheduleTest.aFixedSeedReplaysTheSameInterleaving` failed once on a loaded CI
