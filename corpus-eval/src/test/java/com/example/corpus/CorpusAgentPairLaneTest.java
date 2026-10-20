@@ -164,6 +164,7 @@ class CorpusAgentPairLaneTest {
     static void reportAndGate() throws IOException {
         LANE_OVER.countDown();
         SERVICE_LEFT_RUNNING.stopAsync();
+        LEAKING_SERVICE.stopAsync();
         LEFT_RUNNING.forEach(ExecutorService::shutdownNow);
         System.clearProperty(PROPERTY);
         SHARED_POOL.shutdownNow();
@@ -1423,6 +1424,40 @@ class CorpusAgentPairLaneTest {
             if (SERVICE_STOPPED_STARTED.compareAndSet(false, true)) {
                 SERVICE_STOPPED.startAsync().awaitRunning();
                 SERVICE_STOPPED.stopAsync().awaitTerminated();
+            }
+        });
+    }
+
+    private static final LingeringService LEAKING_SERVICE = new LingeringService();
+
+    private static final LingeringService ENDING_SERVICE = new LingeringService();
+
+    private static final AtomicBoolean LEAKING_SERVICE_STARTED = new AtomicBoolean();
+
+    private static final AtomicBoolean ENDING_SERVICE_STARTED = new AtomicBoolean();
+
+    /**
+     * Starts a Guava service and never stops it, so its thread outlives the run (#1056).
+     *
+     * <p>Nothing is recorded: Guava's own {@code Thread.start} is the woven call that tells
+     * {@code ThreadLeakDetector} the thread exists, and the detector finds it alive at analysis.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_guavaService_leavesItsThreadAlive() {
+        counted(() -> {
+            if (LEAKING_SERVICE_STARTED.compareAndSet(false, true)) {
+                LEAKING_SERVICE.startAsync().awaitRunning();
+            }
+        });
+    }
+
+    /** The same service, stopped and awaited before the run ends, so its thread has ended. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_guavaService_stoppedSoItsThreadEnds() {
+        counted(() -> {
+            if (ENDING_SERVICE_STARTED.compareAndSet(false, true)) {
+                ENDING_SERVICE.startAsync().awaitRunning();
+                ENDING_SERVICE.stopAsync().awaitTerminated();
             }
         });
     }

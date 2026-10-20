@@ -38,7 +38,7 @@ Checked on Windows 11 and JDK 26, three runs, every row identical in all three.
 | 2b, `VISIBILITY` | a computed value published behind the same plain flag | `AtomicityValidator` | not run |
 | 3, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` | a `CompletableFuture` left pending on the exception path | none | none |
 | 4, `THREAD_POOL` | a saturated pool's `RejectedExecutionException` caught and dropped | none | none |
-| 5, `THREAD_LEAKS` | a thread the body starts and never joins | `DaemonThreadHygieneDetector` | none |
+| 5, `THREAD_LEAKS` | a thread the body starts and never joins | `DaemonThreadHygieneDetector`; since #1056 also `ThreadLeakDetector` | none |
 
 What the rows mean:
 
@@ -56,9 +56,10 @@ What the rows mean:
   constant write, and nothing reports it.
 - **The completion leak and the dropped rejection are gaps.** Nothing on the agent path sees a
   future's lifetime or a rejection.
-- **The thread leak is half covered.** `DaemonThreadHygieneDetector` reports the leaked thread for
-  its daemon status, which is a different finding from "this thread outlives the test".
-  `ThreadLeakDetector` stays silent.
+- **The thread leak was half covered.** `DaemonThreadHygieneDetector` reports the leaked thread for
+  its daemon status, which is a different finding from "this thread outlives the test", and
+  `ThreadLeakDetector` stayed silent. It is agent-fed since #1056, the first port, and the row now
+  pins both.
 - **No fixed twin drew a finding**, so none of the current agent-fed detectors misfires on these
   correct shapes.
 
@@ -79,6 +80,6 @@ test, and each flips its row here and in the test. The likely seams, not yet bui
   future still pending when the round ends.
 - **Dropped rejection ([#1055](https://github.com/PIsberg/async-test-lib/issues/1055)):** weave `Executor.execute`/`submit` and report a
   `RejectedExecutionException` the calling method catches without rethrowing.
-- **Thread leak ([#1056](https://github.com/PIsberg/async-test-lib/issues/1056)):** feed `ThreadLeakDetector` from the woven start the runner already attributes
+- **Thread leak ([#1056](https://github.com/PIsberg/async-test-lib/issues/1056), done):** feed `ThreadLeakDetector` from the woven start the runner already attributes
   (`AsyncTestContext.threadSpawned`). It sits in `Preset.ESSENTIALS`, so this adds a PROMPT-tier
   finding to every consumer whose test body starts a thread and does not join it.

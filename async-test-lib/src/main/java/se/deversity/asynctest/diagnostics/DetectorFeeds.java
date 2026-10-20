@@ -98,6 +98,9 @@ public final class DetectorFeeds {
             // setDaemon decisions and observe thread starts directly, resolving the blind spot
             // where threads created on daemon test runner workers inherited daemon status.
             DetectorType.DAEMON_THREAD_HYGIENE,
+            // The same woven Thread.start (#1056): the detector checks at analysis whether each
+            // started thread is still alive, so the start is the only event it needs.
+            DetectorType.THREAD_LEAKS,
             // AtomicReference get, set and compareAndSet (#817), substituted already for the
             // ownership and happens-before models. Recorded by hand, a toggle recorded after a
             // read it ran before reads as an A-B-A; run through the detector, each record is taken

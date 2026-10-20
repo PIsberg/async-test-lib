@@ -199,8 +199,8 @@ class AgentFeedOverlapAuditTest {
     }
 
     @Test
-    void threadLeak_isReportedOnlyAsDaemonHygiene() {
-        assertRow("5 THREAD_LEAKS buggy", Set.of("DaemonThreadHygieneDetector"),
+    void threadLeak_isReportedByThreadLeakDetector() {
+        assertRow("5 THREAD_LEAKS buggy", Set.of("DaemonThreadHygieneDetector", "ThreadLeakDetector"),
                 detectorsReporting("5 THREAD_LEAKS buggy", slot -> FeedAuditSubjects.startAndForget()));
         assertRow("5 THREAD_LEAKS fixed", Set.of(),
                 detectorsReporting("5 THREAD_LEAKS fixed", slot -> FeedAuditSubjects.startAndJoin()));

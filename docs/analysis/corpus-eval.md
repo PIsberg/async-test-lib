@@ -2350,7 +2350,7 @@ mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair 
 the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
-added below, and the Guava service pair (#736), 18 of the 37 agent-fed detectors are measured in
+added below, and the Guava service pair (#736), 19 of the 38 agent-fed detectors are measured in
 both directions on call sites inside a library. `LibraryReach` records why the other nineteen are not,
 and `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:

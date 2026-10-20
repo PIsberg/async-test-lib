@@ -1504,6 +1504,22 @@ final class Corpus {
                             + "the run ends. Guava starts the thread the same way; what separates "
                             + "the pair is whether it is still alive when the run is judged"),
 
+            new RecordingSubject("agent_guavaService_leavesItsThreadAlive", GUAVA,
+                    "com.google.common.util.concurrent.AbstractExecutionThreadService",
+                    DetectorType.THREAD_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a service is started and never stopped. Guava's own Thread.start is the woven "
+                            + "call that tells ThreadLeakDetector about the thread, and the thread "
+                            + "is still alive when the run is analysed (#1056)",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("agent_guavaService_stoppedSoItsThreadEnds", GUAVA,
+                    "com.google.common.util.concurrent.AbstractExecutionThreadService",
+                    DetectorType.THREAD_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same service, started the same way and stopped and awaited before the run "
+                            + "ends, so its thread has ended when the run is analysed"),
+
             new RecordingSubject("agent_sleepStamped_whileHoldingTheWriteStamp", JDK,
                     "java.util.concurrent.locks.StampedLock",
                     DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,

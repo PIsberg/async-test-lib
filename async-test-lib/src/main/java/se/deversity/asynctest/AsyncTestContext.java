@@ -2325,6 +2325,19 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link ThreadLeakDetector} for the calling thread's test, or {@code null}}
+     *
+     * <p>Same null-returning contract as {@link #currentSharedCollectionDetector()}: the caller is
+     * {@link AgentThreadHooks}, reached from a woven {@code Thread.start} that does not know a test
+     * is in progress (#1056). The detector checks at analysis whether each started thread is still
+     * alive, so the start is the only event the feed needs.
+     */
+    static @Nullable ThreadLeakDetector currentThreadLeakDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.threadLeakDetector;
+    }
+
+    /**
      * {@return the {@link ABAProblemDetector} for the calling thread's test, or {@code null}}
      *
      * <p>Same null-returning contract as {@link #currentSharedCollectionDetector()}: the caller is

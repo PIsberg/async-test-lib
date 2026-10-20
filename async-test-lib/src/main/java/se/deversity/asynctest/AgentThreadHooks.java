@@ -14,6 +14,7 @@ import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.diagnostics.DaemonThreadHygieneDetector;
 import se.deversity.asynctest.diagnostics.InterruptMonitor;
 import se.deversity.asynctest.diagnostics.InterruptSwallowingDetector;
+import se.deversity.asynctest.diagnostics.ThreadLeakDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.telemetry.ControlledSchedule;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
@@ -299,6 +300,11 @@ public final class AgentThreadHooks {
      */
     private static void forkAndAttribute(Thread thread) {
         if (thread.getState() == Thread.State.NEW) {
+            ThreadLeakDetector leaks = AsyncTestContext.currentThreadLeakDetector();
+            if (leaks != null) {
+                // Reported at analysis if still alive: the start is all the detector needs (#1056).
+                leaks.recordThreadStart(thread, thread.getName());
+            }
             ControlledSchedule.starting(thread); // a controlled round adopts the child (#1024)
             HappensBefore.fork(thread);
             TelemetryRegistry.threadStarting(thread);

@@ -22,6 +22,10 @@ import org.jspecify.annotations.Nullable;
  * <p>The detector tracks thread creation and termination events, then reports
  * threads that were started but never joined or terminated at test completion.
  *
+ * <p>With the agent attached no recording call is needed: every woven {@code Thread.start} is
+ * recorded through {@code AgentThreadHooks}, and analysis asks each started thread whether it is
+ * still alive, so the start is the only event the agent has to supply (#1056).
+ *
  * <p>Usage:
  * <pre>{@code
  * @AsyncTest(threads = 4, includes = DetectorType.THREAD_LEAKS)
