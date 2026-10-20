@@ -249,6 +249,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`ReentrantLockOwnerAndStarvationTest.aWaiterBargedPastOnANonFairLockFires` failed a CI run when
+  its setup lost a race (#1085).** The test needs a waiter on a non-fair `ReentrantLock` barged past
+  twice, and whether the barger's re-lock beats the woken waiter is the scheduler's call, so it
+  retries; five attempts were too few on a loaded runner. With twice as many busy threads as cores,
+  61 of 300 attempts lost the race; the bound is now 200 attempts of a few milliseconds each. The
+  detector assertion is unchanged.
+
 - **The release build runs on the runner image's Maven again (#974).** Since #949 `publish.yml`
   installed Maven 3.9.16, because under 3.10.0 `central-publishing-maven-plugin` 0.11.0 put
   local-repository files in the Central bundle and the portal rejected v1.13.0. With plugin 0.12.0
