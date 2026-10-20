@@ -118,6 +118,10 @@ final class LibraryReach {
                         + "firing library row needs a library method that submits to a saturated "
                         + "pool and drops the RejectedExecutionException, and no corpus library "
                         + "ships that defect");
+        unreached(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS,
+                "agent-fed since #1054 through every woven new CompletableFuture<>(); a firing "
+                        + "library row needs a library method that builds a future by hand and "
+                        + "leaves it pending on a path, and no corpus library ships that defect");
     }
 
     private static void unreached(DetectorType type, String reason) {

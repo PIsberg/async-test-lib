@@ -15,7 +15,8 @@ import net.bytebuddy.pool.TypePool;
 
 /**
  * Tells the library what only a constructor in a woven class knows: the order a
- * {@code LinkedHashMap} is built in (#807), and when a constructor returns (#791).
+ * {@code LinkedHashMap} is built in (#807), when a constructor returns (#791), and which
+ * {@code CompletableFuture}s the code builds by hand (#1054).
  *
  * <p>A {@code get} on an access-ordered map relinks the entry, so it writes the map, and the order
  * is a private field the library can read only with {@code java.util} opened to it. The
@@ -33,6 +34,11 @@ import net.bytebuddy.pool.TypePool;
  *       constructor has stored to local 0, where it may no longer be {@code this}; then neither
  *       call is inserted.</li>
  * </ul>
+ *
+ * <p>After every {@code INVOKESPECIAL java/util/concurrent/CompletableFuture.<init>()V} that closes a
+ * {@code NEW} of {@code CompletableFuture}, a {@code DUP} of the built future and a call to the
+ * hook's {@code completableFutureConstructed}, counted the way the map's {@code NEW}s are. A
+ * superclass call from a subclass constructor is left alone.
  *
  * <p>A constructor's return ends the construction of its object only when it is the constructor of
  * the object's own class and not one another constructor of that class delegated to, and nothing
@@ -71,6 +77,9 @@ final class ConstructionWeaver implements AsmVisitorWrapper {
     /** Takes the built map after the constructor call. */
     static final String MAP_CONSTRUCTED_HOOK = "linkedHashMapConstructed";
 
+    /** Takes the built future after a {@code new CompletableFuture<>()}. */
+    static final String FUTURE_CONSTRUCTED_HOOK = "completableFutureConstructed";
+
     /** Takes {@code this} and the class name before a constructor's {@code RETURN}. */
     static final String RETURNED_HOOK = "constructorReturned";
 
@@ -80,6 +89,13 @@ final class ConstructionWeaver implements AsmVisitorWrapper {
     private static final String LINKED_HASH_MAP = "java/util/LinkedHashMap";
 
     private static final String ORDERED_CONSTRUCTOR = "(IFZ)V";
+
+    private static final String COMPLETABLE_FUTURE = "java/util/concurrent/CompletableFuture";
+
+    private static final String NO_ARGUMENTS = "()V";
+
+    private static final String FUTURE_CONSTRUCTED_DESCRIPTOR =
+            "(Ljava/util/concurrent/CompletableFuture;)V";
 
     private static final String CONSTRUCTOR = "<init>";
 
@@ -130,6 +146,8 @@ final class ConstructionWeaver implements AsmVisitorWrapper {
                     void.class);
             require(hooks.getMethod(RETURNED_HOOK, Object.class, String.class), void.class);
             require(hooks.getMethod(RESUMED_HOOK, Object.class, String.class), void.class);
+            require(hooks.getMethod(FUTURE_CONSTRUCTED_HOOK, java.util.concurrent.CompletableFuture.class),
+                    void.class);
         } catch (NoSuchMethodException e) {
             throw new IllegalStateException("no construction hook on " + hooks.getName()
                     + "; agent and library versions disagree", e);
@@ -199,6 +217,9 @@ final class ConstructionWeaver implements AsmVisitorWrapper {
         /** {@code new LinkedHashMap} expressions opened by a {@code NEW} and not yet initialised. */
         private int openMaps;
 
+        /** {@code new CompletableFuture} expressions opened by a {@code NEW} and not yet initialised. */
+        private int openFutures;
+
         /** {@code new} expressions of this class itself opened and not yet initialised. */
         private int openOwnInstances;
 
@@ -220,6 +241,8 @@ final class ConstructionWeaver implements AsmVisitorWrapper {
             if (opcode == Opcodes.NEW) {
                 if (LINKED_HASH_MAP.equals(type)) {
                     openMaps++;
+                } else if (COMPLETABLE_FUTURE.equals(type)) {
+                    openFutures++;
                 } else if (constructor && ownInternalName.equals(type)) {
                     openOwnInstances++;
                 }
@@ -261,6 +284,21 @@ final class ConstructionWeaver implements AsmVisitorWrapper {
                     openOwnInstances--;
                 } else if (thisInLocalZero) {
                     callWithThis(RESUMED_HOOK);
+                }
+                return;
+            }
+            if (opcode == Opcodes.INVOKESPECIAL && CONSTRUCTOR.equals(name)
+                    && COMPLETABLE_FUTURE.equals(owner)) {
+                super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+                // Every CompletableFuture constructor closes the innermost open NEW; only the
+                // public no-argument one is a future the code will complete by hand.
+                if (openFutures > 0) {
+                    openFutures--;
+                    if (NO_ARGUMENTS.equals(descriptor)) {
+                        super.visitInsn(Opcodes.DUP);
+                        super.visitMethodInsn(Opcodes.INVOKESTATIC, hookOwner, FUTURE_CONSTRUCTED_HOOK,
+                                FUTURE_CONSTRUCTED_DESCRIPTOR, false);
+                    }
                 }
                 return;
             }

@@ -37,7 +37,7 @@ Checked on Windows 11 and JDK 26, three runs, every row identical in all three.
 | 2, `VISIBILITY` | a constant (`data = 42`) published behind a plain `boolean` flag | none; since #1053 `AtomicityValidator` | none |
 | 2b, `VISIBILITY` | a computed value published behind the same plain flag | `AtomicityValidator` | not run |
 | 2c, `VISIBILITY` | a plain `static` stop flag set by one thread and polled by another | none; since #1053 `AtomicityValidator` | none |
-| 3, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` | a `CompletableFuture` left pending on the exception path | none | none |
+| 3, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` | a `CompletableFuture` left pending on the exception path | none; since #1054 `CompletableFutureCompletionLeakDetector` | none |
 | 4, `THREAD_POOL` | a saturated pool's `RejectedExecutionException` caught and dropped | none; since #1055 `ThreadPoolMonitor` | none |
 | 5, `THREAD_LEAKS` | a thread the body starts and never joins | `DaemonThreadHygieneDetector`; since #1056 also `ThreadLeakDetector` | none |
 
@@ -61,8 +61,9 @@ What the rows mean:
   happens-before edge and no volatile bit; on the corpus that added no finding on any of its 100
   documented-thread-safe subjects or correct idioms. A `static` flag is judged too since the
   agent keys a woven static field by its declaring class rather than identity 0 (row 2c).
-- **The completion leak is a gap; the dropped rejection was one.** Nothing on the agent path sees a
-  future's lifetime. Since #1055 the woven `submit` and `execute` record a rejection as it passes
+- **The completion leak and the dropped rejection were gaps.** Since #1054 a woven
+  `new CompletableFuture<>()` is handed to `CompletableFutureCompletionLeakDetector`, which learns of
+  the completion from the future itself, so one left pending is reported. Since #1055 the woven `submit` and `execute` record a rejection as it passes
   through, so `ThreadPoolMonitor` reports one the caller dropped, graded FACT on `OBSERVED`
   evidence apart from its threshold rules since #1061.
 - **The thread leak was half covered.** `DaemonThreadHygieneDetector` reports the leaked thread for
@@ -85,8 +86,9 @@ test, and each flips its row here and in the test. The likely seams, not yet bui
   read by another with no lock and no happens-before edge between them, as a visibility finding
   rather than an atomicity one; the field stream already carries both accesses and the model, and
   the corpus idioms lane decides whether benign racy flags make it too noisy.
-- **Completion leak ([#1054](https://github.com/PIsberg/async-test-lib/issues/1054)):** weave `new CompletableFuture<>()` and the completing calls, and report a
-  future still pending when the round ends.
+- **Completion leak ([#1054](https://github.com/PIsberg/async-test-lib/issues/1054), done):** weave `new CompletableFuture<>()` and report a future still
+  pending when the run ends; the completing calls needed no weaving, since the detector already
+  hears of a completion from the future.
 - **Dropped rejection ([#1055](https://github.com/PIsberg/async-test-lib/issues/1055), done):** weave `Executor.execute`/`submit` and report a
   `RejectedExecutionException` the calling method catches without rethrowing.
 - **Thread leak ([#1056](https://github.com/PIsberg/async-test-lib/issues/1056), done):** feed `ThreadLeakDetector` from the woven start the runner already attributes

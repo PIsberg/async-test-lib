@@ -185,8 +185,8 @@ class AgentFeedOverlapAuditTest {
     }
 
     @Test
-    void completionLeak_isAGap() {
-        assertRow("3 COMPLETABLE_FUTURE_COMPLETION_LEAKS buggy", Set.of(),
+    void completionLeak_isReportedByCompletableFutureCompletionLeakDetector() {
+        assertRow("3 COMPLETABLE_FUTURE_COMPLETION_LEAKS buggy", Set.of("CompletableFutureCompletionLeakDetector"),
                 detectorsReporting("3 COMPLETABLE_FUTURE_COMPLETION_LEAKS buggy",
                         slot -> FeedAuditSubjects.fetchLeaking(slot == 0)));
         assertRow("3 COMPLETABLE_FUTURE_COMPLETION_LEAKS fixed", Set.of(),

@@ -104,6 +104,9 @@ public final class DetectorFeeds {
             // The woven submit and execute (#1055): a RejectedExecutionException passing through
             // is recorded before it is rethrown, so one the calling code drops is still reported.
             DetectorType.THREAD_POOL,
+            // A woven new CompletableFuture<>() (#1054): the built future is handed over, and the
+            // detector learns of its completion from the future itself.
+            DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS,
             // AtomicReference get, set and compareAndSet (#817), substituted already for the
             // ownership and happens-before models. Recorded by hand, a toggle recorded after a
             // read it ran before reads as an A-B-A; run through the detector, each record is taken

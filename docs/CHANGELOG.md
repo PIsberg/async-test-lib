@@ -197,6 +197,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ControlledScheduleLockWeavingTest.aWovenConditionAwaitLetsTheLockGo` was red through the real
   weaver before the table entries and is green.
 
+- **A `CompletableFuture` the code never completes is reported without a record call (#1054).** A
+  `new CompletableFuture<>()` left pending on an exception path, in unmodified code, was reported by
+  no detector (`AgentFeedOverlapAuditTest` row 3): `CompletableFutureCompletionLeakDetector` was
+  recording-only. Its completion side never needed the test, since it registers a `whenComplete`
+  callback on each future it is told about; what it needed was the creation. `ConstructionWeaver`
+  now inserts a `DUP` and a call to `AgentConstructionHooks.completableFutureConstructed` after each
+  `new CompletableFuture<>()` in woven code, which hands the future to the run's detector.
+  `COMPLETABLE_FUTURE_COMPLETION_LEAKS` moves to the AGENT feed: 40 agent-fed, 104 recording-only.
+  Tests: `PendingFutureAgentFeedTest` (the hook called by hand) was red against a no-op hook and is
+  green, its `completeExceptionally` twin silent; the audit's row 3 now pins the detector, through
+  the real weaver, and was red with the insertion broken; on the corpus the detector is now exposed
+  to the 100 documented-thread-safe subjects through the agent and draws no finding on any, with
+  every other row unchanged.
+
 ### Fixed
 
 - **A controlled schedule counted a worker waiting on the scheduler's own lock as an escape

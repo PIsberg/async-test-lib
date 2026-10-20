@@ -342,7 +342,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (39)
+### Agent-fed (40)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -501,7 +501,7 @@ which the `PipedInputStream` javadoc warns may deadlock.
 `InterruptSwallowingDetector`, `InterruptMonitor`, `SynchronizedCollectionIterationDetector`,
 `SystemPropertyMutationDetector`, `ProcessStreamStarvationDetector`, `JdbcConnectionSharedDetector`,
 `ThreadLocalMonitor`, `MdcContextLeakDetector`, `BlockingOnNonBlockingThreadDetector`,
-`ThreadLeakDetector`, `ThreadPoolMonitor`
+`ThreadLeakDetector`, `ThreadPoolMonitor`, `CompletableFutureCompletionLeakDetector`
 
 ### Zero-config (4)
 
@@ -554,8 +554,8 @@ visitor, which is the argument for having built the path as a mechanism. What re
 static entry has to be worth its instruction, the same bar the virtual ones meet.
 
 **The input is not a call.** `VisibilityMonitor` needs field reads and writes, which is the field
-weaver's stream rather than a call site. The `CompletableFuture` family needs a task's start and
-completion as events of their own, and a substituted `submit` sees neither: the task runs later,
+weaver's stream rather than a call site. Most of the `CompletableFuture` family needs a task's start
+and completion as events of their own, and a substituted `submit` sees neither: the task runs later,
 somewhere else. The same holds for `ThreadPoolMonitor`'s queue, busy-pool and long-task rules,
 which is why only its rejection rule is agent-fed: the refusal happens inside the `submit` call
 itself (#1055). `LazyInitRaceDetector` and `ThisEscapeDetector`
@@ -563,7 +563,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (105)
+### Recording-only (104)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -572,7 +572,6 @@ recording is the feed:
 `VisibilityMonitor`, `FalseSharingDetector`, `WakeupDetector`, `ConstructorSafetyValidator`,
 `SynchronizerMonitor`,
 `MemoryOrderingMonitor`, `PipelineMonitor`, `ReadWriteLockMonitor`,
-`CompletableFutureCompletionLeakDetector`,
 `ThreadPoolDeadlockDetector`, `ConcurrentModificationDetector`,
 `SharedRandomDetector`, `ConditionVariableDetector`,
 `ParallelStreamDetector`, `ResourceLeakDetector`,
