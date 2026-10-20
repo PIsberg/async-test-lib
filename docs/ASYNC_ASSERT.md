@@ -145,9 +145,11 @@ out the timeout:
 Called outside an `@AsyncTest` worker it throws `IllegalStateException`. A round of more than
 65,535 workers opens no rendezvous, and calling it there throws the same.
 
-Under `controlledSchedule = true` a rendezvous still works, but a worker waiting at it has stopped
-without reaching a scheduling point, so the round counts an escape and is not guaranteed to replay;
-use `schedulePoint()` there instead.
+Under `controlledSchedule = true` a worker waiting at a rendezvous steps out of the round instead of
+blocking in it: the turn goes on to the workers that have not arrived yet, the wait costs no
+escape, and once the rendezvous releases everyone the schedule waits until all are back before it
+picks who runs next, so a read, `rendezvous()`, write body replays exactly
+([#1021](https://github.com/PIsberg/async-test-lib/issues/1021)).
 
 ## Letting the schedule switch mid-body: `AsyncTestContext.schedulePoint()` (1.13.2, experimental)
 
