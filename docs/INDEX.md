@@ -167,6 +167,7 @@ document says so rather than being edited in place.
 
 | Document | Purpose |
 |----------|---------|
+| [analysis/agent-feed-audit.md](analysis/agent-feed-audit.md) | Which agent-fed detector already reports five recording-only bug classes on unmodified code (none fully does), measured and pinned by `AgentFeedOverlapAuditTest`, and the seam for each port |
 | [analysis/detector-accuracy-eval.md](analysis/detector-accuracy-eval.md) | Measured detector behavior on buggy code vs its synchronized twin, enforced by `DetectorAccuracyEvalTest` |
 | [analysis/corpus-eval.md](analysis/corpus-eval.md) | Measured detector behavior on 139 subjects with a documented thread-safety contract, with the exposure denominator every rate is over, produced by the standalone `corpus-eval` module and its own `corpus.yml` workflow |
 | [analysis/corpus-eval-future-improvements.md](analysis/corpus-eval-future-improvements.md) | What the corpus eval does not gate yet, found by the 2026-09-07 sweep: severity is unpinned on a firing row, five gates have no failing-direction test, the module README's own counts are unchecked, and a refusal is reviewed by nothing |
