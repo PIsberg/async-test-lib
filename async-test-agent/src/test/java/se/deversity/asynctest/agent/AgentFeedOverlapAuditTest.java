@@ -146,6 +146,28 @@ class AgentFeedOverlapAuditTest {
     }
 
     @Test
+    void visibility_staticConstantFlagIsReported() {
+        // The same stop flag as row 2, declared static (#1053). A static field's accesses used to
+        // share identity 0 with accesses recorded without a receiver, so the rule never judged it.
+        assertRow("2c VISIBILITY static flag buggy", Set.of("AtomicityValidator"),
+                detectorsReporting("2c VISIBILITY static flag buggy", slot -> {
+                    if (slot == 0) {
+                        FeedAuditSubjects.StaticStopFlag.stop();
+                    } else {
+                        FeedAuditSubjects.StaticStopFlag.isStopped();
+                    }
+                }));
+        assertRow("2c VISIBILITY static flag fixed", Set.of(),
+                detectorsReporting("2c VISIBILITY static flag fixed", slot -> {
+                    if (slot == 0) {
+                        FeedAuditSubjects.StaticStopFlag.stopVolatile();
+                    } else {
+                        FeedAuditSubjects.StaticStopFlag.isStoppedVolatile();
+                    }
+                }));
+    }
+
+    @Test
     void publishingAComputedValue_isAlreadyReported() {
         // The constant-only rows above are excused by AtomicityValidator's rule that a field whose
         // every write stores one constant cannot lose an update. A computed value is not excused,

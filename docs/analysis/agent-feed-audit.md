@@ -36,6 +36,7 @@ Checked on Windows 11 and JDK 26, three runs, every row identical in all three.
 | 1, `CONCURRENT_MODIFICATIONS` | one thread iterates an `ArrayList` while another adds to it | none; since #1052 `SharedCollectionDetector` | none |
 | 2, `VISIBILITY` | a constant (`data = 42`) published behind a plain `boolean` flag | none; since #1053 `AtomicityValidator` | none |
 | 2b, `VISIBILITY` | a computed value published behind the same plain flag | `AtomicityValidator` | not run |
+| 2c, `VISIBILITY` | a plain `static` stop flag set by one thread and polled by another | none; since #1053 `AtomicityValidator` | none |
 | 3, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` | a `CompletableFuture` left pending on the exception path | none | none |
 | 4, `THREAD_POOL` | a saturated pool's `RejectedExecutionException` caught and dropped | none; since #1055 `ThreadPoolMonitor` | none |
 | 5, `THREAD_LEAKS` | a thread the body starts and never joins | `DaemonThreadHygieneDetector`; since #1056 also `ThreadLeakDetector` | none |
@@ -58,7 +59,8 @@ What the rows mean:
   constant write, and nothing reported it. Since #1053 `AtomicityValidator` reports it as an
   unordered flag publication when a thread that never writes the field reads it with no lock, no
   happens-before edge and no volatile bit; on the corpus that added no finding on any of its 100
-  documented-thread-safe subjects or correct idioms. A `static` flag is not judged yet.
+  documented-thread-safe subjects or correct idioms. A `static` flag is judged too since the
+  agent keys a woven static field by its declaring class rather than identity 0 (row 2c).
 - **The completion leak is a gap; the dropped rejection was one.** Nothing on the agent path sees a
   future's lifetime. Since #1055 the woven `submit` and `execute` record a rejection as it passes
   through, so `ThreadPoolMonitor` reports one the caller dropped, graded FACT on `OBSERVED`

@@ -100,6 +100,35 @@ public final class FeedAuditSubjects {
         }
     }
 
+    /** VISIBILITY: a static stop flag, plain or volatile, set by one thread and polled by another. */
+    public static final class StaticStopFlag {
+        private static boolean stopped;
+        private static volatile boolean stoppedVolatile;
+
+        private StaticStopFlag() {
+        }
+
+        /** Sets the plain flag. */
+        public static void stop() {
+            stopped = true;
+        }
+
+        /** {@return the plain flag} */
+        public static boolean isStopped() {
+            return stopped;
+        }
+
+        /** Sets the volatile flag. */
+        public static void stopVolatile() {
+            stoppedVolatile = true;
+        }
+
+        /** {@return the volatile flag} */
+        public static boolean isStoppedVolatile() {
+            return stoppedVolatile;
+        }
+    }
+
     /** COMPLETABLE_FUTURE_COMPLETION_LEAKS: a future left pending on the exception path. */
     public static CompletableFuture<String> fetchLeaking(boolean fail) {
         CompletableFuture<String> future = new CompletableFuture<>();

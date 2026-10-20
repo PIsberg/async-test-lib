@@ -397,7 +397,10 @@ public class AtomicityValidator {
                 ignored -> lastInstance.incrementAndGet());
     }
 
-    /** Publication state per receiver identity; identity 0 (unknown or static) is not tracked. */
+    /**
+     * Publication state per receiver identity; identity 0 (no receiver known) is not tracked. A
+     * woven static field's identity is its declaring class's (#1053).
+     */
     private final Map<Integer, ReceiverState> receiverStates = new ConcurrentHashMap<>();
 
     /** Maps receiver identity to a map of (generation -> threadId of that generation's taker). */
@@ -1390,7 +1393,8 @@ public class AtomicityValidator {
                 // The constant-write excuse answers atomicity only (#1053): a flag every write sets
                 // to one constant cannot lose an update, but a thread that only reads it, with no
                 // lock and no edge in between, may never see the write. Judged on a known receiver
-                // only: identity 0 also pools unrelated objects recorded without one. Any volatile
+                // only, a woven static field's being its declaring class: identity 0 pools unrelated
+                // objects recorded without one. Any volatile
                 // bit rules it out, the declared kind and the bridge's safely-published mark on a
                 // read that followed a volatile read of the same object alike: either reader sees
                 // the write, and a constant rewritten beside it changes nothing it can observe.

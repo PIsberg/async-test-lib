@@ -126,9 +126,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still holds for atomicity; a new `unorderedPublications` section (kind `unorderedPublication`)
   reports such a field when a thread that never writes it reads it with no lock, no happens-before
   edge and no volatile bit, the declared kind or the bridge's safely-published mark on a read after
-  a volatile read of the same object. Instance fields only: a `static` field shares the identity-0
-  bucket with accesses recorded without a receiver, so it is not judged yet (#1053 stays open for
-  it). Tests: `ConstantFlagVisibilityTest` (red at compile, then green: plain flag reported, volatile,
+  a volatile read of the same object. A `static` field is judged as well: a woven static access now
+  carries its declaring class's identity instead of 0, the bucket that pools accesses recorded
+  without a receiver, where no per-object rule judges anything (audit row 2c, a plain static stop
+  flag reported and its volatile twin silent; every corpus table row unchanged, `AtomicityValidator` still 0 findings on 100 documented-thread-safe subjects). Tests: `ConstantFlagVisibilityTest` (red at compile, then green: plain flag reported, volatile,
   ordered and single-thread twins silent, the atomicity excuse intact) and audit row 2, whose volatile
   twin first drew a false positive from a constant rewritten every round, now excluded by the
   safely-published mark. On the corpus `AtomicityValidator` still draws nothing on 100
