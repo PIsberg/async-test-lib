@@ -71,7 +71,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  */
 @AICore(
     sensitivity = "High",
-    note = "A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read, and the lock holds and pending acquisitions grant() consults (#1022), which change only at acquiring(), itself a point, and in acquired() and released(), which a worker calls in its own program order; an escaped worker's acquire or release lands outside a turn, but its round has already counted the escape. grant() must keep handing the round out when every ready worker waits on a held lock: the hold may be stale (a monitor released inside Object.wait is not seen), and withholding the round then stalls correct wait/notify code until the round times out (ControlledScheduleLockTest); each such grant is counted as a fallback. To keep holds from going stale, a woven Object.wait hands its holds back before waiting and takes them again after (releasingForWait, reacquiredAfterWait), and a worker re-confirms its own recorded holds with Thread.holdsLock or isHeldByCurrentThread at each of its points and at leave(), on its own thread, so the answer follows its program order and grant() still reads no thread state (#1048). Only watch() may read the clock or Thread.getState(), and it reads the state before asking whether the running worker is queued on the schedule's own lock, which is the scheduler's wait and never an escape (#1065); each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly, with one exception: an adopted child whose thread has terminated is marked done, not escaped (#1024), because while it ran to its end every peer was waiting, so the state the next grant reads is the same whenever watch() notices. Adopted children are ready from the moment they are adopted, so a grant never depends on how long the OS takes to start a thread. A worker waiting at a rendezvous is OUTSIDE, not escaped (#1021), and no grant is made while one is outside on its way back or when the last worker steps out, so the order a rendezvous releases workers in never decides who runs next. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise."
+    note = "A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read, and the lock holds and pending acquisitions grant() consults (#1022), which change only at acquiring(), itself a point, and in acquired() and released(), which a worker calls in its own program order; an escaped worker's acquire or release lands outside a turn, but its round has already counted the escape. grant() must keep handing the round out when every ready worker waits on a held lock: the hold may be stale (a monitor released inside Object.wait is not seen), and withholding the round then stalls correct wait/notify code until the round times out (ControlledScheduleLockTest); each such grant is counted as a fallback. To keep holds from going stale, a woven Object.wait or Condition.await hands its holds back before waiting and takes them again after (releasingForWait, reacquiredAfterWait; lockOf finds a condition's ReentrantLock by asking it), and a worker re-confirms its own recorded holds with Thread.holdsLock or isHeldByCurrentThread at each of its points and at leave(), on its own thread, so the answer follows its program order and grant() still reads no thread state (#1048). Only watch() may read the clock or Thread.getState(), and it reads the state before asking whether the running worker is queued on the schedule's own lock, which is the scheduler's wait and never an escape (#1065); each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly, with one exception: an adopted child whose thread has terminated is marked done, not escaped (#1024), because while it ran to its end every peer was waiting, so the state the next grant reads is the same whenever watch() notices. Adopted children are ready from the moment they are adopted, so a grant never depends on how long the OS takes to start a thread. A worker waiting at a rendezvous is OUTSIDE, not escaped (#1021), and no grant is made while one is outside on its way back or when the last worker steps out, so the order a rendezvous releases workers in never decides who runs next. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise."
 )
 public final class ControlledSchedule {
 
@@ -406,6 +406,28 @@ public final class ControlledSchedule {
             return 0;
         }
         return worker.schedule.releaseAll(worker, monitor);
+    }
+
+    /**
+     * {@return the lock {@code condition} belongs to among those the schedule records the calling
+     * worker holding, or {@code null}}
+     *
+     * <p>For a woven {@code Condition.await}, which lets that lock go for the wait as
+     * {@code Object.wait} lets a monitor go (#1048). A {@code ReentrantLock} answers
+     * {@code hasWaiters} for its own conditions and throws for any other, so the owner is found
+     * without weaving {@code newCondition}. Not a point.
+     *
+     * @param condition the condition about to be awaited
+     */
+    public static @Nullable Object lockOf(Condition condition) {
+        if (OPEN.get() == 0) {
+            return null;
+        }
+        Worker worker = CURRENT.get();
+        if (worker == null || worker.inside) {
+            return null;
+        }
+        return worker.schedule.ownerOf(worker, condition);
     }
 
     /**
@@ -786,6 +808,28 @@ public final class ControlledSchedule {
                     owners.remove(held);
                 }
             }
+        } finally {
+            lock.unlock();
+            worker.inside = false;
+        }
+    }
+
+    private @Nullable Object ownerOf(Worker worker, Condition condition) {
+        worker.inside = true;
+        lock.lock();
+        try {
+            for (Map.Entry<Object, int[]> hold : owners.entrySet()) {
+                if (hold.getValue()[0] == worker.slot && hold.getKey() instanceof ReentrantLock held
+                        && held.isHeldByCurrentThread()) {
+                    try {
+                        held.hasWaiters(condition);
+                        return held;
+                    } catch (IllegalArgumentException notItsOwn) { // NOPMD - the probe
+                        // another lock's condition
+                    }
+                }
+            }
+            return null;
         } finally {
             lock.unlock();
             worker.inside = false;

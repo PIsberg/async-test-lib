@@ -182,9 +182,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   again after, and each worker re-confirms its own recorded holds at its points and when its body
   ends, on its own thread. Each fallback grant is now counted: `runner.schedule.round` carries
   `fallbacks=`, and `ControlledSchedule.Summary` gains a `fallbacks` component, its four-argument
-  constructor kept. `Condition.await` is not woven yet and still leaves its lock listed. Tests:
-  `ControlledScheduleLockTest.aWovenWaitLetsTheMonitorGo` and
+  constructor kept. Tests: `ControlledScheduleLockTest.aWovenWaitLetsTheMonitorGo` and
   `aMonitorLeftByAnExceptionIsNotHeldForTheSchedule` logged `fallbacks=1` and are green.
+
+- **The agent weaves `Condition.await` (#1048).** `await` lets the condition's `ReentrantLock` go
+  for the wait, as `Object.wait` lets a monitor go, and a controlled schedule kept listing the
+  waiter as its holder. The five `await` forms are now substituted with `AgentLockHooks` hooks
+  that hand the waiter's hold back for the wait. The lock is found among the worker's recorded
+  holds by asking each `ReentrantLock` whether the condition is its own, so `newCondition` is not
+  woven. A `ReentrantReadWriteLock` write lock's condition is not matched and keeps its hold.
+  Tests: `ControlledScheduleLockTest.aWovenAwaitLetsTheLockGo` (the hook called by hand) logged
+  `fallbacks=1` against pass-through hooks and is green, and
+  `ControlledScheduleLockWeavingTest.aWovenConditionAwaitLetsTheLockGo` was red through the real
+  weaver before the table entries and is green.
 
 ### Fixed
 
