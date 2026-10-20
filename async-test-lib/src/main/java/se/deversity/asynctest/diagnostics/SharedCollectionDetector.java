@@ -75,8 +75,12 @@ public class SharedCollectionDetector extends AbstractInstanceDetector<SharedCol
         /** The widest single round seen so far, which is what a finding reports. */
         volatile int maxRoundWriters;
         volatile int maxRoundReaders;
-        /** Whether some round had exactly one writer and several readers: the visibility shape. */
-        volatile boolean sawSingleWriterManyReaders;
+        /**
+         * Whether some round had exactly one writer and a reader that was not the writer: one
+         * thread iterating or reading while another adds is the concurrent-modification race, and
+         * a second reader is not needed for it (#1052).
+         */
+        volatile boolean sawWriterBesideAReader;
 
         CollectionState(String name, String collectionType) {
             this.name = name;
@@ -103,11 +107,21 @@ public class SharedCollectionDetector extends AbstractInstanceDetector<SharedCol
             if (readers > maxRoundReaders) {
                 maxRoundReaders = readers;
             }
-            if (writers == 1 && readers > 1) {
-                sawSingleWriterManyReaders = true;
+            if (writers == 1 && readerBesidesTheWriter()) {
+                sawWriterBesideAReader = true;
             }
             writeThreads.clear();
             readThreads.clear();
+        }
+
+        /** On the runner thread between rounds, so the walk is off the record path. */
+        private boolean readerBesidesTheWriter() {
+            for (Long reader : readThreads) {
+                if (!writeThreads.contains(reader)) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
@@ -217,9 +231,10 @@ public class SharedCollectionDetector extends AbstractInstanceDetector<SharedCol
                                 + SelfGuard.REPORT_NOTE + "!",
                         state.name, state.collectionType,
                         writers, state.writeCount.get()));
-            } else if (writers == 1 && state.sawSingleWriterManyReaders
+            } else if (writers == 1 && state.sawWriterBesideAReader
                     && state.sawUnguardedSharing()) {
-                // One writer, multiple readers in the same round: still risky without synchronisation
+                // One writer and another thread reading in the same round: a reader can see a
+                // half-made change, and an iterator fails fast (#1052)
                 report.mixedAccessViolations.add(String.format(
                         "%s (%s): written by 1 thread, read by %d threads without visible synchronisation — VISIBILITY RISK"
                                 + SelfGuard.REPORT_NOTE,

@@ -229,6 +229,38 @@ public class SharedCollectionDetectorTest {
         assertFalse(spread.analyze().hasIssues(), "the same accesses in three ordered rounds never overlapped");
     }
 
+    // #1052: one writer and one other reader in a round is the concurrent-modification race (one
+    // thread iterates while another adds), and it went unreported because the rule asked for two
+    // readers. The writer reading its own collection is still not a second party.
+    @Test
+    void oneWriterBesideOneOtherReaderInARoundIsReported() throws InterruptedException {
+        SharedCollectionDetector detector = new SharedCollectionDetector();
+        List<Object> list = new ArrayList<>();
+        detector.markInvocationStart();
+        Thread writer = new Thread(() -> detector.recordWrite(list, "iterated-list", "add"));
+        Thread reader = new Thread(() -> detector.recordRead(list, "iterated-list", "iterator"));
+        writer.start();
+        reader.start();
+        writer.join();
+        reader.join();
+        assertTrue(detector.analyze().hasIssues(),
+                "a writer and another thread reading the same ArrayList in one round, unguarded");
+    }
+
+    @Test
+    void aWriterReadingItsOwnCollectionIsNotASecondParty() throws InterruptedException {
+        SharedCollectionDetector detector = new SharedCollectionDetector();
+        List<Object> list = new ArrayList<>();
+        detector.markInvocationStart();
+        Thread alone = new Thread(() -> {
+            detector.recordWrite(list, "own-list", "add");
+            detector.recordRead(list, "own-list", "iterator");
+        });
+        alone.start();
+        alone.join();
+        assertFalse(detector.analyze().hasIssues(), "one thread writing and reading its own list races nobody");
+    }
+
     // #787: the round verdict did not tell reads from writes. Two unguarded readers in one round
     // latched it, so two writers in a later round were reported although every write held the
     // list's monitor and nothing ever wrote while the unguarded readers ran.

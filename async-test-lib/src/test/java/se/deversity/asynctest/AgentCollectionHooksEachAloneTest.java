@@ -76,9 +76,9 @@ class AgentCollectionHooksEachAloneTest {
      * Seeds one write, then reads twice through {@code read} on two further threads, and
      * {@return whether the detector reported the receiver}.
      *
-     * <p>The detector's read finding is one writer with more than one reader, so a read hook can
-     * only be seen alone by supplying the writer from elsewhere. If the hook under test stops
-     * recording, what is left is one writer and no readers, which is silence.
+     * <p>The detector's read finding is one writer beside another thread reading (#1052), so a
+     * read hook can only be seen alone by supplying the writer from elsewhere. If the hook under
+     * test stops recording, what is left is one writer and no readers, which is silence.
      */
     private static boolean readersAfterAWriteReport(Runnable seedWrite, Runnable read) {
         AsyncTestContext ctx = newContext();

@@ -104,9 +104,9 @@ class AgentFeedOverlapAuditTest {
     }
 
     @Test
-    void concurrentModification_isAGap() {
+    void concurrentModification_isReportedAsASharedCollection() {
         FeedAuditSubjects.SharedList buggy = new FeedAuditSubjects.SharedList();
-        assertRow("1 CONCURRENT_MODIFICATIONS buggy", Set.of(),
+        assertRow("1 CONCURRENT_MODIFICATIONS buggy", Set.of("SharedCollectionDetector"),
                 detectorsReporting("1 CONCURRENT_MODIFICATIONS buggy", slot -> {
                     if (slot == 0) {
                         buggy.sum();

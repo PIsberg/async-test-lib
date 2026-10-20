@@ -33,7 +33,7 @@ Checked on Windows 11 and JDK 26, three runs, every row identical in all three.
 | Row | Bug, as written | Detectors reporting the buggy body | Detectors reporting the fixed twin |
 |---|---|---|---|
 | 0, control | `count++` from two threads | `AtomicityValidator` | not applicable |
-| 1, `CONCURRENT_MODIFICATIONS` | one thread iterates an `ArrayList` while another adds to it | none | none |
+| 1, `CONCURRENT_MODIFICATIONS` | one thread iterates an `ArrayList` while another adds to it | none; since #1052 `SharedCollectionDetector` | none |
 | 2, `VISIBILITY` | a constant (`data = 42`) published behind a plain `boolean` flag | none | none |
 | 2b, `VISIBILITY` | a computed value published behind the same plain flag | `AtomicityValidator` | not run |
 | 3, `COMPLETABLE_FUTURE_COMPLETION_LEAKS` | a `CompletableFuture` left pending on the exception path | none | none |
@@ -42,11 +42,13 @@ Checked on Windows 11 and JDK 26, three runs, every row identical in all three.
 
 What the rows mean:
 
-- **Concurrent modification is a gap.** In two of the three runs the race also happened, and the
+- **Concurrent modification was a gap.** In two of the three runs the race also happened, and the
   JDK's fail-fast iterator threw `ConcurrentModificationException` and failed the run: the user
-  sees a failing test but no detector naming the cause. In the third run nothing was reported at
-  all. The woven iteration records no read, so `SharedCollectionDetector` sees one writer and has
-  nothing to report.
+  saw a failing test but no detector naming the cause. In the third run nothing was reported at
+  all. Two things stood in the way: the woven iteration recorded no read, and
+  `SharedCollectionDetector` reported one writer only beside two or more readers. #1052 fixed both;
+  the row now pins `SharedCollectionDetector`, and on the corpus the change added no finding on any
+  of its 100 documented-thread-safe subjects.
 - **Visibility is a gap only for constant writes.** `AtomicityValidator` does report a field one
   thread writes and another reads with nothing ordering them (row 2b, added after a first draft of
   this page called all publication a gap). It excuses a field whose every write stores the same
@@ -68,7 +70,7 @@ What the rows mean:
 Every candidate is a real gap, so each is worth a port, as its own change with a both-directions
 test, and each flips its row here and in the test. The likely seams, not yet built:
 
-- **Concurrent modification ([#1052](https://github.com/PIsberg/async-test-lib/issues/1052)):** record the woven `Iterable.iterator()` and the iteration as reads,
+- **Concurrent modification ([#1052](https://github.com/PIsberg/async-test-lib/issues/1052), done):** record the woven `Iterable.iterator()` and the iteration as reads,
   so `SharedCollectionDetector` sees the reader beside the writer, rather than feeding
   `ConcurrentModificationDetector`'s iteration start and end model, which needs an end event the
   weaver does not have.
