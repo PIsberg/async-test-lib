@@ -1,10 +1,12 @@
 package se.deversity.asynctest;
 
 import java.util.LinkedHashMap;
+import java.util.concurrent.CompletableFuture;
 
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 
+import se.deversity.asynctest.diagnostics.CompletableFutureCompletionLeakDetector;
 import se.deversity.asynctest.diagnostics.ConstructorSafetyValidator;
 import se.deversity.asynctest.diagnostics.SelfGuard;
 import se.deversity.vibetags.annotations.AIContract;
@@ -40,10 +42,14 @@ import se.deversity.vibetags.annotations.AIContract;
  * whose callee returned while construction goes on. These run for every object a woven class
  * builds, so they cost a check of an empty map unless a construction is being tracked.
  *
+ * <p>A {@code new CompletableFuture<>()} is the third case (#1054): the agent hands the built future
+ * to {@link #completableFutureConstructed(CompletableFuture)}, so a future the code never completes
+ * is reported without the test recording its creation.
+ *
  * @since 1.12.3
  */
 @API(status = Status.INTERNAL)
-@AIContract(reason = "Called from bytecode the agent inserts, not from source: ConstructionWeaver matches these method names and erased signatures at weave time, so none can change independently of it. These are inserted calls, not substitutions: there is no original operation to perform, and each must hand back exactly what the stack held (linkedHashMapAccessOrder returns its argument unchanged, or the constructor would build a map in the wrong order). They run inside user constructors, so they must never throw. constructorReturned and constructorResumed run for every object any woven class builds: while no construction is tracked they must stay a check of an empty map, with no allocation and no stack walk.")
+@AIContract(reason = "Called from bytecode the agent inserts, not from source: ConstructionWeaver matches these method names and erased signatures at weave time, so none can change independently of it. These are inserted calls, not substitutions: there is no original operation to perform, and each must hand back exactly what the stack held (linkedHashMapAccessOrder returns its argument unchanged, or the constructor would build a map in the wrong order). They run inside user constructors, so they must never throw. constructorReturned and constructorResumed run for every object any woven class builds: while no construction is tracked they must stay a check of an empty map, with no allocation and no stack walk. completableFutureConstructed runs for every new CompletableFuture() in woven code and must cost one context lookup outside a run (#1054).")
 public final class AgentConstructionHooks {
 
     /**
@@ -104,5 +110,24 @@ public final class AgentConstructionHooks {
      */
     public static void constructorResumed(Object instance, String declaringClass) {
         ConstructorSafetyValidator.constructorResumed(instance, declaringClass);
+    }
+
+    /**
+     * Called with the future a woven {@code new CompletableFuture<>()} just built (#1054).
+     *
+     * <p>Hands it to the run's {@code CompletableFutureCompletionLeakDetector}, which learns of its
+     * completion from the future itself, so a future the code never completes, typically on an
+     * exception path, is reported with no record call. Outside a run, or on a thread the run does
+     * not own, this is one context lookup.
+     *
+     * @param future the future the constructor initialised; the weaver hands over that reference,
+     *               so it is never {@code null}
+     */
+    public static void completableFutureConstructed(CompletableFuture<?> future) {
+        CompletableFutureCompletionLeakDetector leaks =
+                AsyncTestContext.currentCompletableFutureCompletionLeakDetector();
+        if (leaks != null) {
+            leaks.recordFutureCreated(future, null);
+        }
     }
 }

@@ -2097,6 +2097,18 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link CompletableFutureCompletionLeakDetector} for the run the calling thread
+     * works for, or {@code null}}
+     *
+     * <p>A woven {@code new CompletableFuture<>()} is handed to it as it is built, so a future the
+     * code never completes is reported with no record call (#1054).
+     */
+    static @Nullable CompletableFutureCompletionLeakDetector currentCompletableFutureCompletionLeakDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.completableFutureCompletionLeakDetector;
+    }
+
+    /**
      * {@return the {@link FutureIgnoredDetector} for the run the calling thread works for, or
      * {@code null}}
      *

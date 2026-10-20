@@ -78,7 +78,7 @@ public class CompletableFutureCompletionLeakDetector {
         final java.util.concurrent.atomic.AtomicBoolean completed =
                 new java.util.concurrent.atomic.AtomicBoolean(false);
 
-        FutureState(CompletableFuture<?> future, String name, UnnamedLabels labels) {
+        FutureState(CompletableFuture<?> future, @Nullable String name, UnnamedLabels labels) {
             this.name = name != null ? name : labels.of(future, "future");
         }
     }
@@ -91,10 +91,11 @@ public class CompletableFutureCompletionLeakDetector {
      * Register a CompletableFuture for completion leak monitoring.
      *
      * @param future the CompletableFuture to monitor
-     * @param name a descriptive name for reporting (e.g., "user-lookup-future")
+     * @param name a descriptive name for reporting (e.g., "user-lookup-future"), or {@code null}
+     *             for a numbered label, which is what the agent passes for a woven future (#1054)
      */
     @SuppressWarnings("FutureReturnValueIgnored")
-    public void recordFutureCreated(CompletableFuture<?> future, String name) {
+    public void recordFutureCreated(CompletableFuture<?> future, @Nullable String name) {
         if (!enabled || future == null) {
             return;
         }

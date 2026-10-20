@@ -1,6 +1,7 @@
 package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.ConstructorReturnSample;
+import com.example.agentfixture.FutureConstructionSample;
 import com.example.agentfixture.OrderedMapConstructionSample;
 import net.bytebuddy.ByteBuddy;
 import net.bytebuddy.dynamic.loading.ClassLoadingStrategy;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -44,6 +46,9 @@ class ConstructionWeaverTest {
 
     /** The constructor events the woven code reported, in order. */
     public static final List<Event> EVENTS = new CopyOnWriteArrayList<>();
+
+    /** The futures the woven code reported building, in order. */
+    public static final List<CompletableFuture<?>> FUTURES = new CopyOnWriteArrayList<>();
 
     /** Stands in for the library hooks, recording instead of reporting. */
     public static class Recorder {
@@ -81,12 +86,48 @@ class ConstructionWeaverTest {
         public static void constructorResumed(Object instance, String declaringClass) {
             EVENTS.add(new Event("resumed", instance, declaringClass));
         }
+
+        /**
+         * @param future the future the woven code just built
+         */
+        public static void completableFutureConstructed(CompletableFuture<?> future) {
+            FUTURES.add(future);
+        }
     }
 
     @BeforeEach
     void clear() {
         BUILT.clear();
         EVENTS.clear();
+        FUTURES.clear();
+    }
+
+    @Test
+    @DisplayName("every new CompletableFuture<>() is reported once, and a subclass's superclass call is not")
+    void everyHandBuiltFutureIsReportedOnce() throws Exception {
+        Class<?> sample = woven(FutureConstructionSample.class);
+
+        Object built = sample.getMethod("built").invoke(null);
+        assertEquals(1, FUTURES.size(), "one report: " + FUTURES);
+        assertSame(built, FUTURES.get(0), "the future itself");
+
+        FUTURES.clear();
+        sample.getMethod("discarded").invoke(null);
+        assertEquals(1, FUTURES.size(), "a dropped future was still built: " + FUTURES);
+
+        FUTURES.clear();
+        List<?> both = (List<?>) sample.getMethod("nested").invoke(null);
+        assertEquals(2, FUTURES.size(), "both futures in the arguments: " + FUTURES);
+        assertSame(both.get(0), FUTURES.get(0));
+        assertSame(both.get(1), FUTURES.get(1));
+
+        FUTURES.clear();
+        sample.getMethod("completed").invoke(null);
+        assertTrue(FUTURES.isEmpty(), "a factory method builds no future by hand here: " + FUTURES);
+
+        FUTURES.clear();
+        woven(FutureConstructionSample.Child.class).getConstructor().newInstance();
+        assertTrue(FUTURES.isEmpty(), "a subclass's superclass call is not a new future: " + FUTURES);
     }
 
     /** Asserts the woven code reported exactly {@code expected}, instances compared by identity. */
