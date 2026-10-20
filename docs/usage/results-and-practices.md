@@ -71,7 +71,8 @@ anything: the schedule knows the holder and runs another worker. When a worker b
 reaching a point (on a lock the schedule does not track, a sleep, a `get`) it left the schedule
 until its next point, and the line says how many times
 that happened, since only a round without such an escape is guaranteed to replay. Each round's
-`runner.schedule.round` event at DEBUG carries the same count as `escapes=`.
+`runner.schedule.round` event at DEBUG carries the same count as `escapes=`, and `fallbacks=`, the
+times every ready worker waited on a lock the schedule saw held, so it ran one of them anyway.
 
 When a test fails, the library provides detailed diagnostics:
 

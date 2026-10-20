@@ -212,10 +212,10 @@ class ControlledScheduleLockTest {
 
     @Test
     void aWaitInsideAHeldMonitorDoesNotStallTheRound() throws Throwable {
-        // Object.wait releases the monitor, which the schedule's table does not see: it still lists
-        // the waiter as the holder. With the waiter blocked and the notifier the only ready worker,
-        // waiting on that stale hold, the round must still go to the notifier, or correct
-        // wait/notify code would end in a round timeout.
+        // Object.wait releases the monitor. Since #1048 the woven wait tells the table so, but a wait
+        // the agent did not weave still leaves the waiter listed as the holder. With the waiter
+        // blocked and the notifier the only ready worker, waiting on that stale hold, the round must
+        // still go to the notifier, or correct wait/notify code would end in a round timeout.
         for (long seed = 1; seed <= 10; seed++) {
             Object monitor = new Object();
             boolean[] ready = new boolean[1];
@@ -236,5 +236,82 @@ class ControlledScheduleLockTest {
                 }
             });
         }
+    }
+
+    private void assertNoRoundFellBack(int expectedRounds) {
+        List<String> rounds = rounds();
+        assertEquals(expectedRounds, rounds.size(), "one event per controlled round: " + rounds);
+        assertTrue(rounds.stream().allMatch(m -> m.contains("fallbacks=0")),
+                "a round went to a worker waiting on a lock nobody really held, because the schedule"
+                        + " still listed a holder that had let it go (#1048). Rounds: " + rounds);
+    }
+
+    @Test
+    void aWovenWaitLetsTheMonitorGo() throws Throwable {
+        // The waiter blocks in wait() and escapes; the notifier then waits at its monitorEntered
+        // point. The monitor is free, so the notifier can proceed and the grant is an ordinary one,
+        // not the everyone-is-waiting fallback a stale hold by the waiter forced.
+        int waits = 0;
+        for (long seed = 1; seed <= 20; seed++) {
+            Object monitor = new Object();
+            boolean[] ready = new boolean[1];
+            AtomicInteger waited = new AtomicInteger();
+            AtomicInteger slot = new AtomicInteger();
+            AsyncTestRunner.run(controlled(2, seed).timeoutMs(10_000).build(), () -> {
+                boolean waiter = slot.getAndIncrement() == 0;
+                AsyncTestContext.schedulePoint();
+                TelemetryRegistry.monitorEntered(monitor);
+                synchronized (monitor) {
+                    if (waiter) {
+                        while (!ready[0]) {
+                            waited.incrementAndGet();
+                            AgentMonitorHooks.monitorWait(monitor);
+                        }
+                    } else {
+                        ready[0] = true;
+                        AgentMonitorHooks.monitorNotifyAll(monitor);
+                    }
+                    TelemetryRegistry.monitorExited(monitor);
+                }
+            });
+            waits += waited.get();
+        }
+        assertTrue(waits > 0, "no seed made the waiter wait, so nothing was exercised");
+        assertNoRoundFellBack(20);
+    }
+
+    /** A synchronized method that throws: no return instruction, so no woven monitor exit. */
+    static final class Throwing {
+        synchronized void boom() {
+            TelemetryRegistry.methodMonitorEntered(this);
+            throw new IllegalStateException("leaves the monitor by an exception");
+        }
+    }
+
+    @Test
+    void aMonitorLeftByAnExceptionIsNotHeldForTheSchedule() throws Throwable {
+        // The method's exit is never woven, so the table keeps the hold. Each worker re-confirms its
+        // own holds at its next point, on its own thread, and the peer waiting to enter the same
+        // monitor gets an ordinary grant instead of the fallback.
+        for (long seed = 1; seed <= 20; seed++) {
+            Throwing throwing = new Throwing();
+            int[] count = new int[1];
+            AsyncTestRunner.run(controlled(2, seed).build(), () -> {
+                AsyncTestContext.schedulePoint();
+                try {
+                    throwing.boom();
+                } catch (IllegalStateException expected) { // NOPMD - the throw is the scenario
+                    // the monitor is released by the exception, unseen by the table
+                }
+                AsyncTestContext.schedulePoint();
+                TelemetryRegistry.monitorEntered(throwing);
+                synchronized (throwing) {
+                    count[0]++;
+                    TelemetryRegistry.monitorExited(throwing);
+                }
+            });
+            assertEquals(2, count[0], "seed " + seed);
+        }
+        assertNoRoundFellBack(20);
     }
 }

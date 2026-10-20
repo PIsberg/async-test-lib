@@ -615,8 +615,9 @@ public class ConcurrencyRunner {
                         schedule.close();
                         lastSchedule = schedule.summary();
                         log.debug("runner.schedule.round test={} round={} seed={} steps={} switches={} "
-                                + "escapes={}", testMethod.getName(), i, currentSeed, lastSchedule.steps(),
-                            lastSchedule.switches(), lastSchedule.escapes());
+                                + "escapes={} fallbacks={}", testMethod.getName(), i, currentSeed,
+                            lastSchedule.steps(), lastSchedule.switches(), lastSchedule.escapes(),
+                            lastSchedule.fallbacks());
                         if (lastSchedule.steps() == 0 && !unpointedLogged) {
                             unpointedLogged = true;
                             log.info("runner.schedule.unpointed test={} reason=\"no worker reached a "
