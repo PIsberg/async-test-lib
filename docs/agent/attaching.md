@@ -42,8 +42,11 @@ The runner does nothing when an agent is already running, attached with `-javaag
 `selfAttach` in setup: explicit configuration always wins. A body run through `AsyncTestRunner`
 is scoped by the package of the body's own class, since the invocation names the library's holder
 class ([#1042](https://github.com/PIsberg/async-test-lib/issues/1042)): a Java, Kotlin or Scala
-lambda, a Groovy closure and a Clojure `reify` are all compiled into the caller's package or
-namespace. A test class or a body in the default package gets no default, because there is no
+lambda and a Clojure `reify` are compiled into the caller's package or namespace. A dynamic-Groovy
+closure coerced to `AsyncTestRunner.Body` is a JDK proxy in `jdk.proxyN`, so for a proxy body the
+runner takes the first caller frame outside itself, the JDK and the Groovy runtime instead, which is
+the test or specification ([#1068](https://github.com/PIsberg/async-test-lib/issues/1068)).
+`consumer-fixture-langs` proves each language under Maven and Gradle. A test class or a body in the default package gets no default, because there is no
 project package to scope the weaving to. The log line
 `runner.agent.attached source=classpath mode=runtime args="..." hint="..."` names what was chosen and
 points at the startup route.

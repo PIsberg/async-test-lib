@@ -18,6 +18,14 @@
             <version>${clojure.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- On the classpath and not started: RunnerDefaultAttachTest proves the runner attaches
+             it by default for an AsyncTestRunner body (#1068). -->
+        <dependency>
+            <groupId>se.deversity.async-test-lib</groupId>
+            <artifactId>async-test-agent</artifactId>
+            <version>${async-test.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -61,7 +69,21 @@
                     <includes>
                         <include>**/*Test.class</include>
                     </includes>
+                    <!-- In a JVM of its own, below: the runner decides the default attach once per
+                         JVM, at the first run, which here would be a library-package fixture. -->
+                    <excludes>
+                        <exclude>**/RunnerDefaultAttachTest.class</exclude>
+                    </excludes>
                 </configuration>
+                <executions>
+                    <execution>
+                        <id>runner-default-attach</id>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <test>RunnerDefaultAttachTest</test>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -138,11 +139,43 @@ public final class AsyncTestRunner {
         try {
             // The context names BodyHolder, in this library's package; the body's own class is in
             // the caller's, which is what the default agent attach weaves (#1042).
-            ConcurrencyRunner.executeForCodeIn(context, config, body.getClass());
+            ConcurrencyRunner.executeForCodeIn(context, config, codeUnderTest(body));
         } finally {
             findings.close();
         }
         return findings;
+    }
+
+    /**
+     * {@return a class in the caller's package, for the default agent attach to scope by (#1042)}
+     *
+     * <p>The body's own class, which a Java, Kotlin or Scala lambda and a Clojure {@code reify}
+     * are compiled into the caller's package for. A dynamic-Groovy closure coerced to
+     * {@link Body} is a JDK proxy instead, whose class lives in {@code jdk.proxyN} (#1068); then
+     * the first caller frame outside this class, the JDK and the Groovy runtime, which is the test
+     * or specification that built the body. A caller in this library's own package is returned as
+     * it is, so the attach still refuses to weave it.
+     *
+     * @param body the body about to run
+     */
+    static Class<?> codeUnderTest(Body body) {
+        Class<?> bodyClass = body.getClass();
+        if (!Proxy.isProxyClass(bodyClass)) {
+            return bodyClass;
+        }
+        return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE).walk(frames -> frames
+                .map(StackWalker.StackFrame::getDeclaringClass)
+                .filter(type -> !isRunnerOrRuntime(type))
+                .findFirst())
+                .orElse(bodyClass);
+    }
+
+    private static boolean isRunnerOrRuntime(Class<?> type) {
+        String name = type.getName();
+        return type == AsyncTestRunner.class || name.startsWith(AsyncTestRunner.class.getName() + "$")
+                || name.startsWith("java.") || name.startsWith("jdk.") || name.startsWith("sun.")
+                || name.startsWith("groovy.") || name.startsWith("org.codehaus.groovy.")
+                || name.startsWith("org.apache.groovy.");
     }
 
     /**

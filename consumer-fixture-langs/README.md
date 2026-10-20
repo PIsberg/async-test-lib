@@ -56,6 +56,31 @@ package sits outside `se.deversity.asynctest` deliberately: the weaver refuses t
 the library's own root, so a wait bean under `se.deversity.asynctest.fixture` is never woven at all
 and both tests would measure nothing. The firing half is what caught that.
 
+## `RunnerDefaultAttachTest`: the default agent attach from each language
+
+`AsyncTestRunner.run` attaches `async-test-agent` by default when it is on the test classpath and
+no flag is set, scoped to the package of the body's own class (#1042). Each module carries a
+`RunnerDefaultAttachTest` in a `com.example.<lang>runner` package that proves it for that
+language's body ([#1068]): a bare increment the body reaches is reported by `AtomicityValidator`
+and the same increment under a lock is not, with the agent only on the classpath. The body is a
+Kotlin lambda, a Scala function, a dynamic-Groovy closure coerced with `as AsyncTestRunner.Body`,
+and a Clojure `reify`.
+
+The Groovy one is why the others exist. A coerced closure is a JDK proxy whose class lives in
+`jdk.proxyN`, so the runner scoped the weaving there and wove nothing of the caller's; the test
+went red ("the bare increment was not reported: []") until the runner learned to fall back to the
+first caller frame outside itself, the JDK and the Groovy runtime for a proxy body. Kotlin, Scala
+and Clojure compile the body into the caller's package and passed on the first run. Breaking it
+with `-Dasynctest.agent=off` turns the Kotlin one red on its "should have attached" assertion.
+
+Each runs in a JVM of its own, a separate surefire execution (`runner-default-attach`) and Gradle
+task (`runnerDefaultAttach`, which `test` depends on), because the runner decides the attach once
+per JVM and only while no agent is running: the Kotlin module starts the agent with `-javaagent`
+for its wait fixtures, and in the other modules the first run would be a library-package fixture,
+for which the default declines to weave. The executions name the class with `<test>`, not an
+`<include>` pattern: under Surefire 3.6.0 an `<include>` ending in `.class` selects the class and
+then runs nothing. Clojure has no Gradle build here, so it runs under Maven only.
+
 ## `quickstart`: the README's quick start, as a build
 
 Java rather than another language, and here because this aggregator is where CI already builds
@@ -70,6 +95,7 @@ on the `-javaagent:` assertion even though the fallback still finds the race.
 
 [#710]: https://github.com/PIsberg/async-test-lib/issues/710
 [#714]: https://github.com/PIsberg/async-test-lib/issues/714
+[#1068]: https://github.com/PIsberg/async-test-lib/issues/1068
 
 ## Run it
 
