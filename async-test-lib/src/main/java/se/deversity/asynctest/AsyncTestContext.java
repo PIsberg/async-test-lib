@@ -448,6 +448,7 @@ public final class AsyncTestContext {
      */
     public AsyncTestContext(AsyncTestConfig cfg) {
         this.registry = new DetectorRegistry(cfg);
+        this.licenseMockMode = cfg.licenseMockMode;
         // Mirror registry references so package-private field access still works
         // (e.g. ctx.lockLeakDetector in tests). This is a thin delegation shim —
         // zero allocation overhead compared to the old design.
@@ -1218,16 +1219,29 @@ public final class AsyncTestContext {
      */
     static final class Round {
         private final int number;
+        private final int workers;
 
-        Round(int number) {
+        Round(int number, int workers) {
             this.number = number;
+            this.workers = workers;
         }
 
         /** {@return the round's position in its run, from 1} */
         int number() {
             return number;
         }
+
+        /** {@return how many workers the round runs, which a re-run of its scenario needs (#1025)} */
+        int workers() {
+            return workers;
+        }
     }
+
+    /**
+     * The run's licence mode, so a re-run made on its behalf passes the licence gate the same way
+     * the run did rather than being granted one it was not (#1025).
+     */
+    final boolean licenseMockMode;
 
     /** The round in progress, replaced at every round start before its workers exist. */
     private volatile @Nullable Round currentRound;
@@ -1253,7 +1267,7 @@ public final class AsyncTestContext {
         this.roundDeadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(roundTimeoutMs);
         this.roundRendezvous = workers <= MAX_RENDEZVOUS_PARTIES ? new Phaser(workers) : null;
         roundsOpened++;
-        this.currentRound = new Round(roundsOpened);
+        this.currentRound = new Round(roundsOpened, workers);
     }
 
     /**

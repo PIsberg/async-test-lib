@@ -229,7 +229,11 @@ void counter() {
 
 Each worker draws its own sequence from the round's replay seed, so the seed the runner prints on a
 failure reproduces the scenario. With `controlledSchedule = true` it reproduces the interleaving of
-that scenario too, as long as the round's operations reach scheduling points.
+that scenario too, as long as the round's operations reach scheduling points. When a drawn round
+fails, `assertLinearizable` also re-runs its scenario with operations left out and adds the smallest
+one that still fails, per worker, with the seed that reproduces it: often two operations out of
+dozens. The design and its limits are in
+[analysis/linearizability-checking.md](analysis/linearizability-checking.md#the-smallest-failing-scenario-1025).
 
 To make a failed check a finding instead of an assertion, verify the history when you build it:
 `OperationHistory.of(AtomicInteger::new).verifiedAgainst(spec)`. Each run then checks its own rounds

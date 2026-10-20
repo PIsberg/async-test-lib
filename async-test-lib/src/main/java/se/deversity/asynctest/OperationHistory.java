@@ -101,6 +101,23 @@ public final class OperationHistory<S> {
     /** The per-round check {@link #verifiedAgainst} installed, run at the end of each run. */
     private volatile @Nullable Consumer<RoundLog> verifier;
 
+    /**
+     * Set only on a probe {@link #shrink} runs: each worker's operations, by slot, which
+     * {@link #generate} then performs instead of drawing (#1025).
+     */
+    private volatile @Nullable Map<Integer, List<Drawn>> script;
+
+    /** The most re-runs one shrink makes, so a large scenario cannot hold the check up for long. */
+    static final int MAX_SHRINK_RUNS = 2_000;
+
+    /**
+     * How many schedules a candidate scenario is tried under: the round's own seed, then seeds
+     * derived from it. Leaving an operation out moves every later step, so the interleaving that
+     * failed is not the one a smaller scenario replays under the same seed; trying a few is what
+     * lets the search keep a smaller scenario that fails under another (#1025).
+     */
+    static final int SCHEDULES_PER_CANDIDATE = 64;
+
     private OperationHistory(Supplier<? extends S> fresh) {
         this.fresh = fresh;
     }
@@ -229,13 +246,180 @@ public final class OperationHistory<S> {
         }
         Object round = roundKey();
         int slot = WorkerSlot.current();
+        S subject = subject();
+        Map<Integer, List<Drawn>> replay = script;
+        if (replay != null) {
+            for (Drawn step : replay.getOrDefault(slot, List.of())) {
+                Declared<S> op = choices.get(step.choice());
+                call(op.name(), step.argument(), () -> op.action().apply(subject, step.argument()));
+            }
+            return;
+        }
         RandomGenerator random = streams.computeIfAbsent(List.of(round, slot),
                 key -> new SplittableRandom(drawSeed(round, slot)));
-        S subject = subject();
+        RoundLog log = rounds.computeIfAbsent(round, RoundLog::new);
         for (int i = 0; i < operations; i++) {
-            Declared<S> op = choices.get(random.nextInt(choices.size()));
+            int choice = random.nextInt(choices.size());
+            Declared<S> op = choices.get(choice);
             Object arg = op.argument().apply(random);
+            log.drew(slot, new Drawn(choice, arg));
             call(op.name(), arg, () -> op.action().apply(subject, arg));
+        }
+    }
+
+    /** One drawn operation: which declared operation, and its argument (#1025). */
+    private record Drawn(int choice, @Nullable Object argument) { }
+
+    /**
+     * One drawn operation of one worker. {@code position} is its place in the whole scenario, so two
+     * equal operations of one worker, such as two {@code increment()}s, stay two steps when a
+     * subset is removed from a candidate.
+     */
+    private record Step(int position, int slot, Drawn drawn) { }
+
+    /**
+     * Shrinks the failing round {@code log} by re-running its drawn scenario with operations left
+     * out, and returns the smallest one {@code check} still fails, described; {@code null} when
+     * the round drew nothing to replay (#1025).
+     *
+     * <p>Each attempt is one {@link AsyncTestRunner#run} of a probe history holding the same
+     * declared operations, under a controlled schedule, so a subset and a seed replay one
+     * interleaving and the user's own history records nothing. A candidate fails when it fails under
+     * any of {@value #SCHEDULES_PER_CANDIDATE} seeds, the round's own first. The search is delta
+     * debugging over the flat list of drawn operations, each worker's kept in its order, and stops
+     * after {@value #MAX_SHRINK_RUNS} runs with the smallest failing scenario found so far.
+     */
+    private @Nullable String shrink(RoundLog log, Consumer<RoundLog> check) {
+        List<Step> all = new ArrayList<>();
+        log.scenario().forEach((slot, drawn) -> drawn.forEach(step -> all.add(new Step(all.size(), slot, step))));
+        if (all.isEmpty() || log.workers <= 0 || AsyncTestContext.currentContext() != null) {
+            return null;
+        }
+        int[] runs = {0};
+        long[] failingSeed = {log.seed};
+        java.util.function.Predicate<List<Step>> fails = subset -> {
+            for (int i = 0; i < SCHEDULES_PER_CANDIDATE && runs[0] < MAX_SHRINK_RUNS; i++) {
+                long seed = log.seed + i * 0x9E3779B97F4A7C15L;
+                runs[0]++;
+                if (failsWhenReplayed(subset, log, seed, check)) {
+                    failingSeed[0] = seed;
+                    return true;
+                }
+            }
+            return false;
+        };
+        if (!fails.test(all)) {
+            return "Re-running the " + all.size() + " drawn operations under the round's seed and a "
+                    + "controlled schedule did not fail, so the scenario was not shrunk; a failure "
+                    + "that depends on timing outside the schedule does not replay.";
+        }
+        List<Step> minimal = all;
+        int parts = 2;
+        while (minimal.size() >= 2 && runs[0] < MAX_SHRINK_RUNS) {
+            List<List<Step>> chunks = split(minimal, parts);
+            List<Step> next = null;
+            for (List<Step> chunk : chunks) {
+                if (runs[0] < MAX_SHRINK_RUNS && fails.test(chunk)) {
+                    next = chunk;
+                    parts = 2;
+                    break;
+                }
+            }
+            if (next == null) {
+                for (List<Step> chunk : chunks) {
+                    List<Step> rest = new ArrayList<>(minimal);
+                    rest.removeAll(chunk);
+                    if (runs[0] < MAX_SHRINK_RUNS && fails.test(rest)) {
+                        next = rest;
+                        parts = Math.max(parts - 1, 2);
+                        break;
+                    }
+                }
+            }
+            if (next != null) {
+                minimal = next;
+            } else if (parts >= minimal.size()) {
+                break;
+            } else {
+                parts = Math.min(minimal.size(), parts * 2);
+            }
+        }
+        StringBuilder sb = new StringBuilder("Shrunk by re-running the drawn scenario under the round's seed and a "
+                + "controlled schedule: ").append(minimal.size()).append(" of the ").append(all.size())
+                .append(" drawn operations still fail, under replaySeed = ").append(failingSeed[0]).append("L");
+        if (runs[0] >= MAX_SHRINK_RUNS) {
+            sb.append(" (the search stopped after ").append(MAX_SHRINK_RUNS).append(" runs)");
+        }
+        sb.append(':');
+        List<Declared<S>> choices = List.copyOf(declared);
+        Map<Integer, List<String>> byWorker = new java.util.TreeMap<>();
+        for (Step step : minimal) {
+            Object arg = step.drawn().argument();
+            byWorker.computeIfAbsent(step.slot(), k -> new ArrayList<>())
+                    .add(choices.get(step.drawn().choice()).name() + "(" + (arg == null ? "" : arg) + ")");
+        }
+        byWorker.forEach((slot, ops) -> sb.append("\n  worker ").append(slot).append(": ")
+                .append(String.join(", ", ops)));
+        return sb.toString();
+    }
+
+    /** {@return the list cut into {@code parts} contiguous pieces, as even as they come} */
+    private static List<List<Step>> split(List<Step> steps, int parts) {
+        List<List<Step>> out = new ArrayList<>();
+        int size = steps.size();
+        for (int i = 0; i < parts; i++) {
+            int from = i * size / parts;
+            int to = (i + 1) * size / parts;
+            if (from < to) {
+                out.add(steps.subList(from, to));
+            }
+        }
+        return out;
+    }
+
+    /** {@return whether {@code check} fails the one round of a probe run that performs {@code steps}} */
+    private boolean failsWhenReplayed(List<Step> steps, RoundLog failing, long seed, Consumer<RoundLog> check) {
+        // Only the workers the candidate uses, renumbered from 0: an idle worker still takes part in
+        // the schedule's priorities, so leaving it in changes which interleavings a seed reaches.
+        Map<Integer, List<Drawn>> bySlot = new java.util.TreeMap<>();
+        for (Step step : steps) {
+            bySlot.computeIfAbsent(step.slot(), k -> new ArrayList<>()).add(step.drawn());
+        }
+        Map<Integer, List<Drawn>> replay = new java.util.TreeMap<>();
+        for (List<Drawn> ops : bySlot.values()) {
+            replay.put(replay.size(), ops);
+        }
+        OperationHistory<S> probe = new OperationHistory<>(fresh);
+        probe.declared.addAll(declared);
+        probe.script = replay;
+        try {
+            AsyncTestRunner.run(AsyncTestConfig.builder().threads(Math.max(1, replay.size())).invocations(1)
+                    .replaySeed(seed).controlledSchedule(true).timeoutMs(10_000)
+                    .licenseMockMode(failing.licenseMockMode).build(), () -> probe.generate(0));
+        } catch (Throwable notAFailingRun) { // NOPMD - a run that throws is not the failure being shrunk
+            return false;
+        }
+        for (RoundLog log : probe.rounds.values()) {
+            try {
+                check.accept(log);
+            } catch (NotLinearizable stillFails) {
+                return true;
+            } catch (AssertionError other) { // NOPMD - undecided or oversized: not this failure
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The one failure {@link #shrink} looks for: a round no order of its operations explains. An
+     * {@code AssertionError} on purpose, since it reaches the test as the check's failure.
+     */
+    private static final class NotLinearizable extends AssertionError { // NOPMD DoNotExtendJavaLangError - a check's failure
+        private static final long serialVersionUID = 1L;
+
+        NotLinearizable(String message) {
+            super(message);
         }
     }
 
@@ -330,15 +514,32 @@ public final class OperationHistory<S> {
      * @param spec the sequential behaviour the object must be explainable by
      * @throws AssertionError for the first round with no linearization, listing the shortest prefix
      *                        of its operations that already has none, and naming the response that
-     *                        ended it; for a round the search could not decide within its budget; for a
-     *                        round of more than 64 operations, which one search cannot take; and
-     *                        when nothing was recorded, since a check over no operations proves
-     *                        nothing
+     *                        ended it, and for a round drawn with {@link #generate}, the smallest
+     *                        drawn scenario that still fails when re-run (#1025); for a round the
+     *                        search could not decide within its budget; for a round of more than 64
+     *                        operations, which one search cannot take; and when nothing was
+     *                        recorded, since a check over no operations proves nothing
      */
     public <M> void assertLinearizable(SequentialSpec<M> spec) {
         Objects.requireNonNull(spec, "spec");
         for (RoundLog log : recordedRounds()) {
-            checkWhole(log, spec);
+            checkShrinking(log, round -> checkWhole(round, spec));
+        }
+    }
+
+    /**
+     * Runs {@code check} on {@code log}, and when the round is not linearizable and drew its
+     * operations, adds the smallest drawn scenario that still fails to the error (#1025).
+     */
+    private void checkShrinking(RoundLog log, Consumer<RoundLog> check) {
+        try {
+            check.accept(log);
+        } catch (NotLinearizable e) {
+            String shrunk = shrink(log, check);
+            if (shrunk == null) {
+                throw e;
+            }
+            throw new AssertionError(e.getMessage() + "\n\n" + shrunk, e);
         }
     }
 
@@ -375,7 +576,7 @@ public final class OperationHistory<S> {
         Objects.requireNonNull(spec, "spec");
         Objects.requireNonNull(partition, "partition");
         for (RoundLog log : recordedRounds()) {
-            checkPartitioned(log, spec, partition);
+            checkShrinking(log, round -> checkPartitioned(round, spec, partition));
         }
     }
 
@@ -434,10 +635,10 @@ public final class OperationHistory<S> {
             long cut = LinearizabilityChecker.shortestViolatingCut(ops, spec, LinearizabilityChecker.DEFAULT_BUDGET);
             List<Op> shown = cut < 0 ? ops : ops.stream().filter(op -> op.invoke() < cut).toList();
             if (shown.size() == ops.size()) {
-                throw new AssertionError(describe(name, ops, head, Long.MAX_VALUE));
+                throw new NotLinearizable(describe(name, ops, head, Long.MAX_VALUE));
             }
             Op last = ops.stream().filter(op -> op.response() == cut).findFirst().orElseThrow();
-            throw new AssertionError(describe(name, shown, head + " The shortest prefix with no such order"
+            throw new NotLinearizable(describe(name, shown, head + " The shortest prefix with no such order"
                     + " holds " + shown.size() + " of its " + ops.size() + " operations and ends at #" + cut
                     + ", when [" + last.thread() + "] " + last.operation() + "("
                     + (last.argument() == null ? "" : last.argument()) + ") returned " + last.result()
@@ -486,11 +687,30 @@ public final class OperationHistory<S> {
         final int number;
         /** The run the round belongs to, or {@code null} outside one. */
         final @Nullable AsyncTestContext context;
+        /** The round's seed, workers and licence mode, which a re-run of its scenario repeats. */
+        final long seed;
+        final int workers;
+        final boolean licenseMockMode;
         private final List<Op> ops = new ArrayList<>();
+        /** What each worker drew through {@link OperationHistory#generate}, by slot (#1025). */
+        private final Map<Integer, List<Drawn>> drawn = new java.util.TreeMap<>();
 
         RoundLog(Object key) {
             this.number = key instanceof AsyncTestContext.Round round ? round.number() : 0;
+            this.workers = key instanceof AsyncTestContext.Round round ? round.workers() : 0;
             this.context = AsyncTestContext.currentContext();
+            this.seed = AsyncTestContext.replaySeed();
+            this.licenseMockMode = context != null && context.licenseMockMode;
+        }
+
+        synchronized void drew(int slot, Drawn step) {
+            drawn.computeIfAbsent(slot, k -> new ArrayList<>()).add(step);
+        }
+
+        synchronized Map<Integer, List<Drawn>> scenario() {
+            Map<Integer, List<Drawn>> copy = new java.util.TreeMap<>();
+            drawn.forEach((slot, steps) -> copy.put(slot, List.copyOf(steps)));
+            return copy;
         }
 
         synchronized void add(Op op) {
