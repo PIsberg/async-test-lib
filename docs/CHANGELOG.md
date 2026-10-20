@@ -236,6 +236,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   carrying nothing into later work; `ControlledScheduleTaskWeavingTest` does the same through the
   weaver with one pool across rounds, and both go red with adoption disabled.
 
+- **`OperationHistory.assertLinearizableForAllScenarios` searches every small scenario (#1082).**
+  `generate` draws one scenario per worker per round; a race only a particular small scenario
+  exposes was found only if a seed happened to draw it. The new method enumerates every sequence of
+  up to k declared operations on each of w workers, smallest first, runs each under a controlled
+  schedule and 32 seeds on a probe history, and fails on the first with no linearization, listed
+  per worker with its seed. It refuses a space larger than 20,000 runs instead of searching part of
+  it. Test: `LinearizabilityEnumerationTest` finds one increment on each of two workers for the
+  read, point, write counter, passes an `AtomicInteger` over all 49 scenarios of two operations on
+  two workers, and goes red with every scenario skipped.
+
 - **A failing drawn linearizability round is shrunk by re-running it (#1025).** For a round whose
   operations `OperationHistory.generate` drew, `assertLinearizable` now replays the drawn scenario
   with operations left out, delta debugging style, each attempt an `AsyncTestRunner.run` of a probe

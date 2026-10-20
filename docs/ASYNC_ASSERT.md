@@ -232,7 +232,10 @@ failure reproduces the scenario. With `controlledSchedule = true` it reproduces 
 that scenario too, as long as the round's operations reach scheduling points. When a drawn round
 fails, `assertLinearizable` also re-runs its scenario with operations left out and adds the smallest
 one that still fails, per worker, with the seed that reproduces it: often two operations out of
-dozens. The design and its limits are in
+dozens. To try every small scenario instead of the ones a seed draws, call
+`HISTORY.assertLinearizableForAllScenarios(spec, workers, operationsPerWorker)` from a plain test
+or `@AfterAll`: it runs each, smallest first, under a controlled schedule and several seeds, and
+fails on the first with no linearization. The design and its limits are in
 [analysis/linearizability-checking.md](analysis/linearizability-checking.md#the-smallest-failing-scenario-1025).
 
 To make a failed check a finding instead of an assertion, verify the history when you build it:
