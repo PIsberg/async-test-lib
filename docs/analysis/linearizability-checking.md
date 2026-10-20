@@ -218,6 +218,23 @@ linearizable round re-runs nothing. Two defects the test found on the way: steps
 value, so removing one of a worker's two `increment()`s removed both and the pair was never tried;
 and an idle third worker in every attempt changed which interleavings a seed reached.
 
+### Every small scenario (#1082)
+
+`assertLinearizableForAllScenarios(spec, workers, operationsPerWorker)` enumerates instead of
+drawing: every sequence of up to `operationsPerWorker` declared operations on each of `workers`
+workers, smallest total first, each run as one round on a probe history with a controlled schedule
+under seeds 1 to 32. It throws for the first scenario with no linearization, listed per worker
+with its seed, and returns a line saying what it covered when every scenario passed. An
+operation's argument is drawn once per worker and position from a fixed seed, so the space is the
+order of the operations, not their arguments. A space that takes more than 20,000 runs is refused
+with `IllegalArgumentException` rather than searched part way, because a search that stopped early
+would read as a pass it is not. Two operations on two workers of up to two each is 49 scenarios.
+
+`LinearizabilityEnumerationTest` covers it: for the read, point, write counter with a `get` declared
+before `increment`, the scenario found is one increment on each worker, the smallest that can
+fail; an `AtomicInteger` passes all 49; four workers of up to six operations each is refused.
+Skipping every scenario turns the first test red.
+
 ## Limits
 
 - **Observation cannot force a race.** The check proves a history impossible; it cannot make a
@@ -227,6 +244,7 @@ and an idle third worker in every attempt changed which interleavings a seed rea
   `controlledSchedule = true` is the other way: with a `schedulePoint()` (or a woven field access)
   between the read and the write, the replay seed decides whether the round switches workers there,
   and a seed that broke the object breaks it on every replay.
-- **No systematic scenario search.** `generate` draws a scenario per round from the replay seed;
-  unlike Lincheck it does not enumerate small scenarios. A failing drawn round is shrunk by re-running
-  it (#1025), but a scenario no round drew is never tried.
+- **Enumeration is bounded and orders only operations.** `generate` draws a scenario per round;
+  `assertLinearizableForAllScenarios` covers every small one (#1082) but only up to 20,000 runs, with
+  one fixed argument per worker and position, and only from a plain test or `@AfterAll`. A failing
+  drawn round is shrunk by re-running it (#1025).
