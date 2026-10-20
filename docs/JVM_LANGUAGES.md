@@ -108,7 +108,8 @@ Three things that are not obvious, each verified the hard way:
 - **Static lifecycle methods** take `^{:static true}` on the signature vector, not on the name.
   On the name it compiles to an instance method and JUnit refuses it.
 - **AOT is required** (`clojure-maven-plugin` `testCompile`), and Surefire must include
-  `**/*Test.class`, because the class is named by `:name`, not by the file.
+  `**/*Test`, because the class is named by `:name`, not by the file. Not `**/*Test.class`: under
+  Surefire 3.6.0 that pattern selects the classes and runs none (#1078).
 
 `clojure.test` `deftest` cannot use `@AsyncTest`; use `AsyncTestRunner` from a deftest instead
 (next section). Fixture: [`consumer-fixture-langs/clojure`](../consumer-fixture-langs/clojure).
