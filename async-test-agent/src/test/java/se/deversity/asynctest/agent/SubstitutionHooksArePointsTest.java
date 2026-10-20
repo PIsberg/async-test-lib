@@ -30,12 +30,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * it true for the several hundred hooks it cannot run one by one. A hook added without a point
  * still passes every other test: it records, it delegates, and the schedule simply runs the whole
  * check-then-act through it in one turn, so a seed can never split it. Read from the bytecode, a
- * hook reaches a point when it calls {@code ControlledSchedule.point()} or a static method of its
- * own class that does, which is how an overload that delegates to its sibling is counted.
+ * hook reaches a point when it calls one of {@code ControlledSchedule}'s point entries or a static
+ * method of its own class that does, which is how an overload that delegates to its sibling is
+ * counted. The entries are {@code point()} and the three that are a point naming what the worker
+ * waits for: {@code acquiring} (a lock), {@code joining} (a thread) and {@code awaitingTask} (a
+ * task's result, #1049).
  */
 class SubstitutionHooksArePointsTest {
 
     private static final String POINT_OWNER = "se/deversity/asynctest/telemetry/ControlledSchedule";
+
+    /** The {@code ControlledSchedule} methods that are scheduling points. */
+    private static final Set<String> POINT_ENTRIES = Set.of("point", "acquiring", "joining", "awaitingTask");
 
     /**
      * Calls the field weaver inserts beside an instruction rather than in place of one. Each
@@ -150,7 +156,7 @@ class SubstitutionHooksArePointsTest {
                 return false;
             }
             for (String[] call : invokes.getOrDefault(method, List.of())) {
-                if (POINT_OWNER.equals(call[0]) && "point".equals(call[1])) {
+                if (POINT_OWNER.equals(call[0]) && POINT_ENTRIES.contains(call[1])) {
                     return true;
                 }
                 if (owner.equals(call[0]) && reachesPoint(call[1] + call[2], seen)) {

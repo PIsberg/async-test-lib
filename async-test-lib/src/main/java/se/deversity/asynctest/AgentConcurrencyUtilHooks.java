@@ -740,7 +740,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static @Nullable Object join(CompletableFuture<Object> receiver) {
-        ControlledSchedule.point();
+        ControlledSchedule.awaitingTask(adoptionBehind(receiver));
         if (!receiver.isDone()) {
             blocking("CompletableFuture.join", true);
         }
@@ -768,7 +768,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static @Nullable Object get(Future<Object> receiver)
             throws InterruptedException, ExecutionException {
-        ControlledSchedule.point();
+        ControlledSchedule.awaitingTask(adoptionBehind(receiver));
         if (!receiver.isDone()) {
             blockingOn(receiver);
         }
@@ -798,7 +798,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static @Nullable Object get(Future<Object> receiver, long timeout, TimeUnit unit)
             throws InterruptedException, ExecutionException, TimeoutException {
-        ControlledSchedule.point();
+        ControlledSchedule.awaitingTask(adoptionBehind(receiver));
         if (!receiver.isDone()) {
             blockingOn(receiver);
         }
@@ -2914,7 +2914,12 @@ public final class AgentConcurrencyUtilHooks {
         if (executor == ForkJoinPool.commonPool()) { // NOPMD CompareObjectsWithEquals - the one pool, by identity
             handed.onTheCommonPool();
         }
-        return Submissions.remember(CompletableFuture.supplyAsync(handed, executor), handed);
+        try {
+            return Submissions.remember(CompletableFuture.supplyAsync(handed, executor), handed);
+        } catch (RejectedExecutionException e) {
+            handed.abandoned();
+            throw e;
+        }
     }
 
     /**
@@ -2950,7 +2955,12 @@ public final class AgentConcurrencyUtilHooks {
         if (executor == ForkJoinPool.commonPool()) { // NOPMD CompareObjectsWithEquals - the one pool, by identity
             handed.onTheCommonPool();
         }
-        return Submissions.remember(CompletableFuture.runAsync(handed, executor), handed);
+        try {
+            return Submissions.remember(CompletableFuture.runAsync(handed, executor), handed);
+        } catch (RejectedExecutionException e) {
+            handed.abandoned();
+            throw e;
+        }
     }
 
     /**
@@ -3058,13 +3068,17 @@ public final class AgentConcurrencyUtilHooks {
     public static Future<Object> submit(ExecutorService receiver, Callable<Object> task) {
         ControlledSchedule.point();
         taskSubmitted(receiver);
+        HandedTask handed = null;
         try {
             if (!wrapsInvisibly(receiver, task)) {
                 return receiver.submit(task);
             }
-            HandedTask handed = new HandedTask(task);
+            handed = new HandedTask(task);
             return Submissions.remember(receiver.submit((Callable<Object>) handed), handed);
         } catch (RejectedExecutionException e) {
+            if (handed != null) {
+                handed.abandoned();
+            }
             throw rejected(receiver, e);
         }
     }
@@ -3081,13 +3095,17 @@ public final class AgentConcurrencyUtilHooks {
     public static Future<?> submit(ExecutorService receiver, Runnable task) {
         ControlledSchedule.point();
         taskSubmitted(receiver);
+        HandedTask handed = null;
         try {
             if (!wrapsInvisibly(receiver, task)) {
                 return receiver.submit(task);
             }
-            HandedTask handed = new HandedTask(task);
+            handed = new HandedTask(task);
             return Submissions.remember(receiver.submit((Runnable) handed), handed);
         } catch (RejectedExecutionException e) {
+            if (handed != null) {
+                handed.abandoned();
+            }
             throw rejected(receiver, e);
         }
     }
@@ -3107,13 +3125,17 @@ public final class AgentConcurrencyUtilHooks {
                                         @Nullable Object result) {
         ControlledSchedule.point();
         taskSubmitted(receiver);
+        HandedTask handed = null;
         try {
             if (!wrapsInvisibly(receiver, task)) {
                 return receiver.submit(task, result);
             }
-            HandedTask handed = new HandedTask(task);
+            handed = new HandedTask(task);
             return Submissions.remember(receiver.submit((Runnable) handed, result), handed);
         } catch (RejectedExecutionException e) {
+            if (handed != null) {
+                handed.abandoned();
+            }
             throw rejected(receiver, e);
         }
     }
@@ -3418,13 +3440,18 @@ public final class AgentConcurrencyUtilHooks {
         // The NullPointerException the call itself throws for a missing task.
         Objects.requireNonNull(command);
         taskSubmitted(receiver);
+        HandedTask handed = null;
         try {
             if (!(command instanceof ForkJoinTask) && executesInvisibly(receiver)) {
-                receiver.execute(new HandedTask(command));
+                handed = new HandedTask(command);
+                receiver.execute(handed);
                 return;
             }
             receiver.execute(command);
         } catch (RejectedExecutionException e) {
+            if (handed != null) {
+                handed.abandoned();
+            }
             throw rejected(receiver, e);
         }
     }
@@ -3444,6 +3471,15 @@ public final class AgentConcurrencyUtilHooks {
             pools.recordRejectedExecution(executor, e);
         }
         return e;
+    }
+
+    /**
+     * {@return the controlled schedule's adoption of the task behind {@code future}, or
+     * {@code null}}: what a wait for its result hands the schedule, so the wait happens inside it
+     * (#1049). Only a future this thread got from a woven submission is known.
+     */
+    private static @Nullable Object adoptionBehind(Object future) {
+        return Submissions.peek(future) instanceof HandedTask handed ? handed.adoption : null;
     }
 
     /** {@return whether {@code executor} is one whose tasks no caller can get back} */
@@ -3633,12 +3669,24 @@ public final class AgentConcurrencyUtilHooks {
         /** Whether the task was handed to the common pool, and declared to the blocking detector. */
         private volatile boolean commonPool;
 
+        /**
+         * The controlled schedule's adoption of this task (#1049), taken on the submitting worker,
+         * or {@code null} outside a controlled round: the task joins the round where it runs.
+         */
+        final @Nullable Object adoption;
+
         HandedTask(Object task) {
             this.task = task;
             this.submitted = HappensBefore.handOff();
             this.token = TOKENS.incrementAndGet();
             this.submittedIn = AsyncTestContext.agentContext();
+            this.adoption = ControlledSchedule.submitting();
             TelemetryRegistry.taskSubmitted(token);
+        }
+
+        /** Tells the controlled schedule this task will never run: its executor rejected it. */
+        void abandoned() {
+            ControlledSchedule.taskAbandoned(adoption);
         }
 
         /**
@@ -3688,6 +3736,7 @@ public final class AgentConcurrencyUtilHooks {
 
         @Override
         public void run() {
+            Object scheduled = ControlledSchedule.taskStarting(adoption);
             HappensBefore.receive(submitted);
             AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
@@ -3704,11 +3753,13 @@ public final class AgentConcurrencyUtilHooks {
                 leaveTask(taskBefore);
                 mdcAtTaskEnd();
                 AsyncTestContext.restoreLent(lentBefore);
+                ControlledSchedule.taskEnded(scheduled);
             }
         }
 
         @Override
         public @Nullable Object call() throws Exception {
+            Object scheduled = ControlledSchedule.taskStarting(adoption);
             HappensBefore.receive(submitted);
             AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
@@ -3725,11 +3776,13 @@ public final class AgentConcurrencyUtilHooks {
                 leaveTask(taskBefore);
                 mdcAtTaskEnd();
                 AsyncTestContext.restoreLent(lentBefore);
+                ControlledSchedule.taskEnded(scheduled);
             }
         }
 
         @Override
         public @Nullable Object get() {
+            Object scheduled = ControlledSchedule.taskStarting(adoption);
             HappensBefore.receive(submitted);
             AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
@@ -3746,6 +3799,7 @@ public final class AgentConcurrencyUtilHooks {
                 leaveTask(taskBefore);
                 mdcAtTaskEnd();
                 AsyncTestContext.restoreLent(lentBefore);
+                ControlledSchedule.taskEnded(scheduled);
             }
         }
 

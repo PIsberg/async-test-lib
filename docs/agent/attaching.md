@@ -140,8 +140,14 @@ the round: when no ready worker can proceed, the round is handed out anyway, and
 woven `Thread.start` (or a `Thread.Builder`) joins the round at its first point, under a slot the
 order of the starts decides, and an untimed `join` on it waits inside the schedule, so a worker
 racing its own child is split and replayed like two workers
-([#1024](https://github.com/PIsberg/async-test-lib/issues/1024)). Tasks handed to an executor are
-not scheduled.
+([#1024](https://github.com/PIsberg/async-test-lib/issues/1024)). A task handed to one of the
+JDK's executors through a woven `submit`, `execute`, `supplyAsync` or `runAsync` is adopted the
+same way: it joins the round when it starts on the pool thread and leaves when it ends, so the pool
+thread carries nothing into its next task, and a woven `get` or `join` on its future waits inside
+the schedule ([#1049](https://github.com/PIsberg/async-test-lib/issues/1049)). A task the executor
+rejects is dropped from the round, one it has not started within the stall bound escapes, and a task
+run inline on the submitting worker, under a caller-runs policy, is part of that worker's turn. A
+task given to an executor outside `java.util.concurrent` runs outside the schedule.
 
 The call carries the receiver, so the analysis can tell six threads racing on one object from six
 threads each using their own, and — for a store of a reference type — the value being stored. That
