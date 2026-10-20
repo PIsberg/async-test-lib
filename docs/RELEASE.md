@@ -14,14 +14,17 @@ preparation; the tag itself is the point of no return.
 On a `v*` tag push, `publish.yml`:
 
 1. Builds and tests on JDK 21 (Temurin).
-2. Imports the GPG key, installs Maven 3.9.16 (checksum-verified) and runs
-   `mvn --batch-mode clean deploy -P release`. The `release` profile activates
-   `maven-gpg-plugin`, which signs the artifacts at the `verify` phase. The Maven is pinned
-   because the runner image's 3.10.0 makes `central-publishing-maven-plugin` 0.11.0 build a
-   bundle with a `maven-metadata-local.xml` beside each module's version directory, which the
-   portal rejects; that is why v1.13.0 published nothing (#949). Raise the pin only after
-   checking that a newer plugin's bundle holds no `.locks/`, `_remote.repositories` or
-   `maven-metadata-local.xml` entries (`PublishRunsOnPinnedMavenTest` holds it below 3.10).
+2. Imports the GPG key and runs `mvn --batch-mode clean deploy -P release` on the runner image's
+   Maven. The `release` profile activates `maven-gpg-plugin`, which signs the artifacts at the
+   `verify` phase. Under Maven 3.10.0, `central-publishing-maven-plugin` 0.11.0 built a bundle with
+   `.locks/`, `_remote.repositories` and a `maven-metadata-local.xml` beside each module's version
+   directory, which the portal rejected; that is why v1.13.0 published nothing (#949), and the job
+   pinned Maven 3.9.16 until plugin 0.12.0 fixed it (#974). Before changing either, build the bundle
+   offline and read it: `mvn -s <settings with a dummy central server> clean deploy -P release
+   -DskipTests -Dgpg.skip=true -DcentralBaseUrl=http://127.0.0.1:9` writes
+   `target/central-publishing/central-bundle.zip` and then fails the upload, and the zip must hold
+   none of those entries. `PublishBundlesOnASafeMavenTest` refuses the image's Maven with a plugin
+   older than 0.12.0, and a pinned Maven at 3.10 or above.
 3. Uploads via `central-publishing-maven-plugin`, configured with `autoPublish=true` and
    `waitUntil=uploaded`: **no manual portal action is required**, and nothing stops the
    release once validation passes. `uploaded`, not `published`, because waiting inside
