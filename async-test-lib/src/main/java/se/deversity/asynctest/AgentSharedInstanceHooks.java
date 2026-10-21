@@ -11,20 +11,36 @@ import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CoderResult;
 import java.security.DigestException;
 import java.util.Date;
 import java.util.Formatter;
 import java.util.GregorianCalendar;
 import java.util.Locale;
+import java.util.SplittableRandom;
+import java.util.random.RandomGenerator;
 import java.util.regex.Matcher;
+import java.util.zip.Checksum;
+import java.util.zip.DataFormatException;
+import java.util.zip.Deflater;
+import java.util.zip.Inflater;
 
 import se.deversity.asynctest.diagnostics.CalendarDetector;
 import se.deversity.asynctest.telemetry.ControlledSchedule;
 import se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector;
+import se.deversity.asynctest.diagnostics.SharedByteBufferDetector;
+import se.deversity.asynctest.diagnostics.SharedCharsetCoderDetector;
+import se.deversity.asynctest.diagnostics.SharedChecksumDetector;
 import se.deversity.asynctest.diagnostics.SharedDecimalFormatDetector;
+import se.deversity.asynctest.diagnostics.SharedDeflaterDetector;
 import se.deversity.asynctest.diagnostics.SharedFormatterDetector;
 import se.deversity.asynctest.diagnostics.SharedMatcherDetector;
 import se.deversity.asynctest.diagnostics.SharedMessageDigestDetector;
+import se.deversity.asynctest.diagnostics.SharedSplittableRandomDetector;
 import se.deversity.asynctest.diagnostics.SimpleDateFormatDetector;
 import se.deversity.asynctest.diagnostics.StringBuilderDetector;
 import se.deversity.vibetags.annotations.AIContract;
@@ -949,6 +965,444 @@ public final class AgentSharedInstanceHooks {
         if (detector != null) {
             detector.recordAccess(receiver, receiver.getClass().getName(),
                     Thread.currentThread());
+        }
+    }
+
+    // ---- ByteBuffer relative & cursor-mutating hooks ----
+
+    public static byte get(ByteBuffer receiver) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.get();
+    }
+
+    public static ByteBuffer get(ByteBuffer receiver, byte[] dst) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.get(dst);
+    }
+
+    public static ByteBuffer get(ByteBuffer receiver, byte[] dst, int offset, int length) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.get(dst, offset, length);
+    }
+
+    public static ByteBuffer put(ByteBuffer receiver, byte b) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.put(b);
+    }
+
+    public static ByteBuffer put(ByteBuffer receiver, byte[] src) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.put(src);
+    }
+
+    public static ByteBuffer put(ByteBuffer receiver, byte[] src, int offset, int length) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.put(src, offset, length);
+    }
+
+    public static ByteBuffer put(ByteBuffer receiver, ByteBuffer src) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.put(src);
+    }
+
+    public static int getInt(ByteBuffer receiver) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.getInt();
+    }
+
+    public static ByteBuffer putInt(ByteBuffer receiver, int value) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.putInt(value);
+    }
+
+    public static long getLong(ByteBuffer receiver) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.getLong();
+    }
+
+    public static ByteBuffer putLong(ByteBuffer receiver, long value) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.putLong(value);
+    }
+
+    public static ByteBuffer flip(ByteBuffer receiver) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.flip();
+    }
+
+    public static ByteBuffer clear(ByteBuffer receiver) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.clear();
+    }
+
+    public static ByteBuffer rewind(ByteBuffer receiver) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.rewind();
+    }
+
+    public static ByteBuffer compact(ByteBuffer receiver) {
+        ControlledSchedule.point();
+        recordByteBuffer(receiver);
+        return receiver.compact();
+    }
+
+    private static void recordByteBuffer(ByteBuffer receiver) {
+        SharedByteBufferDetector detector = AsyncTestContext.currentSharedByteBufferDetector();
+        if (detector != null) {
+            detector.recordAccess(receiver, receiver.getClass().getName(),
+                    Thread.currentThread());
+        }
+    }
+
+    // ---- CharsetEncoder / CharsetDecoder hooks ----
+
+    public static ByteBuffer encode(CharsetEncoder receiver, CharBuffer in)
+            throws CharacterCodingException {
+        ControlledSchedule.point();
+        recordCharsetCoder(receiver);
+        return receiver.encode(in);
+    }
+
+    public static CoderResult encode(CharsetEncoder receiver, CharBuffer in, ByteBuffer out,
+                                     boolean endOfInput) {
+        ControlledSchedule.point();
+        recordCharsetCoder(receiver);
+        return receiver.encode(in, out, endOfInput);
+    }
+
+    public static CoderResult flush(CharsetEncoder receiver, ByteBuffer out) {
+        ControlledSchedule.point();
+        recordCharsetCoder(receiver);
+        return receiver.flush(out);
+    }
+
+    public static CharsetEncoder reset(CharsetEncoder receiver) {
+        ControlledSchedule.point();
+        recordCharsetCoder(receiver);
+        return receiver.reset();
+    }
+
+    public static CharBuffer decode(CharsetDecoder receiver, ByteBuffer in)
+            throws CharacterCodingException {
+        ControlledSchedule.point();
+        recordCharsetCoder(receiver);
+        return receiver.decode(in);
+    }
+
+    public static CoderResult decode(CharsetDecoder receiver, ByteBuffer in, CharBuffer out,
+                                     boolean endOfInput) {
+        ControlledSchedule.point();
+        recordCharsetCoder(receiver);
+        return receiver.decode(in, out, endOfInput);
+    }
+
+    public static CoderResult flush(CharsetDecoder receiver, CharBuffer out) {
+        ControlledSchedule.point();
+        recordCharsetCoder(receiver);
+        return receiver.flush(out);
+    }
+
+    public static CharsetDecoder reset(CharsetDecoder receiver) {
+        ControlledSchedule.point();
+        recordCharsetCoder(receiver);
+        return receiver.reset();
+    }
+
+    private static void recordCharsetCoder(CharsetDecoder receiver) {
+        SharedCharsetCoderDetector detector = AsyncTestContext.currentSharedCharsetCoderDetector();
+        if (detector != null) {
+            detector.recordAccess(receiver, receiver.getClass().getName(),
+                    Thread.currentThread());
+        }
+    }
+
+    private static void recordCharsetCoder(CharsetEncoder receiver) {
+        SharedCharsetCoderDetector detector = AsyncTestContext.currentSharedCharsetCoderDetector();
+        if (detector != null) {
+            detector.recordAccess(receiver, receiver.getClass().getName(),
+                    Thread.currentThread());
+        }
+    }
+
+    // ---- Checksum hooks ----
+
+    public static void update(Checksum receiver, int b) {
+        ControlledSchedule.point();
+        recordChecksum(receiver);
+        receiver.update(b);
+    }
+
+    public static void update(Checksum receiver, byte[] b) {
+        ControlledSchedule.point();
+        recordChecksum(receiver);
+        receiver.update(b);
+    }
+
+    public static void update(Checksum receiver, byte[] b, int off, int len) {
+        ControlledSchedule.point();
+        recordChecksum(receiver);
+        receiver.update(b, off, len);
+    }
+
+    public static void update(Checksum receiver, ByteBuffer buffer) {
+        ControlledSchedule.point();
+        recordChecksum(receiver);
+        receiver.update(buffer);
+    }
+
+    public static long getValue(Checksum receiver) {
+        ControlledSchedule.point();
+        recordChecksum(receiver);
+        return receiver.getValue();
+    }
+
+    public static void reset(Checksum receiver) {
+        ControlledSchedule.point();
+        recordChecksum(receiver);
+        receiver.reset();
+    }
+
+    private static void recordChecksum(Checksum receiver) {
+        SharedChecksumDetector detector = AsyncTestContext.currentSharedChecksumDetector();
+        if (detector != null) {
+            detector.recordAccess(receiver, receiver.getClass().getName(),
+                    Thread.currentThread());
+        }
+    }
+
+    // ---- Deflater / Inflater hooks ----
+
+    public static void setInput(Deflater receiver, byte[] input) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        receiver.setInput(input);
+    }
+
+    public static void setInput(Deflater receiver, byte[] input, int off, int len) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        receiver.setInput(input, off, len);
+    }
+
+    public static void setInput(Deflater receiver, ByteBuffer input) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        receiver.setInput(input);
+    }
+
+    public static int deflate(Deflater receiver, byte[] output) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        return receiver.deflate(output);
+    }
+
+    public static int deflate(Deflater receiver, byte[] output, int off, int len) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        return receiver.deflate(output, off, len);
+    }
+
+    public static int deflate(Deflater receiver, byte[] output, int off, int len, int flush) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        return receiver.deflate(output, off, len, flush);
+    }
+
+    public static int deflate(Deflater receiver, ByteBuffer output) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        return receiver.deflate(output);
+    }
+
+    public static int deflate(Deflater receiver, ByteBuffer output, int flush) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        return receiver.deflate(output, flush);
+    }
+
+    public static void finish(Deflater receiver) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        receiver.finish();
+    }
+
+    public static void reset(Deflater receiver) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        receiver.reset();
+    }
+
+    public static void end(Deflater receiver) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        receiver.end();
+    }
+
+    public static void setInput(Inflater receiver, byte[] input) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        receiver.setInput(input);
+    }
+
+    public static void setInput(Inflater receiver, byte[] input, int off, int len) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        receiver.setInput(input, off, len);
+    }
+
+    public static void setInput(Inflater receiver, ByteBuffer input) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        receiver.setInput(input);
+    }
+
+    public static int inflate(Inflater receiver, byte[] output) throws DataFormatException {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        return receiver.inflate(output);
+    }
+
+    public static int inflate(Inflater receiver, byte[] output, int off, int len)
+            throws DataFormatException {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        return receiver.inflate(output, off, len);
+    }
+
+    public static int inflate(Inflater receiver, ByteBuffer output) throws DataFormatException {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        return receiver.inflate(output);
+    }
+
+    public static void reset(Inflater receiver) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        receiver.reset();
+    }
+
+    public static void end(Inflater receiver) {
+        ControlledSchedule.point();
+        recordDeflater(receiver);
+        receiver.end();
+    }
+
+    private static void recordDeflater(Inflater receiver) {
+        SharedDeflaterDetector detector = AsyncTestContext.currentSharedDeflaterDetector();
+        if (detector != null) {
+            detector.recordAccess(receiver, receiver.getClass().getName(),
+                    Thread.currentThread());
+        }
+    }
+
+    private static void recordDeflater(Deflater receiver) {
+        SharedDeflaterDetector detector = AsyncTestContext.currentSharedDeflaterDetector();
+        if (detector != null) {
+            detector.recordAccess(receiver, receiver.getClass().getName(),
+                    Thread.currentThread());
+        }
+    }
+
+    // ---- SplittableRandom hooks ----
+
+    public static int nextInt(SplittableRandom receiver) {
+        ControlledSchedule.point();
+        recordSplittableRandom(receiver);
+        return receiver.nextInt();
+    }
+
+    public static int nextInt(SplittableRandom receiver, int bound) {
+        ControlledSchedule.point();
+        recordSplittableRandom(receiver);
+        return receiver.nextInt(bound);
+    }
+
+    public static int nextInt(SplittableRandom receiver, int origin, int bound) {
+        ControlledSchedule.point();
+        recordSplittableRandom(receiver);
+        return receiver.nextInt(origin, bound);
+    }
+
+    public static long nextLong(SplittableRandom receiver) {
+        ControlledSchedule.point();
+        recordSplittableRandom(receiver);
+        return receiver.nextLong();
+    }
+
+    public static long nextLong(SplittableRandom receiver, long bound) {
+        ControlledSchedule.point();
+        recordSplittableRandom(receiver);
+        return receiver.nextLong(bound);
+    }
+
+    public static long nextLong(SplittableRandom receiver, long origin, long bound) {
+        ControlledSchedule.point();
+        recordSplittableRandom(receiver);
+        return receiver.nextLong(origin, bound);
+    }
+
+    public static double nextDouble(SplittableRandom receiver) {
+        ControlledSchedule.point();
+        recordSplittableRandom(receiver);
+        return receiver.nextDouble();
+    }
+
+    public static double nextDouble(SplittableRandom receiver, double bound) {
+        ControlledSchedule.point();
+        recordSplittableRandom(receiver);
+        return receiver.nextDouble(bound);
+    }
+
+    public static double nextDouble(SplittableRandom receiver, double origin, double bound) {
+        ControlledSchedule.point();
+        recordSplittableRandom(receiver);
+        return receiver.nextDouble(origin, bound);
+    }
+
+    public static boolean nextBoolean(SplittableRandom receiver) {
+        ControlledSchedule.point();
+        recordSplittableRandom(receiver);
+        return receiver.nextBoolean();
+    }
+
+    public static void nextBytes(SplittableRandom receiver, byte[] bytes) {
+        ControlledSchedule.point();
+        recordSplittableRandom(receiver);
+        receiver.nextBytes(bytes);
+    }
+
+    public static SplittableRandom split(SplittableRandom receiver) {
+        ControlledSchedule.point();
+        recordSplittableRandom(receiver);
+        return receiver.split();
+    }
+
+    public static SplittableRandom split(SplittableRandom receiver,
+                                         RandomGenerator.SplittableGenerator source) {
+        ControlledSchedule.point();
+        recordSplittableRandom(receiver);
+        return receiver.split(source);
+    }
+
+    private static void recordSplittableRandom(SplittableRandom receiver) {
+        SharedSplittableRandomDetector detector =
+                AsyncTestContext.currentSharedSplittableRandomDetector();
+        if (detector != null) {
+            detector.recordAccess(receiver, receiver.getClass().getName(), "next*");
         }
     }
 }

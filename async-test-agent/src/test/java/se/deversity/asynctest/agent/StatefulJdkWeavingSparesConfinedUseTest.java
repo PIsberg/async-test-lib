@@ -14,7 +14,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * The negative half of {@link StatefulJdkWeavingTest}, and the one that gates the second tranche.
+ * The negative half of {@link StatefulJdkWeavingTest}, and the one that gates the stateful JDK
+ * substitutions.
  *
  * <p>{@link ConfinedStatefulJdkBean} builds each object inside the method that uses it, which is
  * the fix most codebases apply, and the agent substitutes exactly the same call sites there. So
@@ -55,12 +56,18 @@ class StatefulJdkWeavingSparesConfinedUseTest {
         confined.year();
         confined.append();
         confined.money();
+        confined.buffer();
+        confined.encode();
+        confined.checksum();
+        confined.deflate();
+        confined.randomInt();
     }
 
     @AfterAll
     static void confinedUseIsNotReported() {
         try {
-            for (String detector : List.of("Calendar", "StringBuilder", "DecimalFormat")) {
+            for (String detector : List.of("Calendar", "StringBuilder", "DecimalFormat",
+                    "ByteBuffer", "CharsetCoder", "Checksum", "Deflater", "SplittableRandom")) {
                 assertFalse(findings.violations().stream()
                                 .anyMatch(v -> v.detector().contains(detector)),
                         "ConfinedStatefulJdkBean builds its " + detector + " inside the method "

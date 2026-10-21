@@ -342,7 +342,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (40)
+### Agent-fed (45)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -492,7 +492,9 @@ which the `PipedInputStream` javadoc warns may deadlock.
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
-`SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SemaphoreMisuseDetector`,
+`SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SharedDeflaterDetector`,
+`SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
+`SharedSplittableRandomDetector`, `SemaphoreMisuseDetector`,
 `CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
 `MissedSignalDetector`, `ExplicitGcDetector`, `DaemonThreadHygieneDetector`, `ABAProblemDetector`,
 `SynchronizedNonFinalDetector`, `NonAtomicConcurrentMapUpdateDetector`, `ExecutorShutdownDetector`,
@@ -563,7 +565,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (104)
+### Recording-only (99)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -599,19 +601,18 @@ recording is the feed:
 `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`,
 `NotifyWithoutMonitorDetector`, `SharedSecureRandomDetector`,
 `WeakHashMapSharedDetector`, `SharedStatefulCryptoDetector`,
-`SharedDeflaterDetector`, `ThisEscapeDetector`,
+`ThisEscapeDetector`,
 `ThreadLocalRandomMisuseDetector`, `CompletableFutureObtrudeDetector`, `SpuriousWakeupDetector`,
 `LockUpgradeDeadlockDetector`,
 `StableValueMisuseDetector`,
 `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`,
-`SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
 `FileChannelPositionRaceDetector`, `SharedIteratorDetector`, `HighContentionAtomicDetector`,
 `SharedJsonMapperReconfigDetector`, `LazyConstantMisuseDetector`, `FinalFieldMutationDetector`,
 `SharedKdfDetector`, `ExecutorDeadlockDetector`, `FutureBlockingDetector`,
 `FlowPublisherConcurrencyDetector`, `ConfinedArenaThreadEscapeDetector`,
 `SharedMemorySegmentRaceDetector`, `VarHandleNonAtomicUpdateDetector`,
 `RecordMutableComponentLeakDetector`, `VirtualThreadPoolingDetector`,
-`PlatformThreadPerTaskDetector`, `SharedSplittableRandomDetector`,
+`PlatformThreadPerTaskDetector`,
 `CompletableFutureCompletionRaceDetector`, `CompletableFutureCancellationPropagationDetector`,
 `CompletableFutureCombinatorMisuseDetector`, `LambdaLostUpdateDetector`,
 `VirtualThreadResourceSaturationDetector`, `VirtualThreadMonitorSerializationDetector`,
