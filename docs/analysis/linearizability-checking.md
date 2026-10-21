@@ -205,9 +205,11 @@ counts as failing when it fails under any of 64 seeds, the round's own first: le
 out moves every later scheduling step, so the interleaving that broke the full scenario is not the
 one a smaller scenario replays under the same seed. The search stops after 2,000 runs and says so.
 
-Three things it does not do. It shrinks only drawn rounds: operations recorded with `call` were not
-drawn, so there is no scenario to replay. It runs only from `assertLinearizable`, after the test's
-rounds; `verifiedAgainst` checks at analysis, inside the run, where a nested run cannot start. And
+Two things it does not do. It shrinks only drawn rounds: operations recorded with `call` were not
+drawn, so there is no scenario to replay. Both `assertLinearizable` and `verifiedAgainst` shrink the
+first failing drawn round (analysis runs on the runner thread after the round's workers have finished). And
+
+
 a failure that depends on timing outside the schedule, such as a `Thread.sleep` between a read and
 a write, may not replay; the report then says the scenario did not fail when re-run.
 
@@ -220,7 +222,8 @@ and an idle third worker in every attempt changed which interleavings a seed rea
 
 ### Every small scenario (#1082)
 
-`assertLinearizableForAllScenarios(spec, workers, operationsPerWorker)` enumerates instead of
+`assertLinearizableForAllScenarios(spec, workers, operationsPerWorker)` (and its four-argument
+overload with `argumentDrawsPerScenario`) enumerates instead of
 drawing: every sequence of up to `operationsPerWorker` declared operations on each of `workers`
 workers, smallest total first, each run as one round on a probe history with a controlled schedule
 under seeds 1 to 32. It throws for the first scenario with no linearization, listed per worker
@@ -245,6 +248,7 @@ Skipping every scenario turns the first test red.
   between the read and the write, the replay seed decides whether the round switches workers there,
   and a seed that broke the object breaks it on every replay.
 - **Enumeration is bounded and orders only operations.** `generate` draws a scenario per round;
-  `assertLinearizableForAllScenarios` covers every small one (#1082) but only up to 20,000 runs, with
-  one fixed argument per worker and position, and only from a plain test or `@AfterAll`. A failing
+  `assertLinearizableForAllScenarios` covers every small one (#1082) up to 20,000 runs, with one or
+  `argumentDrawsPerScenario` deterministic argument draws per scenario, and only from a plain test or `@AfterAll`. A failing
+
   drawn round is shrunk by re-running it (#1025).
