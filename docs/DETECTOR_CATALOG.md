@@ -275,9 +275,9 @@ a `LOW` advisory.
 `RACE_CONDITIONS` and `ATOMICITY_VIOLATIONS` moved to the split tier below: both now carry a lock
 model. `RACE_CONDITIONS` intersects the lock sets held at each access to a field in a round (#570),
 so a field one thread holds `{A, B}` for and another holds `{A}` for is guarded by `A` and not
-reported. `ATOMICITY_VIOLATIONS` is coarser on its agent-fed path, where it compares whole lock sets
-rather than intersecting them; since 1.12.3 it also judges its lockset per round, so one lock per
-round, a different one each round, is consistent locking. Both also excuse a round whose every
+reported. `ATOMICITY_VIOLATIONS` intersects registered lock sets on both its owner-aware and
+agent-fed paths (and across both when mixed in a round), and since 1.12.3 judges its lockset per
+round, so one lock per round, a different one each round, is consistent locking. Both also excuse a round whose every
 conflicting pair the shared `HappensBefore` model orders (1.12.3). Neither report grades its
 findings, so both detectors are rated
 PROMPT as a whole. For `RACE_CONDITIONS` that is a decision rather than a gap: no finding it makes

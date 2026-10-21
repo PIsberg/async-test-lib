@@ -319,9 +319,15 @@ public class AtomicityValidator {
         }
 
         boolean sawUnguardedAccess() {
-            return sawUnmodelledAccess
+            if (sawUnmodelledAccess
                     || objectLocks.sawUnguardedAccess()
-                    || allAccesses.collapsed();
+                    || allAccesses.collapsed()) {
+                return true;
+            }
+            int[] ownerSurvivors = objectLocks.lockSurvivors();
+            return ownerSurvivors != null
+                    && allAccesses.guarded()
+                    && Lockset.intersect(ownerSurvivors, allAccesses.survivors()).length == 0;
         }
     }
 
@@ -676,11 +682,10 @@ public class AtomicityValidator {
      * ({@code HeldLocks.lockFingerprint()}), which the ring buffer between the two threads can
      * carry without allocating.
      *
-     * <p>The model this supports is weaker than the owner-aware one: it can tell whether every
-     * access to a field held the <em>same</em> set of locks, not which lock is common to them.
-     * A field where one thread holds {@code {A, B}} and another holds {@code {A}} is genuinely
-     * protected by {@code A}, and this reports it anyway. Erring toward a finding is the right
-     * direction for a detector, and the report says which model produced it.
+     * <p>When the fingerprint was produced by {@link HeldLocks#lockFingerprint(boolean)}, its
+     * members are registered so the drain side intersects lock sets across {@code {A, B}} and
+     * {@code {A}}, and across {@link #recordFieldAccessOn}; an unregistered synthetic digest
+     * falls back to equality as one opaque lock.
      *
      * @param fieldName       the qualified field identifier; {@code null}/blank is ignored
      * @param value           the observed value, or {@code null} when unavailable
@@ -926,9 +931,11 @@ public class AtomicityValidator {
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
         // The owner, when named, is the instance its accesses are grouped by: without it two
         // objects that each stay on one thread merge into one history under the field name
-        // (#750). The identity hash stays 0, so the lock model is still the field's own guard.
-        record(fieldName, value, isWrite, threadId, owner, ownerKnown, lockFingerprint, 0, 0, 0,
-                false, 0, 0, instanceOf(owner), stampIfOwn(threadId), invocationEpoch.get());
+        // (#750). Keying the guard by the owner's identity hash also aligns it with the
+        // agent-fed path so the two models intersect when mixed on the same receiver.
+        int identity = owner != null ? System.identityHashCode(owner) : 0;
+        record(fieldName, value, isWrite, threadId, owner, ownerKnown, lockFingerprint, identity,
+                0, 0, false, 0, 0, instanceOf(owner), stampIfOwn(threadId), invocationEpoch.get());
     }
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
@@ -942,7 +949,8 @@ public class AtomicityValidator {
 
         // Record what is known about locks before the bookkeeping below: the question is only
         // meaningful while the caller is still inside whatever region it is being asked about.
-        FieldGuard guard = fieldLocks.computeIfAbsent(fieldName, ignored -> new FieldGuard());
+        FieldGuard guard = fieldLocks.computeIfAbsent(guardKey(fieldName, identity),
+                ignored -> new FieldGuard());
         int[] ownerLocks = null;
         if (ownerKnown) {
             guard.noteOwner(owner);
@@ -1622,33 +1630,28 @@ public class AtomicityValidator {
     }
 
     /**
-     * {@return whether no lock was held at every access of one round's group, in either model}
+     * {@return whether no lock was held at every access of one round's group, across both models}
      *
      * <p>The per-round counterpart of {@link FieldGuard#sawUnguardedAccess()}, recomputed from the
-     * records: owner-aware accesses intersect the locks probed at the access, agent-fed ones the
-     * locks their fingerprint and carried monitors resolve to, each model apart as the streamed
-     * sets keep them. An access that carried no lock information at all is unguarded.
+     * records: owner-aware accesses contribute the locks probed at the access, agent-fed ones the
+     * locks their fingerprint and carried monitors resolve to, intersected into one common set so a
+     * round mixing both paths requires a lock shared by all of them. An access that carried no
+     * lock information at all is unguarded.
      */
     private static boolean noLockCoveredTheRound(List<FieldAccessRecord> round) {
-        int[] ownerCommon = null;
-        int[] fingerprintCommon = null;
+        int[] common = null;
         for (FieldAccessRecord access : round) {
+            int[] held;
             if (access.ownerKnown) {
-                int[] held = access.ownerLocks != null ? access.ownerLocks : HeldLocks.NONE;
-                ownerCommon = ownerCommon == null ? held : Lockset.intersect(ownerCommon, held);
-                if (ownerCommon.length == 0) {
-                    return true;
-                }
+                held = access.ownerLocks != null ? access.ownerLocks : HeldLocks.NONE;
             } else if (access.fingerprint == UNMODELLED) {
                 return true;
             } else {
-                int[] held = heldLocksOf(access);
-                fingerprintCommon = fingerprintCommon == null
-                        ? held
-                        : Lockset.intersect(fingerprintCommon, held);
-                if (fingerprintCommon.length == 0) {
-                    return true;
-                }
+                held = heldLocksOf(access);
+            }
+            common = common == null ? held : Lockset.intersect(common, held);
+            if (common.length == 0) {
+                return true;
             }
         }
         return false;

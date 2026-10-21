@@ -1023,6 +1023,11 @@ public final class SelfGuard {
             int[] current = candidateLocks.get();
             return current == null ? 0 : current.length;
         }
+
+        /** {@return the surviving candidate lock ids, or {@code null} before any access} */
+        final int @Nullable [] lockSurvivors() {
+            return candidateLocks.get();
+        }
     }
 
     /**
