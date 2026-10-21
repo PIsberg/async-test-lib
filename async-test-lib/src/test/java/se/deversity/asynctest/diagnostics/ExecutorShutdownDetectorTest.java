@@ -189,6 +189,42 @@ public class ExecutorShutdownDetectorTest {
     }
 
     @Test
+    void executorShutDownInTeardownWithTasksStillRunningIsReportedByAnalyzeAfterTeardown() throws Exception {
+        ExecutorShutdownDetector detector = new ExecutorShutdownDetector();
+        detector.holdUnclosedUntilTeardown();
+        ExecutorService ex = Executors.newSingleThreadExecutor();
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch block = new CountDownLatch(1);
+        try {
+            detector.recordExecutorCreated(ex, "teardown-half-closed");
+            ex.submit(() -> {
+                started.countDown();
+                try {
+                    block.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            detector.recordTaskSubmitted(ex);
+            assertTrue(started.await(5, TimeUnit.SECONDS));
+
+            // Before @AfterEach runs, analyze() holds back the unclosed executor:
+            assertFalse(detector.analyze().hasIssues());
+
+            // In @AfterEach, caller calls shutdown() without awaiting termination while task is still running:
+            ex.shutdown();
+
+            ExecutorShutdownDetector.ExecutorShutdownReport afterReport = detector.analyzeAfterTeardown();
+            assertTrue(afterReport.hasIssues(),
+                    "Executor shut down in @AfterEach whose tasks are still running must be reported: " + afterReport);
+            assertFalse(afterReport.stillRunning.isEmpty(), afterReport.toString());
+        } finally {
+            block.countDown();
+            ex.shutdownNow();
+        }
+    }
+
+    @Test
     void anUnnamedExecutorKeepsOneNumberAndTheNextOneGetsTheNext() {
         ExecutorShutdownDetector detector = new ExecutorShutdownDetector();
         ExecutorService first = Executors.newSingleThreadExecutor();
