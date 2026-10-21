@@ -208,7 +208,7 @@ that says what it would take.
   a bounded search (the general problem is NP-complete, so histories stay small) and a report
   format. Added 2026-10-06. Since 2026-10-17 a failing round is reported as its shortest prefix
   with no linearization, which is sound without re-running anything because linearizability is
-  prefix-closed; a systematic scenario search and re-run shrinking are still open (#1025).
+  prefix-closed; re-run shrinking (#1025) and bounded small-scenario enumeration (#1082) also shipped in 2026-10.
 * **Shipped 2026-10-06** as the smaller helpers proposed with it: `AsyncTestContext.rendezvous()`,
   which makes a round's workers meet mid-body, and `RunOutcomes`, which asserts that something
   happened exactly once, at most once, or with distinct values
@@ -220,7 +220,7 @@ that says what it would take.
   `AsyncTestContext.schedulePoint()`; a seed that lost an update loses it on every replay. What it
   did not cover at first was #1021 (an exact rendezvous), #1022 (lock-aware points), #1023 (atomic
   and collection hooks as points) and #1024 (threads the body starts); all four were closed in
-  2026-10, with executor tasks still unscheduled (#1049).
+  2026-10, along with woven executor tasks (#1049).
 
 ## Overcoming the mechanical gates
 
