@@ -103,8 +103,8 @@ public class ConcurrencyRunner {
     private static final ThreadLocal<String> DISPLAY_NAME = new ThreadLocal<>();
 
     private static String displayNameOf(Method testMethod) {
-        String custom = DISPLAY_NAME.get();
-        return custom != null && !custom.isBlank() ? custom : testMethod.getName();
+        String base = DISPLAY_NAME.get();
+        return base != null && !base.isBlank() ? base : testMethod.getName();
     }
 
     /**

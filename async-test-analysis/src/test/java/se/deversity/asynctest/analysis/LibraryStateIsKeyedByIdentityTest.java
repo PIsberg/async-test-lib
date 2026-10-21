@@ -88,6 +88,7 @@ class LibraryStateIsKeyedByIdentityTest {
      */
     private static final Map<String, String> DELIBERATE = Map.ofEntries(
             Map.entry("AtomicityValidator.java#analyzeAtomicity", OWNERSHIP),
+            Map.entry("AtomicityValidator.java#record", OWNERSHIP),
             Map.entry("AtomicityValidator.java#everyPublishedValueWentQuiet", OWNERSHIP),
             Map.entry("AtomicityValidator.java#withdrawExclusivityFromContestedGenerations", OWNERSHIP),
             Map.entry("TelemetryBridge.java#record", OWNERSHIP),
