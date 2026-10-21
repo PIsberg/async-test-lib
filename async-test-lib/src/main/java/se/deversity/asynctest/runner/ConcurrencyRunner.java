@@ -99,6 +99,14 @@ public class ConcurrencyRunner {
     /** Set by {@link #executeForCodeIn} for the length of its {@link #execute} call. */
     private static final ThreadLocal<Class<?>> CODE_UNDER_TEST = new ThreadLocal<>();
 
+    /** Set by {@link #executeForCodeIn(ReflectiveInvocationContext, AsyncTestConfig, Class, String)} for the length of its {@link #execute} call. */
+    private static final ThreadLocal<String> DISPLAY_NAME = new ThreadLocal<>();
+
+    private static String displayNameOf(Method testMethod) {
+        String custom = DISPLAY_NAME.get();
+        return custom != null && !custom.isBlank() ? custom : testMethod.getName();
+    }
+
     /**
      * The check {@link #afterTeardown} makes once the test's {@code @AfterEach} methods have run,
      * left on the test thread by the {@link #execute} call before it (#996).
@@ -279,7 +287,7 @@ public class ConcurrencyRunner {
         if (config.enableBenchmarking) {
             Object testInstance = invocationContext.getTarget().orElse(null);
             String testClass = testInstance != null ? testInstance.getClass().getName() : "unknown";
-            String testMethod = invocationContext.getExecutable().getName();
+            String testMethod = displayNameOf(invocationContext.getExecutable());
             benchmarkRecorder = new BenchmarkRecorder(config, testClass, testMethod, actualThreads);
         }
 
@@ -910,7 +918,7 @@ public class ConcurrencyRunner {
                                       Map<String, List<GradedFindings.Grade>> graded,
                                       Map<String, IssueSeverity> structured,
                                       Map<String, List<String>> findingMessages, boolean gate) {
-        String testId = testMethod.getDeclaringClass().getName() + "#" + testMethod.getName();
+        String testId = testMethod.getDeclaringClass().getName() + "#" + displayNameOf(testMethod);
         Baseline baseline = Baseline.fromSystemProperties();
 
         boolean fingerprinting = baseline.size() > 0 || Baseline.updateMode();
@@ -1016,6 +1024,30 @@ public class ConcurrencyRunner {
      * {@code AsyncTestRunner} does: its context points at the runner's own holder class, in a
      * package the agent never weaves. The default agent attach infers the package to weave from
      * {@code codeUnderTest} instead (#1042); nothing else reads it.
+     *
+     * @param invocationContext the invocation being run
+     * @param config            the resolved configuration
+     * @param codeUnderTest     a class in the caller's package, such as the body's own class
+     * @param displayName       caller-chosen display name for reports, logs and baseline identity
+     * @throws Throwable whatever {@link #execute} throws
+     * @since 1.13.3
+     */
+    public static void executeForCodeIn(ReflectiveInvocationContext<Method> invocationContext,
+                                        AsyncTestConfig config, Class<?> codeUnderTest,
+                                        @Nullable String displayName) throws Throwable {
+        CODE_UNDER_TEST.set(codeUnderTest);
+        DISPLAY_NAME.set(displayName);
+        try {
+            execute(invocationContext, config);
+        } finally {
+            DISPLAY_NAME.remove();
+            CODE_UNDER_TEST.remove();
+        }
+    }
+
+    /**
+     * {@link #executeForCodeIn(ReflectiveInvocationContext, AsyncTestConfig, Class, String)} with
+     * the executable's own name as the display name.
      *
      * @param invocationContext the invocation being run
      * @param config            the resolved configuration

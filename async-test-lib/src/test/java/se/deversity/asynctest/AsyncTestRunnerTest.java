@@ -132,6 +132,21 @@ class AsyncTestRunnerTest {
 
     /** Fails if the null contract is silently relaxed. */
     @Test
+    void aCallerChosenNameReachesTheFailOnGateAndBaselineIdentity() {
+        Object owner = new Object();
+        AsyncTestConfig cfg = config().threads(4).invocations(20).failOn(FailOn.HIGH).build();
+
+        AssertionError gate = assertThrows(AssertionError.class, () ->
+                AsyncTestRunner.run("checkoutRace", cfg, () ->
+                        AsyncTestContext.get().sharedRaceConditionDetector().recordFieldWrite(owner, "counter")));
+
+        assertTrue(gate.getMessage().contains("AsyncTestRunner$BodyHolder#checkoutRace"),
+                "caller-chosen name must identify the run in the failOn gate and baseline id: "
+                        + gate.getMessage());
+    }
+
+    /** Fails if the null contract is silently relaxed. */
+    @Test
     void nullArgumentsAreRefused() {
         AsyncTestConfig cfg = config().build();
         assertThrows(NullPointerException.class, () -> AsyncTestRunner.run(null, () -> { }));

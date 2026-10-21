@@ -51,11 +51,14 @@ import java.util.Optional;
  *
  * <p><strong>Identity.</strong> The engine names a run after the method it executes. A body has
  * no method, so every programmatic run is reported as
- * {@code se.deversity.asynctest.AsyncTestRunner$BodyHolder#run}: in the {@code runner.*} log events,
- * in the {@code failOn} message, and as the test id the finding baseline is keyed on. Baselining
- * a finding for one programmatic run therefore suppresses it for all of them in that JVM.
- * {@code name} is carried into the {@code runner.programmatic} log event only, until the engine
- * learns a display name.
+ * {@code se.deversity.asynctest.AsyncTestRunner$BodyHolder#} plus {@code name} (defaulting to {@code #run}): in
+ * the {@code runner.*} log events, in the {@code failOn} message, and as the test id the finding
+ * baseline is keyed on. Passing a distinct {@code name} gives each programmatic run its own
+ * baseline and report identity.
+ * {@code name} is carried into the engine's events, {@code failOn} message, and baseline id.
+ * Each distinct {@code name} is baselined independently in that JVM.
+ * Calling the two-argument {@link #run(AsyncTestConfig, Body)} uses {@code "run"} as the name,
+ * preserving {@code AsyncTestRunner$BodyHolder#run} as the default identity.
  *
  * <p><strong>Thread safety.</strong> {@link #run} may be called from any thread. Two calls
  * running at the same time in one JVM behave as two annotated tests running at the same time:
@@ -113,8 +116,9 @@ public final class AsyncTestRunner {
     /**
      * Runs {@code body} under {@code config} with a caller-chosen name for the log.
      *
-     * @param name what to call this run in the {@code runner.programmatic} log event; it does
-     *     not reach the engine's own events or the baseline id (see the class Javadoc)
+     * @param name what to call this run in the {@code runner.*} log events, the {@code failOn}
+     *     message, and the baseline id (see the class Javadoc)
+     *     for this programmatic run (see the class Javadoc)
      * @param config threads, rounds, timeout, detectors and the {@code failOn} gate
      * @param body the code under test, invoked {@code threads x invocations} times in total
      * @return the findings this run reported, already unregistered from the listener registry
@@ -139,7 +143,7 @@ public final class AsyncTestRunner {
         try {
             // The context names BodyHolder, in this library's package; the body's own class is in
             // the caller's, which is what the default agent attach weaves (#1042).
-            ConcurrencyRunner.executeForCodeIn(context, config, codeUnderTest(body));
+            ConcurrencyRunner.executeForCodeIn(context, config, codeUnderTest(body), name);
         } finally {
             findings.close();
         }
