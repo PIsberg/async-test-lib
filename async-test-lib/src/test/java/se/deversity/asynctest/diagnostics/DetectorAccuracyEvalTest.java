@@ -447,6 +447,107 @@ class DetectorAccuracyEvalTest {
                         + "the guard probe is answering true when no monitor is held");
     }
 
+    @Test
+    @DisplayName("atomicity: agent-fed path intersects registered locksets across {A, B} and {A}")
+    void atomicityValidatorIntersectsAgentFedLocksetsWhenOneThreadHoldsAnExtraLock()
+            throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        Counter shared = new Counter();
+        int id = System.identityHashCode(shared);
+        ReentrantLock lockA = new ReentrantLock();
+        ReentrantLock lockB = new ReentrantLock();
+        Runnable withBoth = () -> {
+            long tid = Thread.currentThread().threadId();
+            try (var heldA = AsyncTestContext.holdingLock(lockA);
+                 var heldB = AsyncTestContext.holdingLock(lockB)) {
+                validator.recordFieldAccessUnderLocks("balance", shared.value, false, tid,
+                        HeldLocks.lockFingerprint(false), 0, 0, false, Integer.MIN_VALUE, id, 0,
+                        shared, null, 0L);
+                shared.value++;
+                validator.recordFieldAccessUnderLocks("balance", shared.value, true, tid,
+                        HeldLocks.lockFingerprint(true), 0, 0, false, Integer.MIN_VALUE, id, 0,
+                        shared, null, 0L);
+            }
+        };
+        Runnable withAOnly = () -> {
+            long tid = Thread.currentThread().threadId();
+            try (var heldA = AsyncTestContext.holdingLock(lockA)) {
+                validator.recordFieldAccessUnderLocks("balance", shared.value, false, tid,
+                        HeldLocks.lockFingerprint(false), 0, 0, false, Integer.MIN_VALUE, id, 0,
+                        shared, null, 0L);
+                shared.value++;
+                validator.recordFieldAccessUnderLocks("balance", shared.value, true, tid,
+                        HeldLocks.lockFingerprint(true), 0, 0, false, Integer.MIN_VALUE, id, 0,
+                        shared, null, 0L);
+            }
+        };
+        onTwoThreads(withBoth, withAOnly);
+
+        assertFalse(validator.analyze().hasIssues(),
+                "Lock A covers every access on both threads; holding an extra lock B on one "
+                        + "path must not collapse the agent-fed lockset intersection");
+    }
+
+    @Test
+    @DisplayName("atomicity: mixed owner-aware and agent-fed accesses intersect their locksets")
+    void atomicityValidatorIntersectsOwnerAwareAndAgentFedLocksets()
+            throws InterruptedException {
+        Counter shared = new Counter();
+        int id = System.identityHashCode(shared);
+        ReentrantLock lockA = new ReentrantLock();
+        ReentrantLock lockB = new ReentrantLock();
+
+        AtomicityValidator disjoint = new AtomicityValidator();
+        onTwoThreads(
+                () -> {
+                    try (var heldA = AsyncTestContext.holdingLock(lockA)) {
+                        disjoint.recordFieldAccessOn(shared, "balance", shared.value, false);
+                        disjoint.recordFieldAccessOn(shared, "balance", shared.value + 1, true);
+                    }
+                },
+                () -> {
+                    long tid = Thread.currentThread().threadId();
+                    try (var heldB = AsyncTestContext.holdingLock(lockB)) {
+                        disjoint.recordFieldAccessUnderLocks("balance", shared.value, false, tid,
+                                HeldLocks.lockFingerprint(false), 0, 0, false, Integer.MIN_VALUE,
+                                id, 0, shared, null, 0L);
+                        disjoint.recordFieldAccessUnderLocks("balance", shared.value + 1, true, tid,
+                                HeldLocks.lockFingerprint(true), 0, 0, false, Integer.MIN_VALUE,
+                                id, 0, shared, null, 0L);
+                    }
+                });
+
+        assertTrue(disjoint.analyze().hasIssues(),
+                "One thread recorded through recordFieldAccessOn under lock A and the other "
+                        + "through recordFieldAccessUnderLocks under lock B; disjoint locks "
+                        + "across the two models exclude nothing and must fire");
+
+        AtomicityValidator guarded = new AtomicityValidator();
+        onTwoThreads(
+                () -> {
+                    try (var heldA = AsyncTestContext.holdingLock(lockA)) {
+                        guarded.recordFieldAccessOn(shared, "balance", shared.value, false);
+                        guarded.recordFieldAccessOn(shared, "balance", shared.value + 1, true);
+                    }
+                },
+                () -> {
+                    long tid = Thread.currentThread().threadId();
+                    try (var heldA = AsyncTestContext.holdingLock(lockA);
+                         var heldB = AsyncTestContext.holdingLock(lockB)) {
+                        guarded.recordFieldAccessUnderLocks("balance", shared.value, false, tid,
+                                HeldLocks.lockFingerprint(false), 0, 0, false, Integer.MIN_VALUE,
+                                id, 0, shared, null, 0L);
+                        guarded.recordFieldAccessUnderLocks("balance", shared.value + 1, true, tid,
+                                HeldLocks.lockFingerprint(true), 0, 0, false, Integer.MIN_VALUE,
+                                id, 0, shared, null, 0L);
+                    }
+                });
+
+        assertFalse(guarded.analyze().hasIssues(),
+                "Both threads held lock A across the owner-aware and agent-fed paths, so the "
+                        + "intersection across the two models is lock A and must stay silent");
+    }
+
     // ---- AtomicityValidator, agent-path rules: #311, #312, #313 ----
     //
     // These drive the ten-argument agent overload directly, with explicit thread ids and raw

@@ -1,12 +1,21 @@
 package com.example.agentfixture;
 
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.StandardCharsets;
 import java.text.DecimalFormat;
 import java.util.Calendar;
 import java.util.Locale;
+import java.util.SplittableRandom;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.zip.CRC32;
+import java.util.zip.Checksum;
+import java.util.zip.Deflater;
 
 /**
- * Caches four stateful JDK objects in fields and uses them from every thread.
+ * Caches stateful JDK objects in fields and uses them from every thread.
  *
  * <p>Each field is the same mistake in a different type: the object is expensive or awkward to
  * build, so it is hoisted, and the class quietly stops being safe to call concurrently. None of it
@@ -26,6 +35,11 @@ public class SharedStatefulJdkBean {
     private final Calendar calendar = Calendar.getInstance(Locale.ROOT);
     private final StringBuilder builder = new StringBuilder();
     private final DecimalFormat decimals = new DecimalFormat("#.##");
+    private final ByteBuffer buffer = ByteBuffer.allocate(64);
+    private final CharsetEncoder encoder = StandardCharsets.UTF_8.newEncoder();
+    private final Checksum checksum = new CRC32();
+    private final Deflater deflater = new Deflater();
+    private final SplittableRandom splittableRandom = new SplittableRandom(1L);
 
     /** How many times a shared object threw out of its own internals mid-race. */
     private final AtomicInteger racesAbsorbed = new AtomicInteger();
@@ -56,6 +70,63 @@ public class SharedStatefulJdkBean {
         } catch (RuntimeException raced) {
             racesAbsorbed.incrementAndGet();
             return "";
+        }
+    }
+
+    /** Writes and reads through the one shared {@link ByteBuffer}. @return the byte read */
+    public byte buffer() {
+        try {
+            buffer.clear();
+            buffer.put((byte) 1);
+            buffer.flip();
+            return buffer.get();
+        } catch (RuntimeException raced) {
+            racesAbsorbed.incrementAndGet();
+            return 0;
+        }
+    }
+
+    /** Encodes through the one shared {@link CharsetEncoder}. @return the encoded capacity */
+    public int encode() {
+        try {
+            return encoder.encode(CharBuffer.wrap("hi")).remaining();
+        } catch (CharacterCodingException | RuntimeException raced) {
+            racesAbsorbed.incrementAndGet();
+            return 0;
+        }
+    }
+
+    /** Updates and reads the one shared {@link Checksum}. @return the checksum value */
+    public long checksum() {
+        try {
+            checksum.update(1);
+            return checksum.getValue();
+        } catch (RuntimeException raced) {
+            racesAbsorbed.incrementAndGet();
+            return 0L;
+        }
+    }
+
+    /** Compresses through the one shared {@link Deflater}. @return the bytes written */
+    public int deflate() {
+        try {
+            deflater.reset();
+            deflater.setInput(new byte[]{1, 2, 3, 4});
+            deflater.finish();
+            return deflater.deflate(new byte[16]);
+        } catch (RuntimeException raced) {
+            racesAbsorbed.incrementAndGet();
+            return 0;
+        }
+    }
+
+    /** Draws from the one shared {@link SplittableRandom}. @return the random int */
+    public int randomInt() {
+        try {
+            return splittableRandom.nextInt();
+        } catch (RuntimeException raced) {
+            racesAbsorbed.incrementAndGet();
+            return 0;
         }
     }
 

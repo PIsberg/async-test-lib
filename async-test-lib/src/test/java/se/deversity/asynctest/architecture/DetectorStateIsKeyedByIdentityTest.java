@@ -68,10 +68,12 @@ class DetectorStateIsKeyedByIdentityTest {
      * Files keyed by an identity hash on purpose, each of which tells a collision apart itself.
      * An entry here needs a reason a reviewer can check against the file.
      */
-    private static final Map<String, String> DELIBERATE = Map.of(
-            "SpinLocks.java", "keys by hash plus a weak reference, so nothing is retained, and checks "
+    private static final Map<String, String> DELIBERATE = Map.ofEntries(
+            Map.entry("AtomicityValidator.java", "keys ownership, publication and lock guard state "
+                    + "by identity hash on purpose; per-instance grouping is keyed by object"),
+            Map.entry("SpinLocks.java", "keys by hash plus a weak reference, so nothing is retained, and checks "
                     + "Lock.isFor on every lookup: a colliding second object goes undeclared, which "
-                    + "can only report an access, never hide one");
+                    + "can only report an access, never hide one"));
 
     @Test
     @DisplayName("no detector state is keyed by a bare identity hash")

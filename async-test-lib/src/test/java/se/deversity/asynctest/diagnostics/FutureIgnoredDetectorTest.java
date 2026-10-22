@@ -110,6 +110,24 @@ public class FutureIgnoredDetectorTest {
      * record and reset "inspected", so an inspected future was reported as ignored (#918).
      */
     @Test
+    void cancelledFutureIsNotReportedAsIgnoredEvenWithoutRecordInspect() {
+        FutureIgnoredDetector d = new FutureIgnoredDetector();
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        d.recordSubmit(future, "cancelled-task", Thread.currentThread());
+        future.cancel(true);
+        assertFalse(d.analyze().hasIssues(), d.analyze().toString());
+    }
+
+    @Test
+    void completableFutureWithAttachedCompletionHandlerIsNotReportedAsIgnored() {
+        FutureIgnoredDetector d = new FutureIgnoredDetector();
+        CompletableFuture<String> future = new CompletableFuture<>();
+        future.whenComplete((res, ex) -> { });
+        d.recordSubmit(future, "handled-task", Thread.currentThread());
+        assertFalse(d.analyze().hasIssues(), d.analyze().toString());
+    }
+
+    @Test
     void aRepeatedSubmitDoesNotForgetTheInspection() {
         FutureIgnoredDetector d = new FutureIgnoredDetector();
         Object future = new Object();

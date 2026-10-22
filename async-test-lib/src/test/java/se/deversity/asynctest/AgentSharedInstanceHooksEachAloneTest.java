@@ -7,6 +7,9 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CharsetEncoder;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.DecimalFormat;
@@ -22,6 +25,10 @@ import java.util.Date;
 import java.util.Formatter;
 import java.util.List;
 import java.util.Locale;
+import java.util.SplittableRandom;
+import java.util.zip.Checksum;
+import java.util.zip.Deflater;
+import java.util.zip.Inflater;
 import java.util.concurrent.CyclicBarrier;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -113,6 +120,27 @@ class AgentSharedInstanceHooksEachAloneTest {
         if (type == Formatter.class) {
             return new Formatter(new StringBuilder());
         }
+        if (type == ByteBuffer.class) {
+            return ByteBuffer.allocate(64);
+        }
+        if (type == CharsetEncoder.class) {
+            return java.nio.charset.StandardCharsets.UTF_8.newEncoder();
+        }
+        if (type == CharsetDecoder.class) {
+            return java.nio.charset.StandardCharsets.UTF_8.newDecoder();
+        }
+        if (type == Checksum.class) {
+            return new java.util.zip.CRC32();
+        }
+        if (type == Deflater.class) {
+            return new java.util.zip.Deflater();
+        }
+        if (type == Inflater.class) {
+            return new java.util.zip.Inflater();
+        }
+        if (type == SplittableRandom.class) {
+            return new SplittableRandom(42L);
+        }
         if (type == Object.class) {
             // The persistence-handle hooks take Object, the library cannot name JPA (#992).
             return java.lang.reflect.Proxy.newProxyInstance(jakarta.persistence.EntityManager.class.getClassLoader(),
@@ -191,6 +219,12 @@ class AgentSharedInstanceHooksEachAloneTest {
         if (type == CharSequence.class) {
             return "cs";
         }
+        if (type == CharBuffer.class) {
+            return CharBuffer.allocate(64);
+        }
+        if (type == java.util.random.RandomGenerator.SplittableGenerator.class) {
+            return new SplittableRandom(123L);
+        }
         if (type == Object.class) {
             return "o";
         }
@@ -223,6 +257,21 @@ class AgentSharedInstanceHooksEachAloneTest {
             }
             if (receiver instanceof jakarta.persistence.EntityManager) {
                 return AsyncTestContext.jdbcConnectionSharedDetector().analyze().hasIssues();
+            }
+            if (receiver instanceof ByteBuffer) {
+                return AsyncTestContext.sharedByteBufferDetector().analyze().hasIssues();
+            }
+            if (receiver instanceof CharsetEncoder || receiver instanceof CharsetDecoder) {
+                return AsyncTestContext.sharedCharsetCoderDetector().analyze().hasIssues();
+            }
+            if (receiver instanceof Checksum) {
+                return AsyncTestContext.sharedChecksumDetector().analyze().hasIssues();
+            }
+            if (receiver instanceof Deflater || receiver instanceof Inflater) {
+                return AsyncTestContext.sharedDeflaterDetector().analyze().hasIssues();
+            }
+            if (receiver instanceof SplittableRandom) {
+                return AsyncTestContext.sharedSplittableRandomDetector().analyze().hasIssues();
             }
             throw new IllegalArgumentException("no detector for " + receiver.getClass());
         });

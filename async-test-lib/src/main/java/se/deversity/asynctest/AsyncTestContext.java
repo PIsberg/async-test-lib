@@ -2314,6 +2314,36 @@ public final class AsyncTestContext {
         AsyncTestContext context = agentContext();
         return context == null ? null : context.sharedFormatterDetector;
     }
+
+    /** {@return the {@link SharedByteBufferDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SharedByteBufferDetector currentSharedByteBufferDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.sharedByteBufferDetector;
+    }
+
+    /** {@return the {@link SharedCharsetCoderDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SharedCharsetCoderDetector currentSharedCharsetCoderDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.sharedCharsetCoderDetector;
+    }
+
+    /** {@return the {@link SharedChecksumDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SharedChecksumDetector currentSharedChecksumDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.sharedChecksumDetector;
+    }
+
+    /** {@return the {@link SharedDeflaterDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SharedDeflaterDetector currentSharedDeflaterDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.sharedDeflaterDetector;
+    }
+
+    /** {@return the {@link SharedSplittableRandomDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SharedSplittableRandomDetector currentSharedSplittableRandomDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.sharedSplittableRandomDetector;
+    }
     /** {@return the {@link SemaphoreMisuseDetector} for the calling thread's test, or {@code null}} */
     static @Nullable SemaphoreMisuseDetector currentSemaphoreMisuseDetector() {
         AsyncTestContext context = CURRENT.get();

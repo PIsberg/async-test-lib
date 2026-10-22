@@ -6,8 +6,11 @@ Part of the [Agent Instrumentation Guide](../AGENT.md).
 
 - **Method granularity only.** The agent records that a getter/setter ran and on which thread.
   It has **no field value** — so any analysis that needs values (e.g. `VisibilityMonitor`'s
-  value-divergence check) cannot be driven by agent data. This is why the bridge routes to
-  `AtomicityValidator` only.
+  value-divergence check) cannot be driven by field-access telemetry. This is why `TelemetryBridge` routes
+  field-access events to `AtomicityValidator` only, whereas the weavers for collections, locks, monitors,
+  constructors, and shared instances feed the other agent-backed detectors directly (see
+  [What feeds each detector](../DETECTOR_CATALOG.md#what-feeds-each-detector)).
+
 - **Only getters/setters are intercepted, unless `fields=true`.** By default matching is
   `ElementMatchers.isGetter()` / `isSetter()`, so a **direct field access** — `this.x = 1` or
   `return x` inside the class, bypassing an accessor — is not intercepted. Supplying

@@ -46,6 +46,17 @@ public class FutureIgnoredDetector extends AbstractInstanceDetector<FutureIgnore
         final String taskName;
         final String submitterThreadName;
         volatile boolean inspected = false;
+        volatile java.lang.ref.@org.jspecify.annotations.Nullable WeakReference<Object> futureRef;
+
+        boolean isObserved() {
+            if (inspected) {
+                return true;
+            }
+            java.lang.ref.WeakReference<Object> ref = futureRef;
+            Object f = ref != null ? ref.get() : null;
+            return (f instanceof Future<?> fut && fut.isCancelled())
+                    || (f instanceof java.util.concurrent.CompletableFuture<?> cf && cf.getNumberOfDependents() > 0);
+        }
 
         SubmitRecord(String taskName, String tname) {
             this.taskName           = taskName;
@@ -62,7 +73,11 @@ public class FutureIgnoredDetector extends AbstractInstanceDetector<FutureIgnore
      */
     public void recordSubmit(Object future, String taskName, Thread thread) {
         if (future == null || thread == null) return;
-        stateFor(future, taskName, "task", label -> new SubmitRecord(label, ReportSections.threadLabel(thread)));
+        SubmitRecord rec = stateFor(future, taskName, "task", label -> new SubmitRecord(label, ReportSections.threadLabel(thread)));
+        rec.futureRef = new java.lang.ref.WeakReference<>(future);
+        if (future instanceof java.util.concurrent.CompletableFuture<?> cf && cf.getNumberOfDependents() > 0) {
+            rec.inspected = true;
+        }
     }
 
     /**
@@ -126,7 +141,7 @@ public class FutureIgnoredDetector extends AbstractInstanceDetector<FutureIgnore
     public FutureIgnoredReport analyze() {
         FutureIgnoredReport r = new FutureIgnoredReport();
         for (SubmitRecord rec : states()) {
-            if (!rec.inspected) {
+            if (!rec.isObserved()) {
                 String finding = String.format(
                         "Future for task '%s' submitted by thread '%s' was never inspected — "
                                 + "exceptions thrown by the task are silently swallowed",

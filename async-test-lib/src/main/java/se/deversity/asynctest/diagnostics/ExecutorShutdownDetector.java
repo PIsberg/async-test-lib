@@ -186,12 +186,19 @@ public class ExecutorShutdownDetector {
             if (!state.executor.isShutdown()) {
                 report.notShutDown.add(neverShutDown(state)
                         + ", not in the test's @AfterEach either");
+            } else if (!state.executor.isTerminated()) {
+                report.stillRunning.add(String.format(
+                    "%s: shut down in @AfterEach but still running when teardown ended — "
+                    + "its tasks outlive the test%s",
+                    state.name, state.awaitTerminationCalled
+                            ? " although awaitTermination() was called, so the wait timed out"
+                            : ""));
             }
         }
         heldUntilTeardown.clear();
         holdUntilTeardown = false;
         report.fillStructuredViolations();
-        return report;
+        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     private static String neverShutDown(ExecutorState state) {

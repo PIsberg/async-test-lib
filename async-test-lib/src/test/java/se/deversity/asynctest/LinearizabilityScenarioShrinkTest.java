@@ -106,6 +106,27 @@ class LinearizabilityScenarioShrinkTest {
     }
 
     @Test
+    void verifiedAgainstAlsoShrinksAFailingDrawnScenario() throws Throwable {
+        String message = null;
+        for (long seed = 1; seed <= 64 && message == null; seed++) {
+            OperationHistory<ReadPointWriteCounter> history = history().verifiedAgainst(COUNTER);
+            AsyncFindings findings = AsyncTestRunner.run(
+                    AsyncTestConfig.builder().threads(3).invocations(1).replaySeed(seed)
+                            .controlledSchedule(true).timeoutMs(60_000).licenseMockMode(true)
+                            .failOn(FailOn.NONE).build(),
+                    () -> history.generate(6));
+            var violations = findings.violationsFrom("Linearizability");
+            if (!violations.isEmpty()) {
+                message = String.valueOf(violations.get(0).attributes().get("report"));
+            }
+        }
+        assertTrue(message != null, "no seed in 1..64 lost an update under verifiedAgainst");
+        Matcher shrunk = Pattern.compile("(\\d+) of the (\\d+) drawn operations still fail").matcher(message);
+        assertTrue(shrunk.find(), "verifiedAgainst finding must carry the shrunk scenario: " + message);
+        assertEquals(2, Integer.parseInt(shrunk.group(1)), message);
+    }
+
+    @Test
     void aLinearizableScenarioIsNotReRun() throws Throwable {
         OperationHistory<java.util.concurrent.atomic.AtomicInteger> history =
                 OperationHistory.of(java.util.concurrent.atomic.AtomicInteger::new)

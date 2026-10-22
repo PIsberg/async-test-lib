@@ -122,6 +122,24 @@ final class LibraryReach {
                 "agent-fed since #1054 through every woven new CompletableFuture<>(); a firing "
                         + "library row needs a library method that builds a future by hand and "
                         + "leaves it pending on a path, and no corpus library ships that defect");
+        unreached(DetectorType.SHARED_DEFLATER,
+                "agent-fed through the woven Deflater and Inflater calls; no corpus library "
+                        + "shares a Deflater or Inflater across threads, so its recording-lane "
+                        + "pair stands");
+        unreached(DetectorType.SHARED_BYTE_BUFFER,
+                "agent-fed through the woven relative ByteBuffer calls; no corpus library shares "
+                        + "a ByteBuffer for relative access across threads, so its recording-lane "
+                        + "pair stands");
+        unreached(DetectorType.SHARED_CHARSET_CODER,
+                "agent-fed through the woven CharsetEncoder and CharsetDecoder calls; no corpus "
+                        + "library shares a coder across threads, so its recording-lane pair "
+                        + "stands");
+        unreached(DetectorType.SHARED_CHECKSUM,
+                "agent-fed through the woven Checksum calls; no corpus library shares a Checksum "
+                        + "across threads, so its recording-lane pair stands");
+        unreached(DetectorType.SHARED_SPLITTABLE_RANDOM,
+                "agent-fed through the woven SplittableRandom calls; no corpus library shares a "
+                        + "SplittableRandom across threads, so its recording-lane pair stands");
     }
 
     private static void unreached(DetectorType type, String reason) {
