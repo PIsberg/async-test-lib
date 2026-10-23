@@ -47,6 +47,8 @@
         <!-- 2.4.x or newer: the IntelliJ util bundled with Kotlin 2.1 cannot parse a JDK
              version of "26" and dies before compiling anything. -->
         <kotlin.version>2.4.21</kotlin.version>
+        <!-- consumer-fixture-langs/kotlin: the real dispatcher runBlocking is woven against (#1007). -->
+        <kotlinx-coroutines.version>1.11.0</kotlinx-coroutines.version>
         <groovy.version>6.0.0</groovy.version>
         <scala.version>3.10.0</scala.version>
         <clojure.version>1.12.6</clojure.version>

@@ -254,6 +254,17 @@ handle two threads held at once; a `close()` lets it go. Calls with more than tw
 `long` or `double` one, are left alone (`PersistenceHandleWeavingTest`,
 `PersistenceHandleSparesOnePerThreadTest`).
 
+Kotlin's `runBlocking` is watched by name as well (#1007). Kotlin compiles `runBlocking { }` to a
+static call on `kotlinx.coroutines.BuildersKt`, named `runBlockingK` or `runBlockingK$default` by
+kotlinx 1.11 and `runBlocking` or `runBlocking$default` by older releases, and none of those types
+may be on the agent's class path. So `RunBlockingWeaver` inserts one call of a hook that takes and
+leaves nothing before each such call, in every woven class outside kotlinx itself, and
+`BlockingOnNonBlockingThreadDetector` reports it on a coroutine dispatcher worker of either
+dispatcher, or on a thread that must not block. Both the calling code's package and
+`kotlinx.coroutines` belong in `includes=`: the first so the call site is woven, the second so the
+dispatcher worker is attributed to the run (`RunBlockingWeavingTest`, `RunBlockingSparesTheCallerTest`,
+and with real kotlinx `consumer-fixture-langs/kotlin`).
+
 Executors are watched the same way. The fourteen `Executors` factories are woven, and an executor a
 run thread creates through one of them is declared to `ExecutorShutdownDetector` as the run's own,
 which is the detector's whole rule: an executor handed in from outside the run, or built in a

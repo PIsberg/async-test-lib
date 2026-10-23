@@ -1,7 +1,9 @@
 package se.deversity.asynctest;
 
+import kotlinx.coroutines.scheduling.CoroutineScheduler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector;
 import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 
@@ -43,6 +45,46 @@ class AgentConcurrencyUtilHooksTest {
     private static void installContext() {
         AsyncTestContext.install(
                 new AsyncTestContext(AsyncTestConfig.builder().detectAll(true).build()));
+    }
+
+    // --- Kotlin runBlocking (#1007) -------------------------------------------------------------
+
+    /** Calls the runBlocking hook on {@code thread}, as woven code running there would, with a run installed. */
+    private static BlockingOnNonBlockingThreadDetector.Report runBlockingEnteredOn(
+            java.util.function.Function<Runnable, Thread> thread) throws InterruptedException {
+        AsyncTestContext context = new AsyncTestContext(AsyncTestConfig.builder().detectAll(true).build());
+        Thread t = thread.apply(() -> {
+            AsyncTestContext.install(context);
+            try {
+                AgentConcurrencyUtilHooks.runBlockingEntered();
+            } finally {
+                AsyncTestContext.uninstall();
+            }
+        });
+        t.start();
+        t.join();
+        AsyncTestContext.install(context);
+        try {
+            return AsyncTestContext.blockingOnNonBlockingThreadDetector().analyze();
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("a runBlocking entered on a coroutine worker reaches the detector through the hook alone (#1007)")
+    void runBlockingOnACoroutineWorkerIsReachedThroughTheHookAlone() throws InterruptedException {
+        BlockingOnNonBlockingThreadDetector.Report report = runBlockingEnteredOn(
+                task -> new CoroutineScheduler.Worker(task, CoroutineScheduler.WorkerState.BLOCKING));
+        assertTrue(report.hasIssues() && report.toString().contains("runBlocking"), report.toString());
+    }
+
+    @Test
+    @DisplayName("a runBlocking entered on an ordinary thread is not reported (#1007)")
+    void runBlockingOnAnOrdinaryThreadIsNotReported() throws InterruptedException {
+        BlockingOnNonBlockingThreadDetector.Report report = runBlockingEnteredOn(Thread::new);
+        assertFalse(report.hasIssues(), report.toString());
+        AgentConcurrencyUtilHooks.runBlockingEntered(); // no run on this thread: does nothing
     }
 
     // --- CountDownLatch ---------------------------------------------------------------------

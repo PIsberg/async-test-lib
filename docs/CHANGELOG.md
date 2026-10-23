@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A Kotlin `runBlocking` inside a coroutine is reported (#1007).** With the agent and
+  `collections=true`, `RunBlockingWeaver` inserts a hook call before every `runBlocking` call site in
+  a woven class, matched by name since kotlinx is not on the agent's class path, and
+  `BLOCKING_ON_NON_BLOCKING_THREAD` reports one entered on a `CoroutineScheduler` worker
+  (`Dispatchers.Default` or `Dispatchers.IO`) or on a thread that must not block. On an ordinary
+  thread, where `runBlocking` bridges blocking code to suspending code, nothing is reported. Kotlin
+  2.4.21 against kotlinx 1.11.0 compiles `runBlocking { }` to `runBlockingK$default`, not
+  `runBlocking$default`: the first version of the weaver matched only the old names and the new
+  real-kotlinx fixture caught it, so all four names are matched (`RunBlockingWeaverTest`). Proven
+  both ways through a Java stand-in (`RunBlockingWeavingTest`, `RunBlockingSparesTheCallerTest`),
+  with real kotlinx in `consumer-fixture-langs/kotlin` (`KotlinRunBlockingInCoroutineIsReportedTest`
+  went red with the weaver unwired, `KotlinRunBlockingOnCallerIsNotReportedTest`), and as a corpus
+  agent pair on a Netty event loop. A `runBlocking` on a single-threaded dispatcher or nested in
+  another `runBlocking`, a reentrant `Mutex` and races across suspensions stay open in #1007.
+
 ### Changed
 
 - **The README quick start attaches the agent at JVM startup, and the runner loads it at runtime
