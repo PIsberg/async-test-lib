@@ -67,6 +67,65 @@ class BlockingOnNonBlockingThreadDetectorTest {
                 "Dispatchers.IO shares the worker pool and marks the worker BLOCKING, so blocking is its job");
     }
 
+    /** Records a {@code runBlocking} entered on {@code thread}. */
+    private static BlockingOnNonBlockingThreadDetector.Report runBlockingOn(Thread thread) {
+        BlockingOnNonBlockingThreadDetector detector = new BlockingOnNonBlockingThreadDetector();
+        detector.recordRunBlocking(thread);
+        return detector.analyze();
+    }
+
+    @Test
+    @DisplayName("runBlocking on a coroutine worker is reported on Dispatchers.Default and IO alike (#1007)")
+    void runBlockingOnAnyCoroutineWorkerIsReported() {
+        BlockingOnNonBlockingThreadDetector.Report onDefault = runBlockingOn(new CoroutineScheduler.Worker(
+                () -> { }, CoroutineScheduler.WorkerState.CPU_ACQUIRED));
+        assertTrue(onDefault.toString().contains("Dispatchers.Default")
+                && onDefault.toString().contains("runBlocking"), onDefault.toString());
+        BlockingOnNonBlockingThreadDetector.Report onIo = runBlockingOn(new CoroutineScheduler.Worker(
+                () -> { }, CoroutineScheduler.WorkerState.BLOCKING));
+        assertTrue(onIo.hasIssues(), "a worker running Dispatchers.IO work is inside a coroutine, where "
+                + "runBlocking parks the worker and deadlocks a dispatcher with no thread to spare");
+        assertTrue(onIo.toString().contains("coroutine") && onIo.toString().contains("runBlocking"),
+                onIo.toString());
+        assertEquals(1, onIo.structuredViolations.size());
+    }
+
+    @Test
+    @DisplayName("one worker is one finding, whatever coroutine kotlinx's debug mode names in it (#1007)")
+    void debugModeCoroutineNamesDoNotSplitAWorker() {
+        BlockingOnNonBlockingThreadDetector detector = new BlockingOnNonBlockingThreadDetector();
+        for (String coroutine : new String[] {"#2", "#9", "#19"}) {
+            CoroutineScheduler.Worker worker = new CoroutineScheduler.Worker(() -> { },
+                    CoroutineScheduler.WorkerState.CPU_ACQUIRED);
+            worker.setName("DefaultDispatcher-worker-1 @coroutine" + coroutine);
+            detector.recordRunBlocking(worker);
+            detector.recordBlockingCall("Thread.sleep", worker);
+        }
+        BlockingOnNonBlockingThreadDetector.Report report = detector.analyze();
+        assertEquals(2, report.violations.size(), report.toString());
+        assertFalse(report.toString().contains("@coroutine"), report.toString());
+    }
+
+    @Test
+    @DisplayName("a runBlocking finding says to suspend instead, not to move to Dispatchers.IO (#1007)")
+    void runBlockingHasItsOwnRemedy() {
+        String report = runBlockingOn(new CoroutineScheduler.Worker(() -> { },
+                CoroutineScheduler.WorkerState.BLOCKING)).toString();
+        assertTrue(report.contains("suspend"), report);
+        assertFalse(report.contains("Dispatchers.IO"),
+                "runBlocking on a Dispatchers.IO worker is reported too, so moving there is no fix: " + report);
+    }
+
+    @Test
+    @DisplayName("runBlocking on an event loop is reported, on an ordinary thread it is not (#1007)")
+    void runBlockingFollowsTheThread() {
+        assertTrue(runBlockingOn(new ReactorThread(() -> { })).toString().contains("Reactor"));
+        assertFalse(runBlockingOn(new FastThreadLocalThread(() -> { }, true)).hasIssues(),
+                "a Netty thread that permits blocking may block in runBlocking like anywhere else");
+        assertFalse(runBlockingOn(new Thread(() -> { })).hasIssues(),
+                "runBlocking on an ordinary thread is its purpose: bridging blocking code to suspending code");
+    }
+
     @Test
     @DisplayName("an ordinary thread that blocks is not reported")
     void ordinaryThreadIsNotReported() {

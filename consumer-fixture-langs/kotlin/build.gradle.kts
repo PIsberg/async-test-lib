@@ -16,6 +16,10 @@ val asyncTestAgent = configurations.create("asyncTestAgent") {
 }
 
 dependencies {
+    // The real dispatcher runBlocking is woven against (#1007).
+    testImplementation(
+        "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:${libs.versions.kotlinx.coroutines.version.get()}"
+    )
     asyncTestAgent("se.deversity.async-test-lib:async-test-agent:${rootProject.extra["asyncTestVersion"]}")
 }
 
@@ -35,11 +39,12 @@ tasks.named<Test>("test") {
     dependsOn(runnerDefaultAttach)
     // doFirst so the configuration is resolved when the task runs rather than while the build is
     // being configured. includes= is scoped to the bean package so the two race-condition
-    // fixtures next door keep running unwoven.
+    // fixtures next door keep running unwoven; kotlinx.coroutines is woven too, so the start of a
+    // dispatcher worker inside its scheduler carries the run to it (#1007).
     doFirst {
         jvmArgs(
             "-javaagent:${asyncTestAgent.singleFile}" +
-                "=includes=com.example.kotlinfixture,collections=true"
+                "=includes=com.example.kotlinfixture;kotlinx.coroutines,collections=true"
         )
     }
 }

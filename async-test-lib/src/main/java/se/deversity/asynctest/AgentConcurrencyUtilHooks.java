@@ -3028,6 +3028,26 @@ public final class AgentConcurrencyUtilHooks {
         }
     }
 
+    /**
+     * Inserted by the agent's {@code RunBlockingWeaver} before each call of a Kotlin
+     * {@code runBlocking} (#1007). It substitutes nothing and takes nothing off the stack: the call
+     * that follows it is the original, made unchanged.
+     *
+     * <p>Only {@code BlockingOnNonBlockingThreadDetector} hears it, which reports it on a coroutine
+     * dispatcher worker or a thread that must not block; the thread is the caller's, so a
+     * {@code runBlocking} on an ordinary thread, its intended use, reports nothing.
+     *
+     * @since 1.13.3
+     */
+    public static void runBlockingEntered() {
+        ControlledSchedule.point();
+        BlockingOnNonBlockingThreadDetector nonBlocking =
+                AsyncTestContext.currentBlockingOnNonBlockingThreadDetector();
+        if (nonBlocking != null) {
+            nonBlocking.recordRunBlocking(Thread.currentThread());
+        }
+    }
+
     /** {@link #blocking} for a get of {@code future}, managed when it is a {@code CompletableFuture}. */
     private static void blockingOn(Future<?> future) {
         if (future instanceof CompletableFuture) {
