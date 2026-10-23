@@ -59,8 +59,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   both ways through a Java stand-in (`RunBlockingWeavingTest`, `RunBlockingSparesTheCallerTest`),
   with real kotlinx in `consumer-fixture-langs/kotlin` (`KotlinRunBlockingInCoroutineIsReportedTest`
   went red with the weaver unwired, `KotlinRunBlockingOnCallerIsNotReportedTest`), and as a corpus
-  agent pair on a Netty event loop. A `runBlocking` on a single-threaded dispatcher or nested in
-  another `runBlocking`, a reentrant `Mutex` and races across suspensions stay open in #1007.
+  agent pair on a Netty event loop. A `runBlocking` nested in another `runBlocking`, or on an
+  `asCoroutineDispatcher` dispatcher, runs on no `CoroutineScheduler` worker: the first on the
+  caller's own thread inside the outer event loop, the second on the executor's plain `Thread`
+  (kotlinx 1.11 has no thread class for it). The detector now recognises both by a
+  `kotlinx.coroutines` frame below the call on the calling thread's own stack, read with
+  `StackWalker` only when the recorded thread is the caller, and reports them as "inside a
+  coroutine"; the walk costs microseconds against a call that parks the thread and spins up an event
+  loop. Unit tests put a stand-in `kotlinx.coroutines.DispatchedTask` frame on the stack and check
+  that another thread's stack is never read; `KotlinRunBlockingInsideACoroutineIsReportedTest` runs
+  both shapes against real kotlinx, and `KotlinRunBlockingOnCallerIsNotReportedTest` still passes,
+  as does the corpus pair's silent row, whose `runBlocking` on an ordinary thread has no kotlinx
+  frame below it. The debug-mode `@coroutine#n` suffix is now stripped from any thread's name, not
+  only a dispatcher worker's, so the run's own worker inside a nested `runBlocking` is one finding
+  rather than one per coroutine, and the worker finding's doubled comma is gone. What the fixture
+  also showed: a `newSingleThreadContext` thread is never attributed to the run, because kotlinx
+  wraps its `ScheduledThreadPoolExecutor` in `Executors.unconfigurableExecutorService` and the
+  woven `execute` hands tasks over on the JDK's pool classes only, by exact class; that is #1107.
+  A reentrant `Mutex` and races across suspensions still need a coroutine owner model and stay
+  open in #1007.
 
 ### Changed
 
@@ -313,6 +330,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with 18 drawn operations shrunk to two increments on two workers.
 
 ### Fixed
+
+- **A licence record that is absent for a moment no longer reads as no record (#928).** The first
+  fix retried every read failure but a missing file, taken as the one certain sign of "no record";
+  on 2026-10-23 the concurrent-writers dogfood test failed again on main's Windows leg with a record
+  the thread had just written reading back as missing or partial, and 19,000 local rounds under CPU
+  load reproduced no read failure of any kind. `isFresh` and `hasRecord` now retry a missing file
+  with the same backoff as any other failure, and only a file that stays away for the whole bound,
+  now 255 ms (9 attempts), is "no record"; that wait is paid once per JVM on a machine with no
+  record yet, before the online validation it precedes anyway. Security review: the element is
+  `@AISecure` (authorization), and what is accepted is unchanged, a file whose content parses to a
+  timestamp within the TTL; the retry can only turn a false "missing" into a read of a record that
+  exists. `LicenseValidationCacheMissingForAMomentTest` deletes the record and writes it back 30 ms
+  later while `isFresh` runs (red before the change, green after), and checks a record that never
+  existed is still none. The dogfood test now reports what a direct read of the record sees when
+  its assertion fails, so the next Windows failure names its cause instead of "missing or partial".
 
 - **Dependabot proposes Copilot CLI bumps again (#1029).** The pin `instruction-evals.yml` installs
   sat under `.github/copilot-cli`, and every Dependabot npm run there resolved the bump and then had
