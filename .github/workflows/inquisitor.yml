@@ -4,8 +4,10 @@
 # committed rule is violated. The gating is deliberately dumb bash over files the reviewer
 # writes; the model never decides its own exit code.
 #
-# Runs only when the ANTHROPIC_API_KEY secret exists; otherwise the preflight job's summary
-# says SKIPPED and the review job is reported skipped, which is not a pass. The job is intentionally not in the
+# Runs only when the ANTHROPIC_API_KEY secret (billed to the API) or the CLAUDE_CODE_OAUTH_TOKEN
+# secret (from `claude setup-token`, drawn from a Claude subscription) exists; otherwise the
+# preflight job's summary says SKIPPED and the review job is reported skipped, which is not a
+# pass. Fork PRs receive neither secret, so they always skip. The job is intentionally not in the
 # required-checks set while it earns trust; promote it once its verdict record justifies
 # blocking merges. copilot-review.yml is the always-available advisory lane meanwhile.
 #
@@ -41,7 +43,7 @@ jobs:
   # the job as a green pass, which a required check reads as passed: a missing or expired key
   # would then let a pull request through instead of blocking it (#868).
   preflight:
-    name: Check for the API key
+    name: Check for the review key
     runs-on: ubuntu-latest
     outputs:
       has-key: ${{ steps.key.outputs.has-key }}
@@ -57,12 +59,12 @@ jobs:
       - name: Report whether the key is configured
         id: key
         env:
-          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
         run: |
           echo "has-key=$HAS_KEY" >> "$GITHUB_OUTPUT"
           if [ "$HAS_KEY" != "true" ]; then
-            echo "SKIPPED: ANTHROPIC_API_KEY secret is not configured; no review ran." >> "$GITHUB_STEP_SUMMARY"
-            echo "::notice::Inquisitor skipped: ANTHROPIC_API_KEY secret is not configured. Skipped is not passed."
+            echo "SKIPPED: neither the ANTHROPIC_API_KEY nor the CLAUDE_CODE_OAUTH_TOKEN secret is configured; no review ran." >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::Inquisitor skipped: neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN is configured. Skipped is not passed."
           fi
 
   inquisitor:
@@ -75,7 +77,7 @@ jobs:
       id-token: write
     steps:
       # The agent lane runs sandboxed: ephemeral runner, no ambient secrets beyond its own
-      # API key, and egress BLOCKED except the endpoints the job demonstrably needs. If a
+      # model credential, and egress BLOCKED except the endpoints the job demonstrably needs. If a
       # legitimate endpoint gets blocked after a toolchain change, harden-runner's step
       # summary names it; extend this list in a reviewed commit, never by flipping back to
       # audit.
@@ -100,7 +102,9 @@ jobs:
       - name: Run the Inquisitor
         uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1
         with:
+          # The action takes whichever of the two is set; an unset secret arrives as "".
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             Read the file .github/INQUISITOR.md and follow it exactly. The base ref for
             the diff is origin/${{ github.base_ref }}. Produce inquisitor-report.md (and

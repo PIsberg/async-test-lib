@@ -113,10 +113,12 @@ the right thing to require precisely because it cannot skip: it runs on `always(
 legs' results, so a lane that did not run is reported through it instead of dropping out of the
 list.
 
-**AI lanes run on Copilot Free, by decision.** No Anthropic key is required or configured. The
-Inquisitor workflow stays in the repository as the law-enforcing lane for anyone who adds
-`ANTHROPIC_API_KEY`; the eval bank runs on the Copilot CLI; the Copilot review lane requests a
-review from GitHub. All three skip loudly on missing credit and none of them can block a merge.
+**No AI lane is billed per token, by decision.** The Inquisitor, the law-enforcing lane, runs on
+a Claude subscription token (`CLAUDE_CODE_OAUTH_TOKEN`, from `claude setup-token`) the way vibetags
+runs it, and takes `ANTHROPIC_API_KEY` instead if that is what a fork has (decision 2026-10-20; until
+then it was dormant, because it looked only for the API key the repository does not carry). The
+eval bank runs on the Copilot CLI; the Copilot review lane requests a review from GitHub. All three
+skip loudly on missing credit and none of them can block a merge.
 
 **Why "propose, do not install" for dependencies.** `dependency-review.yml` fails on high-severity
 CVEs and denied licences, Dependabot owns bumps, and `docs/DEPENDENCIES.md` explains every

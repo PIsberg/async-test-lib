@@ -1,7 +1,7 @@
 # The always-available adversarial review lane: GitHub Copilot code review, requested
 # automatically on every PR. It complements the Inquisitor (inquisitor.yml): Copilot needs no
 # repository secret and spends the maintainer's Copilot Free quota; the Inquisitor enforces
-# this repo's committed law but needs ANTHROPIC_API_KEY. Together they mean every PR gets at
+# this repo's committed law but needs CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY. Together they mean every PR gets at
 # least one machine reviewer whenever either lane has credit.
 #
 # When Copilot cannot review (monthly quota exhausted, Copilot not enabled for the account,
