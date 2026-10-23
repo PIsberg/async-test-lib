@@ -37,7 +37,8 @@ class SatelliteVersionsTest {
 
     /** The builds outside the reactor. Each takes its versions from {@code versions/pom.xml}. */
     private static final List<String> SATELLITES =
-            List.of("consumer-fixture", "consumer-fixture-langs", "corpus-eval", "examples", "load-tests", "tools/demo");
+            List.of("consumer-fixture", "consumer-fixture-langs", "corpus-eval", "examples", "load-tests", "tools/demo",
+                    "async-test-maven-plugin", "async-test-gradle-plugin");
 
     /** Directories holding sources or build output rather than build definitions. */
     private static final Set<String> NOT_BUILD_DIRS = Set.of("src", "target", "build", ".gradle", "results");
@@ -47,7 +48,9 @@ class SatelliteVersionsTest {
      * reason. The gradle Dependabot ecosystem watches them where they are.
      */
     private static final Map<String, String> GRADLE_ONLY_PLUGINS = Map.of(
-            "me.champeau.jmh", "load-tests is Gradle-only and JMH's Gradle plugin has no Maven counterpart");
+            "me.champeau.jmh", "load-tests is Gradle-only and JMH's Gradle plugin has no Maven counterpart",
+            "com.gradle.plugin-publish", "publishes async-test-gradle-plugin to the Gradle Plugin Portal (#1099); "
+                    + "a Gradle plugin, which no pom declares");
 
     /**
      * Floors on how much each check saw. A walk that stopped finding the examples would otherwise

@@ -758,12 +758,16 @@ evals/                   Evals that measure whether coding agents actually obey
 examples/                Self-contained example projects, each demonstrating a
                          concurrency defect against the release its pom pins.
 intellij-plugin/         IDE tool window that renders the JSON report.
+async-test-gradle-plugin/
+async-test-maven-plugin/ Build plugins that attach the agent at startup in one block,
+                         published with each release from 1.13.3 on (#1099).
 tools/                   Release and licensing utilities, and the demo.
 docs/                    All documentation, routed from docs/INDEX.md.
 ```
 
-Only the first three are Maven reactor modules, and they are what publishes to
-Maven Central. The fixture, corpus, load-test and example projects consume the
+Only the first three are Maven reactor modules; they and the Maven plugin are what
+publishes to Maven Central, and the Gradle plugin goes to the Gradle Plugin Portal.
+The fixture, corpus, load-test and example projects consume the
 library the way a user would, which is what makes their results evidence; the
 rest is documentation and tooling around them.
 

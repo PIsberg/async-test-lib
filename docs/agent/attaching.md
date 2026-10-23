@@ -25,6 +25,27 @@ collection calls, woven only in classes under your own package prefix, so JUnit 
 stay unwoven. If JaCoCo or another plugin also sets surefire's `argLine`, start yours with
 `@{argLine} `.
 
+**Build plugins (#1045).** Two plugins replace those snippets with one block each. Both are
+published with every release from 1.13.3 on, the Maven plugin to Maven Central and the Gradle
+plugin to the Gradle Plugin Portal ([#1099](https://github.com/PIsberg/async-test-lib/issues/1099)),
+and the README quick start switches to them once the first such release is out
+([#1100](https://github.com/PIsberg/async-test-lib/issues/1100)):
+
+- Gradle, [`async-test-gradle-plugin`](../../async-test-gradle-plugin): `id("se.deversity.async-test")`
+  plus `asyncTest { includes.add("com.example") }`. It adds an `asyncTestAgent` configuration,
+  defaulting to `async-test-agent` of the plugin's own version, and puts the `-javaagent:` argument
+  on every `Test` task through a `CommandLineArgumentProvider`, which declares the jar and the
+  options as inputs and works with the configuration cache.
+- Maven, [`async-test-maven-plugin`](../../async-test-maven-plugin): the goal `prepare-agent`, with
+  `<includes>`. Like `jacoco:prepare-agent`, it appends to the `argLine` property instead of
+  owning it, so the two agents compose in either order with no surefire configuration. It takes the
+  agent jar from the project's own `async-test-agent` test dependency.
+
+`fields` and `collections` default to `true` in both, and leaving `includes` empty passes none,
+which weaves every class the agent may touch. [`consumer-fixture-langs/quickstart-plugin`](../../consumer-fixture-langs/quickstart-plugin)
+runs the quick start through each one, the Maven build beside JaCoCo's agent, and fails unless both
+agents arrived and the race was reported.
+
 ### 3.0.1 Fallback: loaded at runtime by the runner
 
 With the `async-test-agent` artifact on the test classpath but no agent started with the JVM, the
@@ -253,6 +274,22 @@ copies the receiver off the stack and hands it to `JdbcConnectionSharedDetector`
 handle two threads held at once; a `close()` lets it go. Calls with more than two arguments, or a
 `long` or `double` one, are left alone (`PersistenceHandleWeavingTest`,
 `PersistenceHandleSparesOnePerThreadTest`).
+
+Kotlin's `runBlocking` is watched by name as well (#1007). Kotlin compiles `runBlocking { }` to a
+static call on `kotlinx.coroutines.BuildersKt`, named `runBlockingK` or `runBlockingK$default` by
+kotlinx 1.11 and `runBlocking` or `runBlocking$default` by older releases, and none of those types
+may be on the agent's class path. So `RunBlockingWeaver` inserts one call of a hook that takes and
+leaves nothing before each such call, in every woven class outside kotlinx itself, and
+`BlockingOnNonBlockingThreadDetector` reports it on a coroutine dispatcher worker of either
+dispatcher, on a thread that must not block, and on any thread whose stack holds a
+`kotlinx.coroutines` frame below the call, which is how a `runBlocking` nested in another, or one
+on an executor dispatcher's plain thread, is seen without a thread class to classify
+(`KotlinRunBlockingInsideACoroutineIsReportedTest`); that thread must still be the run's, which
+the woven `execute` makes it on a bare JDK pool and not through the wrapper
+`newSingleThreadContext` adds (#1107). Both the calling code's package and
+`kotlinx.coroutines` belong in `includes=`: the first so the call site is woven, the second so the
+dispatcher worker is attributed to the run (`RunBlockingWeavingTest`, `RunBlockingSparesTheCallerTest`,
+and with real kotlinx `consumer-fixture-langs/kotlin`).
 
 Executors are watched the same way. The fourteen `Executors` factories are woven, and an executor a
 run thread creates through one of them is declared to `ExecutorShutdownDetector` as the run's own,

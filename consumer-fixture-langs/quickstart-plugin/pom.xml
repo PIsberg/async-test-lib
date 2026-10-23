@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>se.deversity.async-test-lib</groupId>
+        <artifactId>consumer-fixture-langs</artifactId>
+        <version>1.13.2</version>
+    </parent>
+    <artifactId>consumer-fixture-quickstart-plugin</artifactId>
+    <name>Async Test Consumer Fixture (quick start through the build plugins)</name>
+    <!-- The quick start with async-test:prepare-agent in place of the dependency:properties
+         execution and the surefire argLine (#1045), next to JaCoCo's prepare-agent: the two must
+         compose through the argLine property with no surefire configuration at all. Needs
+         async-test-maven-plugin installed first (mvn -f async-test-maven-plugin/pom.xml install),
+         which e2e-tests.yml does. -->
+    <dependencies>
+        <dependency>
+            <groupId>se.deversity.async-test-lib</groupId>
+            <artifactId>async-test-agent</artifactId>
+            <version>${async-test.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco-maven-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <goals><goal>prepare-agent</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>se.deversity.async-test-lib</groupId>
+                <artifactId>async-test-maven-plugin</artifactId>
+                <version>${async-test.version}</version>
+                <executions>
+                    <execution>
+                        <goals><goal>prepare-agent</goal></goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <includes>com.example</includes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <asynctest.fixture.expectJacoco>true</asynctest.fixture.expectJacoco>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
