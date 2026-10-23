@@ -48,7 +48,9 @@ class SatelliteVersionsTest {
      * reason. The gradle Dependabot ecosystem watches them where they are.
      */
     private static final Map<String, String> GRADLE_ONLY_PLUGINS = Map.of(
-            "me.champeau.jmh", "load-tests is Gradle-only and JMH's Gradle plugin has no Maven counterpart");
+            "me.champeau.jmh", "load-tests is Gradle-only and JMH's Gradle plugin has no Maven counterpart",
+            "com.gradle.plugin-publish", "publishes async-test-gradle-plugin to the Gradle Plugin Portal (#1099); "
+                    + "a Gradle plugin, which no pom declares");
 
     /**
      * Floors on how much each check saw. A walk that stopped finding the examples would otherwise
