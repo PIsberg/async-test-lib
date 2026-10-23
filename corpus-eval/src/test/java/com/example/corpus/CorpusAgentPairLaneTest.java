@@ -1263,6 +1263,38 @@ class CorpusAgentPairLaneTest {
         thread.join();
     }
 
+    /** Every worker enters runBlocking on a Netty event-loop-class thread it starts (#1007). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_nettyThread_runBlockingOnAnEventLoopThread() {
+        counted(() -> runBlockingOnANettyThread(false));
+    }
+
+    /** The same runBlocking on a Netty thread that permits blocking calls. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_nettyThread_runBlockingOnAnOrdinaryThread() {
+        counted(() -> runBlockingOnANettyThread(true));
+    }
+
+    /**
+     * Starts a Netty thread, permitting blocking calls or not, that enters kotlinx's runBlocking
+     * with a block that returns at once, and joins it. Called from Java, runBlockingK is the name
+     * kotlinx 1.11 compiles a Kotlin runBlocking call to, so the woven call site is the real one.
+     */
+    private static void runBlockingOnANettyThread(boolean permitBlocking) throws InterruptedException {
+        Runnable bridge = () -> kotlinx.coroutines.BuildersKt.runBlockingK(
+                kotlin.coroutines.EmptyCoroutineContext.INSTANCE, (scope, continuation) -> "done");
+        Thread thread = permitBlocking
+                ? new io.netty.util.concurrent.FastThreadLocalThread(bridge) {
+                    @Override
+                    public boolean permitBlockingCalls() {
+                        return true;
+                    }
+                }
+                : new io.netty.util.concurrent.FastThreadLocalThread(bridge);
+        thread.start();
+        thread.join();
+    }
+
     /** Every worker writes one byte into a fresh pipe and reads it back on the same thread. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_pipe_bothEndsOnOneThread() {

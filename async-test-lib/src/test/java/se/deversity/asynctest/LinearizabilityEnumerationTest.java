@@ -69,4 +69,22 @@ class LinearizabilityEnumerationTest {
                 () -> history.assertLinearizableForAllScenarios(COUNTER, 4, 6));
         assertTrue(e.getMessage().contains("scenarios"), e.getMessage());
     }
+
+    @Test
+    void multipleArgumentDrawsPerScenarioFindKeyCollisionRaceMissedBySingleDraw() {
+        SequentialSpec<int[]> bucketSpec = SequentialSpec.of(
+                () -> new int[8], int[]::clone,
+                (state, op, arg) -> ++state[(Integer) arg]);
+        OperationHistory<int[]> history = OperationHistory.of(() -> new int[8])
+                .operation("incBucket", random -> random.nextInt(8), (buckets, key) -> {
+                    int k = (Integer) key;
+                    int read = buckets[k];
+                    AsyncTestContext.schedulePoint();
+                    buckets[k] = read + 1;
+                    return read + 1;
+                });
+        AssertionError e = assertThrows(AssertionError.class,
+                () -> history.assertLinearizableForAllScenarios(bucketSpec, 2, 1, 16));
+        assertTrue(e.getMessage().contains("is not linearizable"), e.getMessage());
+    }
 }

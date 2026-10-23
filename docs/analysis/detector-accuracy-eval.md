@@ -61,7 +61,7 @@ still invisible.
 | Detector | Buggy variant | Synchronized twin | Verdict |
 |---|---|---|---|
 | RaceConditionDetector | fires | silent under the object's own monitor, and under one declared lock; **fires** under an undeclared lock, and when the two threads declare different locks | lock fingerprint per access; undeclared locks invisible |
-| AtomicityValidator | fires | silent when `recordFieldAccessOn` names the owner and one lock covers every access, and for agent-fed accesses under one woven monitor; **fires** through the overloads that carry no lock information | owner-aware path intersects locksets; the agent-fed path compares whole sets by fingerprint, which is coarser |
+| AtomicityValidator | fires | silent when `recordFieldAccessOn` names the owner and one lock covers every access, and for agent-fed accesses under one woven monitor or intersecting registered locksets (`{A, B}` and `{A}`); **fires** through the overloads that carry no lock information, or when mixed owner-aware and agent-fed locksets are disjoint | both the owner-aware and agent-fed paths intersect locksets (and intersect with each other when mixed in a round); unregistered synthetic digests fall back to equality |
 | SharedMessageDigestDetector | fires | silent with `synchronized(digest)` and with a declared external lock; **fires** with an undeclared one | Eraser lockset via `SelfGuard` |
 | SharedStatefulCryptoDetector | fires | silent with `synchronized(mac)` and with a declared external lock; **fires** with an undeclared one | Eraser lockset via `SelfGuard` |
 | SharedSecureRandomDetector | n/a (sharing is the documented-safe idiom) | fires at MEDIUM | contention note by design, no longer a HIGH "corruption" claim |
@@ -121,9 +121,11 @@ authority on which row is which - each outcome above is one assertion in it.
   lockset is judged per round on both paths, so a different lock in each round is consistent
   locking: the harness orders the rounds. The owner-aware path also groups accesses by the owner
   it names, so the same field of two objects that each stay on one thread is two histories, not
-  one shared field (#750). The agent-fed path gets a weaker
-  model: it compares whole lock sets by fingerprint rather than intersecting them, so a field one
-  thread holds `{A, B}` for and another holds `{A}` for is reported even though `A` protects it.
+  one shared field (#750). The agent-fed path registers the members behind each
+  `HeldLocks.lockFingerprint(boolean)` digest so the drain side intersects lock sets across
+  `{A, B}` and `{A}` as well, and intersects with the owner-aware path when both record on the
+  same receiver in a round (only an unregistered synthetic digest falls back to whole-set
+  equality).
   The original overloads, which carry no lock information at all, keep their old meaning: "more
   than one thread touched this field and at least one wrote". On the agent-fed path an object
   that changes hands through an observed take (a queue `poll`, an atomic `getAndSet`; out of an

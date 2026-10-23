@@ -98,6 +98,16 @@ public class StreamClosingDetector {
      * @param name a descriptive name for tracking
      */
     public void recordStreamOpened(Closeable stream, String name) {
+        recordStreamOpened((AutoCloseable) stream, name);
+    }
+
+    /**
+     * Record an {@link AutoCloseable} stream (including {@link java.util.stream.BaseStream}) being opened.
+     *
+     * @param stream the stream instance
+     * @param name a descriptive name for tracking
+     */
+    public void recordStreamOpened(AutoCloseable stream, String name) {
         if (!enabled || stream == null) {
             return;
         }
@@ -106,6 +116,9 @@ public class StreamClosingDetector {
         totalOpened.incrementAndGet();
         int current = currentOpen.incrementAndGet();
         maxConcurrentOpen.updateAndGet(max -> Math.max(max, current));
+        if (stream instanceof java.util.stream.BaseStream<?, ?> baseStream) {
+            java.util.Objects.requireNonNull(baseStream.onClose(() -> recordStreamClosed(stream, name)));
+        }
     }
 
     /**
@@ -115,6 +128,16 @@ public class StreamClosingDetector {
      * @param name should match the name from recordStreamOpened
      */
     public void recordStreamClosed(Closeable stream, String name) {
+        recordStreamClosed((AutoCloseable) stream, name);
+    }
+
+    /**
+     * Record an {@link AutoCloseable} stream being closed.
+     *
+     * @param stream the stream instance
+     * @param name should match the name from recordStreamOpened
+     */
+    public void recordStreamClosed(AutoCloseable stream, String name) {
         if (!enabled || stream == null) {
             return;
         }
@@ -147,7 +170,8 @@ public class StreamClosingDetector {
         // Check for unclosed streams
         for (Map.Entry<IdentityKey, StreamState> entry : openStreams.entrySet()) {
             StreamState state = entry.getValue();
-            if (!state.closed) {
+            boolean closedDirectly = entry.getKey().referent() instanceof java.nio.channels.Channel ch && !ch.isOpen();
+            if (!state.closed && !closedDirectly) {
                 long openDuration = System.currentTimeMillis() - state.openTime;
                 report.unclosedStreams.add(String.format(
                     "%s: opened by thread %d, still open after %d ms",

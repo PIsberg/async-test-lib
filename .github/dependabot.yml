@@ -14,10 +14,11 @@ updates:
 
   # Every Maven build in one entry: the reactor, and the builds outside it, which all take their
   # versions from versions/pom.xml (a property declared there is updated there, whichever
-  # directory's pom uses it). versions/pom.xml repeats five of the reactor's properties (JUnit
-  # Jupiter and Platform, Surefire, the compiler plugin, slf4j), and SatelliteVersionsTest fails
-  # when the two disagree. Two entries would bump each copy in its own PR, and each of those PRs
-  # would fail that test on its own. group-by: dependency-name opens one PR per dependency across
+  # directory's pom uses it). versions/pom.xml repeats some of the reactor's properties (JUnit
+  # Jupiter and Platform, Surefire, the compiler plugin, slf4j, and the publishing plugins
+  # async-test-maven-plugin releases with), and SatelliteVersionsTest fails when the two disagree.
+  # Two entries would bump each copy in its own PR, and each of those PRs would fail that test on
+  # its own. group-by: dependency-name opens one PR per dependency across
   # every directory below, so a shared bump edits both poms together and stays green.
   #
   # The outside builds were missing from Dependabot entirely until #958: corpus-eval's
@@ -31,17 +32,29 @@ updates:
       - /consumer-fixture-langs
       - /corpus-eval
       - /examples
+      - /async-test-maven-plugin
     schedule:
       interval: daily
     ignore:
       - dependency-name: "se.deversity.async-test-lib:*"
+      # async-test-maven-plugin's descriptor takes requiredMavenVersion from these, so a minor bump
+      # (#1103 took them to 3.10.0) locks every Maven 3.9 user out of the plugin. Patches only;
+      # PluginDescriptorTest fails the build if a bump gets through (versions/pom.xml).
+      - dependency-name: "org.apache.maven:maven-plugin-api"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "org.apache.maven:maven-core"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       per-dependency:
         group-by: dependency-name
 
-  # The Copilot CLI instruction-evals.yml installs with npm ci from this lockfile (#959).
+  # The Copilot CLI instruction-evals.yml installs with npm ci from this lockfile (#959). It sat
+  # under .github/copilot-cli until #1029: there, every run resolved the bump and then had its
+  # create_pull_request refused with a 400 ("invalid or unauthorized changes"), so no PR was ever
+  # opened. vibetags keeps the same kind of pin at /tools/codex-cli and gets its PRs.
+  # DependabotNpmPinTest keeps npm entries out of .github/.
   - package-ecosystem: npm
-    directory: /.github/copilot-cli
+    directory: /tools/copilot-cli
     schedule:
       interval: weekly
 
@@ -57,5 +70,6 @@ updates:
     directories:
       - /
       - /load-tests
+      - /async-test-gradle-plugin
     schedule:
       interval: daily

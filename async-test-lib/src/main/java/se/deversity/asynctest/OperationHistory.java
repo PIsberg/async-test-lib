@@ -456,6 +456,28 @@ public final class OperationHistory<S> {
      */
     public <M> String assertLinearizableForAllScenarios(SequentialSpec<M> spec, int workers,
                                                         int operationsPerWorker) {
+        return assertLinearizableForAllScenarios(spec, workers, operationsPerWorker, 1);
+    }
+
+    /**
+     * Runs every scenario of up to {@code operationsPerWorker} declared operations on each of
+     * {@code workers} workers across {@code argumentDrawsPerScenario} argument draws, smallest
+     * first, and checks each against {@code spec} (#1082).
+     *
+     * @param <M>                      the model's state
+     * @param spec                     the sequential behaviour the object must be explainable by
+     * @param workers                  how many workers run at once, at least 1
+     * @param operationsPerWorker      the longest sequence a worker runs, at least 1
+     * @param argumentDrawsPerScenario how many distinct argument tuples to draw per scenario, at least 1
+     * @return what the search covered, for the test's log
+     * @since 1.13.3
+     */
+    public <M> String assertLinearizableForAllScenarios(SequentialSpec<M> spec, int workers,
+                                                        int operationsPerWorker, int argumentDrawsPerScenario) {
+        if (argumentDrawsPerScenario < 1) {
+            throw new IllegalArgumentException("argumentDrawsPerScenario must be at least 1, was "
+                    + argumentDrawsPerScenario);
+        }
         Objects.requireNonNull(spec, "spec");
         if (workers < 1 || operationsPerWorker < 1) {
             throw new IllegalArgumentException("workers and operationsPerWorker must be at least 1, were "
@@ -475,7 +497,15 @@ public final class OperationHistory<S> {
         } catch (ArithmeticException tooMany) {
             scenarios = Long.MAX_VALUE;
         }
-        if (scenarios == Long.MAX_VALUE || scenarios > MAX_ENUMERATION_RUNS / SCHEDULES_PER_SCENARIO) {
+        long totalScenarios = scenarios;
+        if (totalScenarios != Long.MAX_VALUE) {
+            try {
+                totalScenarios = Math.multiplyExact(totalScenarios, argumentDrawsPerScenario);
+            } catch (ArithmeticException tooMany) {
+                totalScenarios = Long.MAX_VALUE;
+            }
+        }
+        if (totalScenarios == Long.MAX_VALUE || totalScenarios > MAX_ENUMERATION_RUNS / SCHEDULES_PER_SCENARIO) {
             throw new IllegalArgumentException("up to " + operationsPerWorker + " operations on each of "
                     + workers + " workers is " + (scenarios == Long.MAX_VALUE ? "too many" : scenarios)
                     + " scenarios, each run under " + SCHEDULES_PER_SCENARIO + " schedules, more than the "
@@ -502,6 +532,7 @@ public final class OperationHistory<S> {
         }));
         Consumer<RoundLog> check = round -> checkWhole(round, spec);
         for (int[] scenario : order) {
+          for (int draw = 0; draw < argumentDrawsPerScenario; draw++) {
             Map<Integer, List<Drawn>> replay = new java.util.TreeMap<>();
             for (int w = 0; w < workers; w++) {
                 List<Integer> ops = sequences.get(scenario[w]);
@@ -510,7 +541,8 @@ public final class OperationHistory<S> {
                 }
                 List<Drawn> steps = new ArrayList<>();
                 for (int position = 0; position < ops.size(); position++) {
-                    RandomGenerator random = new SplittableRandom(0x9E3779B97F4A7C15L * (w + 1) + position);
+                    RandomGenerator random = new SplittableRandom(
+                            0x9E3779B97F4A7C15L * (w + 1) + position + draw * 0xC2B2AE3D27D4EB4FL);
                     int choice = ops.get(position);
                     steps.add(new Drawn(choice, choices.get(choice).argument().apply(random)));
                 }
@@ -538,6 +570,7 @@ public final class OperationHistory<S> {
                 }
             }
         }
+          }
         return "linearizable over all " + scenarios + " scenarios of up to " + operationsPerWorker
                 + " operations on each of " + workers + " workers, each run under " + SCHEDULES_PER_SCENARIO
                 + " schedules";
@@ -646,9 +679,20 @@ public final class OperationHistory<S> {
         }
         logs.sort(Comparator.comparingInt(log -> log.number));
         List<Violation> found = new ArrayList<>();
+        boolean shrunkOne = false;
         for (RoundLog log : logs) {
             try {
                 check.accept(log);
+            } catch (NotLinearizable e) {
+                String message = String.valueOf(e.getMessage());
+                if (!shrunkOne) {
+                    shrunkOne = true;
+                    String shrunk = shrink(log, check);
+                    if (shrunk != null) {
+                        message = message + "\n\n" + shrunk;
+                    }
+                }
+                found.add(new Violation(FINDING, IssueSeverity.HIGH, message, List.of(), Map.of(), java.time.Instant.now()));
             } catch (AssertionError e) {
                 found.add(new Violation(FINDING, IssueSeverity.HIGH, String.valueOf(e.getMessage()), List.of(), Map.of(), java.time.Instant.now()));
             } catch (RuntimeException e) {

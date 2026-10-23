@@ -120,6 +120,16 @@ class WovenOverloadCoverageTest {
                             + "take (#692)");
         }
 
+        for (String absolute : List.of(
+                "get(int)", "get(int, [B)", "get(int, [B, int, int)",
+                "put(int, byte)", "put(int, [B)", "put(int, [B, int, int)",
+                "put(int, java.nio.ByteBuffer, int, int)",
+                "getInt(int)", "putInt(int, int)", "getLong(int)", "putLong(int, long)")) {
+            decided("java.nio.ByteBuffer#" + absolute,
+                    "absolute index access does not read or advance position, which is the safe "
+                            + "alternative SharedByteBufferDetector recommends");
+        }
+
         // KNOWN_GAP is deliberately empty. The three entries it held - Thread.sleep(Duration),
         // Thread.sleep(long, int) and Map.remove(Object, Object) - were closed in #440, and the
         // mechanism is kept rather than deleted with them: the next overload that ought to be

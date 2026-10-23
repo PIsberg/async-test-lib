@@ -34,6 +34,7 @@
         <module>scala</module>
         <module>clojure</module>
         <module>quickstart</module>
+        <module>quickstart-plugin</module>
     </modules>
 
     <properties>

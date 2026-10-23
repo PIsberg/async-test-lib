@@ -93,6 +93,20 @@ JDK will refuse, cannot pass for it; then it requires the race reported and the 
 under a lock left silent. Verified by breaking it: without the surefire `argLine` the test goes red
 on the `-javaagent:` assertion even though the fallback still finds the race.
 
+## `quickstart-plugin`: the quick start through the build plugins
+
+The same `CounterTest`, with the agent attached by the build plugins (#1045) instead of the
+hand-written snippets: `async-test:prepare-agent` under Maven, beside `jacoco:prepare-agent`, and
+`id("se.deversity.async-test")` under Gradle. Both are published with each release from 1.13.3 on
+([#1099](https://github.com/PIsberg/async-test-lib/issues/1099)), but this fixture never resolves a
+published one: Gradle takes the plugin from `../async-test-gradle-plugin` as an included build
+(`settings.gradle.kts`), and Maven needs it installed first, on its own, without the
+`versions/pom.xml` it inherits, because the installed pom is the flattened one the release deploys
+and resolving it with no parent in the repository is what proves that. The test fails unless `-javaagent:` names
+the agent with this build's `includes=`, and, under Maven only, JaCoCo's agent is there too: those
+are the two agents a hand-written `argLine` used to drop one of. Verified by breaking it: with the
+plugin removed from the Gradle build the test goes red at initialization.
+
 [#710]: https://github.com/PIsberg/async-test-lib/issues/710
 [#714]: https://github.com/PIsberg/async-test-lib/issues/714
 [#1068]: https://github.com/PIsberg/async-test-lib/issues/1068
@@ -101,8 +115,10 @@ on the `-javaagent:` assertion even though the fallback still finds the race.
 
 ```bash
 mvn install -DskipTests -Djacoco.skip=true      # publish the in-progress artifact to ~/.m2
-mvn -f consumer-fixture-langs/pom.xml test       # all four languages and quickstart
-./gradlew -p consumer-fixture-langs test         # Kotlin, Groovy, Scala and quickstart (see below)
+mvn -f versions/pom.xml install                  # the parent async-test-maven-plugin inherits
+mvn -f async-test-maven-plugin/pom.xml install   # for quickstart-plugin
+mvn -f consumer-fixture-langs/pom.xml test       # all four languages, quickstart and quickstart-plugin
+./gradlew -p consumer-fixture-langs test         # Kotlin, Groovy, Scala, quickstart and quickstart-plugin
 ```
 
 Clojure is Maven-only. Gradle has no first-party Clojure plugin, clojurephant's AOT model

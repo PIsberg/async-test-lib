@@ -94,6 +94,22 @@ public final class SharedByteBufferDetector extends AbstractInstanceDetector<Sha
      *
      * @param buffer    the {@code java.nio.Buffer} (or subclass) instance (null-safe)
      * @param operation descriptive label of the operation (e.g. {@code "flip"}, may be {@code null})
+     * @param thread    accessing thread
+     */
+    public void recordAccess(Object buffer, String operation, Thread thread) {
+        if (buffer == null || thread == null) return;
+        State s = resolve(buffer);
+        s.noteAccess(buffer);
+        SelfGuard.addThreadId(s.positionalThreadIds, thread.threadId());
+        s.positionalThreadNames.add(thread.getName());
+        s.positionalOperations.add(operation != null ? operation : "unknown");
+    }
+
+    /**
+     * Record a position-mutating access to a buffer instance from the current thread.
+     *
+     * @param buffer    the {@code java.nio.Buffer} (or subclass) instance (null-safe)
+     * @param operation descriptive label of the operation (may be {@code null})
      */
     public void recordPositionalAccess(Object buffer, String operation) {
         if (buffer == null) return;

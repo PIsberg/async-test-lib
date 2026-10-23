@@ -7,6 +7,78 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Both build plugins are published with every release (#1099).** `publish.yml` deploys
+  `async-test-maven-plugin` to Maven Central as a second bundle right after the reactor's, under a
+  `release` profile of its own (sources, javadoc, GPG, `waitUntil=uploaded`), and
+  `wait-for-central.sh` now waits for all four artifacts; the GitHub Release attaches and signs the
+  plugin's jars and its notes carry both plugins' snippets. The plugin's pom inherits the
+  never-published `versions/pom.xml` and takes its version from it, so `flatten-maven-plugin`
+  (`ossrh` mode) writes the pom that is installed and deployed with no parent, a literal version
+  and the metadata Central requires; it runs in every build, and `e2e-tests.yml` no longer installs
+  the parent before `quickstart-plugin` resolves the plugin, so a flatten that stopped running goes
+  red there rather than at every user. A second job publishes `async-test-gradle-plugin` to the
+  Gradle Plugin Portal with `com.gradle.plugin-publish` once the library is on Central, when the
+  `GRADLE_PUBLISH_KEY` and `GRADLE_PUBLISH_SECRET` secrets exist, and a third prints a warning in
+  the run summary when they do not, so the gap is never a silently skipped job. The release docs
+  and skill describe both, and what to re-run when either plugin's publication fails after the
+  library's succeeded. `BuildPluginsArePublishedTest` pins the workflow order and the two builds'
+  publishing configuration. The README quick start switches to the plugins in #1100, once the
+  first release carrying them is out.
+
+- **The Maven plugin's descriptor stays usable from Maven 3.9.** Dependabot's #1103 bumped
+  `maven-plugin-api.version` to 3.10.0, and `maven-plugin-plugin` copies that version into the
+  descriptor as `requiredMavenVersion`, so every Maven 3.9 build, the version this project pins,
+  would have refused `async-test:prepare-agent` outright; the bump was merged and nothing went red.
+  The property is back on 3.9.16, `PluginDescriptorTest` reads the generated descriptor and fails
+  on a required Maven at or above 3.10 (red at 3.10.0 before the pin, green after), and
+  `.github/dependabot.yml` ignores minor and major bumps of `maven-plugin-api` and `maven-core`.
+
+- **Build plugins that attach the agent at JVM startup in one block (#1045).**
+  `async-test-gradle-plugin` (`id("se.deversity.async-test")`, `asyncTest { includes }`)
+  adds an `asyncTestAgent` configuration and a `-javaagent:` `CommandLineArgumentProvider` on every
+  `Test` task. `async-test-maven-plugin` (`async-test:prepare-agent`, `<includes>`) appends the
+  argument to the `argLine` property, as `jacoco:prepare-agent` does, so the two compose with no
+  surefire configuration: the hand-written `argLine` replaced JaCoCo's unless the user knew to write
+  `@{argLine}`. `AsyncTestPluginFunctionalTest` (4 TestKit builds) and `PrepareAgentMojoTest` (6)
+  pin the argument; the default-version and composition tests each went red when the code was
+  broken. `consumer-fixture-langs/quickstart-plugin` runs the README's `counter++` through each
+  plugin, the Maven build beside JaCoCo's agent, and goes red without the plugin. Both are published
+  with this release (#1099, above), and the README quick start switches to them in #1100.
+
+- **A Kotlin `runBlocking` inside a coroutine is reported (#1007).** With the agent and
+  `collections=true`, `RunBlockingWeaver` inserts a hook call before every `runBlocking` call site in
+  a woven class, matched by name since kotlinx is not on the agent's class path, and
+  `BLOCKING_ON_NON_BLOCKING_THREAD` reports one entered on a `CoroutineScheduler` worker
+  (`Dispatchers.Default` or `Dispatchers.IO`) or on a thread that must not block. On an ordinary
+  thread, where `runBlocking` bridges blocking code to suspending code, nothing is reported. Kotlin
+  2.4.21 against kotlinx 1.11.0 compiles `runBlocking { }` to `runBlockingK$default`, not
+  `runBlocking$default`: the first version of the weaver matched only the old names and the new
+  real-kotlinx fixture caught it, so all four names are matched (`RunBlockingWeaverTest`). Proven
+  both ways through a Java stand-in (`RunBlockingWeavingTest`, `RunBlockingSparesTheCallerTest`),
+  with real kotlinx in `consumer-fixture-langs/kotlin` (`KotlinRunBlockingInCoroutineIsReportedTest`
+  went red with the weaver unwired, `KotlinRunBlockingOnCallerIsNotReportedTest`), and as a corpus
+  agent pair on a Netty event loop. A `runBlocking` nested in another `runBlocking`, or on an
+  `asCoroutineDispatcher` dispatcher, runs on no `CoroutineScheduler` worker: the first on the
+  caller's own thread inside the outer event loop, the second on the executor's plain `Thread`
+  (kotlinx 1.11 has no thread class for it). The detector now recognises both by a
+  `kotlinx.coroutines` frame below the call on the calling thread's own stack, read with
+  `StackWalker` only when the recorded thread is the caller, and reports them as "inside a
+  coroutine"; the walk costs microseconds against a call that parks the thread and spins up an event
+  loop. Unit tests put a stand-in `kotlinx.coroutines.DispatchedTask` frame on the stack and check
+  that another thread's stack is never read; `KotlinRunBlockingInsideACoroutineIsReportedTest` runs
+  both shapes against real kotlinx, and `KotlinRunBlockingOnCallerIsNotReportedTest` still passes,
+  as does the corpus pair's silent row, whose `runBlocking` on an ordinary thread has no kotlinx
+  frame below it. The debug-mode `@coroutine#n` suffix is now stripped from any thread's name, not
+  only a dispatcher worker's, so the run's own worker inside a nested `runBlocking` is one finding
+  rather than one per coroutine, and the worker finding's doubled comma is gone. What the fixture
+  also showed: a `newSingleThreadContext` thread is never attributed to the run, because kotlinx
+  wraps its `ScheduledThreadPoolExecutor` in `Executors.unconfigurableExecutorService` and the
+  woven `execute` hands tasks over on the JDK's pool classes only, by exact class; that is #1107.
+  A reentrant `Mutex` and races across suspensions still need a coroutine owner model and stay
+  open in #1007.
+
 ### Changed
 
 - **The README quick start attaches the agent at JVM startup, and the runner loads it at runtime
@@ -258,6 +330,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with 18 drawn operations shrunk to two increments on two workers.
 
 ### Fixed
+
+- **A licence record that is absent for a moment no longer reads as no record (#928).** The first
+  fix retried every read failure but a missing file, taken as the one certain sign of "no record";
+  on 2026-10-23 the concurrent-writers dogfood test failed again on main's Windows leg with a record
+  the thread had just written reading back as missing or partial, and 19,000 local rounds under CPU
+  load reproduced no read failure of any kind. `isFresh` and `hasRecord` now retry a missing file
+  with the same backoff as any other failure, and only a file that stays away for the whole bound,
+  now 255 ms (9 attempts), is "no record"; that wait is paid once per JVM on a machine with no
+  record yet, before the online validation it precedes anyway. Security review: the element is
+  `@AISecure` (authorization), and what is accepted is unchanged, a file whose content parses to a
+  timestamp within the TTL; the retry can only turn a false "missing" into a read of a record that
+  exists. `LicenseValidationCacheMissingForAMomentTest` deletes the record and writes it back 30 ms
+  later while `isFresh` runs (red before the change, green after), and checks a record that never
+  existed is still none. The dogfood test now reports what a direct read of the record sees when
+  its assertion fails, so the next Windows failure names its cause instead of "missing or partial".
+
+- **Dependabot proposes Copilot CLI bumps again (#1029).** The pin `instruction-evals.yml` installs
+  sat under `.github/copilot-cli`, and every Dependabot npm run there resolved the bump and then had
+  its `create_pull_request` refused with a 400 ("The request contains invalid or unauthorized
+  changes"), four runs out of four, so the CLI stayed on 1.0.87 while 1.0.98 shipped, until
+  #1027 bumped it by hand. It now lives at `tools/copilot-cli`, the layout vibetags uses for its
+  Codex CLI pin, whose Dependabot PRs open (vibetags#985). Upstream reports the same 400 without a
+  diagnosed cause (dependabot-core#15721), so the move is the best-supported fix rather than a
+  proven one; the first Copilot CLI PR settles it. `DependabotNpmPinTest` fails on an npm entry
+  under `.github/` and on a workflow installing from a directory no npm entry watches.
 
 - **`ReentrantLockOwnerAndStarvationTest.aWaiterBargedPastOnANonFairLockFires` failed a CI run when
   its setup lost a race (#1085).** The test needs a waiter on a non-fair `ReentrantLock` barged past

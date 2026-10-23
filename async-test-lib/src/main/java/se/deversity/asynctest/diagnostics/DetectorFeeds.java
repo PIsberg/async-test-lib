@@ -72,6 +72,11 @@ public final class DetectorFeeds {
             DetectorType.STRING_BUILDER,
             DetectorType.SHARED_DECIMAL_FORMAT,
             DetectorType.SHARED_FORMATTER,
+            DetectorType.SHARED_DEFLATER,
+            DetectorType.SHARED_BYTE_BUFFER,
+            DetectorType.SHARED_CHARSET_CODER,
+            DetectorType.SHARED_CHECKSUM,
+            DetectorType.SHARED_SPLITTABLE_RANDOM,
             // The coordination primitives. Sharing is the point of these, so what the detectors
             // report is protocol misuse - a permit that never came back, an offer whose false
             // return was discarded. Nobody instruments a semaphore three layers down in the

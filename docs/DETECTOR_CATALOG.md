@@ -275,9 +275,9 @@ a `LOW` advisory.
 `RACE_CONDITIONS` and `ATOMICITY_VIOLATIONS` moved to the split tier below: both now carry a lock
 model. `RACE_CONDITIONS` intersects the lock sets held at each access to a field in a round (#570),
 so a field one thread holds `{A, B}` for and another holds `{A}` for is guarded by `A` and not
-reported. `ATOMICITY_VIOLATIONS` is coarser on its agent-fed path, where it compares whole lock sets
-rather than intersecting them; since 1.12.3 it also judges its lockset per round, so one lock per
-round, a different one each round, is consistent locking. Both also excuse a round whose every
+reported. `ATOMICITY_VIOLATIONS` intersects registered lock sets on both its owner-aware and
+agent-fed paths (and across both when mixed in a round), and since 1.12.3 judges its lockset per
+round, so one lock per round, a different one each round, is consistent locking. Both also excuse a round whose every
 conflicting pair the shared `HappensBefore` model orders (1.12.3). Neither report grades its
 findings, so both detectors are rated
 PROMPT as a whole. For `RACE_CONDITIONS` that is a decision rather than a gap: no finding it makes
@@ -342,7 +342,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (40)
+### Agent-fed (45)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -492,7 +492,9 @@ which the `PipedInputStream` javadoc warns may deadlock.
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
-`SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SemaphoreMisuseDetector`,
+`SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SharedDeflaterDetector`,
+`SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
+`SharedSplittableRandomDetector`, `SemaphoreMisuseDetector`,
 `CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
 `MissedSignalDetector`, `ExplicitGcDetector`, `DaemonThreadHygieneDetector`, `ABAProblemDetector`,
 `SynchronizedNonFinalDetector`, `NonAtomicConcurrentMapUpdateDetector`, `ExecutorShutdownDetector`,
@@ -563,7 +565,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (104)
+### Recording-only (99)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -599,19 +601,18 @@ recording is the feed:
 `BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`,
 `NotifyWithoutMonitorDetector`, `SharedSecureRandomDetector`,
 `WeakHashMapSharedDetector`, `SharedStatefulCryptoDetector`,
-`SharedDeflaterDetector`, `ThisEscapeDetector`,
+`ThisEscapeDetector`,
 `ThreadLocalRandomMisuseDetector`, `CompletableFutureObtrudeDetector`, `SpuriousWakeupDetector`,
 `LockUpgradeDeadlockDetector`,
 `StableValueMisuseDetector`,
 `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`,
-`SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
 `FileChannelPositionRaceDetector`, `SharedIteratorDetector`, `HighContentionAtomicDetector`,
 `SharedJsonMapperReconfigDetector`, `LazyConstantMisuseDetector`, `FinalFieldMutationDetector`,
 `SharedKdfDetector`, `ExecutorDeadlockDetector`, `FutureBlockingDetector`,
 `FlowPublisherConcurrencyDetector`, `ConfinedArenaThreadEscapeDetector`,
 `SharedMemorySegmentRaceDetector`, `VarHandleNonAtomicUpdateDetector`,
 `RecordMutableComponentLeakDetector`, `VirtualThreadPoolingDetector`,
-`PlatformThreadPerTaskDetector`, `SharedSplittableRandomDetector`,
+`PlatformThreadPerTaskDetector`,
 `CompletableFutureCompletionRaceDetector`, `CompletableFutureCancellationPropagationDetector`,
 `CompletableFutureCombinatorMisuseDetector`, `LambdaLostUpdateDetector`,
 `VirtualThreadResourceSaturationDetector`, `VirtualThreadMonitorSerializationDetector`,

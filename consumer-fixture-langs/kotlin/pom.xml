@@ -19,6 +19,12 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>org.jetbrains.kotlinx</groupId>
+            <artifactId>kotlinx-coroutines-core-jvm</artifactId>
+            <version>${kotlinx-coroutines.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>se.deversity.async-test-lib</groupId>
             <artifactId>async-test-agent</artifactId>
             <version>${async-test.version}</version>
@@ -63,8 +69,9 @@
                     <!-- premain rather than self-attach: a self-attach that is refused turns the
                          wait gates into skips, and a skipped gate is not a passed gate. includes=
                          is scoped to the bean package so the two race-condition fixtures next door
-                         keep running unwoven (#714). -->
-                    <argLine>-javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=includes=com.example.kotlinfixture,collections=true</argLine>
+                         keep running unwoven (#714). kotlinx.coroutines is woven too, so the start
+                         of a dispatcher worker inside its scheduler carries the run to it (#1007). -->
+                    <argLine>-javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=includes=com.example.kotlinfixture;kotlinx.coroutines,collections=true</argLine>
                     <!-- Needs a JVM with no agent started: it proves the runner's default attach. -->
                     <excludes>
                         <exclude>**/RunnerDefaultAttachTest.class</exclude>

@@ -90,6 +90,13 @@
             <version>${netty.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- The real runBlocking the agent-pair lane's Netty runBlocking rows call (#1007). -->
+        <dependency>
+            <groupId>org.jetbrains.kotlinx</groupId>
+            <artifactId>kotlinx-coroutines-core-jvm</artifactId>
+            <version>${kotlinx-coroutines.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-core</artifactId>

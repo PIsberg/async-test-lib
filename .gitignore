@@ -48,4 +48,7 @@ evals/results/
 __pycache__/
 *.pyc
 
-.github/copilot-cli/node_modules/
+tools/copilot-cli/node_modules/
+
+# flatten-maven-plugin writes the pom async-test-maven-plugin deploys next to its pom.xml (#1099)
+.flattened-pom.xml
