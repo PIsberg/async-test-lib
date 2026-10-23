@@ -164,10 +164,21 @@ gh release view "v<version>"
 ```
 
 Maven Central takes ~15–30 min to surface the artifact at
-`https://repo1.maven.org/maven2/se/deversity/async-test-lib/async-test-lib/`.
+`https://repo1.maven.org/maven2/se/deversity/async-test-lib/async-test-lib/`; the Maven build
+plugin goes up in the same job as a bundle of its own (#1099), and `wait-for-central.sh` waits for
+all four artifacts.
+
+The run has a second job, "Publish to the Gradle Plugin Portal", that runs only when the
+`GRADLE_PUBLISH_KEY` and `GRADLE_PUBLISH_SECRET` secrets exist. Read the run summary: a warning
+from "Gradle plugin not published (no Plugin Portal key)" means the Gradle plugin of this version
+is not on the portal, and must be published by hand from the tagged commit (`docs/RELEASE.md`,
+"When a release fails"). A warning from the portal check in the publish job itself means the
+upload succeeded and the portal has not served the marker yet: for the first version of a new
+plugin id that is the portal's manual approval, which the user checks at
+`https://plugins.gradle.org/u/PIsberg`.
 
 An `ECONNREFUSED` in the workflow is harden-runner blocking an egress host — add it to
-`allowed-endpoints` in `publish.yml`, not a flake to retry.
+`allowed-endpoints` in `publish.yml`, in the job that failed, not a flake to retry.
 
 ## If the publish fails
 
@@ -177,6 +188,9 @@ version is not.
 - **Failed before the Central upload** (build, test, GPG import): fix, then move the tag —
   `git tag -d v<version> && git push origin :refs/tags/v<version>`, commit the fix, re-tag.
 - **Failed after the Central upload succeeded**: the version is burned. Do not retry it —
-  bump to the next patch/RC and release that instead.
+  bump to the next patch/RC and release that instead. Two exceptions, both in `docs/RELEASE.md`:
+  the Maven plugin's own deploy, whose coordinates Central never saw, can be deployed again for
+  the same version; and the Gradle Plugin Portal job, which touches nothing on Central, is
+  re-run alone or done by hand with `publishPlugins`.
 
 Tell the user which case it is before touching any tag.

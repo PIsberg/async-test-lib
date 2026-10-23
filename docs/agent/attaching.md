@@ -25,10 +25,11 @@ collection calls, woven only in classes under your own package prefix, so JUnit 
 stay unwoven. If JaCoCo or another plugin also sets surefire's `argLine`, start yours with
 `@{argLine} `.
 
-**Build plugins: built and tested, not yet published (#1045).** Two plugins replace those snippets
-with one block each, and the README will switch to them once they are published
-([#1099](https://github.com/PIsberg/async-test-lib/issues/1099),
-[#1100](https://github.com/PIsberg/async-test-lib/issues/1100)):
+**Build plugins (#1045).** Two plugins replace those snippets with one block each. Both are
+published with every release from 1.13.3 on, the Maven plugin to Maven Central and the Gradle
+plugin to the Gradle Plugin Portal ([#1099](https://github.com/PIsberg/async-test-lib/issues/1099)),
+and the README quick start switches to them once the first such release is out
+([#1100](https://github.com/PIsberg/async-test-lib/issues/1100)):
 
 - Gradle, [`async-test-gradle-plugin`](../../async-test-gradle-plugin): `id("se.deversity.async-test")`
   plus `asyncTest { includes.add("com.example") }`. It adds an `asyncTestAgent` configuration,
@@ -280,7 +281,12 @@ kotlinx 1.11 and `runBlocking` or `runBlocking$default` by older releases, and n
 may be on the agent's class path. So `RunBlockingWeaver` inserts one call of a hook that takes and
 leaves nothing before each such call, in every woven class outside kotlinx itself, and
 `BlockingOnNonBlockingThreadDetector` reports it on a coroutine dispatcher worker of either
-dispatcher, or on a thread that must not block. Both the calling code's package and
+dispatcher, on a thread that must not block, and on any thread whose stack holds a
+`kotlinx.coroutines` frame below the call, which is how a `runBlocking` nested in another, or one
+on an executor dispatcher's plain thread, is seen without a thread class to classify
+(`KotlinRunBlockingInsideACoroutineIsReportedTest`); that thread must still be the run's, which
+the woven `execute` makes it on a bare JDK pool and not through the wrapper
+`newSingleThreadContext` adds (#1107). Both the calling code's package and
 `kotlinx.coroutines` belong in `includes=`: the first so the call site is woven, the second so the
 dispatcher worker is attributed to the run (`RunBlockingWeavingTest`, `RunBlockingSparesTheCallerTest`,
 and with real kotlinx `consumer-fixture-langs/kotlin`).

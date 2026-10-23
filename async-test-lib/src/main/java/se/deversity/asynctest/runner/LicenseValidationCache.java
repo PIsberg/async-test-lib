@@ -42,8 +42,9 @@ import java.util.HexFormat;
     note = "Stateless static methods over the filesystem. Concurrent writers race on an atomic "
         + "temp-file move where the losing write is equivalent to the winning one; readers see "
         + "either the old complete file or the new complete file, never a partial write. On "
-        + "Windows a read that meets a replace in progress fails with AccessDeniedException, so "
-        + "isFresh retries any read failure but a missing file for up to 127 ms (#928)."
+        + "Windows a read that meets a replace in progress fails with AccessDeniedException, or "
+        + "finds no file for a moment, so isFresh and hasRecord retry any read failure, a missing "
+        + "file included, for up to 255 ms before answering no (#928)."
 )
 @AISecure(aspect = "authorization (isFresh skips online validation; hasRecord admits outage grace)")
 final class LicenseValidationCache {
@@ -51,10 +52,10 @@ final class LicenseValidationCache {
     private static final long DEFAULT_TTL_HOURS = 24;
 
     /**
-     * Reads of an existing record before {@link #isFresh} gives up: backoff 1, 2, 4 ... 64 ms,
-     * 127 ms in all, paid only while the file cannot be read.
+     * Reads of a record before {@link #isFresh} and {@link #hasRecord} give up: backoff 1, 2, 4 ...
+     * 128 ms, 255 ms in all, paid only while the file cannot be read or is not there.
      */
-    private static final int READ_ATTEMPTS = 8;
+    private static final int READ_ATTEMPTS = 9;
 
     private LicenseValidationCache() {}
 
@@ -89,12 +90,17 @@ final class LicenseValidationCache {
     /**
      * {@return the record's content, or {@code null} when there is no record}
      *
-     * <p>Only a missing file means no record. Every forked JVM of a licensed build writes the same
-     * file, and on Windows a read that meets a replace in progress fails with
-     * {@code AccessDeniedException}: measured once in eight runs of the concurrent-writers dogfood
-     * test under CPU load (#928). Read as "no record", that sends a licensed run back online, so
-     * any other failure is retried with backoff before it is thrown. The retry changes nothing about
-     * what is accepted: the content must still parse to a timestamp within the TTL.
+     * <p>Every forked JVM of a licensed build writes the same file, and on Windows a read that meets
+     * a replace in progress fails with {@code AccessDeniedException}: measured once in eight runs of
+     * the concurrent-writers dogfood test under CPU load (#928). Read as "no record", that sends a
+     * licensed run back online, so every failure is retried with backoff before it counts. A
+     * missing file is retried the same way, not taken as the answer: the first fix took it as the
+     * one certain sign of no record, and the dogfood test then failed again on main's Windows leg
+     * (2026-10-23) with a record the thread had just written reading back as missing or partial,
+     * which nothing reproduced locally. A file that stays away for the whole bound is no record,
+     * which costs a machine with no record yet one wait before the online validation it would do
+     * anyway. The retry changes nothing about what is accepted: the content must still parse to a
+     * timestamp within the TTL.
      */
     private static @Nullable String readRetrying(Path file) throws IOException {
         long backoffMs = 1;
@@ -102,31 +108,43 @@ final class LicenseValidationCache {
             try {
                 return Files.readString(file, StandardCharsets.UTF_8);
             } catch (NoSuchFileException e) {
-                return null;
+                if (attempt >= READ_ATTEMPTS || !sleptBetweenAttempts(backoffMs)) {
+                    return null;
+                }
             } catch (IOException e) {
-                if (attempt >= READ_ATTEMPTS) {
+                if (attempt >= READ_ATTEMPTS || !sleptBetweenAttempts(backoffMs)) {
                     throw e;
                 }
-                try {
-                    Thread.sleep(backoffMs);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    e.addSuppressed(interrupted);
-                    throw e;
-                }
-                backoffMs *= 2;
             }
+            backoffMs *= 2;
         }
     }
 
-    /** Whether this hash has ever validated successfully, regardless of age. */
+    /**
+     * {@return whether the pause between two read attempts ran its course}: {@code false} on an
+     * interrupt, whose flag is restored, which ends the retry with the answer the last attempt gave.
+     */
+    private static boolean sleptBetweenAttempts(long ms) {
+        try {
+            Thread.sleep(ms);
+            return true;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    /**
+     * Whether this hash has ever validated successfully, regardless of age. Read with the same
+     * retry as {@link #isFresh}: a record absent for a moment must not deny the outage grace (#928).
+     */
     static boolean hasRecord(String hash) {
         if (ttlHours() < 0) {
             return false;
         }
         try {
-            return Files.isRegularFile(fileFor(hash));
-        } catch (RuntimeException e) {
+            return readRetrying(fileFor(hash)) != null;
+        } catch (IOException | RuntimeException e) {
             return false;
         }
     }

@@ -9,7 +9,7 @@
 # Usage:  wait-for-central.sh <version> [<reactor-root>]
 #
 # For each module it polls <module>-<version>.jar.sha1 on repo1.maven.org and compares it with
-# the sha1 of <reactor-root>/<module>/target/<module>-<version>.jar. Exit 0 once all three match;
+# the sha1 of <reactor-root>/<module>/target/<module>-<version>.jar. Exit 0 once all four match;
 # exit 1 on a mismatch, on a jar this run did not build, or when the bound runs out.
 #   CENTRAL_WAIT_SECONDS  the bound, default 3600 (the release skill expects 15 to 30 minutes)
 #   CENTRAL_POLL_SECONDS  between polls, default 60
@@ -25,7 +25,9 @@ TIMEOUT=${CENTRAL_WAIT_SECONDS:-3600}
 INTERVAL=${CENTRAL_POLL_SECONDS:-60}
 BASE=https://repo1.maven.org/maven2/se/deversity/async-test-lib
 
-pending=(async-test-lib async-test-agent async-test-analysis)
+# The three reactor modules, and the Maven build plugin publish.yml deploys in a bundle of its own
+# right after them (#1099). Its jar sits under the same <module>/target pattern.
+pending=(async-test-lib async-test-agent async-test-analysis async-test-maven-plugin)
 deadline=$((SECONDS + TIMEOUT))
 while :; do
   still=()
