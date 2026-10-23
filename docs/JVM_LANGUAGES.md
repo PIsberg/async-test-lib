@@ -34,10 +34,17 @@ so far, both reported by `BLOCKING_ON_NON_BLOCKING_THREAD` when the agent is att
 `kotlinx.coroutines` and your own package in its `includes=`. A blocking call on a
 `Dispatchers.Default` worker is reported; the same worker running `Dispatchers.IO` work is not
 (#993). A `runBlocking` entered on any dispatcher worker, `Dispatchers.Default` or `Dispatchers.IO`,
-is reported, because the caller is itself a coroutine; on an ordinary thread, its intended use, it
-is not (#1007). `runBlocking` on a single-threaded dispatcher or nested in another `runBlocking`, a
-`Mutex` treated as reentrant and races across suspensions need a coroutine owner model and are
-still [#1007](https://github.com/PIsberg/async-test-lib/issues/1007). Fixture:
+is reported, because the caller is itself a coroutine, and so is one entered by a coroutine on any
+other thread, which the detector recognises by a `kotlinx.coroutines` frame below the call: nested
+in another `runBlocking`, or on an `asCoroutineDispatcher` dispatcher over a JDK
+`ScheduledThreadPoolExecutor`, whose threads are plain `Thread`s. On an ordinary thread outside any
+coroutine, its intended use, nothing is reported (#1007). A `newSingleThreadContext` thread is never
+attributed to the run, because kotlinx wraps its pool in an executor wrapper the woven `execute`
+does not look through, so nothing on it is reported yet
+([#1107](https://github.com/PIsberg/async-test-lib/issues/1107)). A `Mutex` treated as reentrant
+and races across suspensions need a coroutine owner model and are still
+[#1007](https://github.com/PIsberg/async-test-lib/issues/1007).
+Fixture:
 [`consumer-fixture-langs/kotlin`](../consumer-fixture-langs/kotlin); a fuller example with a
 buggy and a fixed twin: [`examples/128-kotlin-lost-update`](../examples/128-kotlin-lost-update).
 

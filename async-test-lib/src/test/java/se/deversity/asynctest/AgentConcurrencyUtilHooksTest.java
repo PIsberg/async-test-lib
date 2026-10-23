@@ -80,6 +80,14 @@ class AgentConcurrencyUtilHooksTest {
     }
 
     @Test
+    @DisplayName("a runBlocking entered inside a coroutine body on an ordinary thread is reported through the hook (#1007)")
+    void runBlockingInsideACoroutineBodyIsReachedThroughTheHookAlone() throws InterruptedException {
+        BlockingOnNonBlockingThreadDetector.Report report = runBlockingEnteredOn(
+                task -> new Thread(() -> kotlinx.coroutines.DispatchedTask.run(task)));
+        assertTrue(report.hasIssues() && report.toString().contains("inside a coroutine"), report.toString());
+    }
+
+    @Test
     @DisplayName("a runBlocking entered on an ordinary thread is not reported (#1007)")
     void runBlockingOnAnOrdinaryThreadIsNotReported() throws InterruptedException {
         BlockingOnNonBlockingThreadDetector.Report report = runBlockingEnteredOn(Thread::new);

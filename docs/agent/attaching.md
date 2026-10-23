@@ -281,7 +281,12 @@ kotlinx 1.11 and `runBlocking` or `runBlocking$default` by older releases, and n
 may be on the agent's class path. So `RunBlockingWeaver` inserts one call of a hook that takes and
 leaves nothing before each such call, in every woven class outside kotlinx itself, and
 `BlockingOnNonBlockingThreadDetector` reports it on a coroutine dispatcher worker of either
-dispatcher, or on a thread that must not block. Both the calling code's package and
+dispatcher, on a thread that must not block, and on any thread whose stack holds a
+`kotlinx.coroutines` frame below the call, which is how a `runBlocking` nested in another, or one
+on an executor dispatcher's plain thread, is seen without a thread class to classify
+(`KotlinRunBlockingInsideACoroutineIsReportedTest`); that thread must still be the run's, which
+the woven `execute` makes it on a bare JDK pool and not through the wrapper
+`newSingleThreadContext` adds (#1107). Both the calling code's package and
 `kotlinx.coroutines` belong in `includes=`: the first so the call site is woven, the second so the
 dispatcher worker is attributed to the run (`RunBlockingWeavingTest`, `RunBlockingSparesTheCallerTest`,
 and with real kotlinx `consumer-fixture-langs/kotlin`).

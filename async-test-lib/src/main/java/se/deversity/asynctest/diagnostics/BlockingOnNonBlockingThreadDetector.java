@@ -35,8 +35,12 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>A Kotlin {@code runBlocking} is the exception (#1007): {@link #recordRunBlocking} reports one
  * entered on a coroutine worker in either state, since the caller is then itself a coroutine
- * parking its thread until another finishes. The agent's {@code RunBlockingWeaver} feeds it from
- * every woven {@code runBlocking} call site; on an ordinary thread it reports nothing.
+ * parking its thread until another finishes, and one entered by a coroutine on any other thread,
+ * which it recognises by a {@code kotlinx.coroutines} frame below the call on the calling thread's
+ * own stack: a {@code runBlocking} nested in another, or on an executor-backed dispatcher, whose
+ * threads have no class of their own. The agent's {@code RunBlockingWeaver}
+ * feeds it from every woven {@code runBlocking} call site; on an ordinary thread outside any
+ * coroutine it reports nothing.
  *
  * <p><strong>Attribution needs the framework in {@code includes=}.</strong> With the agent
  * ({@code collections=true}) every woven blocking call reaches this detector, but only on a thread
@@ -84,6 +88,13 @@ public final class BlockingOnNonBlockingThreadDetector {
     /** The suffix kotlinx's debug mode, on under -ea, appends to a worker's name while it runs a coroutine. */
     private static final String COROUTINE_NAME_SUFFIX = " @coroutine#";
 
+    /**
+     * The package every coroutine body is entered through ({@code DispatchedTask.run}, the event
+     * loop of an enclosing {@code runBlocking}, an undispatched start): a frame from it on the calling
+     * thread's stack means the caller runs inside a coroutine, whatever thread class it is on.
+     */
+    private static final String KOTLINX_PACKAGE = "kotlinx.coroutines.";
+
     /** Distinct findings, one line each, remedy included. */
     private final Set<String> findings = ConcurrentHashMap.newKeySet();
 
@@ -114,6 +125,17 @@ public final class BlockingOnNonBlockingThreadDetector {
      * need, which deadlocks once every thread waits that way. So a worker in either state is
      * reported, where a plain blocking call on a {@code Dispatchers.IO} worker is not.
      *
+     * <p>A coroutine on any other thread is recognised only when {@code thread} is the calling
+     * thread, by walking its stack for a {@code kotlinx.coroutines} frame: a {@code runBlocking}
+     * nested in another runs inside the outer one's event loop on the caller's own thread, and an
+     * {@code asCoroutineDispatcher} dispatcher runs its coroutines on the executor's plain threads,
+     * so neither has a thread class to classify. The walk costs microseconds, and
+     * {@code runBlocking} is itself a parked thread and an event loop. The executor's thread must
+     * still be the run's: the woven {@code execute} hands the task over on a JDK
+     * {@code ScheduledThreadPoolExecutor}, but not through the wrapper
+     * {@code newSingleThreadContext} puts around its pool, so that dispatcher's thread is never
+     * heard from (#1107).
+     *
      * @param thread the thread that entered {@code runBlocking} (null-safe)
      * @since 1.13.3
      */
@@ -121,7 +143,11 @@ public final class BlockingOnNonBlockingThreadDetector {
         if (thread == null || findings.size() >= MAX_FINDINGS) return;
         String kind = nonBlockingKind(thread);
         if (kind == null && COROUTINE_WORKER.equals(thread.getClass().getName())) {
-            kind = "a Kotlin coroutine dispatcher worker, so inside a coroutine,";
+            kind = "a Kotlin coroutine dispatcher worker, so inside a coroutine";
+        }
+        if (kind == null && thread.equals(Thread.currentThread()) && insideACoroutine()) {
+            kind = "inside a coroutine (a kotlinx.coroutines frame is below the call: a runBlocking nested in "
+                    + "another, or a dispatcher of its own)";
         }
         if (kind != null) {
             findings.add(String.format("Thread '%s', %s, blocked in runBlocking - %s", nameOf(thread), kind,
@@ -130,13 +156,24 @@ public final class BlockingOnNonBlockingThreadDetector {
     }
 
     /**
-     * {@return the thread's name, without the coroutine kotlinx's debug mode appends to a worker's}
-     * Without this one worker is a new finding per coroutine it runs.
+     * {@return the thread's name, without the coroutine kotlinx's debug mode appends to it}
+     * Without this one thread is a new finding per coroutine it runs. Any thread class: debug mode
+     * renames whatever thread a coroutine resumes on, the run's own worker inside a nested
+     * {@code runBlocking} included.
      */
     private static String nameOf(Thread thread) {
         String name = thread.getName();
         int suffix = name.indexOf(COROUTINE_NAME_SUFFIX);
-        return suffix > 0 && COROUTINE_WORKER.equals(thread.getClass().getName()) ? name.substring(0, suffix) : name;
+        return suffix > 0 ? name.substring(0, suffix) : name;
+    }
+
+    /**
+     * {@return whether the calling thread is running a coroutine body}: a {@code kotlinx.coroutines}
+     * frame is on its stack. Reads only the calling thread's own stack; never another thread's.
+     */
+    static boolean insideACoroutine() {
+        return StackWalker.getInstance()
+                .walk(frames -> frames.anyMatch(f -> f.getClassName().startsWith(KOTLINX_PACKAGE)));
     }
 
     /** {@return what kind of must-not-block thread {@code thread} is, or {@code null} for any other} */
