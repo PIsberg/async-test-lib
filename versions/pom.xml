@@ -44,7 +44,7 @@
 
         <!-- async-test-maven-plugin/ (#1045). The API stays on 3.9.x: the plugin descriptor takes
              its minimum Maven from it, and the project pins Maven 3.9.16. -->
-        <maven-plugin-api.version>3.9.16</maven-plugin-api.version>
+        <maven-plugin-api.version>3.10.0</maven-plugin-api.version>
         <maven-plugin-tools.version>3.16.0</maven-plugin-tools.version>
         <!-- Shared with the reactor pom.xml; consumer-fixture-langs/quickstart-plugin runs JaCoCo's
              agent beside async-test's to prove they compose. -->
