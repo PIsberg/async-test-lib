@@ -4,6 +4,7 @@ import java.util.Date;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -21,11 +22,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>Like {@link TimerStarvationModelTest}, every positive case makes the overlap certain: a task
  * that holds the thread keeps it until the wall clock is past the instant it has to cover, and
- * nothing depends on how fast the timer thread is scheduled.
+ * nothing depends on how fast the timer thread is scheduled. The silent case cannot be made certain
+ * the same way: a stalled timer thread turns a quick task into a held one, so that test checks the
+ * run it got and repeats the scenario when the stall happened.
  */
 class TimerStarvationGapsTest {
 
     private static final String TIMER = "t";
+
+    /**
+     * How often the silent case may run before the quick tasks have shared a tick without either
+     * spanning one. Each attempt is 20 ms plus two runs of microseconds, so exhausting this means
+     * the timer thread was stalled across a tick on every one of them.
+     */
+    private static final int QUICK_ATTEMPTS = 20;
 
     /** Keeps the calling thread busy until the wall clock is strictly past {@code instantMs}. */
     private static void holdUntilPast(long instantMs) {
@@ -52,12 +62,22 @@ class TimerStarvationGapsTest {
         };
     }
 
-    private static TimerTask quick(TimerDetector detector, Timer timer, String label, CountDownLatch done) {
+    /**
+     * A task that records its run and completes at once, and raises {@code spannedATick} when the
+     * wall clock moved between the two records anyway: the OS stalled the timer thread in between,
+     * and to the detector such a run held the thread for a tick, however quick the task was.
+     */
+    private static TimerTask quick(TimerDetector detector, Timer timer, String label, CountDownLatch done,
+            AtomicBoolean spannedATick) {
         return new TimerTask() {
             @Override
             public void run() {
+                long before = System.currentTimeMillis();
                 detector.recordTaskRun(timer, TIMER, this, label);
                 detector.recordTaskComplete(timer, TIMER, label);
+                if (System.currentTimeMillis() != before) {
+                    spannedATick.set(true);
+                }
                 done.countDown();
             }
         };
@@ -94,22 +114,35 @@ class TimerStarvationGapsTest {
     @Test
     @DisplayName("two short tasks that share a due instant are silent")
     void coDueShortTasksAreSilent() throws InterruptedException {
-        var detector = new TimerDetector();
-        Timer timer = new Timer("co-due-short", true);
-        try {
-            detector.registerTimer(timer, TIMER);
-            CountDownLatch both = new CountDownLatch(2);
-            Date due = new Date(System.currentTimeMillis() + 20);
-            timer.schedule(quick(detector, timer, "first", both), due);
-            timer.schedule(quick(detector, timer, "second", both), due);
-            assertTrue(both.await(10, SECONDS));
+        // The claim holds only for a run in which neither task spanned a clock tick. A quick task
+        // still does when the OS stalls the timer thread inside it (a CI leg on 2026-10-23 saw a
+        // 2 ms run of 'first', and the detector rightly reported 'second' for waiting on it), so
+        // the test reads its premise from the run and runs the scenario again when it did not hold.
+        for (int attempt = 1; ; attempt++) {
+            var detector = new TimerDetector();
+            Timer timer = new Timer("co-due-short", true);
+            try {
+                detector.registerTimer(timer, TIMER);
+                CountDownLatch both = new CountDownLatch(2);
+                AtomicBoolean spannedATick = new AtomicBoolean();
+                Date due = new Date(System.currentTimeMillis() + 20);
+                timer.schedule(quick(detector, timer, "first", both, spannedATick), due);
+                timer.schedule(quick(detector, timer, "second", both, spannedATick), due);
+                assertTrue(both.await(10, SECONDS));
+                if (spannedATick.get()) {
+                    assertTrue(attempt < QUICK_ATTEMPTS, "a quick task spanned a clock tick on each of "
+                            + QUICK_ATTEMPTS + " attempts, so the silent case never ran");
+                    continue;
+                }
 
-            var report = detector.analyze();
-            assertFalse(report.hasIssues(),
-                    "neither task held the thread across a clock tick, so sharing a tick is "
-                            + "sequencing, not starvation: " + report);
-        } finally {
-            timer.cancel();
+                var report = detector.analyze();
+                assertFalse(report.hasIssues(),
+                        "neither task held the thread across a clock tick, so sharing a tick is "
+                                + "sequencing, not starvation: " + report);
+                return;
+            } finally {
+                timer.cancel();
+            }
         }
     }
 

@@ -339,6 +339,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`TimerStarvationGapsTest` no longer fails when a CI runner stalls the timer thread.** Its
+  silent case schedules two quick tasks for the same instant and asserts the `TimerDetector` reports
+  nothing, which holds only while neither run spans a clock tick; on 2026-10-23 the JDK 26 leg of a
+  Dependabot PR saw a 2 ms run of the first task, and the detector rightly reported the second for
+  waiting on it. The test now reads the wall clock before and after each task's records, and when a
+  run spanned a tick it discards that attempt and schedules the pair again, up to 20 times, failing
+  with "the silent case never ran" only if the stall repeats on every attempt. Verified by injecting
+  the stall: the old test goes red with the CI message, the new one is green with a stall on the
+  first attempt and red with its own message when every attempt stalls. The detector is unchanged.
+
 - **A licence record that is absent for a moment no longer reads as no record (#928).** The first
   fix retried every read failure but a missing file, taken as the one certain sign of "no record";
   on 2026-10-23 the concurrent-writers dogfood test failed again on main's Windows leg with a record
