@@ -18,6 +18,12 @@ jobs:
       id-token: write  # required for keyless cosign signing via OIDC
       attestations: write  # build provenance (#961)
 
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+      # Whether the Gradle Plugin Portal job below can run; decided here, where the Central secrets
+      # already are, so the job that runs Gradle names no secret until it publishes.
+      gradle-portal-key: ${{ steps.portal-key.outputs.has-key }}
+
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
@@ -75,6 +81,20 @@ jobs:
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
 
+      # The Maven build plugin (#1099) is a build of its own outside the reactor, versioned with the
+      # library through versions/pom.xml, so it goes up as a second bundle under the same release
+      # profile: sources, javadoc, GPG, waitUntil=uploaded. Its pom is flattened (no parent, a
+      # literal version) by flatten-maven-plugin, which every CI build already exercises. A failure
+      # here, after the reactor's bundle was uploaded, leaves the library on Central and the plugin
+      # not: see "When a release fails" in docs/RELEASE.md, the plugin alone can be deployed again
+      # because Central never saw its coordinates.
+      - name: Build, test and publish async-test-maven-plugin to Maven Central
+        run: mvn --batch-mode -f async-test-maven-plugin/pom.xml clean deploy -P release
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+
       - name: Generate SBOM with CycloneDX
         # Same invocation as sbom.yml. skipNotDeployed=false is required because
         # cyclonedx-maven-plugin 2.9+ otherwise skips the goal whenever maven.deploy.skip
@@ -90,6 +110,12 @@ jobs:
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Check the Gradle Plugin Portal key
+        id: portal-key
+        env:
+          HAVE_KEY: ${{ secrets.GRADLE_PUBLISH_KEY != '' && secrets.GRADLE_PUBLISH_SECRET != '' }}
+        run: echo "has-key=$HAVE_KEY" >> "$GITHUB_OUTPUT"
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -107,6 +133,9 @@ jobs:
             async-test-analysis/target/async-test-analysis-${VERSION}.jar \
             async-test-analysis/target/async-test-analysis-${VERSION}-sources.jar \
             async-test-analysis/target/async-test-analysis-${VERSION}-javadoc.jar \
+            async-test-maven-plugin/target/async-test-maven-plugin-${VERSION}.jar \
+            async-test-maven-plugin/target/async-test-maven-plugin-${VERSION}-sources.jar \
+            async-test-maven-plugin/target/async-test-maven-plugin-${VERSION}-javadoc.jar \
             target/bom.xml \
             target/bom.json; do
             if [ -f "$artifact" ]; then
@@ -132,19 +161,21 @@ jobs:
             async-test-lib/target/async-test-lib-${{ steps.version.outputs.VERSION }}*.jar
             async-test-agent/target/async-test-agent-${{ steps.version.outputs.VERSION }}*.jar
             async-test-analysis/target/async-test-analysis-${{ steps.version.outputs.VERSION }}*.jar
+            async-test-maven-plugin/target/async-test-maven-plugin-${{ steps.version.outputs.VERSION }}*.jar
             target/bom.xml
             target/bom.json
 
       - name: Name the provenance for the release
         run: cp "${{ steps.provenance.outputs.bundle-path }}" "target/async-test-lib-${{ steps.version.outputs.VERSION }}.intoto.jsonl"
 
-      # The deploy above returns once the bundle is uploaded (waitUntil=uploaded), so until this
+      # The deploys above return once each bundle is uploaded (waitUntil=uploaded), so until this
       # step a green run did not mean the release was on Central: v1.13.0's went green with
-      # nothing published (#949). This fails the run unless Central serves each module's jar with
-      # the sha1 this run built, within an hour (#952). It runs before the GitHub Release on
-      # purpose (#966): released first, a stall left a Release marked Latest whose coordinates
-      # 404. A red run here leaves the tag with no Release; do not re-run the job, which would
-      # deploy a burned version again, but follow "When a release fails" in docs/RELEASE.md.
+      # nothing published (#949). This fails the run unless Central serves each module's jar, the
+      # Maven build plugin's included, with the sha1 this run built, within an hour (#952). It runs
+      # before the GitHub Release on purpose (#966): released first, a stall left a Release marked
+      # Latest whose coordinates 404. A red run here leaves the tag with no Release; do not re-run
+      # the job, which would deploy a burned version again, but follow "When a release fails" in
+      # docs/RELEASE.md.
       - name: Wait for Maven Central to serve the release
         timeout-minutes: 70
         run: bash .github/scripts/wait-for-central.sh "${{ steps.version.outputs.VERSION }}" .
@@ -152,6 +183,7 @@ jobs:
       - name: Create GitHub Release with artifacts and signatures
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GRADLE_PORTAL_KEY: ${{ steps.portal-key.outputs.has-key }}
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
           # The primary artifact must exist; the unconditional file list used to fail the
@@ -174,6 +206,9 @@ jobs:
             async-test-analysis/target/async-test-analysis-${VERSION}.jar \
             async-test-analysis/target/async-test-analysis-${VERSION}-sources.jar \
             async-test-analysis/target/async-test-analysis-${VERSION}-javadoc.jar \
+            async-test-maven-plugin/target/async-test-maven-plugin-${VERSION}.jar \
+            async-test-maven-plugin/target/async-test-maven-plugin-${VERSION}-sources.jar \
+            async-test-maven-plugin/target/async-test-maven-plugin-${VERSION}-javadoc.jar \
             target/bom.xml \
             target/bom.json; do
             for candidate in "$f" "$f.asc" "$f.sigstore.json"; do
@@ -182,6 +217,19 @@ jobs:
           done
           provenance="target/async-test-lib-${VERSION}.intoto.jsonl"
           if [ -f "$provenance" ]; then files+=("$provenance"); fi
+          # The Gradle plugin is published by the next job of this run, only when the Plugin
+          # Portal key is configured; the notes claim it only then.
+          if [ "$GRADLE_PORTAL_KEY" = "true" ]; then
+            gradle_plugin="### Gradle plugin
+          Starts every \`Test\` task's JVM with the agent, in place of the configuration and \`jvmArgs\` snippet:
+          \`\`\`kotlin
+          plugins { id(\"se.deversity.async-test\") version \"${VERSION}\" }
+          asyncTest { includes.add(\"com.example\") }
+          \`\`\`"
+          else
+            gradle_plugin="### Gradle plugin
+          \`se.deversity.async-test\` ${VERSION} was not published to the Gradle Plugin Portal by this run (no portal key configured); apply the plugin from source or attach the agent by hand as the README shows."
+          fi
           gh release create "${{ github.ref_name }}" \
             "${files[@]}" \
             --title "Release ${{ github.ref_name }}" \
@@ -204,10 +252,24 @@ jobs:
           testImplementation(\"se.deversity.async-test-lib:async-test-lib:${VERSION}\")
           \`\`\`
 
+          ### Maven plugin
+          Starts the test JVM with the agent through the \`argLine\` property, as \`jacoco:prepare-agent\` does:
+          \`\`\`xml
+          <plugin>
+            <groupId>se.deversity.async-test-lib</groupId>
+            <artifactId>async-test-maven-plugin</artifactId>
+            <version>${VERSION}</version>
+            <executions><execution><goals><goal>prepare-agent</goal></goals></execution></executions>
+            <configuration><includes>com.example</includes></configuration>
+          </plugin>
+          \`\`\`
+
+          ${gradle_plugin}
+
           ### Verify a cosign signature
-          All attached jars (async-test-lib, async-test-agent, async-test-analysis) and both
-          CycloneDX SBOM files (\`bom.xml\`, \`bom.json\`) carry matching \`.sigstore.json\`
-          bundles. Verify any file by substituting its name:
+          All attached jars (async-test-lib, async-test-agent, async-test-analysis,
+          async-test-maven-plugin) and both CycloneDX SBOM files (\`bom.xml\`, \`bom.json\`) carry
+          matching \`.sigstore.json\` bundles. Verify any file by substituting its name:
           \`\`\`bash
           cosign verify-blob --bundle async-test-lib-${VERSION}.jar.sigstore.json \\
             --certificate-identity-regexp 'https://github.com/PIsberg/async-test-lib' \\
@@ -226,3 +288,95 @@ jobs:
           \`\`\`bash
           gpg --verify async-test-lib-${VERSION}.jar.asc async-test-lib-${VERSION}.jar
           \`\`\`"
+
+  # The Gradle build plugin (#1099) goes to the Gradle Plugin Portal, a different registry with its
+  # own account: GRADLE_PUBLISH_KEY and GRADLE_PUBLISH_SECRET, the API key of the portal account
+  # that owns the se.deversity namespace. A job of its own, after the library of the same version
+  # is on Central, so that the plugin never resolves an agent that is not there yet, and so that a
+  # failure here (a missing egress host, a portal outage, the first publication of a new plugin id
+  # waiting for the portal's approval) is re-run with `gh run rerun --job`, never by re-deploying
+  # a version Central already has.
+  publish-gradle-plugin:
+    name: Publish to the Gradle Plugin Portal
+    needs: publish
+    if: needs.publish.outputs.gradle-portal-key == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          # The Gradle hosts gradle-tests.yml allows, plus the portal's artifact host. An
+          # ECONNREFUSED in this job is a host missing here, not a flake: add it and re-run the job.
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+            api.adoptium.net:443
+            api.github.com:443
+            downloads.gradle-dn.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            plugins.gradle.org:443
+            plugins-artifacts.gradle.org:443
+            repo.maven.apache.org:443
+            repo1.maven.org:443
+            services.gradle.org:443
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          gradle-version: wrapper
+
+      # The plugin's own TestKit tests ran in Gradle Tests & Build on the tagged commit; this is the
+      # upload only. The version is the library's, read from versions/pom.xml, and the agent it asks
+      # for is the one the job above has just seen on Central.
+      - name: Publish async-test-gradle-plugin
+        run: ./gradlew -p async-test-gradle-plugin publishPlugins --no-daemon
+        env:
+          GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
+          GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
+
+      # The portal serves a published plugin at its marker coordinates within minutes, except the
+      # first version of a new plugin id, which the portal holds for a manual approval that can
+      # take days. Not seeing it after the bound is therefore a warning that names both readings,
+      # not a failure: the upload above has already succeeded or failed on its own.
+      - name: Check that the Plugin Portal serves the plugin
+        timeout-minutes: 15
+        run: |
+          VERSION="${{ needs.publish.outputs.version }}"
+          marker="https://plugins.gradle.org/m2/se/deversity/async-test/se.deversity.async-test.gradle.plugin/${VERSION}/se.deversity.async-test.gradle.plugin-${VERSION}.pom"
+          for _ in $(seq 1 40); do
+            if curl -fsSI "$marker" > /dev/null; then
+              echo "se.deversity.async-test ${VERSION} is on the Gradle Plugin Portal"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::warning::The Gradle Plugin Portal does not serve se.deversity.async-test ${VERSION} yet. The first version of a new plugin id waits for the portal's approval; check https://plugins.gradle.org/u/PIsberg, and otherwise the publication log above."
+
+  # Loud, not silent: a release with no portal key publishes the Maven plugin and the library but
+  # not the Gradle plugin, and the run summary says so instead of showing a skipped job.
+  gradle-plugin-portal-key-missing:
+    name: Gradle plugin not published (no Plugin Portal key)
+    needs: publish
+    if: needs.publish.outputs.gradle-portal-key != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Block unexpected outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            agent.api.stepsecurity.io:443
+      - name: Say so
+        run: |
+          echo "::warning::async-test-gradle-plugin ${{ needs.publish.outputs.version }} was not published: GRADLE_PUBLISH_KEY and GRADLE_PUBLISH_SECRET are not configured (Settings > Secrets and variables > Actions). Create an API key at https://plugins.gradle.org/user/profile, add both secrets, and publish this version by hand from the tagged commit: GRADLE_PUBLISH_KEY=... GRADLE_PUBLISH_SECRET=... ./gradlew -p async-test-gradle-plugin publishPlugins (docs/RELEASE.md). A skipped job cannot be re-run with the secrets it did not have."

@@ -97,10 +97,12 @@ on the `-javaagent:` assertion even though the fallback still finds the race.
 
 The same `CounterTest`, with the agent attached by the build plugins (#1045) instead of the
 hand-written snippets: `async-test:prepare-agent` under Maven, beside `jacoco:prepare-agent`, and
-`id("se.deversity.async-test")` under Gradle. Neither plugin is published yet
-([#1099](https://github.com/PIsberg/async-test-lib/issues/1099)). Gradle takes the plugin from
-`../async-test-gradle-plugin` as an included build (`settings.gradle.kts`), and Maven needs it
-installed first, after the `versions/pom.xml` it inherits. The test fails unless `-javaagent:` names
+`id("se.deversity.async-test")` under Gradle. Both are published with each release from 1.13.3 on
+([#1099](https://github.com/PIsberg/async-test-lib/issues/1099)), but this fixture never resolves a
+published one: Gradle takes the plugin from `../async-test-gradle-plugin` as an included build
+(`settings.gradle.kts`), and Maven needs it installed first, on its own, without the
+`versions/pom.xml` it inherits, because the installed pom is the flattened one the release deploys
+and resolving it with no parent in the repository is what proves that. The test fails unless `-javaagent:` names
 the agent with this build's `includes=`, and, under Maven only, JaCoCo's agent is there too: those
 are the two agents a hand-written `argLine` used to drop one of. Verified by breaking it: with the
 plugin removed from the Gradle build the test goes red at initialization.

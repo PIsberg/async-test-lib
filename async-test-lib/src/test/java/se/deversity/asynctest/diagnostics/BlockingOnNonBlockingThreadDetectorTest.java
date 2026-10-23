@@ -117,6 +117,68 @@ class BlockingOnNonBlockingThreadDetectorTest {
     }
 
     @Test
+    @DisplayName("runBlocking inside a coroutine on an ordinary thread is reported by the kotlinx frame below it (#1007)")
+    void runBlockingInsideACoroutineOnAnOrdinaryThreadIsReported() {
+        BlockingOnNonBlockingThreadDetector detector = new BlockingOnNonBlockingThreadDetector();
+        // The frame a nested runBlocking, or one on a newSingleThreadContext thread, sits above.
+        kotlinx.coroutines.DispatchedTask.run(() -> detector.recordRunBlocking(Thread.currentThread()));
+        BlockingOnNonBlockingThreadDetector.Report report = detector.analyze();
+        assertTrue(report.hasIssues(), "a kotlinx.coroutines frame below the call means the caller is a coroutine, "
+                + "whatever its thread's class; a plain Thread is what newSingleThreadContext runs on");
+        assertTrue(report.toString().contains("inside a coroutine") && report.toString().contains("runBlocking"),
+                report.toString());
+    }
+
+    @Test
+    @DisplayName("debug-mode coroutine names are stripped on any thread, and the line reads cleanly (#1007)")
+    void coroutineNameSuffixIsStrippedOnAnOrdinaryThread() throws InterruptedException {
+        BlockingOnNonBlockingThreadDetector detector = new BlockingOnNonBlockingThreadDetector();
+        Thread caller = new Thread(() -> kotlinx.coroutines.DispatchedTask.run(() -> {
+            for (int coroutine = 1; coroutine <= 3; coroutine++) {
+                Thread.currentThread().setName("async-test-worker-7 @coroutine#" + coroutine);
+                detector.recordRunBlocking(Thread.currentThread());
+            }
+        }));
+        caller.start();
+        caller.join();
+        BlockingOnNonBlockingThreadDetector.Report report = detector.analyze();
+        assertEquals(1, report.violations.size(), "one thread is one finding whatever coroutine kotlinx's debug "
+                + "mode names in it, on the run's own worker as on a dispatcher worker: " + report);
+        assertFalse(report.toString().contains("@coroutine") || report.toString().contains(",,"), report.toString());
+    }
+
+    @Test
+    @DisplayName("runBlocking on the calling thread with no coroutine frame is not reported (#1007)")
+    void runBlockingOnTheCallerOutsideAnyCoroutineIsNotReported() {
+        BlockingOnNonBlockingThreadDetector detector = new BlockingOnNonBlockingThreadDetector();
+        detector.recordRunBlocking(Thread.currentThread());
+        assertFalse(detector.analyze().hasIssues(), "bridging blocking code to suspending code on an ordinary "
+                + "thread is what runBlocking is for: " + detector.analyze());
+    }
+
+    @Test
+    @DisplayName("the stack is read only for the calling thread, never for another (#1007)")
+    void anotherThreadsStackIsNotRead() throws InterruptedException {
+        BlockingOnNonBlockingThreadDetector detector = new BlockingOnNonBlockingThreadDetector();
+        Thread parked = new Thread(() -> kotlinx.coroutines.DispatchedTask.run(() -> {
+            try {
+                Thread.sleep(Long.MAX_VALUE);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }));
+        parked.setDaemon(true);
+        parked.start();
+        try {
+            detector.recordRunBlocking(parked);
+            assertFalse(detector.analyze().hasIssues(), "another thread's frames mean nothing about the caller, "
+                    + "and reading them would make the record path depend on that thread's state");
+        } finally {
+            parked.interrupt();
+        }
+    }
+
+    @Test
     @DisplayName("runBlocking on an event loop is reported, on an ordinary thread it is not (#1007)")
     void runBlockingFollowsTheThread() {
         assertTrue(runBlockingOn(new ReactorThread(() -> { })).toString().contains("Reactor"));
