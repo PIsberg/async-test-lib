@@ -9,8 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Build plugins that attach the agent at JVM startup in one block (#1045), built and tested, not
-  yet published.** `async-test-gradle-plugin` (`id("se.deversity.async-test")`, `asyncTest { includes }`)
+- **Both build plugins are published with every release (#1099).** `publish.yml` deploys
+  `async-test-maven-plugin` to Maven Central as a second bundle right after the reactor's, under a
+  `release` profile of its own (sources, javadoc, GPG, `waitUntil=uploaded`), and
+  `wait-for-central.sh` now waits for all four artifacts; the GitHub Release attaches and signs the
+  plugin's jars and its notes carry both plugins' snippets. The plugin's pom inherits the
+  never-published `versions/pom.xml` and takes its version from it, so `flatten-maven-plugin`
+  (`ossrh` mode) writes the pom that is installed and deployed with no parent, a literal version
+  and the metadata Central requires; it runs in every build, and `e2e-tests.yml` no longer installs
+  the parent before `quickstart-plugin` resolves the plugin, so a flatten that stopped running goes
+  red there rather than at every user. A second job publishes `async-test-gradle-plugin` to the
+  Gradle Plugin Portal with `com.gradle.plugin-publish` once the library is on Central, when the
+  `GRADLE_PUBLISH_KEY` and `GRADLE_PUBLISH_SECRET` secrets exist, and a third prints a warning in
+  the run summary when they do not, so the gap is never a silently skipped job. The release docs
+  and skill describe both, and what to re-run when either plugin's publication fails after the
+  library's succeeded. `BuildPluginsArePublishedTest` pins the workflow order and the two builds'
+  publishing configuration. The README quick start switches to the plugins in #1100, once the
+  first release carrying them is out.
+
+- **The Maven plugin's descriptor stays usable from Maven 3.9.** Dependabot's #1103 bumped
+  `maven-plugin-api.version` to 3.10.0, and `maven-plugin-plugin` copies that version into the
+  descriptor as `requiredMavenVersion`, so every Maven 3.9 build, the version this project pins,
+  would have refused `async-test:prepare-agent` outright; the bump was merged and nothing went red.
+  The property is back on 3.9.16, `PluginDescriptorTest` reads the generated descriptor and fails
+  on a required Maven at or above 3.10 (red at 3.10.0 before the pin, green after), and
+  `.github/dependabot.yml` ignores minor and major bumps of `maven-plugin-api` and `maven-core`.
+
+- **Build plugins that attach the agent at JVM startup in one block (#1045).**
+  `async-test-gradle-plugin` (`id("se.deversity.async-test")`, `asyncTest { includes }`)
   adds an `asyncTestAgent` configuration and a `-javaagent:` `CommandLineArgumentProvider` on every
   `Test` task. `async-test-maven-plugin` (`async-test:prepare-agent`, `<includes>`) appends the
   argument to the `argLine` property, as `jacoco:prepare-agent` does, so the two compose with no
@@ -18,8 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `@{argLine}`. `AsyncTestPluginFunctionalTest` (4 TestKit builds) and `PrepareAgentMojoTest` (6)
   pin the argument; the default-version and composition tests each went red when the code was
   broken. `consumer-fixture-langs/quickstart-plugin` runs the README's `counter++` through each
-  plugin, the Maven build beside JaCoCo's agent, and goes red without the plugin. Publishing both
-  is #1099, and the README quick start switches to them in #1100.
+  plugin, the Maven build beside JaCoCo's agent, and goes red without the plugin. Both are published
+  with this release (#1099, above), and the README quick start switches to them in #1100.
 
 - **A Kotlin `runBlocking` inside a coroutine is reported (#1007).** With the agent and
   `collections=true`, `RunBlockingWeaver` inserts a hook call before every `runBlocking` call site in

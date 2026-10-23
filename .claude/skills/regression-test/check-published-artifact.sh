@@ -28,7 +28,9 @@ set -euo pipefail
 VERSION="${1:?usage: check-published-artifact.sh <version> [--fix]}"
 FIX="${2:-}"
 
-MODULES=(async-test-lib async-test-agent async-test-analysis)
+# The reactor modules and the Maven build plugin, published with every release from 1.13.3 (#1099);
+# an earlier version has no plugin on Central, which the loop below reports as skipped.
+MODULES=(async-test-lib async-test-agent async-test-analysis async-test-maven-plugin)
 CENTRAL="https://repo1.maven.org/maven2/se/deversity/async-test-lib"
 M2="${HOME}/.m2/repository/se/deversity/async-test-lib"
 BACKUP="${TMPDIR:-/tmp}/async-test-lib-m2-impostors"

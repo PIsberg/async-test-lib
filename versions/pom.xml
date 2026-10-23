@@ -10,10 +10,11 @@
   installed or published; every child finds it by <relativePath>.
 
   A property also declared in the reactor's pom.xml (JUnit, Surefire, the compiler plugin,
-  slf4j) must carry the same value there, and <async-test.version> must equal the reactor's own
-  version: SatelliteVersionsTest fails otherwise. Dependabot updates both poms in one PR
-  (.github/dependabot.yml, group-by: dependency-name), so a bump never reaches one without the
-  other. The release skill moves <async-test.version>; nothing else here is release-bound.
+  slf4j, and the source, javadoc, GPG and Central publishing plugins async-test-maven-plugin
+  releases with) must carry the same value there, and <async-test.version> must equal the
+  reactor's own version: SatelliteVersionsTest fails otherwise. Dependabot updates both poms in
+  one PR (.github/dependabot.yml, group-by: dependency-name), so a bump never reaches one without
+  the other. The release skill moves <async-test.version>; nothing else here is release-bound.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -42,10 +43,23 @@
 
         <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
 
-        <!-- async-test-maven-plugin/ (#1045). The API stays on 3.9.x: the plugin descriptor takes
-             its minimum Maven from it, and the project pins Maven 3.9.16. -->
-        <maven-plugin-api.version>3.10.0</maven-plugin-api.version>
+        <!-- async-test-maven-plugin/ (#1045). The API stays on 3.9.x: maven-plugin-plugin writes
+             this version into the descriptor as requiredMavenVersion, and a user's Maven below it
+             refuses the plugin outright. Dependabot bumped it to 3.10.0 in #1103, which would have
+             shut out every Maven 3.9 build, the version this project itself pins; PluginDescriptorTest
+             pins the descriptor below 3.10, and .github/dependabot.yml ignores minor and major bumps
+             of the two artifacts that read it. -->
+        <maven-plugin-api.version>3.9.16</maven-plugin-api.version>
         <maven-plugin-tools.version>3.16.0</maven-plugin-tools.version>
+        <!-- Writes the pom async-test-maven-plugin installs and deploys without this parent and
+             with a literal version (#1099): a consumer resolving it from a repository needs neither. -->
+        <flatten-maven-plugin.version>1.8.0</flatten-maven-plugin.version>
+        <!-- Shared with the reactor pom.xml: the release profile of async-test-maven-plugin
+             publishes to Central the way the reactor does (#1099). -->
+        <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
+        <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
+        <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
+        <central-publishing-maven-plugin.version>0.12.0</central-publishing-maven-plugin.version>
         <!-- Shared with the reactor pom.xml; consumer-fixture-langs/quickstart-plugin runs JaCoCo's
              agent beside async-test's to prove they compose. -->
         <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
