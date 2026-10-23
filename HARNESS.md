@@ -19,5 +19,6 @@ before changing that module.
 - `evals/`: instruction-eval tasks and their runner
 - `load-tests/`: throughput and allocation benchmarks
 - `intellij-plugin/`: IDE integration
+- `async-test-gradle-plugin/`, `async-test-maven-plugin/`: one-block agent attach for Gradle and Maven, built and tested, not yet published (#1099)
 - `tools/`: demo, diagram, and licensing scripts
 - `docs/`: all documentation, routed by [docs/INDEX.md](docs/INDEX.md)

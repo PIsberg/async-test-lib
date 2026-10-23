@@ -29,27 +29,46 @@ On a `v*` tag push, `publish.yml`:
    `waitUntil=uploaded`: **no manual portal action is required**, and nothing stops the
    release once validation passes. `uploaded`, not `published`, because waiting inside
    `mvn deploy` got the job killed mid-poll in 1.7.0 and 1.9.1.
+   Then runs the same `clean deploy -P release` on `async-test-maven-plugin/pom.xml` (#1099): a
+   build of its own outside the reactor, so a second bundle, with sources, javadoc and GPG from
+   its own `release` profile. Its pom is flattened (`flatten-maven-plugin`, `ossrh` mode: no
+   parent, a literal version) in every build, and e2e-tests.yml installs it without the
+   `versions/pom.xml` parent so the flattened pom is what the quick-start fixture resolves.
 4. Signs each JAR and both SBOMs with keyless cosign (Sigstore, via OIDC), producing
    `.sigstore.json` bundles.
 5. Generates SLSA build provenance for every attached artifact with
    `actions/attest-build-provenance` (verify with `gh attestation verify <file> --repo
    PIsberg/async-test-lib`).
 6. Waits for Maven Central: `.github/scripts/wait-for-central.sh` polls each module's
-   `.jar.sha1` on repo1.maven.org and compares it with the jar the run built, failing the run
-   on a mismatch or when an hour passes without it (#952). Before this step a green run meant
-   only "uploaded", and v1.13.0's went green with nothing on Central (#949).
-7. Only then creates the GitHub Release with the three modules' JARs, their `.asc` and
-   `.sigstore.json` signatures, the SBOMs, and the provenance bundle as
+   `.jar.sha1` on repo1.maven.org, the Maven plugin's included, and compares it with the jar
+   the run built, failing the run on a mismatch or when an hour passes without it (#952).
+   Before this step a green run meant only "uploaded", and v1.13.0's went green with nothing on
+   Central (#949).
+7. Only then creates the GitHub Release with the three modules' and the Maven plugin's JARs,
+   their `.asc` and `.sigstore.json` signatures, the SBOMs, and the provenance bundle as
    `async-test-lib-<version>.intoto.jsonl`, the one suffix Scorecard's provenance probe counts
    (#961). The order is deliberate (#966): with the Release first, v1.13.0 had a Release marked
    Latest whose coordinates 404'd. `PublishWaitsForCentralTest` pins it. A red wait therefore
    leaves the tag with no GitHub Release; see "When a release fails".
 
+8. In a second job, once the library is on Central, publishes `async-test-gradle-plugin` to the
+   Gradle Plugin Portal with `./gradlew -p async-test-gradle-plugin publishPlugins` (#1099), then
+   polls the plugin marker on plugins.gradle.org for 10 minutes. Not seeing it is a warning, not a
+   failure: the first version of a new plugin id waits for the portal's manual approval. The job
+   runs only when the portal key is configured; without it a third job prints a warning saying
+   the Gradle plugin was not published, so the gap shows in the run summary rather than as a
+   skipped job. A failure in this job is re-run alone (`gh run rerun <id> --job <job-id>`); the
+   Maven side is untouched by it.
+
 Required repository secrets: `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`,
-`MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE`.
+`MAVEN_GPG_PRIVATE_KEY`, `MAVEN_GPG_PASSPHRASE`; for the Gradle plugin, `GRADLE_PUBLISH_KEY` and
+`GRADLE_PUBLISH_SECRET`, the API key of the Plugin Portal account that owns the `se.deversity`
+namespace (<https://plugins.gradle.org/user/profile>, "API Keys").
 
 There is no `<distributionManagement>` in `pom.xml` — the Central plugin handles publication.
-The library is **not** published to GitHub Packages.
+The library is **not** published to GitHub Packages. Both build plugins carry the library's
+version: `versions/pom.xml`'s `<async-test.version>` is the Maven plugin's `<version>` and the
+Gradle plugin's `version`, so the bump script moves them with everything else.
 
 The same tag push independently triggers
 [`.github/workflows/javadoc.yml`](../.github/workflows/javadoc.yml), which rebuilds the API
@@ -243,7 +262,10 @@ gh release view v1.7.0
 ```
 
 Maven Central takes ~15–30 minutes to surface the artifact at
-<https://repo1.maven.org/maven2/se/deversity/async-test-lib/async-test-lib/>.
+<https://repo1.maven.org/maven2/se/deversity/async-test-lib/async-test-lib/>; the Maven plugin
+appears next to it under `async-test-maven-plugin/`. The Gradle plugin shows at
+<https://plugins.gradle.org/plugin/se.deversity.async-test> once the portal has processed it,
+which for the first version of the id means after its manual approval.
 
 Verify a cosign signature:
 
@@ -297,8 +319,21 @@ notes `publish.yml` uses; the cosign bundles and provenance of that run are not 
 say so in the notes. If it never publishes, as with 1.13.0, mark the changelog heading `[YANKED]`
 and release the next patch.
 
+**The Maven plugin's deploy failed** after the reactor's bundle was uploaded: the library's version
+is burned as above, but Central never saw the plugin's coordinates, so the plugin alone can go up
+again for the same version. From the tagged commit, with the Central and GPG secrets in the
+environment: `mvn --batch-mode -f async-test-maven-plugin/pom.xml clean deploy -P release`, then
+`.github/scripts/wait-for-central.sh <version>` to confirm all four artifacts.
+
+**The Gradle Plugin Portal job failed or was skipped**: nothing on Central is affected. Re-run that
+job alone (`gh run rerun <run-id> --job <job-id>`), or publish by hand from the tagged commit with
+`GRADLE_PUBLISH_KEY=... GRADLE_PUBLISH_SECRET=... ./gradlew -p async-test-gradle-plugin
+publishPlugins`. A job that was skipped for want of the key cannot be re-run with it; add the two
+secrets, publish by hand for this version, and the next release runs the job.
+
 An `ECONNREFUSED` in the workflow is `harden-runner` blocking an egress host, not a network
-flake. Add the host to `allowed-endpoints` in `publish.yml`.
+flake. Add the host to `allowed-endpoints` in `publish.yml`, in the job that failed: the Gradle
+Plugin Portal job has an endpoint list of its own.
 
 ## Maintenance
 

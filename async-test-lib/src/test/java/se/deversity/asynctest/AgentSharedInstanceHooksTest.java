@@ -5,6 +5,11 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Modifier;
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharsetEncoder;
+import java.util.SplittableRandom;
+import java.util.zip.Checksum;
+import java.util.zip.Deflater;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.text.DecimalFormat;
@@ -380,7 +385,7 @@ class AgentSharedInstanceHooksTest {
 
     @Test
     @DisplayName("every hook performs the operation it replaced with no context installed")
-    void hooksDelegateOutsideAnAsyncTest() {
+    void hooksDelegateOutsideAnAsyncTest() throws Exception {
         assertNotNull(AgentSharedInstanceHooks.format(new SimpleDateFormat("yyyy", Locale.ROOT), new Date(0)));
         Matcher m = PATTERN.matcher("corpus-42");
         assertTrue(AgentSharedInstanceHooks.find(m));
@@ -398,6 +403,18 @@ class AgentSharedInstanceHooksTest {
         Object handle = new Object();
         AgentSharedInstanceHooks.persistenceHandleUsed(handle);
         AgentSharedInstanceHooks.persistenceHandleClosed(handle);
+        ByteBuffer bb = ByteBuffer.allocate(16);
+        assertEquals((byte) 0, AgentSharedInstanceHooks.get(bb));
+        CharsetEncoder enc = java.nio.charset.StandardCharsets.UTF_8.newEncoder();
+        assertNotNull(AgentSharedInstanceHooks.encode(enc, CharBuffer.wrap("a")));
+        Checksum cs = new java.util.zip.CRC32();
+        AgentSharedInstanceHooks.update(cs, 1);
+        assertEquals(1, cs.getValue() != 0 ? 1 : 0);
+        Deflater def = new java.util.zip.Deflater();
+        AgentSharedInstanceHooks.setInput(def, new byte[4]);
+        def.end();
+        SplittableRandom sr = new SplittableRandom(1);
+        AgentSharedInstanceHooks.nextInt(sr);
     }
 
     @Test
@@ -407,7 +424,7 @@ class AgentSharedInstanceHooksTest {
                 .filter(m -> Modifier.isStatic(m.getModifiers()))
                 .filter(m -> m.getDeclaringClass() == AgentSharedInstanceHooks.class)
                 .count();
-        assertEquals(51, hooks,
+        assertEquals(112, hooks,
                 "the shared-instance hooks and the calls in this class are one list, written by "
                         + "hand because each family needs its own receiver and arguments. If this "
                         + "count moved, the new hook belongs in the family test above, or it is "

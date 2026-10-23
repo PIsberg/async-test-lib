@@ -143,6 +143,38 @@ class StreamClosingDetectorTest {
     }
 
     @Test
+    void channelClosedDirectlyWithoutRecordStreamClosedIsNotReportedAsUnclosed() throws IOException {
+        java.nio.channels.Pipe pipe = java.nio.channels.Pipe.open();
+        java.nio.channels.ReadableByteChannel ch = pipe.source();
+        pipe.sink().close();
+        detector.recordStreamOpened(ch, "pipe-source");
+        ch.close();
+
+        StreamClosingDetector.StreamClosingReport report = detector.analyze();
+        assertFalse(report.hasIssues(), report.toString());
+    }
+
+    @Test
+    void baseStreamClosedByTryWithResourcesIsNotReportedAsUnclosed() throws IOException {
+        try (java.util.stream.Stream<String> s = java.util.stream.Stream.of("a", "b")) {
+            detector.recordStreamOpened(s, "java-stream");
+        }
+        java.nio.channels.ByteChannel ch = new java.nio.channels.ByteChannel() {
+            private boolean open = true;
+            @Override public int read(java.nio.ByteBuffer dst) { return -1; }
+            @Override public int write(java.nio.ByteBuffer src) { return 0; }
+            @Override public boolean isOpen() { return open; }
+            @Override public void close() { open = false; }
+        };
+        try (ch) {
+            detector.recordStreamOpened(ch, "try-with-resources-channel");
+        }
+        StreamClosingDetector.StreamClosingReport report = detector.analyze();
+        assertTrue(report.unclosedStreams.stream().noneMatch(u -> u.contains("try-with-resources-channel")),
+                report.toString());
+    }
+
+    @Test
     void testSummaryStatisticsAreCorrect() {
         Closeable stream1 = new ByteArrayInputStream(new byte[0]);
         Closeable stream2 = new ByteArrayInputStream(new byte[0]);

@@ -1,8 +1,17 @@
 package com.example.agentfixture;
 
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.StandardCharsets;
 import java.text.DecimalFormat;
 import java.util.Calendar;
 import java.util.Locale;
+import java.util.SplittableRandom;
+import java.util.zip.CRC32;
+import java.util.zip.Checksum;
+import java.util.zip.Deflater;
 
 /**
  * The correct twin of {@link SharedStatefulJdkBean}: one instance per call, never shared.
@@ -41,5 +50,48 @@ public class ConfinedStatefulJdkBean {
     /** {@return a number formatted by a format this call owns} */
     public String money() {
         return new DecimalFormat("#.##").format(12.345d);
+    }
+
+    /** {@return a byte written and read through a buffer this call owns} */
+    public byte buffer() {
+        ByteBuffer mine = ByteBuffer.allocate(8);
+        mine.clear();
+        mine.put((byte) 1);
+        mine.flip();
+        return mine.get();
+    }
+
+    /** {@return encoded bytes from an encoder this call owns} */
+    public int encode() {
+        try {
+            CharsetEncoder mine = StandardCharsets.UTF_8.newEncoder();
+            return mine.encode(CharBuffer.wrap("hi")).remaining();
+        } catch (CharacterCodingException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** {@return checksum computed on an instance this call owns} */
+    public long checksum() {
+        Checksum mine = new CRC32();
+        mine.update(1);
+        return mine.getValue();
+    }
+
+    /** {@return compressed byte count from a deflater this call owns} */
+    public int deflate() {
+        Deflater mine = new Deflater();
+        try {
+            mine.setInput(new byte[]{1, 2, 3, 4});
+            mine.finish();
+            return mine.deflate(new byte[16]);
+        } finally {
+            mine.end();
+        }
+    }
+
+    /** {@return a random int from a generator this call owns} */
+    public int randomInt() {
+        return new SplittableRandom(1L).nextInt();
     }
 }

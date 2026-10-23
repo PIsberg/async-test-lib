@@ -1,7 +1,11 @@
 package se.deversity.asynctest.agent;
 
 import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CharsetEncoder;
 import java.security.MessageDigest;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
@@ -11,8 +15,13 @@ import java.util.Deque;
 import java.time.Duration;
 import java.util.Formatter;
 import java.util.Locale;
+import java.util.SplittableRandom;
 import java.util.function.Predicate;
+import java.util.random.RandomGenerator;
 import java.util.regex.Matcher;
+import java.util.zip.Checksum;
+import java.util.zip.Deflater;
+import java.util.zip.Inflater;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -459,7 +468,7 @@ final class CollectionAccessWeaver {
             Entry.call(MessageDigest.class, "update", "update", byte.class),
             Entry.call(MessageDigest.class, "update", "update",
                     byte[].class, int.class, int.class),
-            Entry.call(MessageDigest.class, "update", "update", java.nio.ByteBuffer.class),
+            Entry.call(MessageDigest.class, "update", "update", ByteBuffer.class),
             Entry.call(MessageDigest.class, "digest", "digest",
                     byte[].class, int.class, int.class),
             Entry.call(Calendar.class, "get", "get", int.class),
@@ -522,7 +531,80 @@ final class CollectionAccessWeaver {
             // The locale-taking overload is what an internationalised codebase calls, and it was
             // invisible while its sibling was woven (#434).
             Entry.call(Formatter.class, "format", "format",
-                    Locale.class, String.class, Object[].class));
+                    Locale.class, String.class, Object[].class),
+            // ByteBuffer relative reads/writes and cursor mutators. Absolute index overloads do not
+            // read or advance position and are left unwoven in WovenOverloadCoverageTest.
+            Entry.call(ByteBuffer.class, "get", "get"),
+            Entry.call(ByteBuffer.class, "get", "get", byte[].class),
+            Entry.call(ByteBuffer.class, "get", "get", byte[].class, int.class, int.class),
+            Entry.call(ByteBuffer.class, "put", "put", byte.class),
+            Entry.call(ByteBuffer.class, "put", "put", byte[].class),
+            Entry.call(ByteBuffer.class, "put", "put", byte[].class, int.class, int.class),
+            Entry.call(ByteBuffer.class, "put", "put", ByteBuffer.class),
+            Entry.call(ByteBuffer.class, "getInt", "getInt"),
+            Entry.call(ByteBuffer.class, "putInt", "putInt", int.class),
+            Entry.call(ByteBuffer.class, "getLong", "getLong"),
+            Entry.call(ByteBuffer.class, "putLong", "putLong", long.class),
+            Entry.call(ByteBuffer.class, "flip", "flip"),
+            Entry.call(ByteBuffer.class, "clear", "clear"),
+            Entry.call(ByteBuffer.class, "rewind", "rewind"),
+            Entry.call(ByteBuffer.class, "compact", "compact"),
+            // CharsetEncoder and CharsetDecoder carry multi-step state machines (RESET -> CODING ->
+            // END -> FLUSHED) that throw IllegalStateException or corrupt output when shared.
+            Entry.call(CharsetEncoder.class, "encode", "encode", CharBuffer.class),
+            Entry.call(CharsetEncoder.class, "encode", "encode",
+                    CharBuffer.class, ByteBuffer.class, boolean.class),
+            Entry.call(CharsetEncoder.class, "flush", "flush", ByteBuffer.class),
+            Entry.call(CharsetEncoder.class, "reset", "reset"),
+            Entry.call(CharsetDecoder.class, "decode", "decode", ByteBuffer.class),
+            Entry.call(CharsetDecoder.class, "decode", "decode",
+                    ByteBuffer.class, CharBuffer.class, boolean.class),
+            Entry.call(CharsetDecoder.class, "flush", "flush", CharBuffer.class),
+            Entry.call(CharsetDecoder.class, "reset", "reset"),
+            // Checksum (CRC32, CRC32C, Adler32) accumulates into one unsynchronized int field.
+            Entry.call(Checksum.class, "update", "update", int.class),
+            Entry.call(Checksum.class, "update", "update", byte[].class),
+            Entry.call(Checksum.class, "update", "update", byte[].class, int.class, int.class),
+            Entry.call(Checksum.class, "update", "update", ByteBuffer.class),
+            Entry.call(Checksum.class, "getValue", "getValue"),
+            Entry.call(Checksum.class, "reset", "reset"),
+            // Deflater and Inflater hold native zlib stream state that is not externally synchronized.
+            Entry.call(Deflater.class, "setInput", "setInput", byte[].class),
+            Entry.call(Deflater.class, "setInput", "setInput", byte[].class, int.class, int.class),
+            Entry.call(Deflater.class, "setInput", "setInput", ByteBuffer.class),
+            Entry.call(Deflater.class, "deflate", "deflate", byte[].class),
+            Entry.call(Deflater.class, "deflate", "deflate", byte[].class, int.class, int.class),
+            Entry.call(Deflater.class, "deflate", "deflate",
+                    byte[].class, int.class, int.class, int.class),
+            Entry.call(Deflater.class, "deflate", "deflate", ByteBuffer.class),
+            Entry.call(Deflater.class, "deflate", "deflate", ByteBuffer.class, int.class),
+            Entry.call(Deflater.class, "finish", "finish"),
+            Entry.call(Deflater.class, "reset", "reset"),
+            Entry.call(Deflater.class, "end", "end"),
+            Entry.call(Inflater.class, "setInput", "setInput", byte[].class),
+            Entry.call(Inflater.class, "setInput", "setInput", byte[].class, int.class, int.class),
+            Entry.call(Inflater.class, "setInput", "setInput", ByteBuffer.class),
+            Entry.call(Inflater.class, "inflate", "inflate", byte[].class),
+            Entry.call(Inflater.class, "inflate", "inflate", byte[].class, int.class, int.class),
+            Entry.call(Inflater.class, "inflate", "inflate", ByteBuffer.class),
+            Entry.call(Inflater.class, "reset", "reset"),
+            Entry.call(Inflater.class, "end", "end"),
+            // SplittableRandom is final and advances its seed with a plain non-atomic += gamma.
+            Entry.call(SplittableRandom.class, "nextInt", "nextInt"),
+            Entry.call(SplittableRandom.class, "nextInt", "nextInt", int.class),
+            Entry.call(SplittableRandom.class, "nextInt", "nextInt", int.class, int.class),
+            Entry.call(SplittableRandom.class, "nextLong", "nextLong"),
+            Entry.call(SplittableRandom.class, "nextLong", "nextLong", long.class),
+            Entry.call(SplittableRandom.class, "nextLong", "nextLong", long.class, long.class),
+            Entry.call(SplittableRandom.class, "nextDouble", "nextDouble"),
+            Entry.call(SplittableRandom.class, "nextDouble", "nextDouble", double.class),
+            Entry.call(SplittableRandom.class, "nextDouble", "nextDouble",
+                    double.class, double.class),
+            Entry.call(SplittableRandom.class, "nextBoolean", "nextBoolean"),
+            Entry.call(SplittableRandom.class, "nextBytes", "nextBytes", byte[].class),
+            Entry.call(SplittableRandom.class, "split", "split"),
+            Entry.call(SplittableRandom.class, "split", "split",
+                    RandomGenerator.SplittableGenerator.class));
 
     /**
      * The coordination table: {@code java.util.concurrent} primitives whose protocol can be

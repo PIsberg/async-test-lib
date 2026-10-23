@@ -14,14 +14,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * Pins that a cached {@code Calendar}, {@code StringBuilder} and {@code DecimalFormat} are caught.
+ * Pins that cached stateful JDK objects ({@code Calendar}, {@code StringBuilder},
+ * {@code DecimalFormat}, {@code ByteBuffer}, {@code CharsetEncoder}, {@code Checksum},
+ * {@code Deflater}, {@code SplittableRandom}) are caught with no instrumentation.
  *
- * <p>Same shape as {@link SharedInstanceWeavingTest} in a second tranche of types. Each is
+ * <p>Same shape as {@link SharedInstanceWeavingTest} across the stateful JDK types. Each is
  * expensive or awkward to build, so it gets hoisted to a field, and the class quietly stops being
  * safe to call concurrently. Every one had a detector already and every one of those detectors was
  * reachable only through a hand-written {@code record} call.
  *
- * <p>All three subjects run in one class because a {@code Violation} names its detector, so the
+ * <p>All subjects run in one class because a {@code Violation} names its detector, so the
  * assertions can be told apart even though the test method cannot. The negative direction needs its
  * own class, and has one: {@link StatefulJdkWeavingSparesConfinedUseTest}.
  */
@@ -53,12 +55,18 @@ class StatefulJdkWeavingTest {
         shared.year();
         shared.append();
         shared.money();
+        shared.buffer();
+        shared.encode();
+        shared.checksum();
+        shared.deflate();
+        shared.randomInt();
     }
 
     @AfterAll
     static void eachSharedInstanceIsReported() {
         try {
-            for (String detector : List.of("Calendar", "StringBuilder", "DecimalFormat")) {
+            for (String detector : List.of("Calendar", "StringBuilder", "DecimalFormat",
+                    "ByteBuffer", "CharsetCoder", "Checksum", "Deflater", "SplittableRandom")) {
                 assertTrue(findings.violations().stream()
                                 .anyMatch(v -> v.detector().contains(detector)),
                         "Four threads used one shared " + detector + " through a woven call site "

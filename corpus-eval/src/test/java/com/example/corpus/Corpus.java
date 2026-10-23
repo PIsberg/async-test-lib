@@ -1452,6 +1452,25 @@ final class Corpus {
                             + "blocking calls, as Netty's blocking executors are: blocking is that "
                             + "thread's job"),
 
+            new RecordingSubject("agent_nettyThread_runBlockingOnAnEventLoopThread", NETTY,
+                    "io.netty.util.concurrent.FastThreadLocalThread",
+                    DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "each worker starts a Netty FastThreadLocalThread that does not permit blocking "
+                            + "calls and enters kotlinx's runBlocking on it, the Ktor-on-Netty "
+                            + "handler that parks its event loop until a coroutine finishes. The "
+                            + "call site is compiled against kotlinx 1.11's real BuildersKt and woven "
+                            + "by name (#1007)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_nettyThread_runBlockingOnAnOrdinaryThread", NETTY,
+                    "io.netty.util.concurrent.FastThreadLocalThread",
+                    DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same start and the same runBlocking on a FastThreadLocalThread built to "
+                            + "permit blocking calls: bridging blocking code to suspending code is "
+                            + "what runBlocking is for"),
+
             new RecordingSubject("agent_pipe_bothEndsOnOneThread", JDK,
                     "java.io.PipedInputStream",
                     DetectorType.PROCESS_STREAM_STARVATION, Contract.NOT_THREAD_SAFE,
@@ -5189,7 +5208,9 @@ final class Corpus {
             "agent_jctoolsHandOff_offererWritesAfterTheOffer",
             "agent_jctoolsHandOff_offererLetsGo",
             "agent_nettyThread_sleepsOnAnEventLoopThread",
-            "agent_nettyThread_sleepsOnAnOrdinaryThread");
+            "agent_nettyThread_sleepsOnAnOrdinaryThread",
+            "agent_nettyThread_runBlockingOnAnEventLoopThread",
+            "agent_nettyThread_runBlockingOnAnOrdinaryThread");
 
     /** {@return whether {@code subject}'s finding is claimed to come from a call woven inside its library} */
     static boolean wovenCallSiteIsInsideTheLibrary(RecordingSubject subject) {

@@ -148,8 +148,8 @@ class DetectorEffectivenessAndCorrectnessTest {
         // on it, none leaves a pool it created running, none drops a failing task's future or a
         // failing async root, none blocks inside a callback, and none blocks on the common pool.
         // The daemon-hygiene weave is reached through a Guava service left running (#736).
-        assertEquals(agentFed.size() - 21, reached.size(),
-                "all agent-fed detectors except the twenty-one LibraryReach.unreached() names must "
+        assertEquals(agentFed.size() - 26, reached.size(),
+                "all agent-fed detectors except the twenty-six LibraryReach.unreached() names must "
                         + "be reached through library bytecode");
         assertEquals(Set.of(DetectorType.EXPLICIT_GC, DetectorType.MISSED_SIGNAL,
                         DetectorType.ABA_PROBLEM, DetectorType.SYNCHRONIZED_NON_FINAL,
@@ -164,7 +164,10 @@ class DetectorEffectivenessAndCorrectnessTest {
                         DetectorType.PROCESS_STREAM_STARVATION, DetectorType.JDBC_CONNECTION_SHARED,
                         DetectorType.THREAD_LOCAL_LEAKS, DetectorType.MDC_CONTEXT_LEAK,
                         DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD, DetectorType.THREAD_POOL,
-                        DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS),
+                        DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS,
+                        DetectorType.SHARED_DEFLATER, DetectorType.SHARED_BYTE_BUFFER,
+                        DetectorType.SHARED_CHARSET_CODER, DetectorType.SHARED_CHECKSUM,
+                        DetectorType.SHARED_SPLITTABLE_RANDOM),
                 LibraryReach.unreached().keySet());
     }
 
