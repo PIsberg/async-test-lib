@@ -331,6 +331,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A licence record that is absent for a moment no longer reads as no record (#928).** The first
+  fix retried every read failure but a missing file, taken as the one certain sign of "no record";
+  on 2026-10-23 the concurrent-writers dogfood test failed again on main's Windows leg with a record
+  the thread had just written reading back as missing or partial, and 19,000 local rounds under CPU
+  load reproduced no read failure of any kind. `isFresh` and `hasRecord` now retry a missing file
+  with the same backoff as any other failure, and only a file that stays away for the whole bound,
+  now 255 ms (9 attempts), is "no record"; that wait is paid once per JVM on a machine with no
+  record yet, before the online validation it precedes anyway. Security review: the element is
+  `@AISecure` (authorization), and what is accepted is unchanged, a file whose content parses to a
+  timestamp within the TTL; the retry can only turn a false "missing" into a read of a record that
+  exists. `LicenseValidationCacheMissingForAMomentTest` deletes the record and writes it back 30 ms
+  later while `isFresh` runs (red before the change, green after), and checks a record that never
+  existed is still none. The dogfood test now reports what a direct read of the record sees when
+  its assertion fails, so the next Windows failure names its cause instead of "missing or partial".
+
 - **Dependabot proposes Copilot CLI bumps again (#1029).** The pin `instruction-evals.yml` installs
   sat under `.github/copilot-cli`, and every Dependabot npm run there resolved the bump and then had
   its `create_pull_request` refused with a 400 ("The request contains invalid or unauthorized

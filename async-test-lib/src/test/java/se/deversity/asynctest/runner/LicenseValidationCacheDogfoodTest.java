@@ -17,6 +17,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 /**
  * Dogfoods {@link LicenseValidationCache}'s concurrent writers with {@code @AsyncTest}.
@@ -55,9 +56,23 @@ class LicenseValidationCacheDogfoodTest {
     @AsyncTest(threads = THREADS, invocations = ROUNDS, licenseMockMode = true, timeoutMs = 60_000, detectAll = true)
     void everyWorkerRecordsTheSameValidationAndReadsItBack() {
         LicenseValidationCache.record(HASH);
-        assertTrue(LicenseValidationCache.isFresh(HASH),
-                "a record this thread just wrote read back as missing or partial while other "
-                        + "threads rewrote it, so a licensed run would revalidate online");
+        if (!LicenseValidationCache.isFresh(HASH)) {
+            // isFresh swallows what it saw. The 2026-10-23 failure on main's Windows leg said only
+            // "missing or partial" (#928); this says which, so the next one can be fixed on evidence.
+            fail("a record this thread just wrote read back as missing or partial while other threads "
+                    + "rewrote it, so a licensed run would revalidate online. The record read straight "
+                    + "afterwards: " + describeRecord());
+        }
+    }
+
+    /** {@return what a direct read of the record sees right now: its content, or the exception} */
+    private static String describeRecord() {
+        Path record = cacheDir.resolve("validation-" + HASH + ".ok");
+        try {
+            return "exists=" + Files.exists(record) + " content=[" + Files.readString(record) + "]";
+        } catch (IOException e) {
+            return "exists=" + Files.exists(record) + " read threw " + e;
+        }
     }
 
     @AfterAll
