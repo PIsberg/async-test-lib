@@ -108,28 +108,29 @@ final class LicenseValidationCache {
             try {
                 return Files.readString(file, StandardCharsets.UTF_8);
             } catch (NoSuchFileException e) {
-                if (attempt >= READ_ATTEMPTS) {
+                if (attempt >= READ_ATTEMPTS || !sleptBetweenAttempts(backoffMs)) {
                     return null;
                 }
-                pause(backoffMs, e);
             } catch (IOException e) {
-                if (attempt >= READ_ATTEMPTS) {
+                if (attempt >= READ_ATTEMPTS || !sleptBetweenAttempts(backoffMs)) {
                     throw e;
                 }
-                pause(backoffMs, e);
             }
             backoffMs *= 2;
         }
     }
 
-    /** Sleeps {@code ms} between read attempts; an interrupt ends the retry by rethrowing {@code cause}. */
-    private static void pause(long ms, IOException cause) throws IOException {
+    /**
+     * {@return whether the pause between two read attempts ran its course}: {@code false} on an
+     * interrupt, whose flag is restored, which ends the retry with the answer the last attempt gave.
+     */
+    private static boolean sleptBetweenAttempts(long ms) {
         try {
             Thread.sleep(ms);
+            return true;
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            cause.addSuppressed(interrupted);
-            throw cause;
+            return false;
         }
     }
 
