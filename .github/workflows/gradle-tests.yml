@@ -90,6 +90,11 @@ jobs:
 
       # Kotlin, Groovy and Scala through Gradle's own plugins (Clojure is Maven-only; see
       # consumer-fixture-langs/README.md). Same artifact from mavenLocal as the step above.
+      # The Gradle build plugin's TestKit tests (#1045). quickstart-plugin, in the step below,
+      # consumes it as an included build.
+      - name: Test async-test-gradle-plugin
+        run: ./gradlew -p async-test-gradle-plugin test
+
       - name: Run JVM language fixtures (Kotlin, Groovy, Scala)
         run: ./gradlew -p consumer-fixture-langs test
 

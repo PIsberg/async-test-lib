@@ -758,6 +758,9 @@ evals/                   Evals that measure whether coding agents actually obey
 examples/                Self-contained example projects, each demonstrating a
                          concurrency defect against the release its pom pins.
 intellij-plugin/         IDE tool window that renders the JSON report.
+async-test-gradle-plugin/
+async-test-maven-plugin/ Build plugins that attach the agent at startup in one block.
+                         Built and tested, not yet published (#1099).
 tools/                   Release and licensing utilities, and the demo.
 docs/                    All documentation, routed from docs/INDEX.md.
 ```

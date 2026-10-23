@@ -139,6 +139,13 @@ jobs:
       # Kotlin, Groovy, Scala and Clojure against the same installed artifact. Not part of the
       # JUnit compatibility matrix below on purpose: four compilers times seven Jupiter versions
       # is the wrong trade, and the language question is independent of the Jupiter version.
+      # The Maven build plugin (#1045), with its own unit tests, installed for quickstart-plugin.
+      # Its pom inherits versions/pom.xml, which a consumer resolving the plugin needs installed too.
+      - name: Build and install async-test-maven-plugin
+        run: |
+          mvn -f versions/pom.xml install
+          mvn -f async-test-maven-plugin/pom.xml install
+
       - name: Run JVM language fixtures (Kotlin, Groovy, Scala, Clojure)
         run: mvn -f consumer-fixture-langs/pom.xml test
 

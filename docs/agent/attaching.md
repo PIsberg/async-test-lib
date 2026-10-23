@@ -25,6 +25,26 @@ collection calls, woven only in classes under your own package prefix, so JUnit 
 stay unwoven. If JaCoCo or another plugin also sets surefire's `argLine`, start yours with
 `@{argLine} `.
 
+**Build plugins: built and tested, not yet published (#1045).** Two plugins replace those snippets
+with one block each, and the README will switch to them once they are published
+([#1099](https://github.com/PIsberg/async-test-lib/issues/1099),
+[#1100](https://github.com/PIsberg/async-test-lib/issues/1100)):
+
+- Gradle, [`async-test-gradle-plugin`](../../async-test-gradle-plugin): `id("se.deversity.async-test")`
+  plus `asyncTest { includes.add("com.example") }`. It adds an `asyncTestAgent` configuration,
+  defaulting to `async-test-agent` of the plugin's own version, and puts the `-javaagent:` argument
+  on every `Test` task through a `CommandLineArgumentProvider`, which declares the jar and the
+  options as inputs and works with the configuration cache.
+- Maven, [`async-test-maven-plugin`](../../async-test-maven-plugin): the goal `prepare-agent`, with
+  `<includes>`. Like `jacoco:prepare-agent`, it appends to the `argLine` property instead of
+  owning it, so the two agents compose in either order with no surefire configuration. It takes the
+  agent jar from the project's own `async-test-agent` test dependency.
+
+`fields` and `collections` default to `true` in both, and leaving `includes` empty passes none,
+which weaves every class the agent may touch. [`consumer-fixture-langs/quickstart-plugin`](../../consumer-fixture-langs/quickstart-plugin)
+runs the quick start through each one, the Maven build beside JaCoCo's agent, and fails unless both
+agents arrived and the race was reported.
+
 ### 3.0.1 Fallback: loaded at runtime by the runner
 
 With the `async-test-agent` artifact on the test classpath but no agent started with the JVM, the
