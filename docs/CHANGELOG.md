@@ -259,6 +259,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Dependabot proposes Copilot CLI bumps again (#1029).** The pin `instruction-evals.yml` installs
+  sat under `.github/copilot-cli`, and every Dependabot npm run there resolved the bump and then had
+  its `create_pull_request` refused with a 400 ("The request contains invalid or unauthorized
+  changes"), four runs out of four, so the CLI stayed on 1.0.87 while 1.0.98 shipped, until
+  #1027 bumped it by hand. It now lives at `tools/copilot-cli`, the layout vibetags uses for its
+  Codex CLI pin, whose Dependabot PRs open (vibetags#985). Upstream reports the same 400 without a
+  diagnosed cause (dependabot-core#15721), so the move is the best-supported fix rather than a
+  proven one; the first Copilot CLI PR settles it. `DependabotNpmPinTest` fails on an npm entry
+  under `.github/` and on a workflow installing from a directory no npm entry watches.
+
 - **`ReentrantLockOwnerAndStarvationTest.aWaiterBargedPastOnANonFairLockFires` failed a CI run when
   its setup lost a race (#1085).** The test needs a waiter on a non-fair `ReentrantLock` barged past
   twice, and whether the barger's re-lock beats the woken waiter is the scheduler's call, so it
