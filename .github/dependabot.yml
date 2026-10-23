@@ -39,9 +39,13 @@ updates:
       per-dependency:
         group-by: dependency-name
 
-  # The Copilot CLI instruction-evals.yml installs with npm ci from this lockfile (#959).
+  # The Copilot CLI instruction-evals.yml installs with npm ci from this lockfile (#959). It sat
+  # under .github/copilot-cli until #1029: there, every run resolved the bump and then had its
+  # create_pull_request refused with a 400 ("invalid or unauthorized changes"), so no PR was ever
+  # opened. vibetags keeps the same kind of pin at /tools/codex-cli and gets its PRs.
+  # DependabotNpmPinTest keeps npm entries out of .github/.
   - package-ecosystem: npm
-    directory: /.github/copilot-cli
+    directory: /tools/copilot-cli
     schedule:
       interval: weekly
 

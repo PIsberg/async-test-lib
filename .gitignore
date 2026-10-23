@@ -48,4 +48,4 @@ evals/results/
 __pycache__/
 *.pyc
 
-.github/copilot-cli/node_modules/
+tools/copilot-cli/node_modules/
