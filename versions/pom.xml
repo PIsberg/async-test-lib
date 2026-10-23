@@ -42,6 +42,14 @@
 
         <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
 
+        <!-- async-test-maven-plugin/ (#1045). The API stays on 3.9.x: the plugin descriptor takes
+             its minimum Maven from it, and the project pins Maven 3.9.16. -->
+        <maven-plugin-api.version>3.9.16</maven-plugin-api.version>
+        <maven-plugin-tools.version>3.16.0</maven-plugin-tools.version>
+        <!-- Shared with the reactor pom.xml; consumer-fixture-langs/quickstart-plugin runs JaCoCo's
+             agent beside async-test's to prove they compose. -->
+        <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
+
         <!-- consumer-fixture-langs/ and examples/128-kotlin-lost-update: language toolchains.
              Gradle's Kotlin plugin, Groovy and Scala read the same three. -->
         <!-- 2.4.x or newer: the IntelliJ util bundled with Kotlin 2.1 cannot parse a JDK

@@ -31,6 +31,7 @@ updates:
       - /consumer-fixture-langs
       - /corpus-eval
       - /examples
+      - /async-test-maven-plugin
     schedule:
       interval: daily
     ignore:
@@ -61,5 +62,6 @@ updates:
     directories:
       - /
       - /load-tests
+      - /async-test-gradle-plugin
     schedule:
       interval: daily

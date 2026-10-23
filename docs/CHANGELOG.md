@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Build plugins that attach the agent at JVM startup in one block (#1045), built and tested, not
+  yet published.** `async-test-gradle-plugin` (`id("se.deversity.async-test")`, `asyncTest { includes }`)
+  adds an `asyncTestAgent` configuration and a `-javaagent:` `CommandLineArgumentProvider` on every
+  `Test` task. `async-test-maven-plugin` (`async-test:prepare-agent`, `<includes>`) appends the
+  argument to the `argLine` property, as `jacoco:prepare-agent` does, so the two compose with no
+  surefire configuration: the hand-written `argLine` replaced JaCoCo's unless the user knew to write
+  `@{argLine}`. `AsyncTestPluginFunctionalTest` (4 TestKit builds) and `PrepareAgentMojoTest` (6)
+  pin the argument; the default-version and composition tests each went red when the code was
+  broken. `consumer-fixture-langs/quickstart-plugin` runs the README's `counter++` through each
+  plugin, the Maven build beside JaCoCo's agent, and goes red without the plugin. Publishing both
+  is #1099, and the README quick start switches to them in #1100.
+
 - **A Kotlin `runBlocking` inside a coroutine is reported (#1007).** With the agent and
   `collections=true`, `RunBlockingWeaver` inserts a hook call before every `runBlocking` call site in
   a woven class, matched by name since kotlinx is not on the agent's class path, and
