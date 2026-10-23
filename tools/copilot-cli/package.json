@@ -3,6 +3,6 @@
   "private": true,
   "description": "Pins the Copilot CLI that instruction-evals.yml installs with npm ci, so the install is checked against the lockfile's integrity hashes (#959). Dependabot's npm entry for /tools/copilot-cli proposes the bumps; it never opened one while this lived under .github/ (#1029).",
   "dependencies": {
-    "@github/copilot": "1.0.98"
+    "@github/copilot": "1.0.100"
   }
 }
