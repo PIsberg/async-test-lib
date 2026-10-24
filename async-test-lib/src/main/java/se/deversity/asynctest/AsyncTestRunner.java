@@ -44,7 +44,9 @@ import java.util.Optional;
  * the engine's {@link AssertionError} whose cause is the body's exception (N workers hitting one
  * defect are collapsed into one error, as for an annotated test); a hung body as the timeout
  * {@link AssertionError}; findings at or above {@link FailOn} as the gate's
- * {@link AssertionError} after a clean run. On a clean run the returned collector holds every
+ * {@link AssertionError} after a clean run; and, with {@code failOnBenchmarkRegression} set, a
+ * benchmark regression as {@code BenchmarkRegressionException}, thrown after the gate let the run
+ * through, so a body failure or a gated finding still outranks it. On a clean run the returned collector holds every
  * finding the run reported. When the run throws, nothing is returned; a caller who needs the
  * findings of a failed run registers its own {@link AsyncFindings#collect()} around the call,
  * exactly as an annotated test does from {@code @BeforeAll}.

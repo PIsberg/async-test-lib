@@ -248,7 +248,10 @@ public class ConcurrencyRunner {
      * @param config the resolved configuration deciding threads, rounds, timeout and detectors
      *
      * @throws Throwable the failure from the test body, unwrapped, or an {@link AssertionError}
-     *     raised by the timeout path or the {@code failOn} gate
+     *     raised by the timeout path or the {@code failOn} gate, or a
+     *     {@link se.deversity.asynctest.benchmark.BenchmarkRegressionException} when
+     *     {@code failOnBenchmarkRegression} is set and the run regressed, thrown after every round
+     *     passed and the {@code failOn} gate let the run through
      */
     @AILoadBearing(
         invariant = "The timeoutAlreadyReported flag, and the per-step guarded cleanup in the "
