@@ -107,7 +107,8 @@ public final class AsyncTestRunner {
      *     it records nothing from later runs
      * @throws Throwable the round's {@link AssertionError} carrying the body's failure as its
      *     cause, a timeout {@link AssertionError}, or the {@code failOn} gate's
-     *     {@link AssertionError}; see the class Javadoc
+     *     {@link AssertionError}, or a {@code BenchmarkRegressionException} when
+     *     {@code failOnBenchmarkRegression} is set and the run regressed; see the class Javadoc
      */
     public static AsyncFindings run(AsyncTestConfig config, Body body) throws Throwable {
         return run("run", config, body);
@@ -124,7 +125,8 @@ public final class AsyncTestRunner {
      * @return the findings this run reported, already unregistered from the listener registry
      * @throws Throwable the round's {@link AssertionError} carrying the body's failure as its
      *     cause, a timeout {@link AssertionError}, or the {@code failOn} gate's
-     *     {@link AssertionError}
+     *     {@link AssertionError}, or a {@code BenchmarkRegressionException} when
+     *     {@code failOnBenchmarkRegression} is set and the run regressed
      */
     public static AsyncFindings run(String name, AsyncTestConfig config, Body body) throws Throwable {
         Objects.requireNonNull(name, "name");

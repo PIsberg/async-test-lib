@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Upgrading
+
+`failOnBenchmarkRegression = true` now fails the test it is set on (see Fixed). A build that sets
+it, has benchmarking enabled, and keeps its baseline store between runs can go red after upgrading
+where it was green: those builds were logging `BENCHMARK REGRESSION DETECTED` and passing. A
+`mvn clean` build cannot be affected, because the default store lives under `target/` and every
+such run is a first run. To keep the old log-only behaviour, set the option to `false`.
+
+### Fixed
+
+- **`failOnBenchmarkRegression` never failed a test.** `BenchmarkComparator` throws
+  `BenchmarkRegressionException`, a `RuntimeException`, and the runner's cleanup wrapped the
+  benchmark step in `catch (Exception)`, logged `Benchmark completion failed` at WARN and let the
+  run pass, so the option documented as "Fail CI/CD on regression" did nothing. The runner now holds
+  the exception through cleanup and throws it once every round passed and the `failOn` gate let the
+  run through, so a body failure or a gated finding still outranks it. The same holds for
+  `AsyncTestRunner.run`. `ConcurrencyRunnerBenchmarkTest` went red first: a 20 ms body against an
+  empty-body baseline passed.
+
 ### Maintenance
 
 - **The licence checks' comparisons now have tests that can fail.** Two authorization defects
@@ -25,6 +44,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (#1049), and nothing ran that path. With it broken by hand, a rejected task cost the round an
   escape and a caller-runs task hung the round until its timeout. `ControlledScheduleTaskTest`
   now runs both against a saturated one-thread pool and expects every round to have `escapes=0`.
+- **A body that returns a `CompletionStage` is now tested through the one route that reaches it.**
+  The runner waits for such a stage before it counts the worker done, but JUnit runs no
+  `@TestTemplate` that returns a value and `AsyncTestRunner`'s body is void, so only a direct
+  `ConcurrencyRunner.execute` call gets there and no test made one. `ConcurrencyRunnerCompletionStageTest`
+  pins that a round waits for its stages, that a failed stage fails the run with its own
+  exception, and that a stage that never completes is bounded by the round timeout. All three went
+  red with the wait removed by hand.
 
 ## [1.14.0] - 2026-10-24
 

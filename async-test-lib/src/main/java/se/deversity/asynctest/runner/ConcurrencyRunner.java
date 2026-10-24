@@ -16,6 +16,7 @@ import se.deversity.asynctest.BeforeEachInvocation;
 import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.Preset;
 import se.deversity.asynctest.benchmark.BenchmarkRecorder;
+import se.deversity.asynctest.benchmark.BenchmarkRegressionException;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.diagnostics.DeadlockDetector;
 import se.deversity.asynctest.diagnostics.DetectorDefaultSeverity;
@@ -284,6 +285,7 @@ public class ConcurrencyRunner {
 
         // Benchmarking setup
         BenchmarkRecorder benchmarkRecorder = null;
+        @Nullable BenchmarkRegressionException benchmarkRegression = null;
         if (config.enableBenchmarking) {
             Object testInstance = invocationContext.getTarget().orElse(null);
             String testClass = testInstance != null ? testInstance.getClass().getName() : "unknown";
@@ -789,6 +791,10 @@ public class ConcurrencyRunner {
             if (benchmarkRecorder != null) {
                 try {
                     benchmarkRecorder.complete();
+                } catch (BenchmarkRegressionException e) {
+                    // failOnBenchmarkRegression's verdict, not a cleanup failure: held for the
+                    // success path below, so a body failure or a failOn finding still outranks it.
+                    benchmarkRegression = e;
                 } catch (Exception e) {
                     log.warn("Benchmark completion failed: {}", e.toString(), e);
                 }
@@ -804,6 +810,9 @@ public class ConcurrencyRunner {
         analyzeAndGate(config, testMethod, phase2Analysis);
         if (heldShutdowns != null) {
             PENDING_TEARDOWN.set(new PendingTeardown(heldShutdowns, config, testMethod, true));
+        }
+        if (benchmarkRegression != null) {
+            throw benchmarkRegression;
         }
     }
 

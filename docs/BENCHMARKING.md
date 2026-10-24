@@ -345,6 +345,10 @@ Result of comparing current vs baseline:
 
 Thrown when `failOnBenchmarkRegression = true` and regression detected:
 - Contains full `BenchmarkComparisonResult` for analysis
+- Thrown by the run after every round passed and the `failOn` gate let it through, so a body
+  failure or a gated finding is still the failure the test reports
+- Up to 1.14.0 the runner caught it and logged `Benchmark completion failed`, so the test passed;
+  a build that sets the option and keeps its baseline store between runs can go red after upgrading
 
 ## Migration Guide
 
