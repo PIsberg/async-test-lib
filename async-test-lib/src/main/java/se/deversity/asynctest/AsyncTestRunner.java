@@ -44,7 +44,9 @@ import java.util.Optional;
  * the engine's {@link AssertionError} whose cause is the body's exception (N workers hitting one
  * defect are collapsed into one error, as for an annotated test); a hung body as the timeout
  * {@link AssertionError}; findings at or above {@link FailOn} as the gate's
- * {@link AssertionError} after a clean run. On a clean run the returned collector holds every
+ * {@link AssertionError} after a clean run; and, with {@code failOnBenchmarkRegression} set, a
+ * benchmark regression as {@code BenchmarkRegressionException}, thrown after the gate let the run
+ * through, so a body failure or a gated finding still outranks it. On a clean run the returned collector holds every
  * finding the run reported. When the run throws, nothing is returned; a caller who needs the
  * findings of a failed run registers its own {@link AsyncFindings#collect()} around the call,
  * exactly as an annotated test does from {@code @BeforeAll}.
@@ -107,7 +109,8 @@ public final class AsyncTestRunner {
      *     it records nothing from later runs
      * @throws Throwable the round's {@link AssertionError} carrying the body's failure as its
      *     cause, a timeout {@link AssertionError}, or the {@code failOn} gate's
-     *     {@link AssertionError}; see the class Javadoc
+     *     {@link AssertionError}, or a {@code BenchmarkRegressionException} when
+     *     {@code failOnBenchmarkRegression} is set and the run regressed; see the class Javadoc
      */
     public static AsyncFindings run(AsyncTestConfig config, Body body) throws Throwable {
         return run("run", config, body);
@@ -124,7 +127,8 @@ public final class AsyncTestRunner {
      * @return the findings this run reported, already unregistered from the listener registry
      * @throws Throwable the round's {@link AssertionError} carrying the body's failure as its
      *     cause, a timeout {@link AssertionError}, or the {@code failOn} gate's
-     *     {@link AssertionError}
+     *     {@link AssertionError}, or a {@code BenchmarkRegressionException} when
+     *     {@code failOnBenchmarkRegression} is set and the run regressed
      */
     public static AsyncFindings run(String name, AsyncTestConfig config, Body body) throws Throwable {
         Objects.requireNonNull(name, "name");
