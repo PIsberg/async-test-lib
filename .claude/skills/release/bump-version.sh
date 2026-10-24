@@ -74,6 +74,8 @@ ALLOWLIST=(
   consumer-fixture-langs/groovy/pom.xml
   consumer-fixture-langs/scala/pom.xml
   consumer-fixture-langs/clojure/pom.xml
+  consumer-fixture-langs/quickstart/pom.xml
+  consumer-fixture-langs/quickstart-plugin/pom.xml
   README.md
   # These docs carry install snippets like README.md; they sat outside the
   # allowlist until 1.9.1 and drifted three releases (pins said 1.6.0).

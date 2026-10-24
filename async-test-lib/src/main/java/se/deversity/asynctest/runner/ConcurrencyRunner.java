@@ -1030,7 +1030,7 @@ public class ConcurrencyRunner {
      * @param codeUnderTest     a class in the caller's package, such as the body's own class
      * @param displayName       caller-chosen display name for reports, logs and baseline identity
      * @throws Throwable whatever {@link #execute} throws
-     * @since 1.13.3
+     * @since 1.14.0
      */
     public static void executeForCodeIn(ReflectiveInvocationContext<Method> invocationContext,
                                         AsyncTestConfig config, Class<?> codeUnderTest,
@@ -1053,7 +1053,7 @@ public class ConcurrencyRunner {
      * @param config            the resolved configuration
      * @param codeUnderTest     a class in the caller's package, such as the body's own class
      * @throws Throwable whatever {@link #execute} throws
-     * @since 1.13.3
+     * @since 1.14.0
      */
     public static void executeForCodeIn(ReflectiveInvocationContext<Method> invocationContext,
                                         AsyncTestConfig config, Class<?> codeUnderTest) throws Throwable {

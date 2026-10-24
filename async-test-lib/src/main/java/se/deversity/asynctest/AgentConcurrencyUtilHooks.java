@@ -3037,7 +3037,7 @@ public final class AgentConcurrencyUtilHooks {
      * dispatcher worker or a thread that must not block; the thread is the caller's, so a
      * {@code runBlocking} on an ordinary thread, its intended use, reports nothing.
      *
-     * @since 1.13.3
+     * @since 1.14.0
      */
     public static void runBlockingEntered() {
         ControlledSchedule.point();

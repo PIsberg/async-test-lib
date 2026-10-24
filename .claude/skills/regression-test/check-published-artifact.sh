@@ -28,7 +28,7 @@ set -euo pipefail
 VERSION="${1:?usage: check-published-artifact.sh <version> [--fix]}"
 FIX="${2:-}"
 
-# The reactor modules and the Maven build plugin, published with every release from 1.13.3 (#1099);
+# The reactor modules and the Maven build plugin, published with every release from 1.14.0 (#1099);
 # an earlier version has no plugin on Central, which the loop below reports as skipped.
 MODULES=(async-test-lib async-test-agent async-test-analysis async-test-maven-plugin)
 CENTRAL="https://repo1.maven.org/maven2/se/deversity/async-test-lib"

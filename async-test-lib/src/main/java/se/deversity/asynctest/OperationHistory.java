@@ -452,7 +452,7 @@ public final class OperationHistory<S> {
      *                                   runs: a search that stopped part way would read as a pass it
      *                                   is not
      * @throws IllegalStateException     when no operation was declared
-     * @since 1.13.3
+     * @since 1.14.0
      */
     public <M> String assertLinearizableForAllScenarios(SequentialSpec<M> spec, int workers,
                                                         int operationsPerWorker) {
@@ -470,7 +470,7 @@ public final class OperationHistory<S> {
      * @param operationsPerWorker      the longest sequence a worker runs, at least 1
      * @param argumentDrawsPerScenario how many distinct argument tuples to draw per scenario, at least 1
      * @return what the search covered, for the test's log
-     * @since 1.13.3
+     * @since 1.14.0
      */
     public <M> String assertLinearizableForAllScenarios(SequentialSpec<M> spec, int workers,
                                                         int operationsPerWorker, int argumentDrawsPerScenario) {

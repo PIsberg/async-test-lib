@@ -12,7 +12,7 @@
 
     <groupId>se.deversity.async-test-lib</groupId>
     <artifactId>corpus-eval</artifactId>
-    <version>1.13.2</version>
+    <version>1.14.0</version>
     <packaging>jar</packaging>
 
     <name>Async Test Corpus Eval</name>
