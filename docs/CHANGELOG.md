@@ -51,6 +51,12 @@ such run is a first run. To keep the old log-only behaviour, set the option to `
   pins that a round waits for its stages, that a failed stage fails the run with its own
   exception, and that a stage that never completes is bounded by the round timeout. All three went
   red with the wait removed by hand.
+- **The controlled schedule's escape count is tested where a thread does not take its turn
+  (#1117).** The count is what tells the runner a seed no longer replays exactly, and removing any
+  one of these increments passed the suite. `ControlledScheduleEscapeTest` expects one exact count
+  for each: an adopted task its executor cannot start (1), an adopted child that blocks before its
+  first point (1), one that ends before its first point (0: done, not escaped), and a worker
+  interrupted while it waits for its turn (1). Each went red with its own branch changed by hand.
 
 ## [1.14.0] - 2026-10-24
 
