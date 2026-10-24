@@ -94,13 +94,13 @@ a green run that proves nothing.
 | Repo | Declares it in | Build command | Async classes |
 |---|---|---|---|
 | `blindbean` | `blindbean-tests/pom.xml` (bare `<version>`) | `./mvnw -B -pl blindbean-tests -am test` | 7 (29 methods) |
-| `vibetags` | `vibetags-parent/pom.xml` (property) **only** | see below | 6 |
+| `vibetags` | `vibetags-parent/pom.xml` (property) **only** | see below | 9 |
 | `skill3` | `build.gradle` (literal) | `./gradlew --no-daemon test` | 1 (8 methods) |
 | `nanometer` | `pom.xml` (`asynctest.version` property, consumed via `dependencyManagement`) **and** `nanometer-api/build.gradle.kts` **and** `nanometer-example/build.gradle.kts` (literals) | `mvn -B -U -pl nanometer-api -am test` | 1 (2 methods) |
 
-Measured 2026-09-17 on 1.12.1. Whole-suite totals from that sweep, for spotting a run that
-quietly shrank: blindbean 223, vibetags 3122 + 6 (Maven) and 3128 (Gradle), skill3 8,
-nanometer-api 11.
+Measured 2026-10-24 on main before 1.14.0. Whole-suite totals from that sweep, for spotting a run
+that quietly shrank: blindbean 234, vibetags 3505 + 9 (Maven) and 3514 (Gradle), skill3 225 (8 of
+them in `ConcurrencySafetyTest`), nanometer-api 11.
 
 **Count the async classes from the source, not from this table.** The table drifts: blindbean
 sat at 11 here for several releases while the source had 7, because the old count included
@@ -119,8 +119,11 @@ a passing mention in a `vibetags-usage` skill doc. Do not go looking again unles
 A fresh worktree has no `build-native/Release`, and every FHE test then errors with "Cannot
 load blindbean_fhe native library" (52 errors on 2026-08-17). Point the run at the main checkout's
 DLL if its native source is at the same commit: `-Dblindbean.native.path=C:/dev/private/blindbean/build-native/Release`.
-Run blindbean alone: `FheAsyncConcurrencyTest` needs ~78 s for 4 tests against a 60 s per-test
-budget, and it timed out once while vibetags was running beside it.
+Run blindbean alone: `FheAsyncConcurrencyTest` has a 60 s per-test budget. On 2026-10-24 the class
+took 37 to 55 s for 4 tests on a quiet machine, and 113.6 s, with one test timing out at 61.3 s,
+while another session's vibetags `mvn clean install` ran beside it. Other sessions build on this
+machine too, so before calling a timeout here a regression, list the running `java` processes and
+A/B the class against the previous release (`-Dtest=FheAsyncConcurrencyTest`) back to back.
 
 Use `./mvnw`, not `mvn`. Its enforcer requires Maven `[3.9.0,)` and the `mvn` on PATH is 3.8.6,
 so a plain `mvn` fails in the parent before it ever compiles a test.
@@ -144,6 +147,8 @@ ls ~/.m2/wrapper/dists/            # apache-maven-3.9.11 was there on 2026-09-17
 M39=$(echo ~/.m2/wrapper/dists/apache-maven-3.9.11/*/bin/mvn)
 ```
 
+`/c/tools/apache-maven-3.9.11/bin/mvn` is installed too, and ran the 2026-10-24 sweep.
+
 Expand the glob with `echo` as above. A bare `M39=~/.../*/bin/mvn` assignment keeps the `*`
 literally, and `"$M39"` then fails with exit 127 in under a second. Building it from `ls -d` has
 the same result when an `ls -F` style alias appends `*` to the executable's name. Either way no
@@ -153,20 +158,40 @@ Build order, and the tier that matters:
 
 ```bash
 cd vibetags-annotations && "$M39" -B -q install -DskipTests   # published to ~/.m2 for both builds
-cd ../vibetags          && "$M39" -B test -Pe2e               # 3122 + 6 tests (2026-09-17)
-cd ../vibetags          && ./gradlew --no-daemon test -Pe2e   # 3128 tests (2026-09-17)
+cd ../vibetags          && "$M39" -B test -Pe2e               # 3505 + 9 tests (2026-10-24)
+cd ../vibetags          && ./gradlew --no-daemon test -Pe2e   # 3514 tests (2026-10-24)
 ```
 
+**Check what the annotations install would overwrite first.** vibetags' `main` builds as its last
+release (`<revision>1.4.0</revision>` on 2026-10-24), so the install writes a local build under a
+coordinate that is on Central, which is the impostor the preflight exists to prevent, for every
+other session on this machine resolving that release. If
+`git diff v<vibetags-release> origin/main -- vibetags-annotations/src` is empty, skip the install:
+Central's jar is the same source. Either way, isolate the run with a private local repository
+holding only the sweep artifacts, so neither tier reads an impostor already in `~/.m2`:
+
+```bash
+R=C:/dev/tmp/swv-m2; mkdir -p $R/se/deversity/async-test-lib
+for a in async-test-lib async-test-agent async-test-analysis async-test-parent; do
+  mkdir -p $R/se/deversity/async-test-lib/$a
+  cp -r ~/.m2/repository/se/deversity/async-test-lib/$a/<version> $R/se/deversity/async-test-lib/$a/
+done
+"$M39" -B test -Pe2e -Dmaven.repo.local=$R                       # Maven tier
+./gradlew --no-daemon test -Pe2e -Dmaven.repo.local=$R           # mavenLocal() follows it
+```
+
+Confirm the Gradle side with `./gradlew -q dependencies --configuration testRuntimeClasspath
+-Dmaven.repo.local=$R | grep async-test`. Delete `$R` afterwards.
+
 The Maven tier runs two surefire executions, so the **last** `Tests run:` summary in the log reads
-`6`. That is the second execution, not the total; take both summaries before calling the run
+`9`. That is the second execution, not the total; take both summaries before calling the run
 hollow. Gradle prints no count at all: sum `tests="..."` across `build/test-results/test/*.xml`.
 
-**`-Pe2e` is not optional here.** Five of the six `@AsyncTest` classes carry `@Tag("e2e")`:
+**`-Pe2e` is not optional here.** Five of the nine `@AsyncTest` classes carry `@Tag("e2e")`:
 EnforcementBaselineAsyncTest, GuardrailFileWriterAsyncTest, LazyFileAppenderAsyncTest,
-ModuleSidecarAsyncTest and VibeTagsLoggerAsyncTest. Only WriteCacheAsyncTest is untagged
-(checked against `origin/main` on 2026-09-17), so a plain `mvn test` exercises one of the six and
-still goes green. `VibeTagsLoggerConcurrencyTest` also appears in the results; it has no
-`@AsyncTest` and does not count toward the six.
+ModuleSidecarAsyncTest and VibeTagsLoggerAsyncTest (checked against `origin/main` on 2026-10-24),
+so a plain `mvn test` skips five of the nine and still goes green. `VibeTagsLoggerConcurrencyTest`
+also appears in the results; it has no `@AsyncTest` and does not count toward the nine.
 
 ### skill3
 
