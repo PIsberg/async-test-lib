@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Maintenance
+
+- **The licence checks' comparisons now have tests that can fail.** Two authorization defects
+  passed all 53 licence tests on main, each checked by hand: an `OfflineLicense` email comparison
+  that accepted any address of the licensed text's length (every existing case differed in
+  length, so the character loop never ran), and a `LicenseValidationCache.isFresh` that called
+  any record fresh whatever its age, so a revoked key would never be validated online again.
+  `OfflineLicenseGuardTest` gained 13 cases: same-length addresses and domains, ASCII case
+  folding and the Kelvin sign that `String.equalsIgnoreCase` would fold onto `k`, addresses with
+  no domain, malformed payloads, a truncated signature, and the shipped verify key, which no test
+  had decoded before. `LicenseValidationCacheTtlTest` stages a record's age against the TTL, and
+  checks that a TTL of 0 keeps the outage grace while a negative one turns the cache off. Each new
+  test went red on its defect, put in by hand.
+
 ## [1.14.0] - 2026-10-24
 
 ### Added
