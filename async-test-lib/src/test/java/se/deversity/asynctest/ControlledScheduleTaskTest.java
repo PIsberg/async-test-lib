@@ -11,12 +11,18 @@ import org.slf4j.LoggerFactory;
 import se.deversity.asynctest.runner.ConcurrencyRunner;
 
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -126,6 +132,85 @@ class ControlledScheduleTaskTest {
             });
             after.get(10, TimeUnit.SECONDS);
         } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /**
+     * A one-thread pool with no queue, its thread held busy until {@code release} counts down, so
+     * every submission inside the round is refused and goes to {@code onRejection}.
+     */
+    private static ThreadPoolExecutor saturatedPool(RejectedExecutionHandler onRejection,
+                                                    CountDownLatch release) throws InterruptedException {
+        ThreadPoolExecutor pool = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+                new SynchronousQueue<>(), onRejection);
+        CountDownLatch busy = new CountDownLatch(1);
+        pool.execute(() -> {
+            busy.countDown();
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        busy.await();
+        return pool;
+    }
+
+    private void assertEveryRoundCleanAndCounted(int expected) {
+        List<String> rounds = rounds();
+        assertEquals(expected, rounds.size(), rounds.toString());
+        assertTrue(rounds.stream().allMatch(m -> m.contains("escapes=0")),
+                "an adopted task that never joined left its slot waiting until the stall bound: " + rounds);
+    }
+
+    /**
+     * Under a caller-runs policy the adopted task runs inline on the submitting worker, inside its
+     * turn, and never joins on a thread of its own; its slot must be done at once. Left ready, the
+     * schedule waits for a task that will never arrive until the stall bound counts it an escape.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void aTaskTheCallerRunsInlineIsDoneAtOnce() throws Throwable {
+        CountDownLatch release = new CountDownLatch(1);
+        ThreadPoolExecutor pool = saturatedPool(new ThreadPoolExecutor.CallerRunsPolicy(), release);
+        try {
+            for (long seed = 1; seed <= 4; seed++) {
+                ReadPointWriteCounter counter = new ReadPointWriteCounter();
+                AsyncTestRunner.run(AsyncTestConfig.builder().threads(1).invocations(1).replaySeed(seed)
+                        .controlledSchedule(true).timeoutMs(10_000).licenseMockMode(true).build(), () -> {
+                    Future<?> task = AgentConcurrencyUtilHooks.submit(pool, (Runnable) counter::increment);
+                    counter.increment();
+                    AgentConcurrencyUtilHooks.get((Future<Object>) task);
+                });
+                assertEquals(2, counter.value, "an inline task runs in the worker's turn, so nothing interleaves it");
+            }
+            assertEveryRoundCleanAndCounted(4);
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+        }
+    }
+
+    /** A task its executor rejects never runs, so its adopted slot must be done before the round goes on. */
+    @Test
+    void aTaskTheExecutorRejectsIsDoneAtOnce() throws Throwable {
+        CountDownLatch release = new CountDownLatch(1);
+        ThreadPoolExecutor pool = saturatedPool(new ThreadPoolExecutor.AbortPolicy(), release);
+        try {
+            for (long seed = 1; seed <= 4; seed++) {
+                AsyncTestRunner.run(AsyncTestConfig.builder().threads(1).invocations(1).replaySeed(seed)
+                        .controlledSchedule(true).timeoutMs(10_000).licenseMockMode(true).build(), () -> {
+                    assertThrows(RejectedExecutionException.class,
+                            () -> AgentConcurrencyUtilHooks.submit(pool, (Runnable) () -> { }));
+                    for (int i = 0; i < 3; i++) {
+                        AsyncTestContext.schedulePoint();
+                    }
+                });
+            }
+            assertEveryRoundCleanAndCounted(4);
+        } finally {
+            release.countDown();
             pool.shutdownNow();
         }
     }
