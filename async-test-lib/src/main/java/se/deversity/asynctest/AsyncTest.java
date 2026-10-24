@@ -362,7 +362,10 @@ public @interface AsyncTest {
 
     /**
      * Fail the test on benchmark regression.
-     * If true, a regression exceeding the threshold will cause test failure.
+     * If true, a regression exceeding the threshold will cause test failure: the run throws a
+     * {@code BenchmarkRegressionException} once every round passed and the {@code failOn} gate let it
+     * through, so a body failure or a gated finding is still what the test reports. Up to 1.14.0
+     * the runner caught the exception and logged it, so the test passed.
      * If false, only a warning is logged.
      *
      * @return {@code true} to fail the test when a benchmark regression exceeds the threshold
