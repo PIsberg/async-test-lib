@@ -26,7 +26,7 @@ stay unwoven. If JaCoCo or another plugin also sets surefire's `argLine`, start 
 `@{argLine} `.
 
 **Build plugins (#1045).** Two plugins replace those snippets with one block each. Both are
-published with every release from 1.13.3 on, the Maven plugin to Maven Central and the Gradle
+published with every release from 1.14.0 on, the Maven plugin to Maven Central and the Gradle
 plugin to the Gradle Plugin Portal ([#1099](https://github.com/PIsberg/async-test-lib/issues/1099)),
 and the README quick start switches to them once the first such release is out
 ([#1100](https://github.com/PIsberg/async-test-lib/issues/1100)):

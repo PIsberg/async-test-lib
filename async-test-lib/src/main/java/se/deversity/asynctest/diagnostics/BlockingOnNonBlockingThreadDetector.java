@@ -137,7 +137,7 @@ public final class BlockingOnNonBlockingThreadDetector {
      * heard from (#1107).
      *
      * @param thread the thread that entered {@code runBlocking} (null-safe)
-     * @since 1.13.3
+     * @since 1.14.0
      */
     public void recordRunBlocking(Thread thread) {
         if (thread == null || findings.size() >= MAX_FINDINGS) return;

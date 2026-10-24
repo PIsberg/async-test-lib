@@ -161,7 +161,7 @@ public class ThreadPoolMonitor extends AbstractInstanceDetector<ThreadPoolMonito
      *
      * @param executor  the executor that threw, tracked by identity
      * @param rejection what it threw
-     * @since 1.13.3
+     * @since 1.14.0
      */
     public void recordRejectedExecution(Object executor, RejectedExecutionException rejection) {
         if (!enabled || executor == null || rejection == null) return;

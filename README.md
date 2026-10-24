@@ -186,13 +186,13 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    <dependency>
        <groupId>se.deversity.async-test-lib</groupId>
        <artifactId>async-test-lib</artifactId>
-       <version>1.13.2</version>
+       <version>1.14.0</version>
        <scope>test</scope>
    </dependency>
    <dependency>
        <groupId>se.deversity.async-test-lib</groupId>
        <artifactId>async-test-agent</artifactId>
-       <version>1.13.2</version>
+       <version>1.14.0</version>
        <scope>test</scope>
    </dependency>
    ```
@@ -291,8 +291,8 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    }
 
    dependencies {
-       testImplementation("se.deversity.async-test-lib:async-test-lib:1.13.2")
-       asyncTestAgent("se.deversity.async-test-lib:async-test-agent:1.13.2")
+       testImplementation("se.deversity.async-test-lib:async-test-lib:1.14.0")
+       asyncTestAgent("se.deversity.async-test-lib:async-test-agent:1.14.0")
    }
 
    tasks.test {
@@ -760,7 +760,7 @@ examples/                Self-contained example projects, each demonstrating a
 intellij-plugin/         IDE tool window that renders the JSON report.
 async-test-gradle-plugin/
 async-test-maven-plugin/ Build plugins that attach the agent at startup in one block,
-                         published with each release from 1.13.3 on (#1099).
+                         published with each release from 1.14.0 on (#1099).
 tools/                   Release and licensing utilities, and the demo.
 docs/                    All documentation, routed from docs/INDEX.md.
 ```

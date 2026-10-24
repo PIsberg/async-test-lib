@@ -97,7 +97,7 @@ on the `-javaagent:` assertion even though the fallback still finds the race.
 
 The same `CounterTest`, with the agent attached by the build plugins (#1045) instead of the
 hand-written snippets: `async-test:prepare-agent` under Maven, beside `jacoco:prepare-agent`, and
-`id("se.deversity.async-test")` under Gradle. Both are published with each release from 1.13.3 on
+`id("se.deversity.async-test")` under Gradle. Both are published with each release from 1.14.0 on
 ([#1099](https://github.com/PIsberg/async-test-lib/issues/1099)), but this fixture never resolves a
 published one: Gradle takes the plugin from `../async-test-gradle-plugin` as an included build
 (`settings.gradle.kts`), and Maven needs it installed first, on its own, without the
