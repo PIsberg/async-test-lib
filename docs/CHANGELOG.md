@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   had decoded before. `LicenseValidationCacheTtlTest` stages a record's age against the TTL, and
   checks that a TTL of 0 keeps the outage grace while a negative one turns the cache off. Each new
   test went red on its defect, put in by hand.
+- **A controlled round's adopted task that never joins now has a test.** `ControlledSchedule`
+  marks a task done at once when a caller-runs policy runs it inline or its executor rejects it
+  (#1049), and nothing ran that path. With it broken by hand, a rejected task cost the round an
+  escape and a caller-runs task hung the round until its timeout. `ControlledScheduleTaskTest`
+  now runs both against a saturated one-thread pool and expects every round to have `escapes=0`.
 
 ## [1.14.0] - 2026-10-24
 
