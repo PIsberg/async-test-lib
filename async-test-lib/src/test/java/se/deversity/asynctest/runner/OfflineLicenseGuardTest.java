@@ -285,6 +285,164 @@ class OfflineLicenseGuardTest {
             "An expired offline file must deny in every environment, including CI");
     }
 
+    // ---- binding comparison --------------------------------------------------------------
+    // Every grant and rejection above differs in length from the licensed text, so none of them
+    // reached the character comparison: asciiEqualsIgnoreCase answering true for any two strings
+    // of equal length passed the whole suite (pitest, mutation run 39105270920).
+
+    @Test
+    void domainBoundFile_rejectsAnotherDomainOfTheSameLength() throws Exception {
+        Path file = issue("async-test-lib", "Acme Corp AB", "licence@acme-corp.com", "domain",
+            LocalDate.now(ZoneOffset.UTC).plusYears(1));
+        set("license.file", file.toString());
+        set("license.user.email", "alice@acme-corq.com");
+
+        assertDenied("OFFLINE_LICENSE_SCOPE_MISMATCH");
+    }
+
+    @Test
+    void exactBoundFile_rejectsAnotherAddressOfTheSameLength() throws Exception {
+        Path file = issue("async-test-lib", "Acme Corp AB", "licence@acme-corp.com", "exact",
+            LocalDate.now(ZoneOffset.UTC).plusYears(1));
+        set("license.file", file.toString());
+        set("license.user.email", "licencf@acme-corp.com");
+
+        assertDenied("OFFLINE_LICENSE_SCOPE_MISMATCH");
+    }
+
+    @Test
+    void bindingMatchesInAnyAsciiCase() throws Exception {
+        Path file = issue("async-test-lib", "Acme Corp AB", "licence@acme-corp.com", "exact",
+            LocalDate.now(ZoneOffset.UTC).plusYears(1));
+        set("license.file", file.toString());
+        set("license.user.email", "Licence@ACME-Corp.com");
+
+        assertDoesNotThrow(() -> LicenseGuard.check(config()),
+            "An address is the same address in any ASCII case; a build that spells it "
+            + "differently from the file must not be denied");
+    }
+
+    @Test
+    void bindingDoesNotFoldANonAsciiLetterOntoAscii() throws Exception {
+        // String.equalsIgnoreCase folds the Kelvin sign (U+212A) onto 'k', so an address that is
+        // not the licensed text would compare equal to it. The fold must stay ASCII-only.
+        Path file = issue("async-test-lib", "Kraft AB", "licence@kraft.com", "domain",
+            LocalDate.now(ZoneOffset.UTC).plusYears(1));
+        set("license.file", file.toString());
+        set("license.user.email", "alice@Kraft.com");
+
+        assertDenied("OFFLINE_LICENSE_SCOPE_MISMATCH");
+    }
+
+    @Test
+    void domainBoundFile_rejectsAUserEmailWithNoDomain() throws Exception {
+        Path file = issue("async-test-lib", "Acme Corp AB", "licence@acme-corp.com", "domain",
+            LocalDate.now(ZoneOffset.UTC).plusYears(1));
+        set("license.file", file.toString());
+
+        for (String noDomain : new String[] {"alice", "alice@", "@acme-corp.com"}) {
+            resetCache();
+            set("license.user.email", noDomain);
+            assertDenied("OFFLINE_LICENSE_SCOPE_MISMATCH");
+        }
+    }
+
+    @Test
+    void boundFileWithoutALicensedEmail_deniesAsMalformed() throws Exception {
+        Path file = issue("async-test-lib", "Acme Corp AB", null, "domain",
+            LocalDate.now(ZoneOffset.UTC).plusYears(1));
+        set("license.file", file.toString());
+
+        assertDenied("OFFLINE_FILE_MALFORMED");
+    }
+
+    @Test
+    void unknownBinding_deniesAsMalformed() throws Exception {
+        Path file = issue("async-test-lib", "Acme Corp AB", "licence@acme-corp.com", "everyone",
+            LocalDate.now(ZoneOffset.UTC).plusYears(1));
+        set("license.file", file.toString());
+
+        assertDenied("OFFLINE_FILE_MALFORMED");
+    }
+
+    // ---- malformed files -----------------------------------------------------------------
+
+    @Test
+    void signedPayloadWithoutExpiry_deniesAsMalformed() throws Exception {
+        byte[] payloadBytes = "product=async-test-lib\nlicensee=Acme Corp AB\nbinding=none\n"
+            .getBytes(StandardCharsets.UTF_8);
+        set("license.file", write(payloadBytes, sign(payloadBytes)).toString());
+
+        assertDenied("OFFLINE_FILE_MALFORMED");
+    }
+
+    @Test
+    void signedPayloadWithANonIsoExpiry_deniesAsMalformed() throws Exception {
+        byte[] payloadBytes = "product=async-test-lib\nlicensee=Acme Corp AB\nbinding=none\nexpires=31/12/2099\n"
+            .getBytes(StandardCharsets.UTF_8);
+        set("license.file", write(payloadBytes, sign(payloadBytes)).toString());
+
+        String message = assertDenied("OFFLINE_FILE_MALFORMED");
+        assertTrue(message.contains("31/12/2099"), message);
+    }
+
+    @Test
+    void segmentsThatAreNotBase64url_denyAsMalformed() throws Exception {
+        Path file = dir.resolve("mangled.atl-license");
+        Files.writeString(file, "ATL1.not*base64.either*", StandardCharsets.UTF_8);
+        set("license.file", file.toString());
+
+        assertDenied("OFFLINE_FILE_MALFORMED");
+    }
+
+    @Test
+    void aFourthSegment_deniesAsMalformed() throws Exception {
+        Path valid = issue("async-test-lib", "Acme Corp AB", "licence@acme-corp.com", "domain",
+            LocalDate.now(ZoneOffset.UTC).plusYears(1));
+        Files.writeString(valid, Files.readString(valid, StandardCharsets.UTF_8).trim() + ".extra",
+            StandardCharsets.UTF_8);
+        set("license.file", valid.toString());
+
+        assertDenied("OFFLINE_FILE_MALFORMED");
+    }
+
+    @Test
+    void aTruncatedSignature_deniesAsSignatureInvalid() throws Exception {
+        byte[] payloadBytes = payload("async-test-lib", "Acme Corp AB", "licence@acme-corp.com",
+            "domain", LocalDate.now(ZoneOffset.UTC).plusYears(1)).getBytes(StandardCharsets.UTF_8);
+        byte[] signature = sign(payloadBytes);
+        set("license.file", write(payloadBytes, java.util.Arrays.copyOf(signature, 32)).toString());
+
+        assertDenied("OFFLINE_FILE_SIGNATURE_INVALID");
+    }
+
+    // ---- the shipped key -----------------------------------------------------------------
+
+    /**
+     * Every other test swaps in an ephemeral key, so the shipped constant was never decoded in the
+     * suite. Without the override a file signed by any other key must reach the signature check and
+     * fail it: a constant that no longer decodes to an Ed25519 key would instead escape as an
+     * IllegalArgumentException, or deny with a key-spec failure, for every customer's file alike.
+     */
+    @Test
+    void theShippedKeyDecodes_andRefusesAFileItDidNotSign() throws Exception {
+        Path file = issue("async-test-lib", "Acme Corp AB", "licence@acme-corp.com", "domain",
+            LocalDate.now(ZoneOffset.UTC).plusYears(1));
+        set("license.file", file.toString());
+        OfflineLicense.overrideVerifyKeyForTesting(null);
+
+        String message = assertDenied("OFFLINE_FILE_SIGNATURE_INVALID");
+        assertTrue(message.contains("does not match the payload"),
+            "the shipped key must verify, and reject, rather than fail to load: " + message);
+    }
+
+    /** {@return the denial's message} after asserting it carries {@code code} */
+    private static String assertDenied(String code) {
+        SecurityException ex = assertThrows(SecurityException.class, () -> LicenseGuard.check(config()));
+        assertTrue(ex.getMessage().contains(code), ex.getMessage());
+        return ex.getMessage();
+    }
+
     private static void resetCache() {
         try {
             Method m = LicenseGuard.class.getDeclaredMethod("resetForTesting");
