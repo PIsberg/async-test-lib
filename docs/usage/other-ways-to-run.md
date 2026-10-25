@@ -59,7 +59,9 @@ Three things to know, each different from the annotation:
 - **What it throws is what the annotated path throws.** A failing body surfaces as the engine's
   `AssertionError` with the body's exception as its cause (N workers on one defect are collapsed
   into one error); a hung body as the timeout `AssertionError`; findings at or above `failOn` as
-  the gate's `AssertionError` after a clean run. On a clean run the returned `AsyncFindings` holds
+  the gate's `AssertionError` after a clean run; with `failOnBenchmarkRegression` set, a benchmark
+  regression as `BenchmarkRegressionException`, after the gate let the run through, so a body
+  failure or a gated finding still outranks it. On a clean run the returned `AsyncFindings` holds
   every finding; when the run throws, register your own `AsyncFindings.collect()` around the call
   if you need them.
 - **Identity.** The engine names a run after the method it executes; a body has none, so every
