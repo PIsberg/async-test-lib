@@ -65,6 +65,7 @@ jobs:
             github.com:443
             objects.githubusercontent.com:443
             plugins.gradle.org:443
+            plugins-artifacts.gradle.org:443
             repo.maven.apache.org:443
             repo1.maven.org:443
             results-receiver.actions.githubusercontent.com:443

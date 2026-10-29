@@ -36,6 +36,13 @@ such run is a first run. To keep the old log-only behaviour, set the option to `
 
 ### Maintenance
 
+- **Gradle jobs no longer depend on a warm cache to resolve plugins.** `plugins.gradle.org`
+  answers every artifact download with a 303 to `plugins-artifacts.gradle.org`, which no
+  harden-runner list in `gradle-tests.yml` or `load-tests.yml` admitted, so a plugin missing from
+  the Gradle cache failed with "Temporary failure in name resolution"; the IntelliJ test job also
+  lacked `data.services.jetbrains.com`, which its `:test` now reads. Both failed twice on PR #1134.
+  Every blocking job that admits the portal now admits its artifact host, and
+  `HardenRunnerEndpointsTest` fails when one does not.
 - **The licence checks' comparisons now have tests that can fail.** Two authorization defects
   passed all 53 licence tests on main, each checked by hand: an `OfflineLicense` email comparison
   that accepted any address of the licensed text's length (every existing case differed in

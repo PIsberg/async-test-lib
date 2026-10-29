@@ -43,6 +43,7 @@ jobs:
             github.com:443
             objects.githubusercontent.com:443
             plugins.gradle.org:443
+            plugins-artifacts.gradle.org:443
             repo.maven.apache.org:443
             repo1.maven.org:443
             results-receiver.actions.githubusercontent.com:443
@@ -139,17 +140,24 @@ jobs:
         uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: block
+          # data.services.jetbrains.com: resolving :test's dependencies reads the product-releases
+          # feed too, not only the verifier, and with the host missing PR #1134 failed twice with
+          # UnknownHostException. plugins-artifacts.gradle.org is where plugins.gradle.org
+          # redirects (303) every artifact download, so a plugin not already in the Gradle cache
+          # cannot resolve without it; each job listing the portal lists it as well.
           allowed-endpoints: >
             agent.api.stepsecurity.io:443
             api.adoptium.net:443
             api.github.com:443
             cache-redirector.jetbrains.com:443
+            data.services.jetbrains.com:443
             download.jetbrains.com:443
             download-cdn.jetbrains.com:443
             downloads.gradle-dn.com:443
             github.com:443
             objects.githubusercontent.com:443
             plugins.gradle.org:443
+            plugins-artifacts.gradle.org:443
             plugins.jetbrains.com:443
             repo.maven.apache.org:443
             repo1.maven.org:443
@@ -213,11 +221,11 @@ jobs:
         uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: block
-          # Three hosts beyond the plugin job's list, all reached only by the verifier:
-          # data.services.jetbrains.com serves the product-releases feed the newest-IDEA entry is
-          # resolved from, download.jetbrains.com the distributions themselves, and
-          # downloads.marketplace.jetbrains.com the plugins a verified plugin declares. A host
-          # missing from this list arrives as ECONNREFUSED, which reads like a network flake.
+          # One host beyond the plugin job's list, reached only by the verifier:
+          # downloads.marketplace.jetbrains.com, the plugins a verified plugin declares. The
+          # product-releases feed (data.services.jetbrains.com) and the distributions
+          # (download.jetbrains.com) are in both lists. A host missing from this list arrives as
+          # ECONNREFUSED or as a failed name lookup, either of which reads like a network flake.
           allowed-endpoints: >
             agent.api.stepsecurity.io:443
             api.adoptium.net:443
@@ -231,6 +239,7 @@ jobs:
             github.com:443
             objects.githubusercontent.com:443
             plugins.gradle.org:443
+            plugins-artifacts.gradle.org:443
             plugins.jetbrains.com:443
             repo.maven.apache.org:443
             repo1.maven.org:443
@@ -406,6 +415,7 @@ jobs:
             github.com:443
             objects.githubusercontent.com:443
             plugins.gradle.org:443
+            plugins-artifacts.gradle.org:443
             repo.maven.apache.org:443
             repo1.maven.org:443
             results-receiver.actions.githubusercontent.com:443
@@ -477,6 +487,7 @@ jobs:
             github.com:443
             objects.githubusercontent.com:443
             plugins.gradle.org:443
+            plugins-artifacts.gradle.org:443
             repo.maven.apache.org:443
             repo1.maven.org:443
             results-receiver.actions.githubusercontent.com:443
@@ -548,6 +559,7 @@ jobs:
             github.com:443
             objects.githubusercontent.com:443
             plugins.gradle.org:443
+            plugins-artifacts.gradle.org:443
             repo.maven.apache.org:443
             repo1.maven.org:443
             results-receiver.actions.githubusercontent.com:443
