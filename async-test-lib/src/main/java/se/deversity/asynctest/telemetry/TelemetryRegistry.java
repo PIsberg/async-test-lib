@@ -3670,8 +3670,9 @@ public final class TelemetryRegistry {
      * Replaces the active drain callback without affecting the running/stopped state of the
      * registry.
      *
-     * <p>The callback field is {@code volatile}, so a swap is immediately visible to the
-     * single drain thread on its next cycle. Passing {@code null} restores the no-op
+     * <p>The callback field is {@code volatile} and the drain reads it for every event, so an
+     * event recorded after the swap goes to the new callback even when a drain was already under
+     * way. Passing {@code null} restores the no-op
      * default (drained events are discarded). This is the clear, intention-revealing hook
      * that {@link #start(TelemetryEventBuffer.DrainCallback)} delegates to when it is called
      * while the registry is already running, and the mechanism
@@ -3880,14 +3881,42 @@ public final class TelemetryRegistry {
         }
     }
 
-    private static void drainOnce() {
-        TelemetryEventBuffer.DrainCallback cb = drainCallback;
-        try {
+    /**
+     * Delivers each drained event to the callback installed when that event is drained, not the
+     * one installed when the drain began. A drain runs until the ring is empty, so one that read
+     * the callback once and was then preempted gave every event the next run published meanwhile
+     * to the callback that run had replaced, and the run's detectors never saw them
+     * (VolatilePublicationWeavingTest silent on CI, 2026-10-08). Read per event, the callback is
+     * the one whose installation happened before the producer published: the run installs its
+     * bridge, then starts the threads whose events it wants, and the drain acquires each event.
+     */
+    private static final TelemetryEventBuffer.DrainCallback CURRENT = new TelemetryEventBuffer.DrainCallback() {
+        @Override
+        public void onEvent(long threadId, @Nullable String targetField, boolean isWrite) {
+            TelemetryEventBuffer.DrainCallback cb = drainCallback;
             if (cb != null) {
-                BUFFER.drain(cb);
-            } else {
-                BUFFER.drain((tid, field, write) -> { /* discard */ });
+                cb.onEvent(threadId, targetField, isWrite);
             }
+        }
+
+        @Override
+        public void onEvent(long threadId, @Nullable String targetField, boolean isWrite,
+                            long lockFingerprint, boolean volatileField, int constantTag,
+                            int identity, boolean afterVolatileRead, int ownMonitor,
+                            int methodMonitor, int storedIdentity, @Nullable Object receiver,
+                            HappensBefore.@Nullable Stamp stamp, long round) {
+            TelemetryEventBuffer.DrainCallback cb = drainCallback;
+            if (cb != null) {
+                cb.onEvent(threadId, targetField, isWrite, lockFingerprint, volatileField, constantTag,
+                        identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity,
+                        receiver, stamp, round);
+            }
+        }
+    };
+
+    private static void drainOnce() {
+        try {
+            BUFFER.drain(CURRENT);
         } catch (RuntimeException | StackOverflowError ignored) { // NOPMD EmptyCatchBlock — best-effort drain must survive a misbehaving callback
             // scheduleAtFixedRate cancels all future executions if the task throws;
             // telemetry is best-effort, so swallow and keep the periodic drainer alive.

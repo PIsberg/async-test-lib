@@ -25,6 +25,14 @@ such run is a first run. To keep the old log-only behaviour, set the option to `
   run through, so a body failure or a gated finding still outranks it. The same holds for
   `AsyncTestRunner.run`. `ConcurrencyRunnerBenchmarkTest` went red first: a 20 ms body against an
   empty-body baseline passed.
+- **A run could lose its first agent events to the run before it.** The telemetry drain read its
+  callback once and then drained until the ring was empty, so a drain that began just before a run
+  installed its bridge, and was preempted, delivered the events that run's workers published in the
+  meantime to the callback it had replaced. The run's `AtomicityValidator` never saw them and could
+  report nothing for a real race: `VolatilePublicationWeavingTest` was silent that way once on CI
+  (2026-10-08). The drain now resolves the callback for every event. `TelemetryRegistryTest` holds
+  the drain inside the previous callback while the next one is installed, and went red first with
+  the new event delivered to the old callback.
 
 ### Maintenance
 
