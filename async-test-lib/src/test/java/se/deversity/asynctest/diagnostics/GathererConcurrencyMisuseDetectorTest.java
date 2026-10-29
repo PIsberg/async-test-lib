@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
@@ -376,6 +377,7 @@ class GathererConcurrencyMisuseDetectorTest {
         AtomicInteger inFlight = new AtomicInteger();
         AtomicBoolean overlapped = new AtomicBoolean();
         Set<Long> threads = ConcurrentHashMap.newKeySet();
+        AtomicInteger integrated = new AtomicInteger();
 
         Supplier<Collection<Object>> initializer = () -> {
             states.incrementAndGet();
@@ -390,9 +392,10 @@ class GathererConcurrencyMisuseDetectorTest {
                 integration.around(state, self, body);
             } finally {
                 inFlight.decrementAndGet();
+                integrated.incrementAndGet();
             }
         });
-        List<Object> output = gather(gatherer, ELEMENTS);
+        List<Object> output = gather(gatherer, ELEMENTS, integrated);
         return new GatherRun(output, states.get(), threads.size(), overlapped.get());
     }
 
@@ -457,22 +460,29 @@ class GathererConcurrencyMisuseDetectorTest {
      * four-thread pool and returns the output.
      *
      * <p>The pool keeps the thread count independent of the runner's cores, and the last
-     * element's upstream step sleeps 20 ms. That holds the rightmost segment back until its
+     * element's upstream step holds back. That keeps the rightmost segment back until its
      * predecessors have integrated, so the JDK integrates it on its own worker, a hand-off between
-     * threads. Without the delay one thread often drains the whole chain: measured on JDK 26, 20
-     * of 30 runs handed off in a four-thread pool and 11 of 30 in a two-thread one; with it, 30 of
-     * 30 in both.
+     * threads. Without the hold one thread often drains the whole chain: measured on JDK 26, 20
+     * of 30 runs handed off in a four-thread pool and 11 of 30 in a two-thread one; with a 20 ms
+     * sleep, 30 of 30 in both.
      *
-     * @param elements the stream length; the last element is the one whose upstream step waits
+     * <p>A fixed sleep is not enough on a loaded machine: the predecessors may not have run at all
+     * before it ends. With every core busy, 297 of 300 runs integrated on one thread, and the
+     * five attempts the hand-off tests make all missed on main's JDK 25 leg (2026-10-20, job
+     * 118459098076). So when {@code integrated} counts the integrations, the hold lasts until
+     * integration has started and then made no progress for 20 ms, at most 5 s.
+     *
+     * @param elements   the stream length; the last element is the one whose upstream step waits
+     * @param integrated the integrations so far, or {@code null} to hold for a fixed 20 ms
      */
-    private static List<Object> gather(Object gatherer, int elements) throws Exception {
+    private static List<Object> gather(Object gatherer, int elements, AtomicInteger integrated) throws Exception {
         Method gather = Stream.class.getMethod("gather", Class.forName("java.util.stream.Gatherer"));
         try (ForkJoinPool pool = new ForkJoinPool(4)) {
             List<?> output = pool.submit(() -> {
                 Stream<Integer> upstream = IntStream.range(0, elements).boxed().parallel().map(i -> {
                     if (i == elements - 1) {
                         try {
-                            Thread.sleep(20);
+                            holdBack(integrated);
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                             throw new IllegalStateException(e);
@@ -487,6 +497,28 @@ class GathererConcurrencyMisuseDetectorTest {
                 }
             }).get();
             return new ArrayList<>(output);
+        }
+    }
+
+    /** Holds the last element back: see {@link #gather(Object, int, AtomicInteger)}. */
+    private static void holdBack(AtomicInteger integrated) throws InterruptedException {
+        long quietNanos = TimeUnit.MILLISECONDS.toNanos(20);
+        if (integrated == null) {
+            Thread.sleep(20);
+            return;
+        }
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        int seen = integrated.get();
+        long quietSince = System.nanoTime();
+        while (System.nanoTime() < deadline) {
+            Thread.sleep(1);
+            int now = integrated.get();
+            if (now != seen) {
+                seen = now;
+                quietSince = System.nanoTime();
+            } else if (seen > 0 && System.nanoTime() - quietSince >= quietNanos) {
+                return;
+            }
         }
     }
 
@@ -703,7 +735,7 @@ class GathererConcurrencyMisuseDetectorTest {
 
     private static List<Object> gatherQuietly(Object gatherer, int elements) {
         try {
-            return gather(gatherer, elements);
+            return gather(gatherer, elements, null);
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }

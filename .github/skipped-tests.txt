@@ -25,9 +25,6 @@ se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#jdkEval
 se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#detectorFedByARealGathererWithoutACombinerDoesNotClaimLostResults tests/jdk21/*,gradle/jdk21/* # Gatherers are final in JDK 24
 se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#twoParallelStreamsSharingOneStateThroughTheInitializerFire tests/jdk21/*,gradle/jdk21/* # Gatherers are final in JDK 24
 se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#oneParallelStreamHandingItsStateBetweenThreadsStaysSilentOnEnterAndExit tests/jdk21/*,gradle/jdk21/* # Gatherers are final in JDK 24
-# On 24+ it also skips when the JDK keeps all integration on one thread in five attempts, which a
-# loaded runner does: JDK 26 in PR #911's first run, with two surefire forks on a 4-core runner.
-se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#oneParallelStreamHandingItsStateBetweenThreadsStaysSilentOnEnterAndExit? tests/*,gradle/* # needs the JDK to hand the state between threads
 
 # Process.waitFor(Duration) arrived in JDK 25; on 21 the hook's test assumes it and skips.
 se.deversity.asynctest.AgentProcessHooksTest#durationWaitForIsReported tests/jdk21/*,gradle/jdk21/* # Process.waitFor(Duration) is JDK 25+
