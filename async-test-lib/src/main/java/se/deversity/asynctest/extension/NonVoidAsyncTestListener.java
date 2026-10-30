@@ -37,6 +37,7 @@ public final class NonVoidAsyncTestListener implements LauncherDiscoveryListener
 
     /** Called by the launcher through {@code ServiceLoader}. */
     public NonVoidAsyncTestListener() {
+        // Stateless: every decision is made from the issue alone.
     }
 
     @Override
