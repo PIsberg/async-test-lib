@@ -15,8 +15,21 @@ where it was green: those builds were logging `BENCHMARK REGRESSION DETECTED` an
 `mvn clean` build cannot be affected, because the default store lives under `target/` and every
 such run is a first run. To keep the old log-only behaviour, set the option to `false`.
 
+An `@AsyncTest` method that returns a value now fails discovery (see Fixed). Such a method never
+ran, so a build that goes red here was passing without testing it; declare the method `void`.
+
 ### Fixed
 
+- **An `@AsyncTest` that returns a value no longer passes with nothing run (#1119).** JUnit runs
+  no `@TestTemplate` that returns a value and reports it only as a discovery warning, so a body
+  written as `CompletableFuture<Void> body()`, the natural spelling of an async test, started zero
+  tests and left the build green. The extension never sees such a method, so the check is
+  `NonVoidAsyncTestListener`, a launcher discovery listener registered through `ServiceLoader`. It
+  fails the Jupiter engine's discovery with a message naming the method and the fix (declare it
+  `void`, await with `AsyncAssert.awaitAsync`), the way JUnit treats a critical discovery issue,
+  and leaves every other method's issues alone. Adds `junit-platform-launcher` in `provided` scope.
+  `NonVoidAsyncTestFailsTest` runs the real launcher: red before, green after, with a void
+  `@AsyncTest` and a non-void plain `@Test` as the twins that must not fail.
 - **`failOnBenchmarkRegression` never failed a test.** `BenchmarkComparator` throws
   `BenchmarkRegressionException`, a `RuntimeException`, and the runner's cleanup wrapped the
   benchmark step in `catch (Exception)`, logged `Benchmark completion failed` at WARN and let the
