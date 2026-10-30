@@ -97,6 +97,15 @@ ran, so a build that goes red here was passing without testing it; declare the m
   ends while nobody holds the round (its joiner waiting on it, the child already escaped) is marked
   done, not escaped, and hands the round back to the joiner. Both drive the schedule's own hooks
   directly, so neither needs a seam in `ConcurrencyRunner`.
+- **A silent MUST_FIRE corpus row now says what it saw (#1133).** The agent-pairs row
+  `agent_jctoolsHandOff_offererWritesAfterTheOffer` went silent once in about 100 legs and left
+  nothing to tell a feed that lost the takes from a validator that excused them. Every
+  `SILENT but must fire` line now prints the events the row published, and the two hand-off rows
+  add how many polls took another worker's object and how many takes the run's
+  `AtomicityValidator` had recorded (`ownershipTakes()`, a read-only count with no cost on the
+  record path). Zero hand-offs is the premise, hand-offs with zero takes is the feed, takes
+  recorded is the validator. `AtomicityOwnershipTakesTest` and a `CorpusGatesTest` case pin both
+  halves.
 
 ## [1.14.0] - 2026-10-24
 

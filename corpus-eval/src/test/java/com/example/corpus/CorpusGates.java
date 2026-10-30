@@ -724,7 +724,9 @@ final class CorpusGates {
                 wrong.add((shouldFire ? "SILENT but must fire: " : "FIRED but must stay silent: ")
                         + subject.testMethod() + " [" + detectorClass + "] - "
                         + subject.rationale()
-                        + (fired ? "; it said: " + evidenceFor(findings, subject, detectorClass) : ""));
+                        + (fired ? "; it said: " + evidenceFor(findings, subject, detectorClass)
+                                : "; it saw: publishedEvents=" + CorpusRecorder.eventsFor(subject.testMethod())
+                                        + " " + CorpusRecorder.evidenceFor(subject.testMethod())).strip());
                 continue;
             }
             if (shouldFire) {

@@ -1,5 +1,8 @@
 package se.deversity.asynctest.diagnostics;
 
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -432,6 +435,25 @@ public class AtomicityValidator {
     private void recordTaker(int identity, int generation, long threadId) {
         generationTakers.computeIfAbsent(identity, ignored -> new ConcurrentHashMap<>())
                 .putIfAbsent(generation, threadId);
+    }
+
+    /**
+     * {@return how many ownership takes this run has recorded so far}
+     *
+     * <p>Diagnostic, for a hand-off that should have fired and did not (#1133): zero says no take
+     * reached the validator, anything else says the takes arrived and the analysis excused them.
+     * Generation 0's owner named from an offer is not a take. Walks the takers on call, so it adds
+     * nothing to the record path; a call during a run sees what has been drained so far.
+     *
+     * @since 1.15.0
+     */
+    @API(status = Status.INTERNAL)
+    public int ownershipTakes() {
+        int takes = 0;
+        for (Map<Integer, Long> takers : generationTakers.values()) {
+            takes += takers.containsKey(0) ? takers.size() - 1 : takers.size();
+        }
+        return takes;
     }
 
     private @Nullable Long takerOf(int identity, int generation) {

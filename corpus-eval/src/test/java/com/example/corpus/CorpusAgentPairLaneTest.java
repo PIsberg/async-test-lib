@@ -607,6 +607,8 @@ class CorpusAgentPairLaneTest {
         if (theirs != null) {
             theirs.touched++;
         }
+        // Compares references only, so it touches no field and no collection the agent weaves.
+        CorpusRecorder.noteHandOff(theirs != null && theirs != mine);
         everyWorkerIsHere();
         if (offererWritesAgain) {
             mine.touched++;
