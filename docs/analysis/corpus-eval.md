@@ -177,11 +177,13 @@ The cause was not the operating system, the JDK, the core count, the telemetry p
 lock model, all of which were tested and ruled out
 ([#316](https://github.com/PIsberg/async-test-lib/issues/316) records the eleven experiments). It
 was **which test class Surefire ran first.** The library self-attaches its agent from the first
-`@AsyncTest`; retransformation covers the classes loaded at that instant and load-time weaving
-covers everything after, and a class that falls between the two is woven by neither with nothing
-logged. This module builds its subjects in the test class's field initializers, so they land on
-different sides of that line depending on execution order, and the order differs between a
-developer machine and a CI runner. One flag reproduces a CI result on a developer machine:
+`@AsyncTest`. Retransformation covers the classes loaded at that instant and load-time weaving
+covers everything after, but the retransformation pass itself loads classes while it runs:
+describing a class through reflection resolves the types its signatures name, and those types
+were woven by neither, with nothing logged. This module builds its subjects in the test class's
+field initializers, so whether a subject's type was among them depended on execution order, and
+the order differs between a developer machine and a CI runner. One flag reproduces a CI result on
+a developer machine:
 
 ```bash
 mvn -f corpus-eval/pom.xml test -Dsurefire.runOrder=reversealphabetical
@@ -196,9 +198,12 @@ mvn -f corpus-eval/pom.xml test -Dsurefire.runOrder=reversealphabetical
 
 The attached lane now attaches with `-javaagent:` at JVM startup, so `premain` weaves before any
 subject class exists and nothing depends on file order. `CorpusGates` fails the run if that
-changes. The agent-side defect this works around is
-[#321](https://github.com/PIsberg/async-test-lib/issues/321): a user who self-attaches to an
-existing suite can still lose classes the same way.
+changes. The agent-side defect behind it,
+[#321](https://github.com/PIsberg/async-test-lib/issues/321), is fixed in
+[#335](https://github.com/PIsberg/async-test-lib/pull/335): self-attach now re-queries the loaded
+classes until the set stops growing, and after a dynamic attach the agent names any loaded class
+the transformer was never handed ([attaching the agent](../agent/attaching.md), section 3.3). The
+lane keeps the launch flag, which has no attach window at all.
 
 ### What the platforms agree on now
 
