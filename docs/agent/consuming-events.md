@@ -94,7 +94,9 @@ TelemetryRegistry.stop();              // flush + stop the drain thread
 
 `start(callback)` starts the drain thread if it is not already running, or swaps the callback
 if it is. `setCallback(callback)` swaps the callback without touching the running/stopped
-state. The registry holds a single callback — the last writer wins.
+state. The registry holds a single callback — the last writer wins. The drain looks the callback
+up for every event, so an event recorded after a swap reaches the new callback even when a drain
+was already under way; before this a preempted drain could hand it to the callback it replaced.
 
 `stop()` ends event delivery only. The happens-before edges the woven hooks report (queue
 hand-offs, volatile and `AtomicReference` publication) go to the library's own in-memory model,

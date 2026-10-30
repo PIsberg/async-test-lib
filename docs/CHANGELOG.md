@@ -25,9 +25,24 @@ such run is a first run. To keep the old log-only behaviour, set the option to `
   run through, so a body failure or a gated finding still outranks it. The same holds for
   `AsyncTestRunner.run`. `ConcurrencyRunnerBenchmarkTest` went red first: a 20 ms body against an
   empty-body baseline passed.
+- **A run could lose its first agent events to the run before it.** The telemetry drain read its
+  callback once and then drained until the ring was empty, so a drain that began just before a run
+  installed its bridge, and was preempted, delivered the events that run's workers published in the
+  meantime to the callback it had replaced. The run's `AtomicityValidator` never saw them and could
+  report nothing for a real race: `VolatilePublicationWeavingTest` was silent that way once on CI
+  (2026-10-08). The drain now resolves the callback for every event. `TelemetryRegistryTest` holds
+  the drain inside the previous callback while the next one is installed, and went red first with
+  the new event delivered to the old callback.
 
 ### Maintenance
 
+- **Gradle jobs no longer depend on a warm cache to resolve plugins.** `plugins.gradle.org`
+  answers every artifact download with a 303 to `plugins-artifacts.gradle.org`, which no
+  harden-runner list in `gradle-tests.yml` or `load-tests.yml` admitted, so a plugin missing from
+  the Gradle cache failed with "Temporary failure in name resolution"; the IntelliJ test job also
+  lacked `data.services.jetbrains.com`, which its `:test` now reads. Both failed twice on PR #1134.
+  Every blocking job that admits the portal now admits its artifact host, and
+  `HardenRunnerEndpointsTest` fails when one does not.
 - **The licence checks' comparisons now have tests that can fail.** Two authorization defects
   passed all 53 licence tests on main, each checked by hand: an `OfflineLicense` email comparison
   that accepted any address of the licensed text's length (every existing case differed in

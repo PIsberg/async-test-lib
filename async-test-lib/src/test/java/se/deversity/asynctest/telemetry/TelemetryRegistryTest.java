@@ -113,25 +113,46 @@ class TelemetryRegistryTest {
             latch.countDown();
         });
 
-        // A drain cycle that started before the callback swap can consume the first
-        // recorded event with the previous (no-op default) callback, so a single record
-        // can be silently discarded. Re-record until the new callback observes an event;
-        // once the swap is fully visible every drain uses the new callback. This makes the
-        // test deterministic without depending on the swap/drain interleaving or CI timing.
-        long deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        boolean delivered = false;
-        while (System.nanoTime() < deadlineNanos) {
-            TelemetryRegistry.recordAccess(Thread.currentThread().threadId(), "SecondService", "getUser");
-            if (latch.await(100, TimeUnit.MILLISECONDS)) {
-                delivered = true;
-                break;
-            }
-        }
+        // One record is enough: a drain that began with the previous (no-op default) callback
+        // still hands an event recorded after the swap to the new one.
+        TelemetryRegistry.recordAccess(Thread.currentThread().threadId(), "SecondService", "getUser");
 
-        assertTrue(delivered, "Updated telemetry callback was not invoked");
-        // May be delivered more than once if an early record survived the swap; the
-        // contract under test is that the new callback receives the recorded access.
-        assertTrue(events.contains("SecondService#getUser"),
-                "updated callback should receive the recorded access; got " + events);
+        assertTrue(latch.await(5, TimeUnit.SECONDS), "Updated telemetry callback was not invoked");
+        assertEquals(List.of("SecondService#getUser"), events,
+                "updated callback should receive the recorded access once");
+    }
+
+    @Test
+    void anEventRecordedAfterTheSwapReachesTheNewCallbackThoughADrainWasUnderway() throws Exception {
+        CountDownLatch holding = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        List<String> previous = Collections.synchronizedList(new ArrayList<>());
+        List<String> current = Collections.synchronizedList(new ArrayList<>());
+        TelemetryRegistry.start((tid, targetField, isWrite) -> {
+            previous.add(targetField);
+            if ("Earlier#run".equals(targetField)) {
+                holding.countDown();
+                try {
+                    release.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        });
+        long self = Thread.currentThread().threadId();
+        TelemetryRegistry.recordAccess(self, "Earlier", "run");
+        assertTrue(holding.await(5, TimeUnit.SECONDS), "the drain never delivered the first event");
+
+        // The drain thread is inside a drain that began with the previous callback, as one
+        // preempted on a loaded runner is when the next run's bridge takes the slot.
+        TelemetryRegistry.setCallback((tid, targetField, isWrite) -> current.add(targetField));
+        TelemetryRegistry.recordAccess(self, "Next", "run");
+        release.countDown();
+        TelemetryRegistry.flush();
+
+        assertEquals(List.of("Next#run"), current,
+                "an event recorded after the swap went to the callback it replaced, so the run that "
+                        + "took the slot never saw it (VolatilePublicationWeavingTest, 2026-10-08); "
+                        + "the previous callback got " + previous);
     }
 }

@@ -176,6 +176,42 @@ class HardenRunnerEndpointsTest {
                         + "scan stopped matching, which is not a pass.");
     }
 
+    /** The Gradle Plugin Portal, whose artifact downloads answer with a redirect. */
+    private static final String PLUGIN_PORTAL = "plugins.gradle.org:443";
+
+    /** Where the portal sends every artifact download, with a 303. */
+    private static final String PLUGIN_ARTIFACTS = "plugins-artifacts.gradle.org:443";
+
+    @Test
+    @DisplayName("a blocking job that admits the Gradle Plugin Portal admits its artifact host too")
+    void aJobAdmittingThePluginPortalAdmitsItsArtifactHost() {
+        List<String> missing = new ArrayList<>();
+        int checked = 0;
+        for (Path file : yamlFiles(repoRoot().resolve(".github/workflows"))) {
+            String relative = repoRoot().relativize(file).toString().replace('\\', '/');
+            for (List<String> job : jobsOf(readLines(file))) {
+                String body = String.join("\n", job);
+                if (!body.contains("egress-policy: block") || !body.contains(PLUGIN_PORTAL)) {
+                    continue;
+                }
+                checked++;
+                if (!body.contains(PLUGIN_ARTIFACTS)) {
+                    missing.add(relative + ": " + job.get(0).strip());
+                }
+            }
+        }
+        assertTrue(missing.isEmpty(),
+                "These jobs admit " + PLUGIN_PORTAL + " behind an egress block but not "
+                        + PLUGIN_ARTIFACTS + ", where the portal redirects every artifact download. "
+                        + "They stay green only while the Gradle cache already holds every plugin: "
+                        + "Gradle Examples Shard 0 on PR #1134 (2026-10-29) failed twice resolving "
+                        + "kotlin-gradle-plugin with 'Temporary failure in name resolution' for "
+                        + PLUGIN_ARTIFACTS + ":\n  " + String.join("\n  ", missing));
+        assertTrue(checked >= 2,
+                "Matched " + checked + " blocking jobs that admit the plugin portal; gradle-tests.yml "
+                        + "alone has several. Fewer means the scan stopped matching, which is not a pass.");
+    }
+
     /** The lines of each job under {@code jobs:}, its key line first. */
     private static List<List<String>> jobsOf(List<String> lines) {
         List<List<String>> jobs = new ArrayList<>();

@@ -5,9 +5,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.concurrent.CountDownLatch;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * record". The cost is paid once per JVM, on a machine with no record yet, before the online
  * validation that would follow anyway.
  *
- * <p>This stages the gap directly: a thread deletes the record and writes it back 30 ms later, and
+ * <p>This stages the gap directly: a thread renames the record away and back 30 ms later, and
  * {@code isFresh} is asked while it is gone. Platform-independent, so it runs in every leg.
  */
 class LicenseValidationCacheMissingForAMomentTest {
@@ -56,14 +56,18 @@ class LicenseValidationCacheMissingForAMomentTest {
     void aRecordGoneForAMomentStillReadsAsFresh() throws Exception {
         LicenseValidationCache.record(HASH);
         Path record = cacheDir.resolve("validation-" + HASH + ".ok");
-        String content = Files.readString(record, StandardCharsets.UTF_8);
+        Path aside = cacheDir.resolve("aside.tmp");
         CountDownLatch gone = new CountDownLatch(1);
         Thread replacer = new Thread(() -> {
             try {
-                Files.delete(record);
+                // Renamed away and back, never rewritten: Files.writeString creates the file empty
+                // before it writes, and a retry landing in that instant read "" and answered false
+                // in 134 ms, well inside the 255 ms bound (Test Suite (25), 2026-10-27, job
+                // 122536020497). record() never leaves a partial file, so neither may the fixture.
+                Files.move(record, aside, StandardCopyOption.ATOMIC_MOVE);
                 gone.countDown();
                 Thread.sleep(30);
-                Files.writeString(record, content, StandardCharsets.UTF_8);
+                Files.move(aside, record, StandardCopyOption.ATOMIC_MOVE);
             } catch (Exception e) {
                 throw new IllegalStateException(e);
             }
