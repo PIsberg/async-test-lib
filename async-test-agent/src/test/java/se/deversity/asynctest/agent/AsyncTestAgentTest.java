@@ -179,6 +179,25 @@ class AsyncTestAgentTest {
     }
 
     @Test
+    void ignoreMatcher_weavesKotlinMultifileFacadeParts() {
+        // Kotlin compiles the parts of a multifile facade (@file:JvmMultifileClass) to classes
+        // named Facade__Part and flags them synthetic. They hold ordinary top-level functions:
+        // kotlinx's newSingleThreadContext builds its executor in
+        // ThreadPoolDispatcherKt__ThreadPoolDispatcherKt, and ignoring that class left the
+        // Executors.unconfigurableExecutorService call in it unwoven (#1107).
+        TypeDescription facadePart = new ByteBuddy()
+                .subclass(Object.class)
+                .name("kotlinx.coroutines.ThreadPoolDispatcherKt__ThreadPoolDispatcherKt")
+                .modifiers(Visibility.PUBLIC, SyntheticState.SYNTHETIC)
+                .make()
+                .getTypeDescription();
+
+        assertTrue(facadePart.isSynthetic(), "fixture precondition: type must be synthetic");
+        assertFalse(AsyncTestAgent.ignoreMatcher().matches(facadePart),
+                "a Kotlin multifile facade part is ordinary code and must stay a candidate");
+    }
+
+    @Test
     void ignoreMatcher_ignoresOwnLibraryClasses() {
         assertTrue(AsyncTestAgent.ignoreMatcher()
                         .matches(TypeDescription.ForLoadedType.of(TelemetryRegistry.class)),

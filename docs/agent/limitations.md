@@ -22,8 +22,8 @@ Part of the [Agent Instrumentation Guide](../AGENT.md).
   the pipeline was live while that held), and `FieldWeavingEndToEndTest` attaches with it and
   requires the opposite.
 - **JDK and framework classes are never instrumented.** Anything under `java.`/`jdk.`/`sun.`/
-  `com.sun.`, Byte Buddy, this library, synthetic types, and bootstrap-loaded types are
-  excluded by design.
+  `com.sun.`, Byte Buddy, this library, synthetic types other than Kotlin multifile facade parts
+  (#1107), and bootstrap-loaded types are excluded by design.
 - **A serializable method reference is not woven.** A method reference such as `builder::append`
 or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from a hidden class
   no agent can weave. The weaver points the lambda factory at the hook instead, so those calls are
@@ -42,7 +42,8 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   forwarded: a thread a worker starts through a woven `Thread.start`, `Thread.Builder` start or
   `Thread.startVirtualThread` (#834), and a pool thread while it runs a task a worker submitted
   to a JDK executor (#745), registered as a dependent `CompletableFuture` stage, or executed on a
-  `ForkJoinPool`, `ScheduledThreadPoolExecutor` or virtual-thread-per-task executor (#741). Accesses
+  `ForkJoinPool`, `ScheduledThreadPoolExecutor` or virtual-thread-per-task executor (#741), or an
+  `Executors.unconfigurable*` wrapper around one that a woven call made (#1107). Accesses
   on other application threads during the round, a thread started in unwoven code or a task given
   to a `ThreadPoolExecutor`'s `execute` included, are treated as noise and dropped. The
   shared-instance hooks (a `MessageDigest`, a `Calendar`, a `SimpleDateFormat` and the rest) reach

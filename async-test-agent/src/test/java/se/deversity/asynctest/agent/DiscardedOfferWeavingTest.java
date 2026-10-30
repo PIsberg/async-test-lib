@@ -718,6 +718,16 @@ class DiscardedOfferWeavingTest {
             return java.util.concurrent.Executors.newThreadPerTaskExecutor(f);
         }
 
+        public static java.util.concurrent.ExecutorService unconfigurableExecutorService(
+                java.util.concurrent.ExecutorService e) {
+            return java.util.concurrent.Executors.unconfigurableExecutorService(e);
+        }
+
+        public static java.util.concurrent.ScheduledExecutorService unconfigurableScheduledExecutorService(
+                java.util.concurrent.ScheduledExecutorService e) {
+            return java.util.concurrent.Executors.unconfigurableScheduledExecutorService(e);
+        }
+
         public static Object exchange(java.util.concurrent.Exchanger<Object> x, Object item)
                 throws InterruptedException {
             return x.exchange(item);

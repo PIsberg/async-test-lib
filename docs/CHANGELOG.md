@@ -20,6 +20,21 @@ ran, so a build that goes red here was passing without testing it; declare the m
 
 ### Fixed
 
+- **A coroutine on `newSingleThreadContext` now reaches the detectors (#1107).** kotlinx wraps that
+  dispatcher's `ScheduledThreadPoolExecutor` in `Executors.unconfigurableExecutorService`, and the
+  woven `execute` hands a task, and with it the run, to a pool thread only on the JDK's own pool
+  classes by exact class, so the wrapper's thread was never attributed and nothing a coroutine did
+  on it was seen. The agent now weaves `Executors.unconfigurableExecutorService` and
+  `unconfigurableScheduledExecutorService`, remembers each wrapper's delegate weakly, and `execute`
+  judges a wrapper by the executor behind it, so a wrapped `ThreadPoolExecutor`, which hands its task
+  back, is still left unwrapped. `AgentHappensBeforeFeedTest` pins both directions (red before), and
+  `KotlinRunBlockingInsideACoroutineIsReportedTest` gained a `newSingleThreadContext` case that
+  failed against the previous jar with exactly this gap. That case also showed why the factory
+  call was never seen: kotlinx makes the wrapper in `ThreadPoolDispatcherKt__ThreadPoolDispatcherKt`,
+  a Kotlin multifile facade part, which the compiler flags synthetic and the agent ignored with
+  every other synthetic type. Facade parts (`...Kt__...`) are now woven; lambda classes and other
+  synthetic types are still ignored (`AsyncTestAgentTest`, red before). A wrapper made in code the
+  agent does not weave is not looked through.
 - **An `@AsyncTest` that returns a value no longer passes with nothing run (#1119).** JUnit runs
   no `@TestTemplate` that returns a value and reports it only as a discovery warning, so a body
   written as `CompletableFuture<Void> body()`, the natural spelling of an async test, started zero

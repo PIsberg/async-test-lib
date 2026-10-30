@@ -127,8 +127,8 @@ no longer bound.
 
 **Scope guards** re-establish Byte Buddy's default ignores (a bare `ignore(...)` would replace
 them), preventing recursive instrumentation of `java.*`, `jdk.*`, `sun.*`, `com.sun.*`,
-`net.bytebuddy.*`, and `se.deversity.asynctest.*` itself, plus synthetic and bootstrap-loaded
-types. `agentArgs` (parsed by `AgentOptions`) tunes scope: `includes=` narrows the positive
+`net.bytebuddy.*`, and `se.deversity.asynctest.*` itself, plus synthetic (bar Kotlin multifile
+facade parts, #1107) and bootstrap-loaded types. `agentArgs` (parsed by `AgentOptions`) tunes scope: `includes=` narrows the positive
 match to the named prefixes; `excludes=` appends extra ignore prefixes; `debug=true` turns on
 the `DiagnosticListener`'s verbose logging (per-type `Instrumented` lines + full error stack
 traces). Absent/blank args preserve the default `any()` behavior. A `DiagnosticListener`
