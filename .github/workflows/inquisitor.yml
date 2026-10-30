@@ -9,7 +9,13 @@
 # preflight job's summary says SKIPPED and the review job is reported skipped, which is not a
 # pass. Fork PRs receive neither secret, so they always skip. The job is intentionally not in the
 # required-checks set while it earns trust; promote it once its verdict record justifies
-# blocking merges. copilot-review.yml is the always-available advisory lane meanwhile.
+# blocking merges. copilot-review.yml is the secret-free advisory lane meanwhile.
+#
+# Runs only on request (#1137): adding the `adversarial-review` label to a pull request starts one
+# review, and removing and re-adding it starts the next. A review on every push spent the
+# subscription quota on work-in-progress nobody had asked a reviewer to read. A label added to a
+# pull request whose diff touches only the ignored paths below starts nothing.
+# AdversarialReviewOnRequestTest pins the trigger and the label gate.
 #
 # Each run is a fresh context: no conversation history, no session memory. That separation
 # is the point, not an accident. Model pinned by exact ID below and recorded in
@@ -20,6 +26,7 @@ name: Inquisitor
 
 on:
   pull_request:
+    types: [labeled]
     # Prose and pictures cannot change what this workflow reviews. Kept narrow on purpose:
     # no source, build file or workflow path is listed. The workflows carrying a required
     # status context are deliberately not filtered - a required check that never reports
@@ -44,6 +51,8 @@ jobs:
   # would then let a pull request through instead of blocking it (#868).
   preflight:
     name: Check for the review key
+    # Any other label starts this workflow too; only the review label starts a review.
+    if: github.event.label.name == 'adversarial-review'
     runs-on: ubuntu-latest
     outputs:
       has-key: ${{ steps.key.outputs.has-key }}

@@ -36,6 +36,13 @@ such run is a first run. To keep the old log-only behaviour, set the option to `
 
 ### Maintenance
 
+- **The two machine review lanes run only when asked (#1137).** The Inquisitor reran on every
+  push to every pull request and the Copilot lane on every opened one, spending the subscription
+  token and the Copilot Free quota on work-in-progress nobody had asked a reviewer to read. Both
+  now trigger on the `adversarial-review` label alone: adding it requests one review, removing and
+  re-adding it the next. `AdversarialReviewOnRequestTest` fails when either lane triggers on any
+  other event type or runs its first job for a label other than that one; it went red on both
+  workflows before the change and on a gate replaced by `if: always()` after.
 - **Gradle jobs no longer depend on a warm cache to resolve plugins.** `plugins.gradle.org`
   answers every artifact download with a 303 to `plugins-artifacts.gradle.org`, which no
   harden-runner list in `gradle-tests.yml` or `load-tests.yml` admitted, so a plugin missing from
