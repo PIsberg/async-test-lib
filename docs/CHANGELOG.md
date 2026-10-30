@@ -92,6 +92,11 @@ ran, so a build that goes red here was passing without testing it; declare the m
   for each: an adopted task its executor cannot start (1), an adopted child that blocks before its
   first point (1), one that ends before its first point (0: done, not escaped), and a worker
   interrupted while it waits for its turn (1). Each went red with its own branch changed by hand.
+  The two branches that issue left open now have tests too, in `ControlledScheduleWatchTest`: a
+  round whose second worker never joins starts without it and counts one escape, and a child that
+  ends while nobody holds the round (its joiner waiting on it, the child already escaped) is marked
+  done, not escaped, and hands the round back to the joiner. Both drive the schedule's own hooks
+  directly, so neither needs a seam in `ConcurrencyRunner`.
 
 ## [1.14.0] - 2026-10-24
 
