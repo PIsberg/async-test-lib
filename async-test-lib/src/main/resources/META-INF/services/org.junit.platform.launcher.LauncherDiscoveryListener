@@ -1,0 +1,2 @@
+# Fails discovery for an @AsyncTest method that returns a value, which JUnit skips silently (#1119).
+se.deversity.asynctest.extension.NonVoidAsyncTestListener

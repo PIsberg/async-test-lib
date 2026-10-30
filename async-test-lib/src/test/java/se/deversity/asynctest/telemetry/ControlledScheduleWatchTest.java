@@ -127,4 +127,74 @@ class ControlledScheduleWatchTest {
             schedule.close();
         }
     }
+
+    @Test
+    void aWorkerThatNeverJoinsIsCountedAsAnEscape() throws Exception {
+        // watch()'s !started branch (#1117): a round of two whose second worker never calls
+        // enter(), as when it fails between the start barrier and the body. The first must not
+        // wait out the round, and starting without the second is a decision no seed replays.
+        ControlledSchedule schedule = ControlledSchedule.open(2, 7L);
+        CountDownLatch ran = new CountDownLatch(1);
+        Thread worker = new Thread(() -> {
+            schedule.enter(0);
+            ran.countDown();
+            schedule.leave();
+        }, "the-worker-that-joined");
+        try {
+            worker.start();
+            assertTrue(ran.await(10, TimeUnit.SECONDS),
+                    "the worker that joined waited for one that never will");
+            worker.join(TimeUnit.SECONDS.toMillis(10));
+            assertEquals(1, schedule.summary().escapes(),
+                    "starting the round without a worker is one escape");
+        } finally {
+            schedule.close();
+        }
+    }
+
+    @Test
+    void aChildThatEndsWhileNobodyRunsIsDone_andTheJoinerGetsTheRound() throws Exception {
+        // watch()'s started && childEnded() branch (#1117). The only worker adopts a child that
+        // blocks before its first point and then waits to join it: the child, granted the round,
+        // escapes (1), and with the worker joining a child that is not done nobody can run, so the
+        // round is held by no one. The child then ends. Only childEnded() notices that; without it
+        // the joiner waits until the round is closed.
+        ControlledSchedule schedule = ControlledSchedule.open(1, 7L);
+        CountDownLatch release = new CountDownLatch(1);
+        Thread child = new Thread(() -> {
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "blocked-child");
+        CountDownLatch joined = new CountDownLatch(1);
+        Thread worker = new Thread(() -> {
+            schedule.enter(0);
+            ControlledSchedule.starting(child);
+            child.start();
+            ControlledSchedule.joining(child);
+            joined.countDown();
+            schedule.leave();
+        }, "joining-worker");
+        try {
+            worker.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (schedule.summary().escapes() < 1 && System.nanoTime() < deadline) {
+                Thread.onSpinWait();
+            }
+            assertEquals(1, schedule.summary().escapes(), "the blocked child escapes once");
+            release.countDown();
+            child.join(TimeUnit.SECONDS.toMillis(10));
+
+            assertTrue(joined.await(10, TimeUnit.SECONDS),
+                    "the child ended while nobody held the round, and the joiner never got it back");
+            worker.join(TimeUnit.SECONDS.toMillis(10));
+            assertEquals(1, schedule.summary().escapes(),
+                    "a child that ended is done, not a second escape");
+        } finally {
+            release.countDown();
+            schedule.close();
+        }
+    }
 }

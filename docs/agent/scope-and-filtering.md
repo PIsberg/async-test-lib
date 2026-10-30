@@ -19,7 +19,10 @@ with any of:
 | `se.deversity.asynctest.` | This library — the telemetry pipeline must not observe itself. |
 
 Additionally ignored:
-- **Synthetic types** (`ElementMatchers.isSynthetic()`) — e.g. lambda classes.
+- **Synthetic types** (`ElementMatchers.isSynthetic()`) — e.g. lambda classes. A Kotlin multifile
+  facade part (`FacadeKt__Part`) is the exception: the compiler flags it synthetic, but it holds
+  ordinary top-level functions, such as the one kotlinx's `newSingleThreadContext` builds its
+  executor in, so it is woven like any other class (#1107).
 - **Bootstrap-class-loader types** — every type loaded by the bootstrap loader (a
   class-loader-scoped check applied at the install site).
 

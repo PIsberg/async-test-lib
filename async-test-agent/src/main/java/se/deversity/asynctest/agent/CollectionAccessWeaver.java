@@ -48,6 +48,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -866,6 +867,13 @@ final class CollectionAccessWeaver {
                     "newVirtualThreadPerTaskExecutor"),
             Entry.staticCall(Executors.class, "newThreadPerTaskExecutor", "newThreadPerTaskExecutor",
                     ThreadFactory.class),
+            // The unconfigurable wrappers, so a woven execute on one is decided by the executor it
+            // forwards to: kotlinx's newSingleThreadContext wraps a ScheduledThreadPoolExecutor
+            // this way, and its thread was never attributed to the run (#1107).
+            Entry.staticCall(Executors.class, "unconfigurableExecutorService",
+                    "unconfigurableExecutorService", ExecutorService.class),
+            Entry.staticCall(Executors.class, "unconfigurableScheduledExecutorService",
+                    "unconfigurableScheduledExecutorService", ScheduledExecutorService.class),
             Entry.call(Exchanger.class, "exchange", "exchange", Object.class),
             Entry.call(Exchanger.class, "exchange", "exchange", Object.class, long.class,
                     TimeUnit.class),

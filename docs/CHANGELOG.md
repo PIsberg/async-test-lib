@@ -15,8 +15,36 @@ where it was green: those builds were logging `BENCHMARK REGRESSION DETECTED` an
 `mvn clean` build cannot be affected, because the default store lives under `target/` and every
 such run is a first run. To keep the old log-only behaviour, set the option to `false`.
 
+An `@AsyncTest` method that returns a value now fails discovery (see Fixed). Such a method never
+ran, so a build that goes red here was passing without testing it; declare the method `void`.
+
 ### Fixed
 
+- **A coroutine on `newSingleThreadContext` now reaches the detectors (#1107).** kotlinx wraps that
+  dispatcher's `ScheduledThreadPoolExecutor` in `Executors.unconfigurableExecutorService`, and the
+  woven `execute` hands a task, and with it the run, to a pool thread only on the JDK's own pool
+  classes by exact class, so the wrapper's thread was never attributed and nothing a coroutine did
+  on it was seen. The agent now weaves `Executors.unconfigurableExecutorService` and
+  `unconfigurableScheduledExecutorService`, remembers each wrapper's delegate weakly, and `execute`
+  judges a wrapper by the executor behind it, so a wrapped `ThreadPoolExecutor`, which hands its task
+  back, is still left unwrapped. `AgentHappensBeforeFeedTest` pins both directions (red before), and
+  `KotlinRunBlockingInsideACoroutineIsReportedTest` gained a `newSingleThreadContext` case that
+  failed against the previous jar with exactly this gap. That case also showed why the factory
+  call was never seen: kotlinx makes the wrapper in `ThreadPoolDispatcherKt__ThreadPoolDispatcherKt`,
+  a Kotlin multifile facade part, which the compiler flags synthetic and the agent ignored with
+  every other synthetic type. Facade parts (`...Kt__...`) are now woven; lambda classes and other
+  synthetic types are still ignored (`AsyncTestAgentTest`, red before). A wrapper made in code the
+  agent does not weave is not looked through.
+- **An `@AsyncTest` that returns a value no longer passes with nothing run (#1119).** JUnit runs
+  no `@TestTemplate` that returns a value and reports it only as a discovery warning, so a body
+  written as `CompletableFuture<Void> body()`, the natural spelling of an async test, started zero
+  tests and left the build green. The extension never sees such a method, so the check is
+  `NonVoidAsyncTestListener`, a launcher discovery listener registered through `ServiceLoader`. It
+  fails the Jupiter engine's discovery with a message naming the method and the fix (declare it
+  `void`, await with `AsyncAssert.awaitAsync`), the way JUnit treats a critical discovery issue,
+  and leaves every other method's issues alone. Adds `junit-platform-launcher` in `provided` scope.
+  `NonVoidAsyncTestFailsTest` runs the real launcher: red before, green after, with a void
+  `@AsyncTest` and a non-void plain `@Test` as the twins that must not fail.
 - **`failOnBenchmarkRegression` never failed a test.** `BenchmarkComparator` throws
   `BenchmarkRegressionException`, a `RuntimeException`, and the runner's cleanup wrapped the
   benchmark step in `catch (Exception)`, logged `Benchmark completion failed` at WARN and let the
@@ -36,6 +64,13 @@ such run is a first run. To keep the old log-only behaviour, set the option to `
 
 ### Maintenance
 
+- **The two machine review lanes run only when asked (#1137).** The Inquisitor reran on every
+  push to every pull request and the Copilot lane on every opened one, spending the subscription
+  token and the Copilot Free quota on work-in-progress nobody had asked a reviewer to read. Both
+  now trigger on the `adversarial-review` label alone: adding it requests one review, removing and
+  re-adding it the next. `AdversarialReviewOnRequestTest` fails when either lane triggers on any
+  other event type or runs its first job for a label other than that one; it went red on both
+  workflows before the change and on a gate replaced by `if: always()` after.
 - **Gradle jobs no longer depend on a warm cache to resolve plugins.** `plugins.gradle.org`
   answers every artifact download with a 303 to `plugins-artifacts.gradle.org`, which no
   harden-runner list in `gradle-tests.yml` or `load-tests.yml` admitted, so a plugin missing from
@@ -72,6 +107,20 @@ such run is a first run. To keep the old log-only behaviour, set the option to `
   for each: an adopted task its executor cannot start (1), an adopted child that blocks before its
   first point (1), one that ends before its first point (0: done, not escaped), and a worker
   interrupted while it waits for its turn (1). Each went red with its own branch changed by hand.
+  The two branches that issue left open now have tests too, in `ControlledScheduleWatchTest`: a
+  round whose second worker never joins starts without it and counts one escape, and a child that
+  ends while nobody holds the round (its joiner waiting on it, the child already escaped) is marked
+  done, not escaped, and hands the round back to the joiner. Both drive the schedule's own hooks
+  directly, so neither needs a seam in `ConcurrencyRunner`.
+- **A silent MUST_FIRE corpus row now says what it saw (#1133).** The agent-pairs row
+  `agent_jctoolsHandOff_offererWritesAfterTheOffer` went silent once in about 100 legs and left
+  nothing to tell a feed that lost the takes from a validator that excused them. Every
+  `SILENT but must fire` line now prints the events the row published, and the two hand-off rows
+  add how many polls took another worker's object and how many takes the run's
+  `AtomicityValidator` had recorded (`ownershipTakes()`, a read-only count with no cost on the
+  record path). Zero hand-offs is the premise, hand-offs with zero takes is the feed, takes
+  recorded is the validator. `AtomicityOwnershipTakesTest` and a `CorpusGatesTest` case pin both
+  halves.
 
 ## [1.14.0] - 2026-10-24
 

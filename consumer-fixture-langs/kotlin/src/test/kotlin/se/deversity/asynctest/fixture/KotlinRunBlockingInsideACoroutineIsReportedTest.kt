@@ -15,10 +15,11 @@ import se.deversity.asynctest.FailOn
  * whose thread is a plain `Thread`. Both are recognised by the `kotlinx.coroutines` frames below
  * the call, so the thread class says nothing and the rule still fires.
  *
- * The dispatcher is a bare `ScheduledThreadPoolExecutor`, created and closed inside each call: the
- * woven `execute` hands its task, and the run, to that pool class, so the thread is attributed while
- * the task runs. `newSingleThreadContext` wraps its pool in a wrapper the hook does not look through
- * and its thread is never attributed (#1107), which is why it is not the subject here.
+ * The executor dispatcher is created and closed inside each call, once as a bare
+ * `ScheduledThreadPoolExecutor` and once through kotlinx's `newSingleThreadContext`, which wraps
+ * the same pool class in `Executors.unconfigurableExecutorService`. The woven `execute` hands the
+ * task, and the run, to the pool behind either, so the thread is attributed while the task runs;
+ * before #1107 the wrapped one never was.
  */
 class KotlinRunBlockingInsideACoroutineIsReportedTest {
 
@@ -39,9 +40,16 @@ class KotlinRunBlockingInsideACoroutineIsReportedTest {
                     .map { it.attributes()["report"].toString() }
                     .filter { it.contains("blocked in runBlocking") && it.contains("inside a coroutine (") }
                 assertTrue(
-                    reports.any { !it.contains("single-thread-dispatcher") },
+                    reports.any { !it.contains("single-thread-dispatcher") && !it.contains("single-thread-context") },
                     "a runBlocking nested in another, on the run's own thread, was not reported. " +
                         "Findings were: " + findings.violations()
+                )
+                assertTrue(
+                    reports.any { it.contains("single-thread-context") },
+                    "a runBlocking on newSingleThreadContext was not reported: the woven execute did " +
+                        "not look through Executors.unconfigurableExecutorService to the pool behind " +
+                        "it, so its thread was never attributed to the run (#1107). Findings were: " +
+                        findings.violations()
                 )
                 assertTrue(
                     reports.any { it.contains("single-thread-dispatcher") },
@@ -80,5 +88,17 @@ class KotlinRunBlockingInsideACoroutineIsReportedTest {
     )
     fun runBlockingOnASingleThreadDispatcher() {
         bridges.lookupOnASingleThreadDispatcher()
+    }
+
+    @AsyncTest(
+        threads = 4,
+        invocations = 4,
+        failOn = FailOn.NONE,
+        licenseMockMode = true,
+        timeoutMs = 60_000,
+        includes = [DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD]
+    )
+    fun runBlockingOnNewSingleThreadContext() {
+        bridges.lookupOnNewSingleThreadContext()
     }
 }

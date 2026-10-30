@@ -27,6 +27,7 @@ consumers must be able to live with.
 | `org.slf4j:slf4j-api` | `slf4j.version` | The diagnostic channel ([logging conventions](architecture/logging.md)). API only — the consumer's build chooses the backend, and a library that ships one would hijack somebody else's build log. |
 | `org.apiguardian:apiguardian-api` | `apiguardian.version` | `@API` stability markers on public types, so consumers can see which surface is settled and which is experimental. |
 | `se.deversity.common:common-license-lib` | `common-license-lib.version` | First-party, not third-party — listed for completeness. Implements the license guard (`LicenseGuard`); mock mode (`-Dlicense.mock.mode=true`) removes the network from tests and CI. |
+| `org.junit.platform:junit-platform-launcher` | `junit.platform.version` | `NonVoidAsyncTestListener` is a `LauncherDiscoveryListener`, the one hook that sees an `@AsyncTest` method JUnit drops for returning a value (#1119). `provided` scope: Surefire, Gradle and the IDEs bring their own launcher, which is also the only thing that reads the service entry. |
 | `org.jspecify:jspecify` | `jspecify.version` | Nullness annotations (`@Nullable`) that NullAway enforces at compile time. `provided` scope and CLASS retention: it never reaches a consumer's runtime classpath. |
 
 ## 2. Confined to a sibling artifact

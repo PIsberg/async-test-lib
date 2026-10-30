@@ -580,6 +580,9 @@ public final class AsyncTestAgent {
             String.join(".", "net", "bytebuddy") + ".",
             "se.deversity.asynctest.");
 
+    /** What a Kotlin multifile facade part's name carries between facade and part (#1107). */
+    private static final String KOTLIN_FACADE_PART = "Kt__";
+
     /**
      * Builds the type-level ignore matcher used by {@link #premain} to keep
      * instrumentation off the JDK, Byte Buddy, this library, and synthetic types.
@@ -588,7 +591,10 @@ public final class AsyncTestAgent {
      * {@code java.}, {@code jdk.}, {@code sun.}, {@code com.sun.},
      * {@code net.bytebuddy.} or {@code se.deversity.asynctest.}, or when the type is
      * {@linkplain ElementMatchers#isSynthetic() synthetic} (for example, a lambda
-     * class). {@code premain} additionally ignores bootstrap-loaded types via a class
+     * class). A Kotlin multifile facade part, named {@code FacadeKt__Part}, is the one
+     * synthetic type kept: the compiler flags it synthetic, but it holds ordinary top-level
+     * functions, and ignoring it left kotlinx's {@code newSingleThreadContext} executor
+     * unwoven (#1107). {@code premain} additionally ignores bootstrap-loaded types via a class
      * loader matcher; that check is class-loader-scoped and therefore lives at the call
      * site rather than in this type-only matcher.
      *
@@ -598,7 +604,8 @@ public final class AsyncTestAgent {
      * @return an ignore matcher over {@link TypeDescription}
      */
     static ElementMatcher.Junction<TypeDescription> ignoreMatcher() {
-        ElementMatcher.Junction<TypeDescription> matcher = ElementMatchers.isSynthetic();
+        ElementMatcher.Junction<TypeDescription> matcher = ElementMatchers.<TypeDescription>isSynthetic()
+                .and(ElementMatchers.not(ElementMatchers.nameContains(KOTLIN_FACADE_PART)));
         for (String prefix : IGNORED_PREFIXES) {
             matcher = matcher.or(ElementMatchers.nameStartsWith(prefix));
         }

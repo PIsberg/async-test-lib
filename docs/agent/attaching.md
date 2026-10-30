@@ -285,8 +285,8 @@ dispatcher, on a thread that must not block, and on any thread whose stack holds
 `kotlinx.coroutines` frame below the call, which is how a `runBlocking` nested in another, or one
 on an executor dispatcher's plain thread, is seen without a thread class to classify
 (`KotlinRunBlockingInsideACoroutineIsReportedTest`); that thread must still be the run's, which
-the woven `execute` makes it on a bare JDK pool and not through the wrapper
-`newSingleThreadContext` adds (#1107). Both the calling code's package and
+the woven `execute` makes it on a bare JDK pool and through the
+`Executors.unconfigurableExecutorService` wrapper `newSingleThreadContext` adds (#1107). Both the calling code's package and
 `kotlinx.coroutines` belong in `includes=`: the first so the call site is woven, the second so the
 dispatcher worker is attributed to the run (`RunBlockingWeavingTest`, `RunBlockingSparesTheCallerTest`,
 and with real kotlinx `consumer-fixture-langs/kotlin`).
@@ -417,7 +417,9 @@ function, since it might hand it back. A `CompletableFuture` never does, so the 
 seen.
 `Executor.execute` runs its task wrapped, ordered after the call, on the JDK executors that never
 hand a task back: `ForkJoinPool`, `ScheduledThreadPoolExecutor` and the virtual-thread-per-task
-executor, matched by exact class (#741). On a `ThreadPoolExecutor`, which returns the task itself
+executor, matched by exact class (#741), and an `Executors.unconfigurableExecutorService` or
+`unconfigurableScheduledExecutorService` wrapper a woven call made, judged by the executor it
+forwards to (#1107). On a `ThreadPoolExecutor`, which returns the task itself
 from `getQueue`, `shutdownNow` and `remove`, on a subclass of any of them, and on an executor
 outside the JDK, it is not an edge. With `fields=true`, a volatile write releases that field
 of its object, and a read of the same field acquires at the read what the write whose value it

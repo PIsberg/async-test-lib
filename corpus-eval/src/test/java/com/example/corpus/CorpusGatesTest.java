@@ -289,6 +289,27 @@ class CorpusGatesTest {
     }
 
     @Test
+    @DisplayName("a silent MUST_FIRE row's failure carries the evidence kept for it (#1133)")
+    void aSilentFiringRowSaysWhatItSaw() {
+        List<CorpusRecorder.Finding> findings = new ArrayList<>(everyFiringRowFiring());
+        RecordingSubject firing = aFiringRow();
+        findings.removeIf(f -> f.subject().equals(firing.testMethod()));
+        CorpusRecorder.noteEvidence(firing.testMethod(), "crossWorkerTakes=7");
+        try {
+            AssertionFailedError failure = assertThrows(AssertionFailedError.class,
+                    () -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(
+                            findings, CorpusLane.RECORDING));
+            String line = failure.getMessage();
+            assertTrue(line.contains("SILENT but must fire: " + firing.testMethod()), line);
+            assertTrue(line.contains("publishedEvents=") && line.contains("crossWorkerTakes=7"),
+                    "a silent row must say how many events it published and what it noted, or the"
+                            + " next one-in-a-hundred failure is as unexplained as the last: " + line);
+        } finally {
+            CorpusRecorder.noteEvidence(firing.testMethod(), null);
+        }
+    }
+
+    @Test
     @DisplayName("exactly the stated outcomes pass it")
     void theStatedOutcomesPassTheOutcomeGate() {
         assertDoesNotThrow(() -> CorpusGates.everySubjectGotTheOutcomeItsRecordedCallsOblige(

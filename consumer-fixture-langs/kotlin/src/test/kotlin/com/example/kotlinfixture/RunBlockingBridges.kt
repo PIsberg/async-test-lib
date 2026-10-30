@@ -1,8 +1,11 @@
 package com.example.kotlinfixture
 
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
@@ -41,13 +44,22 @@ class RunBlockingBridges {
     /**
      * The misuse on a dispatcher of one thread: an executor's plain thread, with no class to
      * recognise, where a `runBlocking` parks the only thread the dispatcher has. A bare
-     * `ScheduledThreadPoolExecutor` rather than `newSingleThreadContext`: the woven `execute` hands
-     * the task over, and with it the run, on the JDK's own pool classes only, and kotlinx wraps its
-     * pool in `Executors.unconfigurableExecutorService`, through which the hook does not look
-     * (#1107). Closed after each call so the thread is this run's.
+     * `ScheduledThreadPoolExecutor`; [lookupOnNewSingleThreadContext] is the same through kotlinx's
+     * own factory. Closed after each call so the thread is this run's.
      */
     fun lookupOnASingleThreadDispatcher(): Int =
         Executors.newScheduledThreadPool(1) { Thread(it, "single-thread-dispatcher") }
             .asCoroutineDispatcher()
+            .use { single -> runBlocking { withContext(single) { lookup() } } }
+
+    /**
+     * The same misuse on kotlinx's own single-threaded dispatcher (#1107). `newSingleThreadContext`
+     * wraps a `ScheduledThreadPoolExecutor` in `Executors.unconfigurableExecutorService`; the woven
+     * `execute` looks through that wrapper to the pool behind it, so the thread is attributed while
+     * the task runs. Closed after each call so the thread is this run's.
+     */
+    @OptIn(DelicateCoroutinesApi::class, ExperimentalCoroutinesApi::class)
+    fun lookupOnNewSingleThreadContext(): Int =
+        newSingleThreadContext("single-thread-context")
             .use { single -> runBlocking { withContext(single) { lookup() } } }
 }

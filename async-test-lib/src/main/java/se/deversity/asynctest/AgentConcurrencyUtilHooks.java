@@ -10,8 +10,11 @@ import java.lang.reflect.UndeclaredThrowableException;
 import java.nio.charset.Charset;
 import java.time.Duration;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.WeakHashMap;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -3377,6 +3380,46 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * Wrappers a woven {@code Executors.unconfigurable*} call made, to the executor each forwards
+     * to (#1107). Weak on the wrapper, which the executor behind it never references.
+     */
+    private static final Map<Executor, Executor> UNCONFIGURABLE =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    /**
+     * Weaves {@code Executors.unconfigurableExecutorService(ExecutorService)}: remembers what the
+     * wrapper forwards to, so a woven {@code execute} on it decides by the executor behind it
+     * (#1107). kotlinx's {@code newSingleThreadContext} wraps a {@code ScheduledThreadPoolExecutor}
+     * this way, and without the look-through nothing its thread did reached a detector.
+     *
+     * @param executor the executor to wrap
+     * @return what the JDK returns
+     * @since 1.15.0
+     */
+    public static ExecutorService unconfigurableExecutorService(ExecutorService executor) {
+        ControlledSchedule.point();
+        ExecutorService wrapper = Executors.unconfigurableExecutorService(executor);
+        UNCONFIGURABLE.put(wrapper, executor);
+        return wrapper;
+    }
+
+    /**
+     * Weaves {@code Executors.unconfigurableScheduledExecutorService(ScheduledExecutorService)}, as
+     * {@link #unconfigurableExecutorService}.
+     *
+     * @param executor the executor to wrap
+     * @return what the JDK returns
+     * @since 1.15.0
+     */
+    public static ScheduledExecutorService unconfigurableScheduledExecutorService(
+            ScheduledExecutorService executor) {
+        ControlledSchedule.point();
+        ScheduledExecutorService wrapper = Executors.unconfigurableScheduledExecutorService(executor);
+        UNCONFIGURABLE.put(wrapper, executor);
+        return wrapper;
+    }
+
+    /**
      * Weaves {@code Exchanger.exchange(Object)}: this thread's accesses are published through the
      * object it hands over, and it receives what its partner published through the one it got
      * back (#741). An exchange that threw handed nothing over, and its release is withdrawn.
@@ -3502,11 +3545,24 @@ public final class AgentConcurrencyUtilHooks {
         return Submissions.peek(future) instanceof HandedTask handed ? handed.adoption : null;
     }
 
-    /** {@return whether {@code executor} is one whose tasks no caller can get back} */
+    /**
+     * {@return whether {@code executor} is one whose tasks no caller can get back}
+     *
+     * <p>An {@code Executors.unconfigurable*} wrapper hands back only what the executor behind it
+     * hands back, so it is judged by that executor, when a woven call made it (#1107). The map is
+     * consulted only for the JDK's own wrapper classes, so no other execute pays for the lookup.
+     */
     private static boolean executesInvisibly(Executor executor) {
         Class<?> type = executor.getClass();
-        return type == ForkJoinPool.class || type == ScheduledThreadPoolExecutor.class
-                || "java.util.concurrent.ThreadPerTaskExecutor".equals(type.getName());
+        if (type == ForkJoinPool.class || type == ScheduledThreadPoolExecutor.class
+                || "java.util.concurrent.ThreadPerTaskExecutor".equals(type.getName())) {
+            return true;
+        }
+        if (!type.getName().startsWith("java.util.concurrent.Executors$")) {
+            return false;
+        }
+        Executor behind = UNCONFIGURABLE.get(executor);
+        return behind != null && executesInvisibly(behind);
     }
 
     /**
@@ -3657,11 +3713,11 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /** {@code MDC.getCopyOfContextMap()}, or {@code null} where the backend refuses. */
-    private static java.util.@Nullable Map<String, String> mdcCopy() {
+    private static @Nullable Map<String, String> mdcCopy() {
         try {
             return org.slf4j.MDC.getCopyOfContextMap();
         } catch (RuntimeException | LinkageError e) { // NOPMD - a broken backend must not fail the task
-            return java.util.Map.of();
+            return Map.of();
         }
     }
 
