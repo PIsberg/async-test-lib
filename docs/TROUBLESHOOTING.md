@@ -124,6 +124,14 @@ credentials). Check the provider's status page and your coordinates
 (`keygen.account.id` / `ls.store.id`). One successful validation on the machine unlocks grace for
 later outages.
 
+### `LICENSE MISCONFIGURED: a license key was supplied but -D... was not`
+
+A key is set but the provider ids needed to check it are not, so no one could validate it. Set the
+property the message names: `keygen.account.id` and `keygen.product.id` for Keygen, `ls.store.id`
+with `-Dlicense.provider=lemonsqueezy`. The ids come with your license. This fails in CI as well:
+a supplied key is never auto-mocked, whichever provider is selected (#1144). To run without a key
+instead, remove `license.key` or set `-Dlicense.mock.mode=true`.
+
 ### `LICENSE DENIED: OFFLINE_FILE_...` / `OFFLINE_LICENSE_...`
 
 The offline file failed verification; the code names the reason. `OFFLINE_FILE_MALFORMED` usually

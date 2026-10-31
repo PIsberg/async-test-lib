@@ -15,11 +15,23 @@ where it was green: those builds were logging `BENCHMARK REGRESSION DETECTED` an
 `mvn clean` build cannot be affected, because the default store lives under `target/` and every
 such run is a first run. To keep the old log-only behaviour, set the option to `false`.
 
+A CI build that sets `license.key` with `-Dlicense.provider=lemonsqueezy` but no `ls.store.id` now
+fails with `LICENSE MISCONFIGURED` (see Fixed). It was auto-mocked and granted without the key being
+checked; set `-Dls.store.id`, or drop the key to run auto-mocked as before.
+
 An `@AsyncTest` method that returns a value now fails discovery (see Fixed). Such a method never
 ran, so a build that goes red here was passing without testing it; declare the method `void`.
 
 ### Fixed
 
+- **A LemonSqueezy key without `ls.store.id` no longer auto-mocks in CI (#1144).** Under
+  LemonSqueezy a key counted as a commercial claim only together with the store id, so a key set
+  without one read as "no credentials". With `CI` or `GITHUB_ACTIONS` set that run auto-mocked
+  and was granted without the key ever being checked, while the same mistake under Keygen failed
+  closed. The key alone now decides for both providers, and the run fails with
+  `LICENSE MISCONFIGURED` naming `-Dls.store.id`. `LicenseGuardTest` pins the decision and the
+  end-to-end refusal; the latter was red with `CI=true` before the fix and is green with and
+  without it.
 - **A coroutine on `newSingleThreadContext` now reaches the detectors (#1107).** kotlinx wraps that
   dispatcher's `ScheduledThreadPoolExecutor` in `Executors.unconfigurableExecutorService`, and the
   woven `execute` hands a task, and with it the run, to a pool thread only on the JDK's own pool
