@@ -19,8 +19,9 @@ A CI build that sets `license.key` with `-Dlicense.provider=lemonsqueezy` but no
 fails with `LICENSE MISCONFIGURED` (see Fixed). It was auto-mocked and granted without the key being
 checked; set `-Dls.store.id`, or drop the key to run auto-mocked as before.
 
-An `@AsyncTest` method that returns a value now fails discovery (see Fixed). Such a method never
-ran, so a build that goes red here was passing without testing it; declare the method `void`.
+An `@AsyncTest` method that returns a value, or is `private` or `static`, now fails discovery
+(see Fixed). Such a method never ran, so a build that goes red here was passing without testing it;
+declare the method `void`, and package-private or wider, on an instance.
 
 ### Fixed
 
@@ -51,12 +52,24 @@ ran, so a build that goes red here was passing without testing it; declare the m
   no `@TestTemplate` that returns a value and reports it only as a discovery warning, so a body
   written as `CompletableFuture<Void> body()`, the natural spelling of an async test, started zero
   tests and left the build green. The extension never sees such a method, so the check is
-  `NonVoidAsyncTestListener`, a launcher discovery listener registered through `ServiceLoader`. It
+  `InvalidAsyncTestListener`, a launcher discovery listener registered through `ServiceLoader`. It
   fails the Jupiter engine's discovery with a message naming the method and the fix (declare it
   `void`, await with `AsyncAssert.awaitAsync`), the way JUnit treats a critical discovery issue,
   and leaves every other method's issues alone. Adds `junit-platform-launcher` in `provided` scope.
-  `NonVoidAsyncTestFailsTest` runs the real launcher: red before, green after, with a void
+  `InvalidAsyncTestFailsTest` runs the real launcher: red before, green after, with a void
   `@AsyncTest` and a non-void plain `@Test` as the twins that must not fail.
+- **A `private` or `static` `@AsyncTest`, or a Kotlin `suspend fun`, no longer passes with nothing
+  run or fails with a misleading message (#1146).** JUnit 6.1.3 skips a private or static
+  `@TestTemplate` with a discovery warning, `must not be private. It will not be executed`, and the
+  build went green; the #1119 listener, now `InvalidAsyncTestListener`, fails discovery for those
+  too and names the method. A `suspend fun` was never silent, but both of JUnit's answers misled:
+  without `kotlin-reflect` the whole class failed with "requires kotlin-reflect", and with it every
+  worker failed with `wrong number of arguments: 0 expected: 1`, because the runner calls the
+  method without a continuation. Both paths now say to use a plain `fun` with `runBlocking`: the
+  listener on the first, `AsyncTestExtension` on the second. `InvalidAsyncTestFailsTest` gained
+  the private and static cases (red before), and `KotlinSuspendAsyncTestFailsTest` in the Kotlin
+  fixture covers both suspend paths (red against the previous jar). An unresolvable parameter is
+  left to JUnit, which already fails that test when it runs.
 - **`failOnBenchmarkRegression` never failed a test.** `BenchmarkComparator` throws
   `BenchmarkRegressionException`, a `RuntimeException`, and the runner's cleanup wrapped the
   benchmark step in `catch (Exception)`, logged `Benchmark completion failed` at WARN and let the

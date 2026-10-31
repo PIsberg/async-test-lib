@@ -129,7 +129,8 @@ differs from `clojure-maven-plugin`'s, and Maven is the canonical build here.
 **Kotlin.** Nothing to configure. Annotation attributes are named arguments; the JUnit lifecycle
 methods live in a `companion object` with `@JvmStatic`. Kotlin properties compile to
 `getX`/`setX`, so the agent's default accessor weaving sees them. A `suspend fun` is not
-JUnit-invokable; wrap a coroutine body in `runBlocking`. `by lazy` is `SYNCHRONIZED` by default.
+JUnit-invokable; wrap a coroutine body in `runBlocking`. `KotlinSuspendAsyncTestFailsTest` pins
+that an `@AsyncTest suspend fun` fails with a message saying so (#1146). `by lazy` is `SYNCHRONIZED` by default.
 
 **Groovy.** Plain JUnit 5, not Spock: Spock is its own JUnit Platform engine and `@AsyncTest`
 is a Jupiter `@TestTemplate`, so it does not run inside a `Specification`.

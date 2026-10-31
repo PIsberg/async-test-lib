@@ -14,7 +14,7 @@ dependencies {
     api("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
     api("org.slf4j:slf4j-api:$slf4jVersion")
     implementation("se.deversity.common:common-license-lib:$commonLicenseLibVersion")
-    // NonVoidAsyncTestListener (#1119); the runner that loads it brings its own launcher.
+    // InvalidAsyncTestListener (#1119, #1146); the runner that loads it brings its own launcher.
     compileOnly("org.junit.platform:junit-platform-launcher:$junitVersion")
 
     testImplementation("org.junit.platform:junit-platform-testkit:$junitVersion")

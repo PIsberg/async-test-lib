@@ -66,7 +66,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text x="1512.0" y="23.0" font-family="sans-serif" font-size="11" fill="#6b7280" font-style="italic">se.deversity.asynctest.benchmark</text>
 <rect class="group-rect" x="3978.0" y="10.0" width="5208.0" height="8198.5" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
 <text x="3984.0" y="23.0" font-family="sans-serif" font-size="11" fill="#6b7280" font-style="italic">se.deversity.asynctest.diagnostics</text>
-<rect class="group-rect" x="10.0" y="10.0" width="208.0" height="294.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
+<rect class="group-rect" x="10.0" y="10.0" width="208.0" height="353.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
 <text x="16.0" y="23.0" font-family="sans-serif" font-size="11" fill="#6b7280" font-style="italic">se.deversity.asynctest.extension</text>
 <rect class="group-rect" x="2130.0" y="10.0" width="808.0" height="595.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
 <text x="2136.0" y="23.0" font-family="sans-serif" font-size="11" fill="#6b7280" font-style="italic">se.deversity.asynctest.report</text>
@@ -961,22 +961,23 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="AgentConcurrencyUtilHooks">
   <title>AgentConcurrencyUtilHooks [CLASS]</title>
-  <rect class="node-rect" x="3368.0" y="24.0" width="180.0" height="250.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="3368.0" y="24.0" width="180.0" height="265.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="3458.0" y="46.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10.8" font-weight="bold" fill="#1f2937">AgentConcurrencyUtilHooks</text>
   <line x1="3368.0" y1="68.0" x2="3548.0" y2="68.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="3376.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">WAIT_FOR_DURATION: MethodH…</text>
   <text x="3376.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">COMMON_POOL_TASK: ThreadLo…</text>
   <text x="3376.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">STACK: StackWalker</text>
-  <text x="3376.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NEXT_TASK: AtomicLong</text>
-  <text x="3376.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">RUNNING_TASK: ThreadLocal&lt;…</text>
-  <line x1="3368.0" y1="155.0" x2="3548.0" y2="155.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="3376.0" y="168.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object): ABAProble…</text>
-  <text x="3376.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object, Object): A…</text>
-  <text x="3376.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object, int): ABAP…</text>
-  <text x="3376.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquire(Semaphore): void</text>
-  <text x="3376.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">tryAcquire(Semaphore): boo…</text>
-  <text x="3376.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">release(Semaphore): void</text>
-  <text x="3376.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+179 more)</text>
+  <text x="3376.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UNCONFIGURABLE: Map&lt;Execut…</text>
+  <text x="3376.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NEXT_TASK: AtomicLong</text>
+  <text x="3376.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">RUNNING_TASK: ThreadLocal&lt;…</text>
+  <line x1="3368.0" y1="170.0" x2="3548.0" y2="170.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="3376.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object): ABAProble…</text>
+  <text x="3376.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object, Object): A…</text>
+  <text x="3376.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object, int): ABAP…</text>
+  <text x="3376.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquire(Semaphore): void</text>
+  <text x="3376.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">tryAcquire(Semaphore): boo…</text>
+  <text x="3376.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">release(Semaphore): void</text>
+  <text x="3376.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+181 more)</text>
 </g>
 <g id="AgentConstructionHooks">
   <title>AgentConstructionHooks [CLASS]</title>
@@ -3370,10 +3371,10 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="5050.0" y="3089.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">guardKey(String, int): Str…</text>
   <text x="5050.0" y="3104.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">instanceOf(Object): int</text>
   <text x="5050.0" y="3119.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordTaker(int, int, long…</text>
-  <text x="5050.0" y="3134.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">takerOf(int, int): Long</text>
-  <text x="5050.0" y="3149.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">inExclusivePhase(int, long…</text>
-  <text x="5050.0" y="3164.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">markInvocationStart(): void</text>
-  <text x="5050.0" y="3179.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+50 more)</text>
+  <text x="5050.0" y="3134.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">ownershipTakes(): int</text>
+  <text x="5050.0" y="3149.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">takerOf(int, int): Long</text>
+  <text x="5050.0" y="3164.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">inExclusivePhase(int, long…</text>
+  <text x="5050.0" y="3179.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+51 more)</text>
 </g>
 <g id="AsyncTestListenerRegistry">
   <title>AsyncTestListenerRegistry [CLASS]</title>
@@ -4159,12 +4160,17 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="32.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">interceptTestTemplateMetho…</text>
   <text x="32.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">afterEach(ExtensionContext…</text>
 </g>
-<g id="NonVoidAsyncTestListener">
-  <title>NonVoidAsyncTestListener [CLASS]</title>
-  <rect class="node-rect" x="24.0" y="204.0" width="180.0" height="86.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="114.0" y="226.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="11.3" font-weight="bold" fill="#1f2937">NonVoidAsyncTestListener</text>
+<g id="InvalidAsyncTestListener">
+  <title>InvalidAsyncTestListener [CLASS]</title>
+  <rect class="node-rect" x="24.0" y="204.0" width="180.0" height="145.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="114.0" y="226.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="11.3" font-weight="bold" fill="#1f2937">InvalidAsyncTestListener</text>
   <line x1="24.0" y1="248.0" x2="204.0" y2="248.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="32.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">issueEncountered(UniqueId,…</text>
+  <text x="32.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">KOTLIN_CONTINUATION: String</text>
+  <line x1="24.0" y1="275.0" x2="204.0" y2="275.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="32.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">issueEncountered(UniqueId,…</text>
+  <text x="32.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">rejectKotlinSuspend(Method…</text>
+  <text x="32.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">problem(Method): String</text>
+  <text x="32.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isKotlinSuspend(Method): b…</text>
 </g>
 <g id="FindingSink">
   <title>FindingSink [CLASS]</title>

@@ -97,6 +97,10 @@ public class AsyncTestExtension
 
     @Override
     public Stream<TestTemplateInvocationContext> provideTestTemplateInvocationContexts(ExtensionContext context) {
+        // JUnit accepts a Kotlin suspend fun once kotlin-reflect is present; the runner would then
+        // call it without a continuation and every worker would fail with "wrong number of
+        // arguments". Say what to do instead (#1146).
+        context.getTestMethod().ifPresent(InvalidAsyncTestListener::rejectKotlinSuspend);
         AsyncTest asyncTest = resolveAnnotation(context).orElseThrow(
             () -> new IllegalStateException("No @AsyncTest annotation found on test method or class"));
         int[] matrix = asyncTest.threadCounts();
