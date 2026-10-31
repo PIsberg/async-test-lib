@@ -598,6 +598,8 @@ class AsyncPipelineTest {
 Declare the body `void` and await inside it. JUnit runs no template method that returns a value,
 so `CompletableFuture<Void> hammer_pipeline()` would never run; since 1.15.0 such an `@AsyncTest`
 fails discovery with a message naming the method, instead of passing with nothing tested (#1119).
+The same goes for a `private` or `static` `@AsyncTest`, which JUnit also skips with only a warning,
+and for a Kotlin `suspend fun`, which the runner cannot call (#1146).
 
 ### Make the workers meet mid-body, and count what they did
 
@@ -838,7 +840,7 @@ runbook and what to send customers: [docs/LICENSING.md](docs/LICENSING.md).
 | CI (any `GITHUB_ACTIONS` or `CI` env var set, no key) | Auto-mocked — tests run freely |
 | Local, no key, `-Dlicense.mock.mode=true` | Mock mode active — tests run freely |
 | Local, no key, no mock flag | **The gate runs and can refuse.** See below |
-| Real key via `-Dlicense.key=<key>` | Full validation against the licensing backend |
+| Real key via `-Dlicense.key=<key>` | Full validation against the licensing backend, in CI too. A key without the provider ids it needs (`keygen.account.id` and `keygen.product.id`, or `ls.store.id`) fails with `LICENSE MISCONFIGURED` naming the missing one |
 | Offline file via `-Dlicense.file=<path>` | Signature-verified locally, no network attempted (air-gapped CI) |
 
 > **First run on a new machine.** With no key configured and no mock flag, the gate consults the

@@ -21,7 +21,7 @@ src/main/java/se/deversity/asynctest/
 ├── extension/
 │   ├── AsyncTestExtension.java       # JUnit 5 extension (matrix fan-out since 1.6.0)
 │   ├── AsyncTestInvocationInterceptor.java  # Interceptor (threadCount override since 1.6.0)
-│   └── NonVoidAsyncTestListener.java # Fails discovery of a non-void @AsyncTest (#1119)
+│   └── InvalidAsyncTestListener.java # Fails discovery of an @AsyncTest JUnit would skip (#1119, #1146)
 ├── runner/
 │   ├── ConcurrencyRunner.java        # Main execution engine
 │   └── LicenseGuard.java             # NEW in 1.6.0 — process-wide license cache

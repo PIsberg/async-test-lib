@@ -1522,6 +1522,13 @@ public class ConcurrencyRunner {
      * anyway (the detectors' own snapshotting plus {@code ifIssue} containment degrade
      * that to a partial report rather than a crash), and the WARNs below say so, with
      * the surviving workers' stacks, instead of letting the report silently lie.
+     *
+     * <p>Such a worker stays inside its own run when it finally unwinds: {@link #execute} builds
+     * a fresh executor per run, so no thread serves two runs, and the context state is per
+     * thread, so its late detector writes reach only its own finished run and its
+     * {@code uninstall()} clears only its own thread (#1145,
+     * {@code ConcurrencyRunnerTest.orphanedWorker_cannotReachTheNextRunsContext}). Sharing an
+     * executor across runs would break that.
      */
     private static void quiesceWorkers(ExecutorService executor, Method testMethod) {
         executor.shutdownNow();

@@ -15,11 +15,24 @@ where it was green: those builds were logging `BENCHMARK REGRESSION DETECTED` an
 `mvn clean` build cannot be affected, because the default store lives under `target/` and every
 such run is a first run. To keep the old log-only behaviour, set the option to `false`.
 
-An `@AsyncTest` method that returns a value now fails discovery (see Fixed). Such a method never
-ran, so a build that goes red here was passing without testing it; declare the method `void`.
+A CI build that sets `license.key` with `-Dlicense.provider=lemonsqueezy` but no `ls.store.id` now
+fails with `LICENSE MISCONFIGURED` (see Fixed). It was auto-mocked and granted without the key being
+checked; set `-Dls.store.id`, or drop the key to run auto-mocked as before.
+
+An `@AsyncTest` method that returns a value, or is `private` or `static`, now fails discovery
+(see Fixed). Such a method never ran, so a build that goes red here was passing without testing it;
+declare the method `void`, and package-private or wider, on an instance.
 
 ### Fixed
 
+- **A LemonSqueezy key without `ls.store.id` no longer auto-mocks in CI (#1144).** Under
+  LemonSqueezy a key counted as a commercial claim only together with the store id, so a key set
+  without one read as "no credentials". With `CI` or `GITHUB_ACTIONS` set that run auto-mocked
+  and was granted without the key ever being checked, while the same mistake under Keygen failed
+  closed. The key alone now decides for both providers, and the run fails with
+  `LICENSE MISCONFIGURED` naming `-Dls.store.id`. `LicenseGuardTest` pins the decision and the
+  end-to-end refusal; the latter was red with `CI=true` before the fix and is green with and
+  without it.
 - **A coroutine on `newSingleThreadContext` now reaches the detectors (#1107).** kotlinx wraps that
   dispatcher's `ScheduledThreadPoolExecutor` in `Executors.unconfigurableExecutorService`, and the
   woven `execute` hands a task, and with it the run, to a pool thread only on the JDK's own pool
@@ -39,12 +52,24 @@ ran, so a build that goes red here was passing without testing it; declare the m
   no `@TestTemplate` that returns a value and reports it only as a discovery warning, so a body
   written as `CompletableFuture<Void> body()`, the natural spelling of an async test, started zero
   tests and left the build green. The extension never sees such a method, so the check is
-  `NonVoidAsyncTestListener`, a launcher discovery listener registered through `ServiceLoader`. It
+  `InvalidAsyncTestListener`, a launcher discovery listener registered through `ServiceLoader`. It
   fails the Jupiter engine's discovery with a message naming the method and the fix (declare it
   `void`, await with `AsyncAssert.awaitAsync`), the way JUnit treats a critical discovery issue,
   and leaves every other method's issues alone. Adds `junit-platform-launcher` in `provided` scope.
-  `NonVoidAsyncTestFailsTest` runs the real launcher: red before, green after, with a void
+  `InvalidAsyncTestFailsTest` runs the real launcher: red before, green after, with a void
   `@AsyncTest` and a non-void plain `@Test` as the twins that must not fail.
+- **A `private` or `static` `@AsyncTest`, or a Kotlin `suspend fun`, no longer passes with nothing
+  run or fails with a misleading message (#1146).** JUnit 6.1.3 skips a private or static
+  `@TestTemplate` with a discovery warning, `must not be private. It will not be executed`, and the
+  build went green; the #1119 listener, now `InvalidAsyncTestListener`, fails discovery for those
+  too and names the method. A `suspend fun` was never silent, but both of JUnit's answers misled:
+  without `kotlin-reflect` the whole class failed with "requires kotlin-reflect", and with it every
+  worker failed with `wrong number of arguments: 0 expected: 1`, because the runner calls the
+  method without a continuation. Both paths now say to use a plain `fun` with `runBlocking`: the
+  listener on the first, `AsyncTestExtension` on the second. `InvalidAsyncTestFailsTest` gained
+  the private and static cases (red before), and `KotlinSuspendAsyncTestFailsTest` in the Kotlin
+  fixture covers both suspend paths (red against the previous jar). An unresolvable parameter is
+  left to JUnit, which already fails that test when it runs.
 - **`failOnBenchmarkRegression` never failed a test.** `BenchmarkComparator` throws
   `BenchmarkRegressionException`, a `RuntimeException`, and the runner's cleanup wrapped the
   benchmark step in `catch (Exception)`, logged `Benchmark completion failed` at WARN and let the
@@ -64,6 +89,36 @@ ran, so a build that goes red here was passing without testing it; declare the m
 
 ### Maintenance
 
+- **The workflows' supply-chain settings are now a gate (#1148).** An audit of the 21 workflows
+  found nothing to change: every third-party action pinned to a commit SHA, a
+  read-only top-level token (`contents: read`, or `read-all` in Scorecard's own workflow), no
+  `pull_request_target`, `workflow_run` or `issue_comment` trigger, and all 44 harden-runner steps on
+  `egress-policy: block`. The four jobs without harden-runner are three summary jobs that run one
+  shell step and no network, and `os-sensitive`, which runs on Windows and macOS only, where the
+  repository already skips it. Nothing enforced any of it: Scorecard reports weekly and blocks
+  nothing. `WorkflowSupplyChainTest` now fails on each, and requires the 12 job-level write scopes
+  to match a reviewed list exactly. One mutant per property, a tag pin, a top-level `write-all`, an
+  extra `issues: write`, a `workflow_run` trigger and an `audit` egress policy, failed all five tests.
+- **Every weaver is now checked together on two-slot operands (#1147).** The weavers keep frames
+  valid by inserting only stack-neutral sequences, and a `long` or `double` is the case where the
+  wrong copy instruction is a `VerifyError` at the first link in a user's build. An audit of the
+  insertion points found every wide path already using the two-slot forms, and
+  `PersistenceHandleWeaver` skipping calls with a wide argument. `WideOperandWeavingTest` now weaves
+  `WideOperandSample`, every field width volatile and plain, static and instance, in compound,
+  chained and value-returning stores, increments, array elements, another object's field, a
+  lambda, a `synchronized` method, a loop, a handler, constructors and `EntityManager` calls with a
+  wide value beneath them, through the exact chain `install` uses. The woven class must verify and
+  return what the unwoven one does for four inputs. Three mutants, a one-slot copy in the volatile
+  store, in the volatile load and in the persistence weaver's two-argument copy, each failed it with
+  `VerifyError`.
+- **A worker that outlives its run is now pinned as unable to reach the next one (#1145).** A
+  worker stuck in code that ignores interrupts can outlive the quiesce grace, and the runner then
+  reports without it. An audit found no path from such a worker into a later run: every run builds
+  its own executor and all context state is per thread. `ConcurrencyRunnerTest` now runs an orphan
+  past its run's end on platform and virtual workers, lets it record and uninstall while the next
+  run is in progress, and checks the next run keeps its own threads and context. A mutant whose
+  `uninstall()` cleared every thread's context failed it on that assertion. The quiesce WARNs are
+  now explained in `docs/TROUBLESHOOTING.md`.
 - **The two machine review lanes run only when asked (#1137).** The Inquisitor reran on every
   push to every pull request and the Copilot lane on every opened one, spending the subscription
   token and the Copilot Free quota on work-in-progress nobody had asked a reviewer to read. Both

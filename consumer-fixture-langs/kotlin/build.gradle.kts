@@ -20,6 +20,9 @@ dependencies {
     testImplementation(
         "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:${libs.versions.kotlinx.coroutines.version.get()}"
     )
+    // KotlinSuspendAsyncTestFailsTest drives the real launcher (#1146); the root build adds it
+    // only at runtime.
+    testImplementation("org.junit.platform:junit-platform-launcher:${libs.versions.junit.platform.version.get()}")
     asyncTestAgent("se.deversity.async-test-lib:async-test-agent:${rootProject.extra["asyncTestVersion"]}")
 }
 
@@ -35,7 +38,13 @@ val runnerDefaultAttach = tasks.register<Test>("runnerDefaultAttach") {
 }
 
 tasks.named<Test>("test") {
-    filter { excludeTestsMatching("com.example.kotlinrunner.RunnerDefaultAttachTest") }
+    filter {
+        excludeTestsMatching("com.example.kotlinrunner.RunnerDefaultAttachTest")
+        // Nested classes are fixtures run through the launcher from the test around them, such as
+        // KotlinSuspendAsyncTestFailsTest's suspend body (#1146), not tests of their own. Surefire
+        // never selects them (its default excludes **/*$*); Gradle hands every class to JUnit.
+        excludeTestsMatching("*$*")
+    }
     dependsOn(runnerDefaultAttach)
     // doFirst so the configuration is resolved when the task runs rather than while the build is
     // being configured. includes= is scoped to the bean package so the two race-condition

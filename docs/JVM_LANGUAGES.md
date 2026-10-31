@@ -28,7 +28,8 @@ class InventoryTest {
 Nothing to configure. Attributes are named arguments. `@BeforeAll` / `@AfterAll` live in a
 `companion object` with `@JvmStatic`. Kotlin properties compile to `getX`/`setX`, so the
 [agent](AGENT.md)'s default accessor weaving sees them. A `suspend fun` is not JUnit-invokable:
-wrap a coroutine body in `runBlocking`. `by lazy` is `SYNCHRONIZED` by default, so it is not a
+wrap a coroutine body in `runBlocking`. An `@AsyncTest suspend fun` fails the run with a message
+that says so, whether or not `kotlin-reflect` is on the test classpath (#1146). `by lazy` is `SYNCHRONIZED` by default, so it is not a
 lazy-init race subject unless you choose `LazyThreadSafetyMode.NONE`. Coroutine misuse has two rules
 so far, both reported by `BLOCKING_ON_NON_BLOCKING_THREAD` when the agent is attached with
 `kotlinx.coroutines` and your own package in its `includes=`. A blocking call on a

@@ -18,6 +18,14 @@
             <version>${kotlin.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- KotlinSuspendAsyncTestFailsTest drives the real launcher, as Surefire does, so the
+             library's discovery listener runs (#1146). Surefire only puts it on the runtime path. -->
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <version>${junit.platform.version}</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.jetbrains.kotlinx</groupId>
             <artifactId>kotlinx-coroutines-core-jvm</artifactId>

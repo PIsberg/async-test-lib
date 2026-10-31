@@ -17,8 +17,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass;
 
 /**
- * An {@code @AsyncTest} method that returns a value fails the run instead of silently not running
- * (#1119).
+ * An {@code @AsyncTest} method JUnit would skip fails the run instead of silently not running:
+ * one that returns a value (#1119), or one that is private or static (#1146). The Kotlin
+ * {@code suspend fun} case is in consumer-fixture-langs/kotlin, where Kotlin is on the classpath.
  *
  * <p>JUnit runs no {@code @TestTemplate} that returns a value. It reports the method as a
  * discovery warning, {@code must not return a value. It will not be executed}, and the build goes
@@ -31,7 +32,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * <p>Run through the real {@link Launcher}, not {@code EngineTestKit}: the launcher is what loads
  * {@code ServiceLoader} listeners, and it is what Surefire and Gradle use.
  */
-class NonVoidAsyncTestFailsTest {
+class InvalidAsyncTestFailsTest {
 
     static final AtomicInteger RAN = new AtomicInteger();
 
@@ -71,6 +72,36 @@ class NonVoidAsyncTestFailsTest {
         assertEquals(1, RAN.get(), "threads = 1, invocations = 1 runs the body once");
     }
 
+    @Test
+    @DisplayName("a private @AsyncTest fails the run and names the method (#1146)")
+    void privateAsyncTestFailsTheRun() {
+        RAN.set(0);
+        TestExecutionSummary summary = run(PrivateBody.class);
+
+        assertEquals(0, RAN.get(), "JUnit ran a private template after all; the premise changed");
+        String messages = failures(summary);
+        assertTrue(summary.getTotalFailureCount() >= 1,
+                "a private @AsyncTest ran nothing and the run still passed: " + messages);
+        assertTrue(messages.contains("PrivateBody") && messages.contains("body")
+                        && messages.contains("private"),
+                "the failure must name the method and say it is private: " + messages);
+    }
+
+    @Test
+    @DisplayName("a static @AsyncTest fails the run and names the method (#1146)")
+    void staticAsyncTestFailsTheRun() {
+        RAN.set(0);
+        TestExecutionSummary summary = run(StaticBody.class);
+
+        assertEquals(0, RAN.get(), "JUnit ran a static template after all; the premise changed");
+        String messages = failures(summary);
+        assertTrue(summary.getTotalFailureCount() >= 1,
+                "a static @AsyncTest ran nothing and the run still passed: " + messages);
+        assertTrue(messages.contains("StaticBody") && messages.contains("body")
+                        && messages.contains("static"),
+                "the failure must name the method and say it is static: " + messages);
+    }
+
     private static TestExecutionSummary run(Class<?> fixture) {
         LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder.request()
                 .selectors(selectClass(fixture))
@@ -100,6 +131,21 @@ class NonVoidAsyncTestFailsTest {
     static class ReturnsVoid {
         @AsyncTest(threads = 1, invocations = 1)
         void body() {
+            RAN.incrementAndGet();
+        }
+    }
+
+    static class PrivateBody {
+        @AsyncTest(threads = 1, invocations = 1)
+        @SuppressWarnings("unused") // never called: the point is that JUnit will not call it either
+        private void body() {
+            RAN.incrementAndGet();
+        }
+    }
+
+    static class StaticBody {
+        @AsyncTest(threads = 1, invocations = 1)
+        static void body() {
             RAN.incrementAndGet();
         }
     }

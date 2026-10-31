@@ -27,7 +27,7 @@ consumers must be able to live with.
 | `org.slf4j:slf4j-api` | `slf4j.version` | The diagnostic channel ([logging conventions](architecture/logging.md)). API only — the consumer's build chooses the backend, and a library that ships one would hijack somebody else's build log. |
 | `org.apiguardian:apiguardian-api` | `apiguardian.version` | `@API` stability markers on public types, so consumers can see which surface is settled and which is experimental. |
 | `se.deversity.common:common-license-lib` | `common-license-lib.version` | First-party, not third-party — listed for completeness. Implements the license guard (`LicenseGuard`); mock mode (`-Dlicense.mock.mode=true`) removes the network from tests and CI. |
-| `org.junit.platform:junit-platform-launcher` | `junit.platform.version` | `NonVoidAsyncTestListener` is a `LauncherDiscoveryListener`, the one hook that sees an `@AsyncTest` method JUnit drops for returning a value (#1119). `provided` scope: Surefire, Gradle and the IDEs bring their own launcher, which is also the only thing that reads the service entry. |
+| `org.junit.platform:junit-platform-launcher` | `junit.platform.version` | `InvalidAsyncTestListener` is a `LauncherDiscoveryListener`, the one hook that sees an `@AsyncTest` method JUnit drops for returning a value, being private or static (#1119, #1146). `provided` scope: Surefire, Gradle and the IDEs bring their own launcher, which is also the only thing that reads the service entry. |
 | `org.jspecify:jspecify` | `jspecify.version` | Nullness annotations (`@Nullable`) that NullAway enforces at compile time. `provided` scope and CLASS retention: it never reaches a consumer's runtime classpath. |
 
 ## 2. Confined to a sibling artifact
@@ -94,6 +94,7 @@ in that language.
 | Toolchain | Property (in `consumer-fixture-langs/pom.xml`) | Why it is here |
 |---|---|---|
 | Kotlin (`kotlin-stdlib`, `kotlin-maven-plugin`) | `kotlin.version` | The Kotlin fixture; same version the Kotlin example under `examples/` uses. |
+| `org.junit.platform:junit-platform-launcher` in the Kotlin fixture | `junit.platform.version` | Test scope, Kotlin fixture only (#1146): `KotlinSuspendAsyncTestFailsTest` drives the real launcher, as Surefire does, so the library's discovery listener runs. Surefire and Gradle put it on the runtime path only. |
 | `org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm` | `kotlinx-coroutines.version` | Apache-2.0. The Kotlin fixture only (#1007): the `runBlocking` rule is proven against the call site kotlinc really emits and the dispatcher workers kotlinx really starts. A stand-in by the same names was all #993 had, and the first `runBlocking` weaver matched a name kotlinx 1.11 no longer compiles to; only the real library showed it. |
 | Groovy (`org.apache.groovy:groovy`, `gmavenplus-plugin`) | `groovy.version`, `gmavenplus-plugin.version` | The Groovy fixture (plain JUnit 5, not Spock). |
 | Scala 3 (`scala3-library_3`, `scala-maven-plugin`) | `scala.version`, `scala-maven-plugin.version` | The Scala fixture. |

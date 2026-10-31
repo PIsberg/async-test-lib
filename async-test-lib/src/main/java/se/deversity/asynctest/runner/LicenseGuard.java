@@ -139,7 +139,7 @@ public final class LicenseGuard {
         // An offline file is a commercial assertion like a key: its presence must keep CI from
         // auto-mocking, or a bad file would be announced GRANTED exactly where builds really run.
         boolean hasCredentials = offline || assertsCommercialLicence(
-                lemonSqueezy, fp.licenseKey, fp.keygenApiKey, fp.lemonSqueezyStoreId);
+                lemonSqueezy, fp.licenseKey, fp.keygenApiKey);
 
         boolean mock   = fp.licenseMockMode
                        || Boolean.getBoolean("license.mock.mode")
@@ -281,24 +281,27 @@ public final class LicenseGuard {
      * paying customer's CI run reported "no credentials", auto-mocked, and announced GRANTED
      * without the key they had just paid for ever being checked. An expired key, a revoked key
      * and a fabricated key all passed, in the environment where builds actually run. An operator
-     * token still counts when one is present, which is what the library's own tooling uses.
+     * token still counts when one is present, which is what the library's own tooling uses; it
+     * means nothing to LemonSqueezy.
+     *
+     * <p>The provider coordinates play no part in the answer. Under LemonSqueezy this once also
+     * required {@code ls.store.id}, so a key supplied without one read as "no credentials": in
+     * CI the run auto-mocked and was granted without the key being checked, where the same
+     * mistake under Keygen failed closed (#1144). A key with missing coordinates is a commercial
+     * claim that {@link #requireProviderCoordinates} then rejects, naming the missing property.
      *
      * <p>Package-private so the decision can be tested directly. The surrounding path depends on
      * environment variables that a unit test cannot set for its own JVM.
      *
-     * @param lemonSqueezy       whether the LemonSqueezy provider is selected
-     * @param licenseKey         the resolved licence key, if any
-     * @param keygenApiKey       the resolved Keygen operator token, if any
-     * @param lemonSqueezyStoreId the resolved LemonSqueezy store id, if any
+     * @param lemonSqueezy whether the LemonSqueezy provider is selected
+     * @param licenseKey   the resolved licence key, if any
+     * @param keygenApiKey the resolved Keygen operator token, if any
      * @return {@code true} when the run must be validated against the provider
      */
     static boolean assertsCommercialLicence(boolean lemonSqueezy,
                                             @Nullable String licenseKey,
-                                            @Nullable String keygenApiKey,
-                                            @Nullable Long lemonSqueezyStoreId) {
-        return lemonSqueezy
-            ? lemonSqueezyStoreId != null && notBlank(licenseKey)
-            : notBlank(licenseKey) || notBlank(keygenApiKey);
+                                            @Nullable String keygenApiKey) {
+        return notBlank(licenseKey) || (!lemonSqueezy && notBlank(keygenApiKey));
     }
 
     /**

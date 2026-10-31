@@ -260,24 +260,69 @@ class LicenseGuardTest {
      */
     @Test
     void licenseKeyAloneMakesTheRunCredentialled_soCiCannotAutoMockIt() {
-        assertTrue(LicenseGuard.assertsCommercialLicence(false, "a-customer-key", null, null),
+        assertTrue(LicenseGuard.assertsCommercialLicence(false, "a-customer-key", null),
                 "A Keygen customer has a key and no API token; that run must still be validated");
-        assertTrue(LicenseGuard.assertsCommercialLicence(false, null, "an-operator-token", null),
+        assertTrue(LicenseGuard.assertsCommercialLicence(false, null, "an-operator-token"),
                 "An operator token still counts, which is what the project's own tooling uses");
-        assertFalse(LicenseGuard.assertsCommercialLicence(false, null, null, null),
+        assertFalse(LicenseGuard.assertsCommercialLicence(false, null, null),
                 "A run asserting no licence at all is what CI auto-mock exists for");
-        assertFalse(LicenseGuard.assertsCommercialLicence(false, "   ", null, null),
+        assertFalse(LicenseGuard.assertsCommercialLicence(false, "   ", null),
                 "A blank key asserts nothing");
     }
 
-    /** LemonSqueezy needs the store id as well as the key before a check can mean anything. */
+    /**
+     * Under LemonSqueezy the key alone is the commercial assertion, exactly as under Keygen.
+     *
+     * <p>This used to require the store id as well, which made a key supplied without
+     * {@code -Dls.store.id} read as "no credentials": in CI that run auto-mocked and was granted
+     * without the key ever being checked, while the same mistake under Keygen failed closed
+     * with {@code LICENSE MISCONFIGURED} (#1144).
+     */
     @Test
-    void lemonSqueezyNeedsBothKeyAndStoreIdToCount() {
-        assertTrue(LicenseGuard.assertsCommercialLicence(true, "a-key", null, 42L));
-        assertFalse(LicenseGuard.assertsCommercialLicence(true, "a-key", null, null),
-                "A key with no store id cannot be scoped, so it is not a commercial assertion");
-        assertFalse(LicenseGuard.assertsCommercialLicence(true, null, null, 42L),
+    void lemonSqueezyKeyCountsWithOrWithoutStoreId() {
+        assertTrue(LicenseGuard.assertsCommercialLicence(true, "a-key", null));
+        assertTrue(LicenseGuard.assertsCommercialLicence(true, "a-key", null),
+                "A key with no store id still asserts a licence; the missing id is a misconfiguration"
+                + " to report, not a reason to auto-mock");
+        assertFalse(LicenseGuard.assertsCommercialLicence(true, null, null),
                 "A store id with no key asserts nothing");
+        assertFalse(LicenseGuard.assertsCommercialLicence(true, null, "an-operator-token"),
+                "A Keygen operator token means nothing to the LemonSqueezy provider");
+    }
+
+    /**
+     * A LemonSqueezy key without {@code -Dls.store.id} fails closed and names the property, in
+     * every environment. Before #1144 this held only outside CI: with {@code CI} or
+     * {@code GITHUB_ACTIONS} set the run auto-mocked and was granted instead. Run this class
+     * with {@code CI=true} in the environment to exercise the CI branch locally.
+     */
+    @Test
+    void lemonSqueezyKeyWithoutStoreId_failsClosedInEveryEnvironment() {
+        String prevMockMode = System.getProperty("license.mock.mode");
+        String prevProvider = System.getProperty("license.provider");
+        String prevStoreId  = System.getProperty("ls.store.id");
+        System.setProperty("license.mock.mode", "false");
+        System.setProperty("license.provider", "lemonsqueezy");
+        System.clearProperty("ls.store.id");
+        try {
+            AsyncTestConfig cfg = AsyncTestConfig.builder()
+                    .licenseMockMode(false)
+                    .licenseKey("INVALID-TEST-KEY-0000")
+                    .build();
+
+            SecurityException ex = assertThrows(SecurityException.class,
+                    () -> LicenseGuard.check(cfg),
+                    "A LemonSqueezy key that cannot be scoped to a store must not be granted"
+                    + " (CI env set: " + (System.getenv("CI") != null
+                            || System.getenv("GITHUB_ACTIONS") != null) + ")");
+            assertTrue(ex.getMessage().contains("LICENSE MISCONFIGURED"), ex.getMessage());
+            assertTrue(ex.getMessage().contains("-Dls.store.id"),
+                    "The message must name the missing property: " + ex.getMessage());
+        } finally {
+            restore("license.mock.mode", prevMockMode);
+            restore("license.provider", prevProvider);
+            restore("ls.store.id", prevStoreId);
+        }
     }
 
     /**

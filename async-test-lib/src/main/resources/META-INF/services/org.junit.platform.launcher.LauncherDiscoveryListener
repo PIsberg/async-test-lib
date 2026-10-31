@@ -1,2 +1,3 @@
-# Fails discovery for an @AsyncTest method that returns a value, which JUnit skips silently (#1119).
-se.deversity.asynctest.extension.NonVoidAsyncTestListener
+# Fails discovery for an @AsyncTest method JUnit would skip with only a warning: non-void (#1119),
+# a Kotlin suspend fun, private or static (#1146).
+se.deversity.asynctest.extension.InvalidAsyncTestListener
