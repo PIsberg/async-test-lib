@@ -76,6 +76,14 @@ ran, so a build that goes red here was passing without testing it; declare the m
 
 ### Maintenance
 
+- **A worker that outlives its run is now pinned as unable to reach the next one (#1145).** A
+  worker stuck in code that ignores interrupts can outlive the quiesce grace, and the runner then
+  reports without it. An audit found no path from such a worker into a later run: every run builds
+  its own executor and all context state is per thread. `ConcurrencyRunnerTest` now runs an orphan
+  past its run's end on platform and virtual workers, lets it record and uninstall while the next
+  run is in progress, and checks the next run keeps its own threads and context. A mutant whose
+  `uninstall()` cleared every thread's context failed it on that assertion. The quiesce WARNs are
+  now explained in `docs/TROUBLESHOOTING.md`.
 - **The two machine review lanes run only when asked (#1137).** The Inquisitor reran on every
   push to every pull request and the Copilot lane on every opened one, spending the subscription
   token and the Copilot Free quota on work-in-progress nobody had asked a reviewer to read. Both

@@ -457,6 +457,143 @@ class ConcurrencyRunnerTest {
         }
     }
 
+    // ---- An orphaned worker cannot reach the next run (#1145) ----
+
+    /** Released by the next run's body; until then the orphan ignores every interrupt. */
+    private static final java.util.concurrent.atomic.AtomicReference<java.util.concurrent.CountDownLatch>
+            ORPHAN_RELEASE = new java.util.concurrent.atomic.AtomicReference<>();
+    private static final java.util.concurrent.atomic.AtomicReference<Thread> ORPHAN_THREAD =
+            new java.util.concurrent.atomic.AtomicReference<>();
+    private static final java.util.concurrent.atomic.AtomicReference<se.deversity.asynctest.AsyncTestContext>
+            ORPHAN_CONTEXT = new java.util.concurrent.atomic.AtomicReference<>();
+    /** What went wrong in the orphan's late steps, after its own run had been analysed. */
+    private static final java.util.concurrent.atomic.AtomicReference<Throwable> ORPHAN_LATE_FAILURE =
+            new java.util.concurrent.atomic.AtomicReference<>();
+    private static final java.util.Set<Thread> NEXT_RUN_THREADS =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private static final java.util.Set<se.deversity.asynctest.AsyncTestContext> NEXT_RUN_CONTEXTS =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * A worker stuck in code that ignores interrupts for longer than the quiesce grace and the
+     * runner's final one-second wait together, so its run is analysed and returns while it is
+     * still alive. Released by the next run, it then records into a detector and unwinds through
+     * the runner's {@code AsyncTestContext.uninstall()}, both after its own run is over.
+     */
+    static final class OrphanFixture {
+        private void ignoresInterruptsUntilReleased() {
+            ORPHAN_THREAD.set(Thread.currentThread());
+            se.deversity.asynctest.AsyncTestContext own = se.deversity.asynctest.AsyncTestContext.get();
+            ORPHAN_CONTEXT.set(own);
+            java.util.concurrent.CountDownLatch release = ORPHAN_RELEASE.get();
+            long cap = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+            while (System.nanoTime() < cap) {
+                try {
+                    if (release.await(20, TimeUnit.MILLISECONDS)) {
+                        break;
+                    }
+                } catch (InterruptedException ignored) {
+                    // Deliberately swallowed: shutdownNow() must not be able to stop this worker.
+                }
+            }
+            try {
+                // Its own run was analysed long ago, and another run is in progress. A late
+                // write must land in the orphan's own context, never in the run now under way.
+                if (se.deversity.asynctest.AsyncTestContext.get() != own) {
+                    throw new AssertionError("the orphan's context changed while it was stuck: "
+                            + "another run's state reached its thread");
+                }
+                se.deversity.asynctest.AsyncTestContext.sharedCollectionDetector()
+                        .recordWrite(new java.util.HashMap<>(), "late", "put");
+            } catch (Throwable t) { // NOPMD - reported to the test thread below
+                ORPHAN_LATE_FAILURE.set(t);
+            }
+        }
+    }
+
+    /** The next run: lets the orphan go, waits for it to unwind, then checks its own context. */
+    static final class NextRunFixture {
+        private void releasesTheOrphanAndKeepsItsContext() throws InterruptedException {
+            se.deversity.asynctest.AsyncTestContext mine = se.deversity.asynctest.AsyncTestContext.get();
+            NEXT_RUN_THREADS.add(Thread.currentThread());
+            NEXT_RUN_CONTEXTS.add(mine);
+            ORPHAN_RELEASE.get().countDown();
+            Thread orphan = ORPHAN_THREAD.get();
+            orphan.join(10_000);
+            assertFalse(orphan.isAlive(), "the released orphan never finished unwinding");
+            assertNotNull(mine, "a worker of the next run started without a context");
+            assertSame(mine, se.deversity.asynctest.AsyncTestContext.get(),
+                    "the orphan's late uninstall() cleared or replaced the context of a worker "
+                            + "of the next run");
+        }
+    }
+
+    /**
+     * A worker that outlives its run cannot reach the next one (#1145). Threads cannot be killed,
+     * so the runner proceeds past a worker stuck in uninterruptible code; what must hold is that
+     * such a worker's late steps, its detector writes and its {@code uninstall()}, stay inside its
+     * own run. They do by construction: every run builds its own executor, so no thread serves
+     * two runs, and every piece of context state is per thread. This pins both facts end to end.
+     */
+    @Test
+    void orphanedWorker_cannotReachTheNextRunsContext() throws Throwable {
+        String previousLicense = System.getProperty("license.mock.mode");
+        String previousMultiplier = System.getProperty("async-test.timeout.multiplier");
+        String previousGrace = System.getProperty("async-test.quiesce.grace.ms");
+        System.setProperty("license.mock.mode", "true");
+        System.setProperty("async-test.timeout.multiplier", "1");
+        System.setProperty("async-test.quiesce.grace.ms", "100");
+        ORPHAN_RELEASE.set(new java.util.concurrent.CountDownLatch(1));
+        ORPHAN_THREAD.set(null);
+        ORPHAN_CONTEXT.set(null);
+        ORPHAN_LATE_FAILURE.set(null);
+        NEXT_RUN_THREADS.clear();
+        NEXT_RUN_CONTEXTS.clear();
+        try {
+            for (boolean virtualThreads : new boolean[] {false, true}) {
+                ORPHAN_RELEASE.set(new java.util.concurrent.CountDownLatch(1));
+                AsyncTestConfig orphanRun = AsyncTestConfig.builder()
+                        .threads(1).invocations(1).useVirtualThreads(virtualThreads)
+                        .timeoutMs(100).detectAll(false).detectDeadlocks(false)
+                        .detectSharedCollections(true)
+                        .build();
+                Method stuck = OrphanFixture.class.getDeclaredMethod("ignoresInterruptsUntilReleased");
+                assertThrows(AssertionError.class, () -> se.deversity.asynctest.runner.ConcurrencyRunner
+                        .execute(new FakeInvocationContext(new OrphanFixture(), stuck, List.of()), orphanRun));
+                Thread orphan = ORPHAN_THREAD.get();
+                assertNotNull(orphan, "the stuck body never started");
+                assertTrue(orphan.isAlive(),
+                        "the fixture must outlive its run, or this test checks nothing");
+
+                AsyncTestConfig nextRun = AsyncTestConfig.builder()
+                        .threads(2).invocations(1).useVirtualThreads(virtualThreads)
+                        .timeoutMs(15_000).detectAll(false).detectDeadlocks(false)
+                        .detectSharedCollections(true)
+                        .build();
+                Method next = NextRunFixture.class.getDeclaredMethod("releasesTheOrphanAndKeepsItsContext");
+                se.deversity.asynctest.runner.ConcurrencyRunner
+                        .execute(new FakeInvocationContext(new NextRunFixture(), next, List.of()), nextRun);
+
+                assertNull(ORPHAN_LATE_FAILURE.get(), () -> "virtual=" + virtualThreads
+                        + ": the orphan's late steps failed: " + ORPHAN_LATE_FAILURE.get());
+                assertFalse(NEXT_RUN_THREADS.contains(orphan),
+                        "virtual=" + virtualThreads + ": the next run was handed the orphan's thread");
+                assertFalse(NEXT_RUN_CONTEXTS.contains(ORPHAN_CONTEXT.get()),
+                        "virtual=" + virtualThreads + ": the next run shares the orphan's context");
+                NEXT_RUN_THREADS.clear();
+                NEXT_RUN_CONTEXTS.clear();
+            }
+        } finally {
+            java.util.concurrent.CountDownLatch release = ORPHAN_RELEASE.get();
+            if (release != null) {
+                release.countDown();
+            }
+            restoreProperty("async-test.quiesce.grace.ms", previousGrace);
+            restoreProperty("async-test.timeout.multiplier", previousMultiplier);
+            restoreProperty("license.mock.mode", previousLicense);
+        }
+    }
+
     // ---- Worker threads carry the harness name prefix ----
 
     /** Set by {@link NameCaptureFixture}; reset per test iteration. */

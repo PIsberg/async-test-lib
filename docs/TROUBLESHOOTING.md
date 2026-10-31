@@ -43,6 +43,24 @@ Default timeouts (5,000ms) that work locally can easily trigger timeouts in reso
   void test_contention() { ... }
   ```
 
+### Symptom: `runner.quiesce.incomplete` / `runner.quiesce.stuck-worker` after a timeout
+
+After a round times out or fails, the runner interrupts its workers and waits up to
+`-Dasync-test.quiesce.grace.ms` (default 2000) for them to stop before it tears down and reports.
+A worker in code that ignores interrupts (a swallowed `InterruptedException`, a blocking socket
+read, a monitor wait) can outlive that wait, and threads cannot be killed, so the runner reports
+without it. The WARN names the worker and prints its stack; the report may be missing that
+worker's last accesses.
+
+* If the code just unwinds slowly, raise `-Dasync-test.quiesce.grace.ms`.
+* If it never unwinds, the stack in the WARN is where it is stuck.
+
+Such a worker cannot affect later tests. Every run gets its own worker threads, so no thread serves
+two runs, and a worker's context is per thread: when it finally unwinds, its detector writes go to
+its own finished run and its `uninstall()` clears only its own thread (#1145,
+`ConcurrencyRunnerTest.orphanedWorker_cannotReachTheNextRunsContext`). Platform workers are daemon
+threads, so a stuck one does not keep the JVM alive either.
+
 ---
 
 ## 3. Optimizing Thread Counts & Stress Modes
