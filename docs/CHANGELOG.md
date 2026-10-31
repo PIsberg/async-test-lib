@@ -89,6 +89,18 @@ declare the method `void`, and package-private or wider, on an instance.
 
 ### Maintenance
 
+- **Every weaver is now checked together on two-slot operands (#1147).** The weavers keep frames
+  valid by inserting only stack-neutral sequences, and a `long` or `double` is the case where the
+  wrong copy instruction is a `VerifyError` at the first link in a user's build. An audit of the
+  insertion points found every wide path already using the two-slot forms, and
+  `PersistenceHandleWeaver` skipping calls with a wide argument. `WideOperandWeavingTest` now weaves
+  `WideOperandSample`, every field width volatile and plain, static and instance, in compound,
+  chained and value-returning stores, increments, array elements, another object's field, a
+  lambda, a `synchronized` method, a loop, a handler, constructors and `EntityManager` calls with a
+  wide value beneath them, through the exact chain `install` uses. The woven class must verify and
+  return what the unwoven one does for four inputs. Three mutants, a one-slot copy in the volatile
+  store, in the volatile load and in the persistence weaver's two-argument copy, each failed it with
+  `VerifyError`.
 - **A worker that outlives its run is now pinned as unable to reach the next one (#1145).** A
   worker stuck in code that ignores interrupts can outlive the quiesce grace, and the runner then
   reports without it. An audit found no path from such a worker into a later run: every run builds

@@ -136,7 +136,11 @@ common shape of a real race — it is why the README's own counter example repor
 this option existed. `fields=true` instruments the instruction stream instead, inserting a
 stack-neutral, branch-free observation call before each field instruction, and for a volatile field
 a second one that hands the value to the happens-before model: just before a store, and just after
-a load ([#742](https://github.com/PIsberg/async-test-lib/issues/742)).
+a load ([#742](https://github.com/PIsberg/async-test-lib/issues/742)). A `long` or `double` takes
+the two-slot copy instructions rather than `DUP` and `SWAP`; `WideOperandWeavingTest` weaves a class
+with every field width, volatile and plain, static and instance, through the full
+`fields=true,collections=true` chain and checks that it verifies and computes what the unwoven class
+does ([#1147](https://github.com/PIsberg/async-test-lib/issues/1147)).
 
 The same observation call is a scheduling point of a controlled schedule
 (`@AsyncTest(controlledSchedule = true)`): before each woven field instruction the round may hand
