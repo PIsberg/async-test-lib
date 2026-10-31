@@ -89,6 +89,16 @@ declare the method `void`, and package-private or wider, on an instance.
 
 ### Maintenance
 
+- **The workflows' supply-chain settings are now a gate (#1148).** An audit of the 21 workflows
+  found nothing to change: every third-party action pinned to a commit SHA, a
+  read-only top-level token (`contents: read`, or `read-all` in Scorecard's own workflow), no
+  `pull_request_target`, `workflow_run` or `issue_comment` trigger, and all 44 harden-runner steps on
+  `egress-policy: block`. The four jobs without harden-runner are three summary jobs that run one
+  shell step and no network, and `os-sensitive`, which runs on Windows and macOS only, where the
+  repository already skips it. Nothing enforced any of it: Scorecard reports weekly and blocks
+  nothing. `WorkflowSupplyChainTest` now fails on each, and requires the 12 job-level write scopes
+  to match a reviewed list exactly. One mutant per property, a tag pin, a top-level `write-all`, an
+  extra `issues: write`, a `workflow_run` trigger and an `audit` egress policy, failed all five tests.
 - **Every weaver is now checked together on two-slot operands (#1147).** The weavers keep frames
   valid by inserting only stack-neutral sequences, and a `long` or `double` is the case where the
   wrong copy instruction is a `VerifyError` at the first link in a user's build. An audit of the
