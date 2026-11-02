@@ -1369,6 +1369,42 @@ final class Corpus {
                     "the same future with completeExceptionally on the failure path, so every "
                             + "path completes it"),
 
+            new RecordingSubject("agent_atomicInteger_everyThreadGetsThenSets", JDK,
+                    "java.util.concurrent.atomic.AtomicInteger",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "set(get() + 1) from every thread: each call is atomic and the pair is not, so "
+                            + "two threads reading one value lose an increment (#1157)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_atomicInteger_oneWriterGetsThenSets", JDK,
+                    "java.util.concurrent.atomic.AtomicInteger",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same get and set from one writer a round while the others read. With one "
+                            + "writer there is no update to lose"),
+
+            new RecordingSubject("agent_atomicInteger_lockFreeReadThenLockedGetAndSet", JDK,
+                    "java.util.concurrent.atomic.AtomicInteger",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread reads lock-free and then gets and sets under one lock. The first "
+                            + "draft of this feed judged the whole instance and drew VERDICT/HIGH "
+                            + "on Spring and Jackson, which keep their counts this way"),
+
+            new RecordingSubject("agent_atomicLong_everyThreadGetsThenSets", JDK,
+                    "java.util.concurrent.atomic.AtomicLong",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same two calls from every thread on an AtomicLong (#1157)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_atomicLong_oneWriterGetsThenSets", JDK,
+                    "java.util.concurrent.atomic.AtomicLong",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same get and set from one writer a round on an AtomicLong"),
+
             new RecordingSubject("agent_completableFuture_callbackJoinsAPendingFuture", JDK,
                     "java.util.concurrent.CompletableFuture",
                     DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, Contract.THREAD_SAFE,

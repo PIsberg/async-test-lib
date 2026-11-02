@@ -60,6 +60,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.StampedLock;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -1097,6 +1098,72 @@ class CorpusAgentPairLaneTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_completableFuture_failurePathCompletesIt() {
         counted(() -> loadByHand(true));
+    }
+
+    private static final AtomicInteger RACED_INT = new AtomicInteger();
+    private static final AtomicInteger SINGLE_WRITER_INT = new AtomicInteger();
+    private static final AtomicLong RACED_LONG = new AtomicLong();
+    private static final AtomicLong SINGLE_WRITER_LONG = new AtomicLong();
+    private static final AtomicInteger INT_TICKETS = new AtomicInteger();
+    private static final AtomicInteger LONG_TICKETS = new AtomicInteger();
+
+    /** {@return whether this body is the first of its round, so the one writer of a silent row} */
+    private static boolean opensTheRound(AtomicInteger tickets) {
+        return tickets.getAndIncrement() % THREADS == 0;
+    }
+
+    /** Every thread increments with a get and then a set, which is two calls and no atomicity. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_atomicInteger_everyThreadGetsThenSets() {
+        counted(() -> RACED_INT.set(RACED_INT.get() + 1));
+    }
+
+    /** The same get and set from one writer a round, with the others only reading. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_atomicInteger_oneWriterGetsThenSets() {
+        counted(() -> {
+            int seen = SINGLE_WRITER_INT.get();
+            if (opensTheRound(INT_TICKETS)) {
+                SINGLE_WRITER_INT.set(seen + 1);
+            }
+        });
+    }
+
+    private static final AtomicInteger LOCKED_INT = new AtomicInteger();
+    private static final ReentrantLock COUNT_LOCK = new ReentrantLock();
+
+    /**
+     * Every thread reads lock-free, then gets and sets under one lock: how Spring's segment count
+     * and Jackson's weighted size are kept, each of which a run over the whole instance misjudged.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_atomicInteger_lockFreeReadThenLockedGetAndSet() {
+        counted(() -> {
+            int hint = LOCKED_INT.get();
+            COUNT_LOCK.lock();
+            try {
+                LOCKED_INT.set(LOCKED_INT.get() + (hint < 0 ? 0 : 1));
+            } finally {
+                COUNT_LOCK.unlock();
+            }
+        });
+    }
+
+    /** The same two calls on an AtomicLong. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_atomicLong_everyThreadGetsThenSets() {
+        counted(() -> RACED_LONG.set(RACED_LONG.get() + 1));
+    }
+
+    /** The same get and set from one writer a round, with the others only reading. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_atomicLong_oneWriterGetsThenSets() {
+        counted(() -> {
+            long seen = SINGLE_WRITER_LONG.get();
+            if (opensTheRound(LONG_TICKETS)) {
+                SINGLE_WRITER_LONG.set(seen + 1);
+            }
+        });
     }
 
     /**

@@ -1,11 +1,168 @@
 package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class AtomicNonAtomicUpdateDetectorTest {
+
+    /** Runs a woven get then set of {@code atomic} on its own thread and waits for it (#1157). */
+    private static void readThenStoreOnANewThread(AtomicNonAtomicUpdateDetector d, Object atomic)
+            throws InterruptedException {
+        Thread thread = new Thread(() -> {
+            d.agentRead(atomic);
+            d.agentStore(atomic);
+        });
+        thread.start();
+        thread.join();
+    }
+
+    @Test
+    void wovenGetThenSetFromTwoThreadsOfARoundIsReported() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger counter = new AtomicInteger();
+        readThenStoreOnANewThread(d, counter);
+        readThenStoreOnANewThread(d, counter);
+        assertTrue(d.analyze().hasIssues(),
+                "two threads read then stored with nothing in common held, so an update can be lost");
+    }
+
+    @Test
+    void aWovenPairIsAPromptAndARecordedPairStaysAVerdict() throws InterruptedException {
+        var woven = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger counter = new AtomicInteger();
+        readThenStoreOnANewThread(woven, counter);
+        readThenStoreOnANewThread(woven, counter);
+        assertEquals(List.of(TrustTier.PROMPT),
+                woven.analyze().grades().stream().map(GradedFindings.Grade::tier).toList(),
+                "the agent sees calls and not values, so a woven pair cannot claim a verdict");
+
+        var recorded = new AtomicNonAtomicUpdateDetector();
+        recorded.recordGet(counter, "counter", Thread.currentThread());
+        recorded.recordSet(counter, "counter", Thread.currentThread());
+        assertEquals(List.of(TrustTier.VERDICT),
+                recorded.analyze().grades().stream().map(GradedFindings.Grade::tier).toList(),
+                "the test's own record call is what says the update was compound");
+    }
+
+    @Test
+    void wovenGetThenSetFromOneWriterIsCorrect() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger counter = new AtomicInteger();
+        readThenStoreOnANewThread(d, counter);
+        Thread reader = new Thread(() -> d.agentRead(counter));
+        reader.start();
+        reader.join();
+        assertFalse(d.analyze().hasIssues(), "one writer among readers loses nothing");
+    }
+
+    @Test
+    void wovenGetThenSetByTwoThreadsInDifferentRoundsIsCorrect() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger counter = new AtomicInteger();
+        readThenStoreOnANewThread(d, counter);
+        d.markInvocationStart();
+        readThenStoreOnANewThread(d, counter);
+        assertFalse(d.analyze().hasIssues(), "the harness orders rounds, so neither can lose the other's");
+    }
+
+    /** Runs a woven get then set of {@code atomic} under {@code lock} on its own thread. */
+    private static void readThenStoreUnderALock(AtomicNonAtomicUpdateDetector d, Object atomic,
+                                                Object lock) throws InterruptedException {
+        Thread thread = new Thread(() -> {
+            HeldLocks.acquired(lock);
+            try {
+                d.agentRead(atomic);
+                d.agentStore(atomic);
+            } finally {
+                HeldLocks.released(lock);
+            }
+        });
+        thread.start();
+        thread.join();
+    }
+
+    @Test
+    void wovenGetThenSetUnderOneLockIsCorrect() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger counter = new AtomicInteger();
+        Object lock = new Object();
+        readThenStoreUnderALock(d, counter, lock);
+        readThenStoreUnderALock(d, counter, lock);
+        assertFalse(d.analyze().hasIssues(), "one lock held across both pairs excludes them");
+    }
+
+    @Test
+    void aLockFreeReadBesideALockedUpdateIsCorrect() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger counter = new AtomicInteger();
+        Object lock = new Object();
+        for (int i = 0; i < 2; i++) {
+            Thread thread = new Thread(() -> {
+                d.agentRead(counter);
+                HeldLocks.acquired(lock);
+                try {
+                    d.agentRead(counter);
+                    d.agentStore(counter);
+                } finally {
+                    HeldLocks.released(lock);
+                }
+            });
+            thread.start();
+            thread.join();
+        }
+        assertFalse(d.analyze().hasIssues(),
+                "the shape of a segment count: a lock-free read decides nothing, and the update "
+                        + "reads and stores under the lock");
+    }
+
+    @Test
+    void wovenGetThenSetUnderTwoLocksIsReported() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger counter = new AtomicInteger();
+        readThenStoreUnderALock(d, counter, new Object());
+        readThenStoreUnderALock(d, counter, new Object());
+        assertTrue(d.analyze().hasIssues(), "two different locks exclude nothing");
+    }
+
+    @Test
+    void aReadOutsideTheLockThenAStoreInsideItIsReported() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger counter = new AtomicInteger();
+        Object lock = new Object();
+        for (int i = 0; i < 2; i++) {
+            Thread thread = new Thread(() -> {
+                d.agentRead(counter);
+                HeldLocks.acquired(lock);
+                try {
+                    d.agentStore(counter);
+                } finally {
+                    HeldLocks.released(lock);
+                }
+            });
+            thread.start();
+            thread.join();
+        }
+        assertTrue(d.analyze().hasIssues(), "the value stored was read before the lock was taken");
+    }
+
+    @Test
+    void wovenCompareAndSetEndsThePendingRead() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger counter = new AtomicInteger();
+        for (int i = 0; i < 2; i++) {
+            Thread thread = new Thread(() -> {
+                d.agentRead(counter);
+                d.agentSwap(counter);
+                d.agentStore(counter);
+            });
+            thread.start();
+            thread.join();
+        }
+        assertFalse(d.analyze().hasIssues(), "a CAS loop's read is spent by the CAS, not by a later reset");
+    }
 
     @Test
     void testNoIssuesWhenEmpty() {

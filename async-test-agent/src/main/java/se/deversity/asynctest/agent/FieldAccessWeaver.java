@@ -95,6 +95,7 @@ final class FieldAccessWeaver {
     private static final String INT_UPDATER = "java/util/concurrent/atomic/AtomicIntegerFieldUpdater";
     private static final String ATOMIC_BOOLEAN = "java/util/concurrent/atomic/AtomicBoolean";
     private static final String ATOMIC_INTEGER = "java/util/concurrent/atomic/AtomicInteger";
+    private static final String ATOMIC_LONG = "java/util/concurrent/atomic/AtomicLong";
 
     /** Descriptors of the int functional forms, which the update and accumulate calls take. */
     private static final String UNARY = "Ljava/util/function/IntUnaryOperator;";
@@ -139,6 +140,7 @@ final class FieldAccessWeaver {
 
     /** The {@code AtomicInteger} calls substituted; the hook is the name plus {@code AtomicInteger}. */
     private static final Map<String, String> ATOMIC_INTEGER_FORMS = Map.ofEntries(
+            Map.entry("get", "()I"),
             Map.entry("compareAndSet", "(II)Z"),
             Map.entry("set", "(I)V"),
             Map.entry("lazySet", "(I)V"),
@@ -162,6 +164,16 @@ final class FieldAccessWeaver {
             Map.entry("updateAndGet", "(" + UNARY + ")I"),
             Map.entry("getAndAccumulate", "(I" + BINARY + ")I"),
             Map.entry("accumulateAndGet", "(I" + BINARY + ")I"));
+
+    /** The {@code AtomicLong} calls substituted for a get then set, never as a lock (#1157). */
+    private static final Map<String, String> ATOMIC_LONG_FORMS = Map.of(
+            "get", "()J",
+            "set", "(J)V",
+            "lazySet", "(J)V",
+            "setRelease", "(J)V",
+            "compareAndSet", "(JJ)Z",
+            "weakCompareAndSetPlain", "(JJ)Z",
+            "weakCompareAndSetVolatile", "(JJ)Z");
 
     /** Internal names of the reference slots whose offers and takes are substituted (#664). */
     private static final String ATOMIC_REFERENCE = "java/util/concurrent/atomic/AtomicReference";
@@ -838,6 +850,10 @@ final class FieldAccessWeaver {
          * the stack the original call did and returns what it returned. A release through any other
          * call is not substituted; the registry re-confirms a hold against the flag instead of
          * relying on seeing it, and {@code SpinLocks} lists those forms.
+         *
+         * <p>{@code AtomicInteger.get} and the {@code AtomicLong} calls are here for a get followed
+         * by a set (#1157), not for locking: the same substitution, the same stack, a different
+         * reader.
          */
         private static @Nullable String spinLockHook(int opcode, String owner, String name,
                                                      String descriptor) {
@@ -849,6 +865,7 @@ final class FieldAccessWeaver {
                 case INT_UPDATER -> atomicHook(INT_UPDATER_FORMS, name, descriptor, "IntUpdater");
                 case ATOMIC_BOOLEAN -> atomicHook(ATOMIC_BOOLEAN_FORMS, name, descriptor, "AtomicBoolean");
                 case ATOMIC_INTEGER -> atomicHook(ATOMIC_INTEGER_FORMS, name, descriptor, "AtomicInteger");
+                case ATOMIC_LONG -> atomicHook(ATOMIC_LONG_FORMS, name, descriptor, "AtomicLong");
                 default -> null;
             };
         }

@@ -58,6 +58,7 @@ import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector;
+import se.deversity.asynctest.diagnostics.AtomicNonAtomicUpdateDetector;
 import se.deversity.asynctest.diagnostics.MdcContextLeakDetector;
 import se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector;
 import se.deversity.asynctest.diagnostics.ThreadLocalMonitor;
@@ -3689,6 +3690,42 @@ public final class AgentConcurrencyUtilHooks {
         ThreadLocalMonitor monitor = AsyncTestContext.currentThreadLocalMonitor();
         if (monitor != null) {
             monitor.agentRemove(receiver);
+        }
+    }
+
+    /**
+     * A woven read of an {@code AtomicInteger} or {@code AtomicLong} (#1157).
+     *
+     * @param atomic the atomic the call site read
+     */
+    public static void atomicRead(Object atomic) {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
+        if (detector != null) {
+            detector.agentRead(atomic);
+        }
+    }
+
+    /**
+     * A woven plain store to one of those atomics (#1157).
+     *
+     * @param atomic the atomic the call site wrote
+     */
+    public static void atomicStored(Object atomic) {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
+        if (detector != null) {
+            detector.agentStore(atomic);
+        }
+    }
+
+    /**
+     * A woven atomic update of one of those atomics, which needs no read before it (#1157).
+     *
+     * @param atomic the atomic the call site updated
+     */
+    public static void atomicSwapped(Object atomic) {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
+        if (detector != null) {
+            detector.agentSwap(atomic);
         }
     }
 

@@ -23,8 +23,25 @@ An `@AsyncTest` method that returns a value, or is `private` or `static`, now fa
 (see Fixed). Such a method never ran, so a build that goes red here was passing without testing it;
 declare the method `void`, and package-private or wider, on an instance.
 
+With the agent attached, two threads of a round that each read an `AtomicInteger` or `AtomicLong` and
+then set it, with no lock held across both, are now a `PROMPT`/`HIGH` finding (see Fixed). A build
+that fails on `HIGH` below `VERDICT` can go red where it was green. Use `updateAndGet` or a
+compare-and-set loop, or exclude `ATOMIC_NON_ATOMIC_UPDATE` where the stored value does not depend on
+the read. A recorded get and set is still `VERDICT`, as a finding rather than through the detector's
+tier, which is now `PROMPT`.
+
 ### Fixed
 
+- **`AtomicInteger.set(get() + 1)` is reported without a record call (#1157).**
+  `ATOMIC_NON_ATOMIC_UPDATE` was recording-fed, so the mistake it names drew nothing from ordinary
+  code. It is agent-fed now through the woven `AtomicInteger` and `AtomicLong` calls. A get then set
+  is reported once two threads of a round have each done it with no lock held across both; one
+  writer among readers stays silent and a compare-and-set spends the read. It sees calls and not
+  values, so a woven pair is graded `PROMPT`/`HIGH`; a recorded pair stays `VERDICT`. The corpus shaped
+  all of this: the first draft drew `VERDICT` findings on Spring's and Jackson's documented-safe
+  caches, one because it judged the whole atomic rather than each pair, and one on a status flag in
+  an `AtomicReference`, which is why that type is not fed. `agent_atomicInteger_*` and
+  `agent_atomicLong_*` are the pairs.
 - **Double-checked locking without `volatile` is reported (#1154).** `AtomicityValidator`'s excuse
   for a plain hint reread under the write lock (#311) never looked at what the field held, so the
   textbook broken form drew no finding from any detector. A reader that finds a plain reference
@@ -99,8 +116,8 @@ declare the method `void`, and package-private or wider, on an instance.
   give `THREAD_LOCAL_LEAKS`, `THREAD_POOL` and `COMPLETABLE_FUTURE_COMPLETION_LEAKS` their first pair
   through the woven path, and ten idiom pairs cover shared collections, get-then-put counting, lazy
   init, reads outside the lock, a lock per caller, a lock on a boxed counter, `sleep` as ordering
-  and plain counters in pool tasks. Five other common mistakes drew no finding and are filed as
-  #1155 to #1157, #1159 and #1160, with an inconsistent `runAsync` result in #1158.
+  and plain counters in pool tasks. Four other common mistakes drew no finding and are filed as
+  #1155, #1156, #1159 and #1160, with an inconsistent `runAsync` result in #1158.
   `CorpusClaimsInDocsTest` now holds the roster table in `corpus-eval.md` to the rows; its agent-pair
   figure said 19 where the lane pairs 38, under a sentence saying nothing there was kept by hand.
 - **The workflows' supply-chain settings are now a gate (#1148).** An audit of the 21 workflows

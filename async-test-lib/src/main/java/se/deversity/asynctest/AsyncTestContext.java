@@ -2139,6 +2139,17 @@ public final class AsyncTestContext {
         return context == null ? null : context.mdcContextLeakDetector;
     }
 
+    /**
+     * {@return the {@link AtomicNonAtomicUpdateDetector} for the run the calling thread works for,
+     * or {@code null}}
+     *
+     * <p>The woven atomic calls hand it each read and store (#1157).
+     */
+    static @Nullable AtomicNonAtomicUpdateDetector currentAtomicNonAtomicUpdateDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.atomicNonAtomicUpdateDetector;
+    }
+
     static @Nullable JdbcConnectionSharedDetector currentJdbcConnectionSharedDetector() {
         AsyncTestContext context = agentContext();
         return context == null ? null : context.jdbcConnectionSharedDetector;
