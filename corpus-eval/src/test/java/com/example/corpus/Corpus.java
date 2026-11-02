@@ -5206,6 +5206,22 @@ final class Corpus {
                             + "objects, and a reader has no edge to the writer",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_doubleCheckedLocking_volatileField", JDK,
+                    IDIOM_LANE + "VolatileLazySettings",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a check, a lock and a recheck on a volatile field: writes share a monitor "
+                            + "and a reader that skips the lock sees a fully built object"),
+
+            new RecordingSubject("idiom_doubleCheckedLocking_plainField", JDK,
+                    IDIOM_LANE + "PlainLazySettings",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same check, lock and recheck with no volatile. A reader that finds the "
+                            + "field non-null never reaches the lock, so nothing orders its read "
+                            + "of the object after the object's construction (#1154)",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_guardedField_readAndWrittenUnderTheLock", JDK,
                     IDIOM_LANE + "Ledger",
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,

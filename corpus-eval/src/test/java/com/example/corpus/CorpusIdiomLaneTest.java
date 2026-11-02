@@ -1210,6 +1210,56 @@ class CorpusIdiomLaneTest {
         broken(() -> use(RACED_SETTINGS.next().shared().unsynchronized().size));
     }
 
+    private static final class VolatileLazySettings {
+        private volatile Settings settings;
+
+        Settings get() {
+            Settings local = settings;
+            if (local == null) {
+                synchronized (this) {
+                    local = settings;
+                    if (local == null) {
+                        local = new Settings();
+                        settings = local;
+                    }
+                }
+            }
+            return local;
+        }
+    }
+
+    private static final class PlainLazySettings {
+        private Settings settings;
+
+        Settings get() {
+            if (settings == null) {
+                synchronized (this) {
+                    if (settings == null) {
+                        settings = new Settings();
+                    }
+                }
+            }
+            return settings;
+        }
+    }
+
+    private static final Rounds<VolatileLazySettings> VOLATILE_SETTINGS =
+            new Rounds<>(VolatileLazySettings::new);
+    private static final Rounds<PlainLazySettings> PLAIN_SETTINGS =
+            new Rounds<>(PlainLazySettings::new);
+
+    /** Double-checked locking on a volatile field, the form that is correct since Java 5. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_doubleCheckedLocking_volatileField() {
+        correct(() -> use(VOLATILE_SETTINGS.next().shared().get().size));
+    }
+
+    /** The same check, lock and recheck on a plain field (#1154). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_doubleCheckedLocking_plainField() {
+        broken(() -> use(PLAIN_SETTINGS.next().shared().get().size));
+    }
+
     private static final class Ledger {
         final Object lock = new Object();
         int balance;

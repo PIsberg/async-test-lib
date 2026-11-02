@@ -1741,6 +1741,12 @@ public class AtomicityValidator {
      * {@code A} and another {@code B} collapses the plain intersection, yet every pairing is
      * mutually excluded.
      *
+     * <p>The confirming read excuses a hint, and a plain reference is no hint (#1154). A reader that
+     * finds it non-null returns or dereferences it without ever reaching the recheck, and with no
+     * {@code volatile} it may see a partly built object. So a non-volatile field whose writes store
+     * a reference keeps its finding unless every read held a write lock. A write the weaver could
+     * not name stores 0 and keeps the excuse, which errs towards silence as every excuse here does.
+     *
      * <p>The streamed write lockset spans the whole run, so a different lock in each round
      * empties it although the harness orders the rounds; once it has, each round's own writes
      * name the locks that round's reads are judged against, as {@link FieldGuard#isSafePublication}
@@ -1778,10 +1784,23 @@ public class AtomicityValidator {
             // only because different accesses chose different members of the write set.
             return true;
         }
+        if (!locks.isVolatileField() && storesAReference(history, instance)) {
+            return false;
+        }
         for (int at : uncoveredReads) {
             int[] writeLocks = perRound == null ? runWide : perRound.get(history.get(at).epoch);
             if (writeLocks != null
                     && confirmedLater(history, at, instance, writeLocks, constructionExcused)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** {@return whether some write to {@code instance} in {@code history} stored a named reference} */
+    private static boolean storesAReference(List<FieldAccessRecord> history, long instance) {
+        for (FieldAccessRecord access : history) {
+            if (access.instanceKey == instance && access.write && access.storedIdentity != 0) {
                 return true;
             }
         }

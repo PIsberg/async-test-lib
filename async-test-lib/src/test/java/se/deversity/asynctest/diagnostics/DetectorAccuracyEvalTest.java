@@ -601,6 +601,42 @@ class DetectorAccuracyEvalTest {
                         + "resizeThreshold hint - and reporting it reports the idiom, not a bug");
     }
 
+    /** One access of double-checked locking on a field that stores {@code stored} (#1154). */
+    private static void lazyAccess(AtomicityValidator validator, boolean write, long thread,
+                                   long fingerprint, boolean volatileField, int stored) {
+        validator.recordFieldAccessUnderLocks("holder.instance", null, write, thread, fingerprint,
+                0, 0, volatileField, Integer.MIN_VALUE, 79, stored);
+    }
+
+    /** Two threads check, take the lock, recheck and store; the second then reads it unlocked. */
+    private static void doubleCheckedLocking(AtomicityValidator validator, boolean volatileField) {
+        for (long thread = 1; thread <= 2; thread++) {
+            lazyAccess(validator, false, thread, NO_LOCKS, volatileField, 0);
+            lazyAccess(validator, false, thread, WRITE_LOCK, volatileField, 0);
+            lazyAccess(validator, true, thread, WRITE_LOCK, volatileField, 4100 + (int) thread);
+        }
+    }
+
+    @Test
+    @DisplayName("atomicity: double-checked locking on a plain reference fires (#1154)")
+    void atomicityFiresOnDoubleCheckedLockingWithoutVolatile() {
+        AtomicityValidator validator = new AtomicityValidator();
+        doubleCheckedLocking(validator, false);
+        assertTrue(validator.analyze().hasIssues(),
+                "A plain reference read outside the lock can hand a reader a partly built object "
+                        + "whatever the recheck under the lock found, so the confirming read "
+                        + "that excuses a plain int hint must not excuse a stored reference");
+    }
+
+    @Test
+    @DisplayName("atomicity: double-checked locking on a volatile reference stays silent (#1154)")
+    void atomicityStaysSilentOnDoubleCheckedLockingWithVolatile() {
+        AtomicityValidator validator = new AtomicityValidator();
+        doubleCheckedLocking(validator, true);
+        assertFalse(validator.analyze().hasIssues(),
+                "The same accesses on a volatile field are the correct idiom");
+    }
+
     @Test
     @DisplayName("atomicity: an unlocked read never re-read under the lock still fires (#311)")
     void atomicityStillFiresWhenTheUnlockedReadIsTheOnlyRead() {

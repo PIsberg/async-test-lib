@@ -25,6 +25,12 @@ declare the method `void`, and package-private or wider, on an instance.
 
 ### Fixed
 
+- **Double-checked locking without `volatile` is reported (#1154).** `AtomicityValidator`'s excuse
+  for a plain hint reread under the write lock (#311) never looked at what the field held, so the
+  textbook broken form drew no finding from any detector. A reader that finds a plain reference
+  non-null skips the recheck and may see a partly built object, so a non-volatile field whose
+  writes store a reference no longer gets the excuse. A plain `int` hint keeps it, and the volatile
+  form stays silent. `idiom_doubleCheckedLocking_*` is the pair.
 - **A LemonSqueezy key without `ls.store.id` no longer auto-mocks in CI (#1144).** Under
   LemonSqueezy a key counted as a commercial claim only together with the store id, so a key set
   without one read as "no credentials". With `CI` or `GITHUB_ACTIONS` set that run auto-mocked
@@ -89,12 +95,12 @@ declare the method `void`, and package-private or wider, on an instance.
 
 ### Maintenance
 
-- **The corpus now pairs 13 common concurrency mistakes written as plain code.** Three agent pairs
+- **The corpus now pairs common concurrency mistakes written as plain code.** Three agent pairs
   give `THREAD_LOCAL_LEAKS`, `THREAD_POOL` and `COMPLETABLE_FUTURE_COMPLETION_LEAKS` their first pair
   through the woven path, and ten idiom pairs cover shared collections, get-then-put counting, lazy
   init, reads outside the lock, a lock per caller, a lock on a boxed counter, `sleep` as ordering
-  and plain counters in pool tasks. Six other common mistakes drew no finding and are filed as
-  #1154 to #1157, #1159 and #1160, with an inconsistent `runAsync` result in #1158.
+  and plain counters in pool tasks. Five other common mistakes drew no finding and are filed as
+  #1155 to #1157, #1159 and #1160, with an inconsistent `runAsync` result in #1158.
   `CorpusClaimsInDocsTest` now holds the roster table in `corpus-eval.md` to the rows; its agent-pair
   figure said 19 where the lane pairs 38, under a sentence saying nothing there was kept by hand.
 - **The workflows' supply-chain settings are now a gate (#1148).** An audit of the 21 workflows
