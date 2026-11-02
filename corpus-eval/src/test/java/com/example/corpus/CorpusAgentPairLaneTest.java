@@ -51,7 +51,9 @@ import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -978,6 +980,123 @@ class CorpusAgentPairLaneTest {
         CompletableFuture<Void> future =
                 CompletableFuture.runAsync(CorpusAgentPairLaneTest::failingTask, SHARED_POOL);
         counted(() -> readTheFailure(future));
+    }
+
+    // --- Common mistakes the woven path had no pair for: state left on a pool thread, a rejection
+    //     dropped, a future left pending. Each detector's only pair recorded by hand until now.
+
+    /** The value a task leaves behind for the next task on its thread. */
+    private static final ThreadLocal<String> LEFT_SET = new ThreadLocal<>();
+
+    /** The same per-request value, removed by every task that sets it. */
+    private static final ThreadLocal<String> REMOVED = new ThreadLocal<>();
+
+    private static final AtomicInteger REQUESTS = new AtomicInteger();
+
+    /** Runs {@code task} on the shared pool and waits for it, as a request handler does. */
+    private static void awaitOnSharedPool(Runnable task) throws InterruptedException {
+        try {
+            SHARED_POOL.submit(task).get();
+        } catch (ExecutionException e) {
+            throw new AssertionError("a pooled request failed", e.getCause());
+        }
+    }
+
+    /**
+     * Every task reads the request context and sets its own, and none removes it, so with two pool
+     * threads and 240 tasks a later task reads what an earlier one left.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_threadLocal_leftSetOnAPoolThread() {
+        counted(() -> awaitOnSharedPool(() -> {
+            String inherited = LEFT_SET.get();
+            LEFT_SET.set("request-" + REQUESTS.incrementAndGet());
+            assertTrue(inherited == null || inherited.startsWith("request-"), inherited);
+        }));
+    }
+
+    /** The same read and set, with the value removed in a finally block before the task ends. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_threadLocal_removedInAFinally() {
+        counted(() -> awaitOnSharedPool(() -> {
+            String inherited = REMOVED.get();
+            REMOVED.set("request-" + REQUESTS.incrementAndGet());
+            try {
+                assertTrue(inherited == null || inherited.startsWith("request-"), inherited);
+            } finally {
+                REMOVED.remove();
+            }
+        }));
+    }
+
+    /**
+     * Submits three tasks to a one-thread pool with {@code queue} behind it, dropping any rejection,
+     * while the first task holds the thread. With a queue of one, the third submit has nowhere to
+     * go whatever the timing: the first task is running, the second is queued.
+     */
+    private static void submitThreeDroppingRejections(BlockingQueue<Runnable> queue)
+            throws InterruptedException {
+        ThreadPoolExecutor pool = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, queue);
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            for (int task = 0; task < 3; task++) {
+                try {
+                    pool.submit(() -> {
+                        release.await();
+                        return "done";
+                    });
+                } catch (RejectedExecutionException dropped) {
+                    // The mistake: the task is gone and nothing says so.
+                }
+            }
+        } finally {
+            release.countDown();
+            pool.shutdown();
+            assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS), "the pool did not terminate");
+        }
+    }
+
+    /** A bounded pool saturated, its rejection caught and dropped by the submitting code. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_threadPool_rejectionCaughtAndDropped() {
+        counted(() -> submitThreeDroppingRejections(new ArrayBlockingQueue<>(1)));
+    }
+
+    /** The same three submits to a pool with room for them, so there is nothing to drop. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_threadPool_queueHasRoom() {
+        counted(() -> submitThreeDroppingRejections(new ArrayBlockingQueue<>(2)));
+    }
+
+    /**
+     * Builds a future by hand and completes it on the path that works. Half the calls fail, and on
+     * that path the future is completed only if {@code completeOnFailure} says so.
+     */
+    private static CompletableFuture<Integer> loadByHand(boolean completeOnFailure) {
+        CompletableFuture<Integer> loaded = new CompletableFuture<>();
+        try {
+            if (REQUESTS.incrementAndGet() % 2 == 0) {
+                throw new IllegalStateException("the load failed");
+            }
+            loaded.complete(1);
+        } catch (IllegalStateException failure) {
+            if (completeOnFailure) {
+                loaded.completeExceptionally(failure);
+            }
+        }
+        return loaded;
+    }
+
+    /** The failure path skips the completion, so anyone joining that future waits forever. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_failurePathLeavesItPending() {
+        counted(() -> loadByHand(false));
+    }
+
+    /** The same future, completed exceptionally on the failure path. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_failurePathCompletesIt() {
+        counted(() -> loadByHand(true));
     }
 
     /**

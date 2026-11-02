@@ -2116,6 +2116,19 @@ other. Work a body hands to a thread in a way the agent does not see, a thread s
 code, or a task given to a `ThreadPoolExecutor`'s `execute`, is still dropped, and no row measures
 it.
 
+## The most common mistakes
+
+A throwaway probe wrote common concurrency mistakes as plain code, each beside its fix, with every
+detector on and nothing recorded by hand. What fired became rows: three agent-pair pairs
+(`THREAD_LOCAL_LEAKS`, `THREAD_POOL`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS`, whose only pairs were
+recorded before) and ten idiom pairs. The list is a judgement, not a survey of user code.
+
+These mistakes drew no finding in the probe (JDK 26, Windows 11, one run per lane), so they have no
+row yet: double-checked locking without `volatile`, `AtomicInteger.set(get() + 1)`, a plain counter
+in tasks given to a `ThreadPoolExecutor`'s `execute`, `parallelStream().forEach(list::add)`,
+contains-then-add on a `synchronizedList`, and a task waiting on its own single-thread pool. A plain
+counter in `CompletableFuture.runAsync` tasks reported in some lanes and not others.
+
 ## Reproducing it
 
 ```bash

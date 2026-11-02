@@ -1319,6 +1319,56 @@ final class Corpus {
                     "the same failing runAsync with the future kept and its failure read through "
                             + "get, so it reached the caller"),
 
+            // --- Common mistakes whose detector only had a recorded pair: nothing showed the
+            //     woven path tell the mistake from its fix.
+
+            new RecordingSubject("agent_threadLocal_leftSetOnAPoolThread", JDK,
+                    "java.lang.ThreadLocal",
+                    DetectorType.THREAD_LOCAL_LEAKS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "pooled tasks set a per-request value and never remove it, so a later task on "
+                            + "that thread reads the earlier request's. The ThreadLocal javadoc "
+                            + "ties a value to its thread's life, and a pool thread outlives the "
+                            + "request",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("agent_threadLocal_removedInAFinally", JDK,
+                    "java.lang.ThreadLocal",
+                    DetectorType.THREAD_LOCAL_LEAKS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same read and set with remove in a finally block, so each task starts "
+                            + "clean. The pair separates on that one call"),
+
+            new RecordingSubject("agent_threadPool_rejectionCaughtAndDropped", JDK,
+                    "java.util.concurrent.ThreadPoolExecutor",
+                    DetectorType.THREAD_POOL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a third task submitted while one runs and one fills a queue of one. The "
+                            + "default handler throws, the caller catches and drops it, and the "
+                            + "task is lost with nothing else to show for it (#1055)",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("agent_threadPool_queueHasRoom", JDK,
+                    "java.util.concurrent.ThreadPoolExecutor",
+                    DetectorType.THREAD_POOL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same three submits with a queue of two, so nothing is refused"),
+
+            new RecordingSubject("agent_completableFuture_failurePathLeavesItPending", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a future built by hand is completed on success and forgotten on failure, so "
+                            + "whoever joins it on that path waits forever (#1054)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_completableFuture_failurePathCompletesIt", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same future with completeExceptionally on the failure path, so every "
+                            + "path completes it"),
+
             new RecordingSubject("agent_completableFuture_callbackJoinsAPendingFuture", JDK,
                     "java.util.concurrent.CompletableFuture",
                     DetectorType.COMPLETABLE_FUTURE_BLOCKING_CALLBACK, Contract.THREAD_SAFE,
@@ -5076,6 +5126,158 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same get-then-put with each caller building its own object, so one "
                             + "caller's put can drop the object another caller just installed",
+                    IssueSeverity.HIGH),
+
+            // --- Common mistakes, written the way they get written, each after its fix. See
+            //     "The most common mistakes" in docs/analysis/corpus-eval.md for how they were
+            //     chosen and for the ones no detector reports yet, which are issues, not rows.
+
+            new RecordingSubject("idiom_concurrentHashMap_putByEveryThread", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.SHARED_COLLECTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread puts into one ConcurrentHashMap, which its javadoc says "
+                            + "supports full concurrency of retrievals and high concurrency for "
+                            + "updates"),
+
+            new RecordingSubject("idiom_hashMap_putByEveryThread", JDK,
+                    "java.util.HashMap",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same puts into a HashMap, whose javadoc says it must be synchronized "
+                            + "externally if multiple threads modify it",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_synchronizedList_addedToByEveryThread", JDK,
+                    "java.util.Collections",
+                    DetectorType.SHARED_COLLECTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread adds to one synchronizedList: each add is one guarded call"),
+
+            new RecordingSubject("idiom_arrayList_addedToByEveryThread", JDK,
+                    "java.util.ArrayList",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same adds to an ArrayList, which can lose an element or throw from the "
+                            + "array copy",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_copyOnWriteList_iteratedWhileAdding", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.SHARED_COLLECTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "half the threads add and half iterate. The javadoc's snapshot iterator cannot "
+                            + "throw ConcurrentModificationException"),
+
+            new RecordingSubject("idiom_arrayList_iteratedWhileAdding", JDK,
+                    "java.util.ArrayList",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same adds and iteration over an ArrayList, the textbook source of "
+                            + "ConcurrentModificationException (#1052)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_concurrentMap_countsWithMerge", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread counts one key with merge, which the javadoc makes atomic"),
+
+            new RecordingSubject("idiom_concurrentMap_countsWithGetThenPut", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same count as a get and a put: each call is safe, the pair is not, and "
+                            + "two threads reading one count lose an increment",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_lazyInit_synchronizedGetter", JDK,
+                    IDIOM_LANE + "LazySettings",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a field created on first use by a synchronized getter, so every check and "
+                            + "assignment holds one monitor"),
+
+            new RecordingSubject("idiom_lazyInit_unsynchronizedGetter", JDK,
+                    IDIOM_LANE + "LazySettings",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same getter with no monitor: two threads can both see null and build two "
+                            + "objects, and a reader has no edge to the writer",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_guardedField_readAndWrittenUnderTheLock", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "half the threads write a field and half read it, all under one lock"),
+
+            new RecordingSubject("idiom_guardedField_readWithoutTheLock", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same writes under the lock with the reads outside it, the getter someone "
+                            + "assumed could not need one",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_oneLock_guardsTheCounter", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread increments under the ledger's one lock"),
+
+            new RecordingSubject("idiom_lockPerCaller_guardsNothing", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same increment under a synchronized block on a lock each caller builds "
+                            + "for itself, which looks guarded and excludes nobody",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_finalLock_guardsABoxedCounter", JDK,
+                    IDIOM_LANE + "BoxedCount",
+                    DetectorType.SYNCHRONIZED_NON_FINAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a boxed counter updated under a separate final lock"),
+
+            new RecordingSubject("idiom_boxedCounter_synchronizesOnItself", JDK,
+                    IDIOM_LANE + "BoxedCount",
+                    DetectorType.SYNCHRONIZED_NON_FINAL, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same update synchronized on the counter field itself. Every increment "
+                            + "replaces the Integer, so the next thread locks a different object",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_latch_ordersAWrittenField", JDK,
+                    "java.util.concurrent.CountDownLatch",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread writes a plain field and counts down, the others await and read: "
+                            + "the javadoc's memory-consistency effect is the ordering"),
+
+            new RecordingSubject("idiom_sleep_ordersNothing", JDK,
+                    IDIOM_LANE + "SleepingReader",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same write with the readers sleeping first. It usually works, and JLS "
+                            + "17.3 says sleep has no synchronization semantics, so nothing "
+                            + "orders the read after the write",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_poolTasks_counterUnderALock", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread submits a task to one pool, and each task increments under the "
+                            + "ledger's lock"),
+
+            new RecordingSubject("idiom_poolTasks_plainCounter", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same tasks with no lock, so the lost update happens on pool threads the "
+                            + "test never named. Each get orders one task for its own submitter "
+                            + "and says nothing about the others",
                     IssueSeverity.HIGH)
     );
 

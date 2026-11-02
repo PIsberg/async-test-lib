@@ -291,8 +291,9 @@ final class PairEvidence {
         HELD_ON_MODEL.put(DetectorType.THREAD_POOL, "takes caller manual registration and explicit "
                 + "recordTaskRejected/recordTaskSubmitted calls on arbitrary objects at their word, "
                 + "never inspecting real ThreadPoolExecutor queues or handlers; only the woven "
-                + "rejection sees a real executor (#1055, graded apart since #1061), and the pair "
-                + "does not use it; needs an agent pair for the rejection");
+                + "rejection sees a real executor (#1055, graded apart since #1061), and only the "
+                + "agent pair uses it, so the recorded path still decides the tier; needs the "
+                + "recorded path to observe a real executor too");
         HELD_ON_MODEL.put(DetectorType.VIRTUAL_THREAD_CONTEXT_LEAKS, "tracks thread-local lifetimes "
                 + "via manual recordThreadLocalSet/recordThreadLocalRemoved calls with string names, "
                 + "ignoring natural garbage collection on virtual thread exit; needs JVM "
