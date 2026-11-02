@@ -1887,16 +1887,17 @@ silence, so a refusal cannot outlive a pair in that lane either.
 | | Detectors |
 |---|---|
 | Paired in the recording lane | 117 |
-| Paired in the agent-pair lane | 19 |
-| ...less `SHARED_MESSAGE_DIGEST`, `LATCH_MISUSE` and `BLOCKING_QUEUE`, which are paired in both | -3 |
-| Paired by lane one over 139 subjects (`ATOMICITY_VIOLATIONS`, `SHARED_COLLECTIONS`) | +2 |
+| Paired in the agent-pair lane | 38 |
+| ...less those paired in both | -21 |
+| Paired by neither of those lanes | +1 |
 | **Total paired** | **135** |
 | Refused: every recorded event is a finding, so no silent twin can exist | 5 |
 | Refused: the outcome is a threshold or a clock, not the recorded calls | 8 |
 | **Total** | **148** |
 
-Nothing in that table is maintained by hand. The two lane figures come from the generated
-reports:
+`CorpusClaimsInDocsTest` derives every paired row from the corpus and fails when one stops being
+true. The one detector neither pair lane names is `SHARED_COLLECTIONS`, which lane one and the idiom
+lane pair. The two lane figures can also be read from the generated reports:
 
 ```bash
 grep -E "MUST_" corpus-eval/target/corpus-eval/corpus-eval-recording.md | cut -d"|" -f4 | sort -u | wc -l
@@ -2123,11 +2124,22 @@ detector on and nothing recorded by hand. What fired became rows: three agent-pa
 (`THREAD_LOCAL_LEAKS`, `THREAD_POOL`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS`, whose only pairs were
 recorded before) and ten idiom pairs. The list is a judgement, not a survey of user code.
 
-These mistakes drew no finding in the probe (JDK 26, Windows 11, one run per lane), so they have no
-row yet: double-checked locking without `volatile`, `AtomicInteger.set(get() + 1)`, a plain counter
-in tasks given to a `ThreadPoolExecutor`'s `execute`, `parallelStream().forEach(list::add)`,
-contains-then-add on a `synchronizedList`, and a task waiting on its own single-thread pool. A plain
-counter in `CompletableFuture.runAsync` tasks reported in some lanes and not others.
+These mistakes drew no finding in the probe (JDK 26, Windows 11, all four attached lanes), so they
+have no row yet. A row lands with the fix, because a `MUST_FIRE` row cannot pin a miss.
+
+| Mistake | Issue |
+|---|---|
+| Double-checked locking without `volatile` | [#1154](https://github.com/PIsberg/async-test-lib/issues/1154) |
+| A plain counter in tasks given to a `ThreadPoolExecutor`'s `execute` | [#1155](https://github.com/PIsberg/async-test-lib/issues/1155) |
+| `parallel().forEach(list::add)` and a plain counter in a stream, with one caller | [#1156](https://github.com/PIsberg/async-test-lib/issues/1156) |
+| `AtomicInteger.set(get() + 1)` | [#1157](https://github.com/PIsberg/async-test-lib/issues/1157) |
+| Contains-then-add on a `synchronizedList` | [#1159](https://github.com/PIsberg/async-test-lib/issues/1159) |
+| A task waiting on its own single-thread pool, with a timed get | [#1160](https://github.com/PIsberg/async-test-lib/issues/1160) |
+
+A plain counter in `CompletableFuture.runAsync` tasks reported in two of the four lanes
+([#1158](https://github.com/PIsberg/async-test-lib/issues/1158)). The probe's first draft wrote every body's result to one shared `volatile`
+field, which drew `AtomicityValidator` on correct code and on the double-checked locking row alike,
+and hid that row's silence. The rows use the lane's `use` method for that reason.
 
 ## Reproducing it
 

@@ -99,6 +99,23 @@ class CorpusClaimsInDocsTest {
                     "LibraryReach measures " + reached + " of " + agentFed
                             + " agent-fed detectors on a call site inside a library");
         }
+        // The roster table said "derived" and "nothing maintained by hand" while its agent-pair row
+        // stayed at 19 and the lane grew to 38.
+        Set<DetectorType> recording = Corpus.pairedDetectors(CorpusLane.RECORDING);
+        Set<DetectorType> agentPairs = Corpus.pairedDetectors(CorpusLane.AGENT_PAIRS);
+        Set<DetectorType> pairLanes = new TreeSet<>(recording);
+        pairLanes.addAll(agentPairs);
+        long inBoth = recording.size() + agentPairs.size() - pairLanes.size();
+        check(stale, EVAL, "| Paired in the recording lane | " + recording.size() + " |",
+                "the recording lane pairs " + recording.size() + " detectors");
+        check(stale, EVAL, "| Paired in the agent-pair lane | " + agentPairs.size() + " |",
+                "the agent-pair lane pairs " + agentPairs.size() + " detectors");
+        check(stale, EVAL, "| ...less those paired in both | -" + inBoth + " |",
+                inBoth + " detectors are paired in both lanes");
+        check(stale, EVAL, "| Paired by neither of those lanes | +" + (paired - pairLanes.size()) + " |",
+                (paired - pairLanes.size()) + " detectors are paired only outside the two pair lanes");
+        check(stale, EVAL, "| **Total paired** | **" + paired + "** |",
+                "DetectorCoverage pairs " + paired + " detectors");
 
         assertTrue(stale.isEmpty(),
                 "these documents state corpus numbers the corpus no longer produces. The generated "

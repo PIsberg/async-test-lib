@@ -31,6 +31,10 @@ The gates (`everySubjectIsExercised`, `everySilentRowReachesItsDetector`, `every
 `noAgentRowRecordedItsOwnFinding`, and `everyPairedDetectorIsExposed`) were parameterized to accept test suites,
 source, and subject lists, with the existing no-arg variants delegating to the static corpus defaults.
 
+Common mistakes no detector reports yet, which have no row until they do, are listed under
+"The most common mistakes" in [corpus-eval.md](corpus-eval.md), each with its issue. Agent-fed
+detectors whose only pair still records by hand are #1161, #1162 and #1163.
+
 What follows is the remainder, in the order worth doing them.
 
 ## 2. Nothing checks that `CorpusGatesTest` still bites (Closed 2026-09-16)

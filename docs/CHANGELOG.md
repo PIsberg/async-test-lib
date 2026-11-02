@@ -89,6 +89,14 @@ declare the method `void`, and package-private or wider, on an instance.
 
 ### Maintenance
 
+- **The corpus now pairs 13 common concurrency mistakes written as plain code.** Three agent pairs
+  give `THREAD_LOCAL_LEAKS`, `THREAD_POOL` and `COMPLETABLE_FUTURE_COMPLETION_LEAKS` their first pair
+  through the woven path, and ten idiom pairs cover shared collections, get-then-put counting, lazy
+  init, reads outside the lock, a lock per caller, a lock on a boxed counter, `sleep` as ordering
+  and plain counters in pool tasks. Six other common mistakes drew no finding and are filed as
+  #1154 to #1157, #1159 and #1160, with an inconsistent `runAsync` result in #1158.
+  `CorpusClaimsInDocsTest` now holds the roster table in `corpus-eval.md` to the rows; its agent-pair
+  figure said 19 where the lane pairs 38, under a sentence saying nothing there was kept by hand.
 - **The workflows' supply-chain settings are now a gate (#1148).** An audit of the 21 workflows
   found nothing to change: every third-party action pinned to a commit SHA, a
   read-only top-level token (`contents: read`, or `read-all` in Scorecard's own workflow), no
