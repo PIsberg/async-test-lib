@@ -73,6 +73,13 @@ public class DeprecatedThreadApiDetectorTest {
         assertTrue(s.contains("Fix"));
     }
 
+    @Test
+    void testDetectsGetId() {
+        DeprecatedThreadApiDetector d = new DeprecatedThreadApiDetector();
+        d.recordApiUse("Thread.getId", Thread.currentThread());
+        assertTrue(d.analyze().hasIssues());
+    }
+
     /**
      * {@code recordApiUse} documents its name as one of {@code DEPRECATED_APIS}, and analysis never
      * read the list, so a wrapper recording every thread call reported {@code Thread.interrupt}.

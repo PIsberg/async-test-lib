@@ -34,6 +34,12 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
 @E2E
 class LivelockRoundTimeoutTest {
 
+    /**
+     * Long enough for the workers to reach their bodies. The budget starts before the run's detectors
+     * are built, so at 300 ms a loaded runner timed out with nobody in a body and nothing to classify.
+     */
+    private static final int ROUND_TIMEOUT_MS = 2_000;
+
     private final List<String> findings = new CopyOnWriteArrayList<>();
 
     private final AsyncTestListener listener = new AsyncTestListener() {
@@ -124,14 +130,14 @@ class LivelockRoundTimeoutTest {
     }
 
     static class SpinningPlatformBody {
-        @AsyncTest(threads = 2, invocations = 1, useVirtualThreads = false, detectAll = true, timeoutMs = 300)
+        @AsyncTest(threads = 2, invocations = 1, useVirtualThreads = false, detectAll = true, timeoutMs = ROUND_TIMEOUT_MS)
         void spins() {
             spinUntilInterrupted();
         }
     }
 
     static class SpinningVirtualBody {
-        @AsyncTest(threads = 2, invocations = 1, useVirtualThreads = true, detectAll = true, timeoutMs = 300)
+        @AsyncTest(threads = 2, invocations = 1, useVirtualThreads = true, detectAll = true, timeoutMs = ROUND_TIMEOUT_MS)
         void spins() {
             spinUntilInterrupted();
         }
@@ -140,7 +146,7 @@ class LivelockRoundTimeoutTest {
     static class ParkedBody {
         private static final CountDownLatch NEVER = new CountDownLatch(1);
 
-        @AsyncTest(threads = 2, invocations = 1, useVirtualThreads = false, detectAll = true, timeoutMs = 300)
+        @AsyncTest(threads = 2, invocations = 1, useVirtualThreads = false, detectAll = true, timeoutMs = ROUND_TIMEOUT_MS)
         void parks() throws InterruptedException {
             NEVER.await();
         }

@@ -15,7 +15,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /**
  * Detects use of deprecated and unsafe {@link Thread} API methods:
  * {@code Thread.stop()}, {@code Thread.suspend()}, {@code Thread.resume()},
- * {@code Thread.destroy()}, and {@code Thread.countStackFrames()}.
+ * {@code Thread.destroy()}, {@code Thread.countStackFrames()}, and {@code Thread.getId()}, which is
+ * deprecated in favour of {@code threadId()} rather than unsafe.
  *
  * <p>These methods were deprecated (and later removed or made no-ops in Java 20+) because:
  * <ul>
@@ -45,7 +46,7 @@ public class DeprecatedThreadApiDetector {
     public static final Set<String> DEPRECATED_APIS = Collections.unmodifiableSet(
             new LinkedHashSet<>(Arrays.asList(
                     "Thread.stop", "Thread.suspend", "Thread.resume",
-                    "Thread.destroy", "Thread.countStackFrames")));
+                    "Thread.destroy", "Thread.countStackFrames", "Thread.getId")));
 
     private static class ApiUseEvent {
         final String apiName;
@@ -64,7 +65,7 @@ public class DeprecatedThreadApiDetector {
      *
      * @param apiName one of {@code "Thread.stop"}, {@code "Thread.suspend"},
      *                {@code "Thread.resume"}, {@code "Thread.destroy"},
-     *                {@code "Thread.countStackFrames"}; any other name, such as the
+     *                {@code "Thread.countStackFrames"}, {@code "Thread.getId"}; any other name, such as the
      *                {@code "Thread.interrupt"} a wrapper around every thread call might pass, is
      *                not recorded (null-safe)
      * @param thread  the calling thread (null-safe)

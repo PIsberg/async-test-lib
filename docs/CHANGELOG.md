@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Upgrading
 
+`DeprecatedThreadApiDetector.recordApiUse` now reports only the names in `DEPRECATED_APIS`, as it always
+documented (see Fixed). A wrapper passing another name, or one spelled with parentheses such as
+`"Thread.getId()"`, stops drawing a finding: pass `"Thread.getId"`, which joined the list.
+
 `failOnBenchmarkRegression = true` now fails the test it is set on (see Fixed). A build that sets
 it, has benchmarking enabled, and keeps its baseline store between runs can go red after upgrading
 where it was green: those builds were logging `BENCHMARK REGRESSION DETECTED` and passing. A
@@ -39,7 +43,8 @@ tier, which is now `PROMPT`.
   both kinds of worker. The `runner.detector.inert detector=LivelockDetector` event is gone, and so is a
   `dumpAllThreads` per body execution.
 - **`DEPRECATED_THREAD_API` reads its own list.** A name off `DEPRECATED_APIS`, such as the
-  `Thread.interrupt` a wrapper around every thread call might pass, was reported at `HIGH`.
+  `Thread.interrupt` a wrapper around every thread call might pass, was reported at `HIGH`. The list also
+  gains `Thread.getId`, deprecated since JDK 19, which a consumer fixture was already recording.
 - **`VIRTUAL_THREAD_CPU_BOUND` keeps the longest segment.** It measured the one after the last yield, so
   a yield just before the end excused all the computing before it.
 - **`COMPLETABLE_FUTURE_OBTRUDE_ABUSE` is agent-fed.** The agent wove `obtrudeValue` and

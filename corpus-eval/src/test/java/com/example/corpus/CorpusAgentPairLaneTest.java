@@ -2956,7 +2956,7 @@ class CorpusAgentPairLaneTest {
      * the runner interrupts them. The lane expects that timeout, and nothing else, through
      * {@link ExpectedRoundTimeout}.
      */
-    @AsyncTest(threads = 2, invocations = 1, timeoutMs = 300, detectAll = true)
+    @AsyncTest(threads = 2, invocations = 1, timeoutMs = 2_000, detectAll = true)
     @ExtendWith(ExpectedRoundTimeout.class)
     void agent_retryLoop_permitNeverReleased() {
         counted(() -> retryThenRelease(NEVER_RELEASED_PERMIT));

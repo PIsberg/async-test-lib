@@ -157,7 +157,7 @@ class Phase12OperationalHygieneDetectorsFixtureTest {
         // Thread.getId() is deprecated in favour of threadId() — a deprecated Thread API
         // call is exactly this detector's subject.
         AsyncTestContext.deprecatedThreadApiDetector()
-                .recordApiUse("Thread.getId()", Thread.currentThread());
+                .recordApiUse("Thread.getId", Thread.currentThread());
         spin((int) (Thread.currentThread().getId() % 16));
     }
 

@@ -221,7 +221,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 92. Deprecated Thread API Detector
 * **Severity**: `HIGH`
-* **Description**: Detects use of the removed/deprecated `Thread.stop()`, `suspend()`, `resume()`, `destroy()`, and `countStackFrames()` methods. `stop()` releases all monitors held by the thread, leaving shared state partially updated, and `suspend()`/`resume()` are inherently deadlock-prone.
+* **Description**: Detects use of the removed/deprecated `Thread.stop()`, `suspend()`, `resume()`, `destroy()`, `getId()`, and `countStackFrames()` methods. `stop()` releases all monitors held by the thread, leaving shared state partially updated, and `suspend()`/`resume()` are inherently deadlock-prone.
 * **Buggy Code**:
   ```java
   Thread worker = new Thread(this::runTask);
