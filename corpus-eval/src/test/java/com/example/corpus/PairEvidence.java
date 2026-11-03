@@ -171,6 +171,13 @@ final class PairEvidence {
         // READ_WRITE_LOCK_FAIRNESS was held here as a liveness observation; #569 moved it to
         // ADVISORY, which is not a promotion candidate, so the hold no longer asks anything.
 
+        // Read 2026-11-03, when the last refusals were lifted.
+        HELD_ON_MODEL.put(DetectorType.EXPLICIT_GC, "the woven call is observed and is a real full "
+                + "collection, but a test of a WeakReference cache calls it on purpose and is not "
+                + "wrong to, which is why the finding is LOW; a VERDICT would fail that test's "
+                + "build for doing what it is for. Worth asking again only if the call were "
+                + "excused inside a reference-processing test");
+
         // Second reading, 2026-09-14 (#571). In all eight the body declared what the finding said
         // and the detector never asked the object it named. CONDITION_VARIABLES, CYCLIC_BARRIER and
         // REENTRANT_LOCK were re-read on 2026-09-17, once their models asked the real object.

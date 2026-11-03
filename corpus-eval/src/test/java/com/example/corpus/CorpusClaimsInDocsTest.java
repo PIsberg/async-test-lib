@@ -82,13 +82,10 @@ class CorpusClaimsInDocsTest {
         // because nothing read that sentence either.
         int roster = DetectorType.values().length;
         long paired = DetectorCoverage.paired().size();
-        long refused = DetectorCoverage.refused().size();
         long reached = LibraryReach.reached().size();
         long agentFed = LibraryReach.agentFed().size();
         check(stale, README, paired + " of the " + roster + " detectors are paired",
                 "DetectorCoverage pairs " + paired + " detectors");
-        check(stale, README, "the other " + refused + " carry a written reason",
-                "DetectorCoverage refuses " + refused + " detectors");
         // The one corpus number in the README that nothing read: the evidence caps took the file
         // from 59 lines to 33 in one change, and this sentence would have kept saying 59.
         long verdicts = corpusBackedVerdicts();
