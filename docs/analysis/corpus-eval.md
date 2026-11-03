@@ -2128,14 +2128,14 @@ Six mistakes drew no finding from any detector at first, and each got a fix and 
 locking without `volatile` (#1154), a plain counter in `execute` tasks on a `ThreadPoolExecutor` (#1155),
 a parallel `forEach` with one caller (#1156), `AtomicInteger.set(get() + 1)` (#1157), contains-then-add on
 a `synchronizedList` (#1159) and a task waiting on its own full pool (#1160). What each fix still leaves
-out is filed: [#1172](https://github.com/PIsberg/async-test-lib/issues/1172), [#1173](https://github.com/PIsberg/async-test-lib/issues/1173), [#1174](https://github.com/PIsberg/async-test-lib/issues/1174)
-and [#1175](https://github.com/PIsberg/async-test-lib/issues/1175).
+out is filed: [#1172](https://github.com/PIsberg/async-test-lib/issues/1172) and
+[#1173](https://github.com/PIsberg/async-test-lib/issues/1173).
 
 **The corpus rejected three first drafts.** #1157 judged the whole atomic, which drew `VERDICT`/`HIGH` on
 Spring's `ConcurrentReferenceHashMap` and on Jackson, which read lock-free and update under a lock, so
 each read-then-store pair is now judged by the locks it held throughout. It then drew one on Jackson's
-`drainStatus`, an `AtomicReference` read in one method and set to a constant in another, so that type is
-not fed and a woven finding is graded `PROMPT`. And the correct row for #1156 was reported, which
+`drainStatus`, an `AtomicReference` read in one method and set to a constant in another, so a woven finding
+is graded `PROMPT` and storing a status on a reference ends the read (#1174). And the correct row for #1156 was reported, which
 exposed a false positive that was not about streams: workers writing under a lock and a joined thread
 reading with none. No lock covered the round and a lock is no clock edge, so neither rule cleared it.
 `AtomicityValidator` now clears a group when each conflicting pair is covered by one or the other.

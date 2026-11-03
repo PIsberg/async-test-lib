@@ -761,12 +761,15 @@ public final class AgentConcurrencyUtilHooks {
         if (!receiver.isDone()) {
             blocking("CompletableFuture.join", true);
         }
+        Object siblingPool = siblingWaitBegins(receiver);
         Object value;
         try {
             value = receiver.join();
         } catch (CompletionException failed) {
             completionObserved(receiver);
             throw failed;
+        } finally {
+            siblingWaitEnds(siblingPool);
         }
         completionObserved(receiver);
         return value;
@@ -2933,7 +2936,7 @@ public final class AgentConcurrencyUtilHooks {
                                                         Executor executor) {
         ControlledSchedule.point();
         // The NullPointerException the call itself throws for a missing function.
-        HandedTask handed = new HandedTask(Objects.requireNonNull(supplier));
+        HandedTask handed = new HandedTask(Objects.requireNonNull(supplier)).onExecutor(executor);
         if (executor == ForkJoinPool.commonPool()) { // NOPMD CompareObjectsWithEquals - the one pool, by identity
             handed.onTheCommonPool();
         }
@@ -2988,7 +2991,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Void> runAsync(Runnable task, Executor executor) {
         ControlledSchedule.point();
         // The NullPointerException the call itself throws for a missing function.
-        HandedTask handed = new HandedTask(Objects.requireNonNull(task));
+        HandedTask handed = new HandedTask(Objects.requireNonNull(task)).onExecutor(executor);
         if (executor == ForkJoinPool.commonPool()) { // NOPMD CompareObjectsWithEquals - the one pool, by identity
             handed.onTheCommonPool();
         }
@@ -3768,8 +3771,18 @@ public final class AgentConcurrencyUtilHooks {
                 || nested.executor != running.executor) { // NOPMD CompareObjectsWithEquals - identity
             return null;
         }
+        return recordSiblingWait(running.executor, 1);
+    }
+
+    /**
+     * Records that a task of {@code pool} now waits on tasks of it, and {@return {@code pool}, or
+     * {@code null} when it has no bound this can read}.
+     *
+     * @param pool       the pool the caller is running on
+     * @param notStarted how many of those tasks cannot be running, for a pool whose queue is not read
+     */
+    private static @Nullable Object recordSiblingWait(Object pool, int notStarted) {
         ExecutorDeadlockDetector detector = AsyncTestContext.currentExecutorDeadlockDetector();
-        Object pool = running.executor;
         if (detector == null) {
             return null;
         }
@@ -3777,15 +3790,119 @@ public final class AgentConcurrencyUtilHooks {
             // A pool only grows past its core once the queue refuses a task.
             int threads = bounded.getQueue().remainingCapacity() > 0
                     ? bounded.getCorePoolSize() : bounded.getMaximumPoolSize();
-            detector.agentSiblingWait(pool, threads, bounded.getQueue().size());
+            detector.agentSiblingWait(pool, threads, Math.max(bounded.getQueue().size(), notStarted));
             return pool;
         }
         if (SINGLE_THREAD_WRAPPERS.contains(pool.getClass().getName())) {
-            // The only thread is this one, so the nested task, which is not done, is queued.
+            // The only thread is this one, so a task it waits for, which is not done, is queued.
             detector.agentSiblingWait(pool, 1, 1);
             return pool;
         }
         return null;
+    }
+
+    /** {@return the executor of the task this thread runs, when it is {@code pool}, else {@code null}} */
+    @SuppressWarnings("ReferenceEquality") // the same pool, by identity
+    private static @Nullable Object runningOn(ExecutorService pool) {
+        HandedTask running = RUNNING_HANDED.get();
+        return running != null && running.executor == pool ? pool : null; // NOPMD CompareObjectsWithEquals - identity
+    }
+
+    /**
+     * Weaves {@code ExecutorService.invokeAll(Collection)}. A task of this pool that calls it waits
+     * for tasks of its own pool, as a {@code get} on one does (#1175).
+     *
+     * @param receiver the executor
+     * @param tasks    the tasks to run and wait for
+     * @return their futures
+     * @throws InterruptedException if interrupted while waiting
+     * @since 1.14.1
+     */
+    public static List<Future<Object>> invokeAll(ExecutorService receiver,
+                                                 Collection<? extends Callable<Object>> tasks)
+            throws InterruptedException {
+        ControlledSchedule.point();
+        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, tasks.size());
+        try {
+            return receiver.invokeAll(tasks);
+        } finally {
+            siblingWaitEnds(pool);
+        }
+    }
+
+    /**
+     * Weaves {@code ExecutorService.invokeAny(Collection)}, as
+     * {@link #invokeAll(ExecutorService, Collection)}.
+     *
+     * @param receiver the executor
+     * @param tasks    the tasks to run, one of which must finish
+     * @return the result of one that did
+     * @throws InterruptedException if interrupted while waiting
+     * @throws ExecutionException   if none finished normally
+     * @since 1.14.1
+     */
+    public static @Nullable Object invokeAny(ExecutorService receiver,
+                                             Collection<? extends Callable<Object>> tasks)
+            throws InterruptedException, ExecutionException {
+        ControlledSchedule.point();
+        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, tasks.size());
+        try {
+            return receiver.invokeAny(tasks);
+        } finally {
+            siblingWaitEnds(pool);
+        }
+    }
+
+    /**
+     * Weaves {@code ExecutorService.invokeAny(Collection, long, TimeUnit)}, as
+     * {@link #invokeAll(ExecutorService, Collection)}.
+     *
+     * @param receiver the executor
+     * @param tasks    the tasks to run, one of which must finish
+     * @param timeout  how long to wait
+     * @param unit     the unit of {@code timeout}
+     * @return the result of one that did
+     * @throws InterruptedException if interrupted while waiting
+     * @throws ExecutionException   if none finished normally
+     * @throws TimeoutException     if the wait timed out
+     * @since 1.14.1
+     */
+    public static @Nullable Object invokeAny(ExecutorService receiver,
+                                             Collection<? extends Callable<Object>> tasks,
+                                             long timeout, TimeUnit unit)
+            throws InterruptedException, ExecutionException, TimeoutException {
+        ControlledSchedule.point();
+        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, tasks.size());
+        try {
+            return receiver.invokeAny(tasks, timeout, unit);
+        } finally {
+            siblingWaitEnds(pool);
+        }
+    }
+
+    /**
+     * Weaves {@code ExecutorService.invokeAll(Collection, long, TimeUnit)}, as
+     * {@link #invokeAll(ExecutorService, Collection)}.
+     *
+     * @param receiver the executor
+     * @param tasks    the tasks to run and wait for
+     * @param timeout  how long to wait
+     * @param unit     the unit of {@code timeout}
+     * @return their futures
+     * @throws InterruptedException if interrupted while waiting
+     * @since 1.14.1
+     */
+    public static List<Future<Object>> invokeAll(ExecutorService receiver,
+                                                 Collection<? extends Callable<Object>> tasks,
+                                                 long timeout, TimeUnit unit)
+            throws InterruptedException {
+        ControlledSchedule.point();
+        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, tasks.size());
+        try {
+            return receiver.invokeAll(tasks, timeout, unit);
+        } finally {
+            siblingWaitEnds(pool);
+        }
     }
 
     /** What {@code Executors.newSingleThreadExecutor()} returns, on the JDKs this library supports. */
@@ -4023,6 +4140,21 @@ public final class AgentConcurrencyUtilHooks {
         AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
         if (detector != null) {
             detector.agentStore(atomic);
+        }
+    }
+
+    /**
+     * A woven store to an {@code AtomicReference} (#1174). Only a stored object can have been built
+     * from the read, so an enum or a {@code Boolean}, which is a status, or {@code null}, ends the
+     * read instead.
+     *
+     * @param reference the reference the call site wrote
+     * @param stored    what it stored
+     */
+    public static void atomicReferenceStored(Object reference, @Nullable Object stored) {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
+        if (detector != null) {
+            detector.agentReferenceStore(reference, stored);
         }
     }
 

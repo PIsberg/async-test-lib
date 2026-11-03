@@ -32,6 +32,13 @@ tier, which is now `PROMPT`.
 
 ### Fixed
 
+- **Waiting on your own full pool is reported through `join`, `invokeAll` and `invokeAny` too (#1175).** A task
+  joining a future `supplyAsync` gave to its own pool, or calling `invokeAll` or `invokeAny` on it, makes
+  the wait #1160 reports for `Future.get`.
+- **`ref.set(f(ref.get()))` on an `AtomicReference` is reported without a record call (#1174).** As for
+  the numeric atomics, two threads of a round are needed with no lock held across both. Storing an enum, a
+  `Boolean` or `null` ends the read instead, since it builds on nothing the read returned: `AtomicReference`
+  was left out at first because Jackson's `drainStatus`, a status set to a constant, was reported.
 - **A spinlock flag's own reads and release are no longer reported (#1171).** A `volatile` flag taken with
   a compare-and-swap from 0 to 1 and released by writing 0 drew `PROMPT`/`HIGH` from `AtomicityValidator`
   when threads overlapped on it, intermittently on Caffeine's `StripedBuffer.tableBusy`. Once a receiver's
@@ -83,8 +90,7 @@ tier, which is now `PROMPT`.
   values, so a woven pair is graded `PROMPT`/`HIGH`; a recorded pair stays `VERDICT`. The corpus shaped
   all of this: the first draft drew `VERDICT` findings on Spring's and Jackson's documented-safe
   caches, one because it judged the whole atomic rather than each pair, and one on a status flag in
-  an `AtomicReference`, which is why that type is not fed. `agent_atomicInteger_*` and
-  `agent_atomicLong_*` are the pairs.
+  an `AtomicReference`. `agent_atomicInteger_*` and `agent_atomicLong_*` are the pairs.
 - **Double-checked locking without `volatile` is reported (#1154).** `AtomicityValidator`'s excuse
   for a plain hint reread under the write lock (#311) never looked at what the field held, so the
   textbook broken form drew no finding from any detector. A reader that finds a plain reference

@@ -843,6 +843,13 @@ final class CollectionAccessWeaver {
             // On a ThreadPoolExecutor inside a run that wrapper sits in the pool's queue (#1155), so
             // these two give the caller back the task it gave and find it by that task.
             Entry.call(ExecutorService.class, "shutdownNow", "shutdownNow"),
+            // A task of a pool that calls these waits on tasks of its own pool (#1175).
+            Entry.call(ExecutorService.class, "invokeAll", "invokeAll", Collection.class),
+            Entry.call(ExecutorService.class, "invokeAll", "invokeAll", Collection.class, long.class,
+                    TimeUnit.class),
+            Entry.call(ExecutorService.class, "invokeAny", "invokeAny", Collection.class),
+            Entry.call(ExecutorService.class, "invokeAny", "invokeAny", Collection.class, long.class,
+                    TimeUnit.class),
             Entry.call(ThreadPoolExecutor.class, "remove", "removeFromPool", Runnable.class),
             // A parallel forEach's helpers are common-pool workers no woven call hands anything to,
             // so the action is what carries the run to them (#1156).

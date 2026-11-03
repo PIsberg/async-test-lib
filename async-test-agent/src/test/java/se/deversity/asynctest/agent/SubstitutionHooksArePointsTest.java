@@ -59,7 +59,7 @@ class SubstitutionHooksArePointsTest {
             // Emitted in place of the POP after an offer, to say its result was dropped.
             "offerResultDiscarded",
             // Called by TelemetryRegistry's atomic hooks, after the point those take (#1157).
-            "atomicRead", "atomicStored", "atomicSwapped");
+            "atomicRead", "atomicStored", "atomicSwapped", "atomicReferenceStored");
 
     @Test
     void everyCollectionWeaverHookReachesAPoint() {

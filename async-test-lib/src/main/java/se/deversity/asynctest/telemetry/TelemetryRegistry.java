@@ -2467,6 +2467,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
+        AgentConcurrencyUtilHooks.atomicReferenceStored(slot, value);
         ControlledSchedule.point();
         ownershipOffered(value, slot);
         slotStored(slot, value);
@@ -2487,6 +2488,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void lazySetAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
+        AgentConcurrencyUtilHooks.atomicReferenceStored(slot, value);
         ControlledSchedule.point();
         ownershipOffered(value, slot);
         slotStored(slot, value);
@@ -2507,6 +2509,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setReleaseAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
+        AgentConcurrencyUtilHooks.atomicReferenceStored(slot, value);
         ControlledSchedule.point();
         ownershipOffered(value, slot);
         slotStored(slot, value);
@@ -2532,6 +2535,7 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetAtomicReference(AtomicReference<Object> slot,
                                                        @Nullable Object expected,
                                                        @Nullable Object update) {
+        AgentConcurrencyUtilHooks.atomicSwapped(slot);
         ControlledSchedule.point();
         ownershipOffered(update, slot);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
@@ -2559,6 +2563,7 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getAndSetAtomicReference(AtomicReference<Object> slot,
                                                             @Nullable Object value) {
+        AgentConcurrencyUtilHooks.atomicSwapped(slot);
         ControlledSchedule.point();
         slotStored(slot, value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
@@ -2594,6 +2599,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static @Nullable Object getAtomicReference(AtomicReference<Object> slot) {
+        AgentConcurrencyUtilHooks.atomicRead(slot);
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         Object value = aba == null ? slot.get() : aba.get(slot);
@@ -2610,6 +2616,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static @Nullable Object getAcquireAtomicReference(AtomicReference<Object> slot) {
+        AgentConcurrencyUtilHooks.atomicRead(slot);
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         Object value = aba == null ? slot.getAcquire() : aba.getAcquire(slot);

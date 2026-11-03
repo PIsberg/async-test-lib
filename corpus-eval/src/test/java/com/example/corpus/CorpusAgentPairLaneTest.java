@@ -30,6 +30,8 @@ import java.security.NoSuchAlgorithmException;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.Formatter;
 
@@ -1182,6 +1184,33 @@ class CorpusAgentPairLaneTest {
                 LOCKED_INT.set(LOCKED_INT.get() + (hint < 0 ? 0 : 1));
             } finally {
                 COUNT_LOCK.unlock();
+            }
+        });
+    }
+
+    private static final AtomicReference<List<Integer>> RACED_LIST = new AtomicReference<>(List.of());
+    private static final AtomicReference<List<Integer>> SINGLE_WRITER_LIST = new AtomicReference<>(List.of());
+    private static final AtomicInteger LIST_TICKETS = new AtomicInteger();
+
+    private static List<Integer> plusOne(List<Integer> list) {
+        List<Integer> next = new ArrayList<>(list);
+        next.add(next.size());
+        return List.copyOf(next);
+    }
+
+    /** Every thread builds a new list from the current one and stores it (#1174). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_atomicReference_everyThreadBuildsFromAGet() {
+        counted(() -> RACED_LIST.set(plusOne(RACED_LIST.get())));
+    }
+
+    /** The same get and set from one writer a round, with the others only reading. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_atomicReference_oneWriterBuildsFromAGet() {
+        counted(() -> {
+            List<Integer> seen = SINGLE_WRITER_LIST.get();
+            if (opensTheRound(LIST_TICKETS)) {
+                SINGLE_WRITER_LIST.set(plusOne(seen));
             }
         });
     }

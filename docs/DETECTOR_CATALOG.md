@@ -496,23 +496,24 @@ held across the check and the add, have left it in the list twice. Hearing it ta
 second thread that arrives after the add sees the element and does nothing. A `Set` is left out, since
 adding twice loses nothing.
 
-`ExecutorDeadlockDetector` hears the woven `Future.get` (#1160). A task blocking on a task of its own
+`ExecutorDeadlockDetector` hears the woven `Future.get`, `CompletableFuture.join` and
+`ExecutorService.invokeAll` and `invokeAny` (#1160, #1175). A task blocking on a task of its own
 pool is reported when every thread the pool can run is waiting that way with work queued. The bound
 and the queue are read from the pool: a `ThreadPoolExecutor`'s, counting its core size while its queue
 has room, and one thread behind `newSingleThreadExecutor`. A `ForkJoinPool` is left out, since a worker
 that waits runs other tasks, and so is any executor whose bound it cannot read.
 
 `AtomicNonAtomicUpdateDetector` hears the woven `get`, `set` and compare-and-set calls on
-`AtomicInteger` and `AtomicLong` (#1157). A woven get then set is reported once a
+`AtomicInteger`, `AtomicLong` and `AtomicReference` (#1157, #1174). A woven get then set is reported once a
 second thread of the same round has done the same with no lock in common. Each read-then-store pair
 is judged by the locks it held throughout, so a lock-free read elsewhere does not taint an update
 made under a lock. One writer among readers loses nothing, and a compare-and-set spends the read. It
 sees calls and not values, so it cannot
 tell `set(get() + 1)` from a thread that reads a gauge and then stores an unrelated value, which is
 why a woven pair is graded `PROMPT`. A recorded pair stays `VERDICT`: the test's own call says the
-update was compound, and one thread is enough. `AtomicReference` is not fed: on Jackson's
-`PrivateMaxEntriesMap` the woven rule fired on a status read in one method and set to a constant in
-another, which is correct code.
+update was compound, and one thread is enough. On an `AtomicReference`, storing an enum, a `Boolean` or
+`null` ends the read instead: those are statuses, like Jackson's `drainStatus`, which is read in one
+method and set to a constant in another, and they were the rule's false positive.
 
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,

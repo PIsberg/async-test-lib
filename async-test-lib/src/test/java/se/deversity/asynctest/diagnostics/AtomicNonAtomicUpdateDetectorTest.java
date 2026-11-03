@@ -47,6 +47,46 @@ public class AtomicNonAtomicUpdateDetectorTest {
                 "the test's own record call is what says the update was compound");
     }
 
+    /** A woven get then store of {@code stored} on a reference, on its own thread (#1174). */
+    private static void readThenStoreReference(AtomicNonAtomicUpdateDetector d, Object reference,
+                                               Object stored) throws InterruptedException {
+        Thread thread = new Thread(() -> {
+            d.agentRead(reference);
+            d.agentReferenceStore(reference, stored);
+        });
+        thread.start();
+        thread.join();
+    }
+
+    @Test
+    void aReferenceStoredFromItsOwnReadByTwoThreadsIsReported() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        Object reference = new java.util.concurrent.atomic.AtomicReference<>();
+        readThenStoreReference(d, reference, List.of("first"));
+        readThenStoreReference(d, reference, List.of("second"));
+        assertTrue(d.analyze().hasIssues(), "each store can overwrite the update the other built");
+    }
+
+    @Test
+    void aStatusFlagSetAfterAReadIsCorrect() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        Object reference = new java.util.concurrent.atomic.AtomicReference<>();
+        readThenStoreReference(d, reference, Thread.State.RUNNABLE);
+        readThenStoreReference(d, reference, Thread.State.RUNNABLE);
+        assertFalse(d.analyze().hasIssues(),
+                "an enum is a status, which is how Jackson's drainStatus is kept: nothing built from "
+                        + "the read is lost");
+    }
+
+    @Test
+    void aReferenceClearedAfterAReadIsCorrect() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        Object reference = new java.util.concurrent.atomic.AtomicReference<>();
+        readThenStoreReference(d, reference, null);
+        readThenStoreReference(d, reference, null);
+        assertFalse(d.analyze().hasIssues(), "null builds on nothing the read returned");
+    }
+
     @Test
     void wovenGetThenSetFromOneWriterIsCorrect() throws InterruptedException {
         var d = new AtomicNonAtomicUpdateDetector();

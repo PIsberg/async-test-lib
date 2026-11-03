@@ -1406,6 +1406,20 @@ final class Corpus {
                             + "draft of this feed judged the whole instance and drew VERDICT/HIGH "
                             + "on Spring and Jackson, which keep their counts this way"),
 
+            new RecordingSubject("agent_atomicReference_everyThreadBuildsFromAGet", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread builds a new list from get and stores it with set, so one thread's "
+                            + "element can overwrite another's (#1174)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_atomicReference_oneWriterBuildsFromAGet", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same get and set from one writer a round while the others read"),
+
             new RecordingSubject("agent_atomicLong_everyThreadGetsThenSets", JDK,
                     "java.util.concurrent.atomic.AtomicLong",
                     DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
