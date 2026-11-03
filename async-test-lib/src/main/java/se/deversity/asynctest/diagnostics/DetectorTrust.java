@@ -313,7 +313,7 @@ public final class DetectorTrust {
             row(DetectorType.SHARED_DEFLATER, "SharedDeflaterDetector", "SharedDeflater", TrustTier.VERDICT, Evidence.CONTEXTUAL),
             row(DetectorType.THIS_ESCAPE, "ThisEscapeDetector", "ThisEscape", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.THREAD_LOCAL_RANDOM_MISUSE, "ThreadLocalRandomMisuseDetector", "ThreadLocalRandomMisuse", TrustTier.PROMPT, Evidence.ASSERTED),
-            row(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE, "CompletableFutureObtrudeDetector", "CompletableFutureObtrude", TrustTier.PROMPT, Evidence.ASSERTED),
+            row(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE, "CompletableFutureObtrudeDetector", "CompletableFutureObtrude", TrustTier.PROMPT, Evidence.OBSERVED),
             row(DetectorType.SPURIOUS_WAKEUP_HAZARD, "SpuriousWakeupDetector", "SpuriousWakeup", TrustTier.FACT, Evidence.ASSERTED),
             row(DetectorType.LOCK_UPGRADE_DEADLOCK, "LockUpgradeDeadlockDetector", "LockUpgradeDeadlock", TrustTier.FACT, Evidence.ASSERTED),
             row(DetectorType.TRY_LOCK_MISUSE, "TryLockMisuseDetector", "TryLockMisuse", TrustTier.VERDICT, Evidence.OBSERVED),

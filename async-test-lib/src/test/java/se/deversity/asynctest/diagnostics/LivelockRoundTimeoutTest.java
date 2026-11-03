@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.platform.testkit.engine.EngineTestKit;
 import se.deversity.asynctest.AsyncTest;
+import se.deversity.asynctest.E2E;
 import se.deversity.asynctest.AsyncTestListener;
 import se.deversity.asynctest.AsyncTestListenerRegistry;
 
@@ -30,6 +31,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * <p>The one observation that can is that the body did not finish: a round that timed out, with a
  * worker still in its body. These tests hold both directions, on both kinds of worker.
  */
+@E2E
 class LivelockRoundTimeoutTest {
 
     private final List<String> findings = new CopyOnWriteArrayList<>();

@@ -56,20 +56,21 @@ class VirtualThreadCpuBoundTaskDetectorTest {
     }
 
     @Test
-    void virtualThread_yieldPointResetsTimer_noViolation() throws Exception {
-        // Local detector with a wide threshold: the pre-yield spin (300ms) is guaranteed
-        // to exceed it, so the yield reset is what prevents the violation. Ending the
-        // task right after the yield leaves the full 250ms threshold as scheduling-stall
-        // headroom on loaded CI runners (segment time is wall-clock, not CPU time).
+    void virtualThread_yieldPointsSplitALongComputation_noViolation() throws Exception {
+        // Local detector with a wide threshold: the whole computation (300ms) is guaranteed to
+        // exceed it, so the yields splitting it are what prevents the violation. Each 30ms segment
+        // leaves 220ms as scheduling-stall headroom on loaded CI runners (segment time is
+        // wall-clock, not CPU time).
         var yieldDetector = new VirtualThreadCpuBoundTaskDetector(250L);
         Thread vt = Thread.ofVirtual().start(() -> {
             String id = yieldDetector.recordTaskStart("io-mixed-task");
             try {
-                // CPU burst longer than the threshold — would violate without the yield
-                long deadline = System.nanoTime() + 300_000_000L; // 300ms
-                while (System.nanoTime() < deadline) { /* spin */ }
-                // Yield point resets the segment timer; end immediately afterwards
-                yieldDetector.recordYieldPoint(id);
+                // Longer than the threshold in all, and would violate without the yields
+                for (int segment = 0; segment < 10; segment++) {
+                    long deadline = System.nanoTime() + 30_000_000L; // 30ms
+                    while (System.nanoTime() < deadline) { /* spin */ }
+                    yieldDetector.recordYieldPoint(id);
+                }
             } finally {
                 yieldDetector.recordTaskEnd(id);
             }
@@ -78,7 +79,7 @@ class VirtualThreadCpuBoundTaskDetectorTest {
         assertFalse(vt.isAlive(), "virtual thread did not finish in time");
 
         var report = yieldDetector.analyze();
-        assertFalse(report.hasIssues(), "Yield point should have reset the CPU timer: " + report);
+        assertFalse(report.hasIssues(), "No segment reached the threshold, so the yields should have kept it clean: " + report);
     }
 
     @Test

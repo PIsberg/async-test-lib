@@ -178,6 +178,11 @@ final class PairEvidence {
                 + "build for doing what it is for. Worth asking again only if the call were "
                 + "excused inside a reference-processing test");
 
+        HELD_ON_MODEL.put(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE, "the woven call is "
+                + "observed, but the javadoc of obtrudeValue reserves it for error recovery, and a "
+                + "recovery path uses it correctly and draws the same finding. Worth asking again "
+                + "only if the detector could tell a recovery path from a normal one");
+
         // Second reading, 2026-09-14 (#571). In all eight the body declared what the finding said
         // and the detector never asked the object it named. CONDITION_VARIABLES, CYCLIC_BARRIER and
         // REENTRANT_LOCK were re-read on 2026-09-17, once their models asked the real object.
