@@ -945,6 +945,105 @@ class AgentHappensBeforeFeedTest {
                         + "comes from the woven call, not from the timing");
     }
 
+    /**
+     * One writer on a pool of its own, and {@code others} tasks on a second pool, so no later task's
+     * clock carries the write and only the writer's own edge can order a read after it (#1176).
+     */
+    private static boolean readAfterGettingEachReported(int others) throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Object result = new Object();
+        java.util.concurrent.ExecutorService writerPool = java.util.concurrent.Executors.newFixedThreadPool(1);
+        java.util.concurrent.ExecutorService otherPool = java.util.concurrent.Executors.newFixedThreadPool(1);
+        try {
+            java.util.List<java.util.concurrent.Future<Object>> futures = new java.util.ArrayList<>();
+            futures.add(AgentConcurrencyUtilHooks.submit(writerPool, (java.util.concurrent.Callable<Object>) () -> {
+                detector.recordFieldWrite(result, "value");
+                return null;
+            }));
+            for (int i = 0; i < others; i++) {
+                futures.add(AgentConcurrencyUtilHooks.submit(otherPool, (java.util.concurrent.Callable<Object>) () -> null));
+            }
+            for (java.util.concurrent.Future<Object> future : futures) {
+                AgentConcurrencyUtilHooks.get(future);
+            }
+            detector.recordFieldRead(result, "value");
+            return detector.analyzeRaceConditions().hasIssues();
+        } finally {
+            writerPool.shutdownNow();
+            otherPool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("a read after getting more than 16 submissions is ordered after each of them (#1176)")
+    void gettingManySubmissionsOrdersTheCallerAfterEach() throws Exception {
+        assertFalse(readAfterGettingEachReported(64),
+                "the writer is older than 16 submissions, and its get still ordered the read");
+    }
+
+    /** {@link #readAfterGettingEachReported} through one allOf. */
+    @SuppressWarnings("unchecked")
+    private static boolean readAfterAllOfManyReported(int others) throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Object result = new Object();
+        java.util.concurrent.ExecutorService writerPool = java.util.concurrent.Executors.newFixedThreadPool(1);
+        java.util.concurrent.ExecutorService otherPool = java.util.concurrent.Executors.newFixedThreadPool(1);
+        try {
+            java.util.concurrent.CompletableFuture<?>[] children = new java.util.concurrent.CompletableFuture<?>[others + 1];
+            children[0] = AgentConcurrencyUtilHooks.runAsync(() -> detector.recordFieldWrite(result, "value"), writerPool);
+            for (int i = 1; i < children.length; i++) {
+                children[i] = AgentConcurrencyUtilHooks.runAsync(() -> { }, otherPool);
+            }
+            AgentConcurrencyUtilHooks.join((java.util.concurrent.CompletableFuture<Object>) (Object)
+                    AgentConcurrencyUtilHooks.allOf(children));
+            detector.recordFieldRead(result, "value");
+            return detector.analyzeRaceConditions().hasIssues();
+        } finally {
+            writerPool.shutdownNow();
+            otherPool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("a join on allOf orders the caller after a child older than 16 submissions (#1176)")
+    void aJoinOnAllOfCoversManyChildren() throws Exception {
+        assertFalse(readAfterAllOfManyReported(64), "allOf covers every child");
+    }
+
+    @Test
+    @DisplayName("a callback chained on allOf is ordered after every child (#1176)")
+    @SuppressWarnings("unchecked")
+    void aCallbackOnAllOfIsOrderedAfterItsChildren() throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Object result = new Object();
+        java.util.concurrent.ExecutorService writerPool = java.util.concurrent.Executors.newFixedThreadPool(1);
+        java.util.concurrent.ExecutorService lastPool = java.util.concurrent.Executors.newFixedThreadPool(1);
+        java.util.concurrent.CountDownLatch writerDone = new java.util.concurrent.CountDownLatch(1);
+        try {
+            java.util.concurrent.CompletableFuture<Void> writes = AgentConcurrencyUtilHooks.runAsync(() -> {
+                detector.recordFieldWrite(result, "value");
+                writerDone.countDown();
+            }, writerPool);
+            java.util.concurrent.CompletableFuture<Void> last = AgentConcurrencyUtilHooks.runAsync(() -> {
+                try {
+                    writerDone.await(); // unwoven: finishes after the writer, so the callback runs here
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, lastPool);
+            java.util.concurrent.CompletableFuture<Void> all = AgentConcurrencyUtilHooks.allOf(
+                    new java.util.concurrent.CompletableFuture<?>[] {writes, last});
+            AgentConcurrencyUtilHooks.join((java.util.concurrent.CompletableFuture<Object>) (Object)
+                    AgentConcurrencyUtilHooks.thenRun((java.util.concurrent.CompletableFuture<Object>) (Object) all,
+                            () -> detector.recordFieldRead(result, "value")));
+            assertFalse(detector.analyzeRaceConditions().hasIssues(),
+                    "thenRun on allOf runs after every child, whichever thread finished last");
+        } finally {
+            writerPool.shutdownNow();
+            lastPool.shutdownNow();
+        }
+    }
+
     /** Where the submitter below breaks the order an executor makes, if it does. */
     private enum Submission {
         /** Input written before submit, output read after get. */

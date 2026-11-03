@@ -40,8 +40,9 @@ tier, which is now `PROMPT`.
 - **A read after `CompletableFuture.allOf(...).join()` is no longer reported.** `allOf` was not woven,
   so a join on its future ordered nothing, and correct code that read a result after it drew
   `AtomicityValidator`. A woven `allOf` now remembers its children, and observing its completion observes
-  theirs. A child submitted more than 16 submissions before the `allOf`, or a callback chained on `allOf`
-  rather than a join, is still not ordered this way.
+  theirs, whether by a join or by a callback chained on it. A thread now remembers up to 1,024 of its
+  submissions rather than 16, so getting more than 16 futures and then reading a result is ordered too
+  (#1176).
 - **Locked writes followed by a plain read after a join are no longer reported.** Workers writing a
   field under one lock, then a thread that joined them reading it with none, is correct and common.
   `AtomicityValidator` reported it: no lock covered the round, and a lock is no clock edge, so neither of

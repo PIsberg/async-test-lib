@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.DoubleStream;
@@ -3882,7 +3883,7 @@ public final class AgentConcurrencyUtilHooks {
     /**
      * The futures an {@code allOf} waits for, and the work this thread knew to be behind each. It
      * completes only once they all have, so observing it observes every one of them. Taken when
-     * {@code allOf} is called, because a thread remembers only its last {@link Submissions#KEPT}
+     * {@code allOf} is called, because a thread remembers only its last {@link Submissions#MAX_KEPT}
      * submissions: a child submitted further back than that, like one this thread did not submit, is
      * observed only through what a woven {@code complete} released to it.
      */
@@ -4311,10 +4312,14 @@ public final class AgentConcurrencyUtilHooks {
             if (other != null) {
                 HappensBefore.acquire(other);
             }
-            if (sourceWork != null) {
+            if (sourceWork instanceof HandedAll all) {
+                all.observed();
+            } else if (sourceWork != null) {
                 HappensBefore.receive(sourceWork.finished());
             }
-            if (otherWork != null) {
+            if (otherWork instanceof HandedAll all) {
+                all.observed();
+            } else if (otherWork != null) {
                 HappensBefore.receive(otherWork.finished());
             }
             AsyncTestContext lentBefore = AsyncTestContext.lend(registeredIn);
@@ -4490,21 +4495,35 @@ public final class AgentConcurrencyUtilHooks {
      */
     static final class Submissions {
 
-        /** How many submissions a thread remembers. */
-        static final int KEPT = 16;
+        /** How many submissions a thread starts out able to remember. */
+        private static final int INITIAL_KEPT = 16;
+
+        /**
+         * The most a thread remembers. A thread that submits, then gets each future, then reads the
+         * results is correct however many it submitted, and anything forgotten reports it (#1176). It
+         * grows on demand, so a thread that submits a few tasks pays for sixteen slots as before.
+         */
+        static final int MAX_KEPT = 1024;
 
         private static final ThreadLocal<Submissions> MINE = ThreadLocal.withInitial(Submissions::new);
 
-        private final Object[] futures = new Object[KEPT];
-        private final Handed[] tasks = new Handed[KEPT];
+        private @Nullable Object[] futures = new Object[INITIAL_KEPT];
+        private @Nullable Handed[] tasks = new Handed[INITIAL_KEPT];
         private int next;
 
         /** {@return {@code future}, remembered on this thread with the task behind it} */
         static <F> F remember(F future, Handed task) {
             Submissions mine = MINE.get();
+            if (mine.next == mine.futures.length && mine.futures.length < MAX_KEPT) {
+                mine.futures = Arrays.copyOf(mine.futures, mine.futures.length * 2);
+                mine.tasks = Arrays.copyOf(mine.tasks, mine.tasks.length * 2);
+            }
+            if (mine.next == mine.futures.length) {
+                mine.next = 0; // full at its largest: the oldest goes
+            }
             mine.futures[mine.next] = future;
             mine.tasks[mine.next] = task;
-            mine.next = (mine.next + 1) % KEPT;
+            mine.next++;
             return future;
         }
 
@@ -4512,7 +4531,7 @@ public final class AgentConcurrencyUtilHooks {
         @SuppressWarnings("ReferenceEquality") // the same future, not an equal one
         static @Nullable Handed forget(Object future) {
             Submissions mine = MINE.get();
-            for (int i = 0; i < KEPT; i++) {
+            for (int i = 0; i < mine.futures.length; i++) {
                 if (mine.futures[i] == future) { // NOPMD CompareObjectsWithEquals - identity
                     Handed task = mine.tasks[i];
                     mine.futures[i] = null;
@@ -4530,7 +4549,7 @@ public final class AgentConcurrencyUtilHooks {
         @SuppressWarnings("ReferenceEquality") // the same future, not an equal one
         static @Nullable Handed peek(Object future) {
             Submissions mine = MINE.get();
-            for (int i = 0; i < KEPT; i++) {
+            for (int i = 0; i < mine.futures.length; i++) {
                 if (mine.futures[i] == future) { // NOPMD CompareObjectsWithEquals - identity
                     return mine.tasks[i];
                 }
