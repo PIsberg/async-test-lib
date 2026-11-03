@@ -58,6 +58,7 @@ import java.util.function.Supplier;
 
 import org.jspecify.annotations.Nullable;
 
+import se.deversity.asynctest.diagnostics.CompletableFutureObtrudeDetector;
 import se.deversity.asynctest.diagnostics.ThreadPoolMonitor;
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
@@ -704,6 +705,15 @@ public final class AgentConcurrencyUtilHooks {
         return completed;
     }
 
+    /** Tells the run's obtrude detector: the call is the finding, whether or not it then throws. */
+    private static void noteObtrude(CompletableFuture<Object> receiver) {
+        CompletableFutureObtrudeDetector detector =
+                AsyncTestContext.currentCompletableFutureObtrudeDetector();
+        if (detector != null) {
+            detector.recordObtrude(receiver, "CompletableFuture", Thread.currentThread());
+        }
+    }
+
     /**
      * Weaves {@code CompletableFuture.obtrudeValue(Object)}, which completes the future whatever
      * it held (#741).
@@ -714,6 +724,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static void obtrudeValue(CompletableFuture<Object> receiver, @Nullable Object value) {
         ControlledSchedule.point();
+        noteObtrude(receiver);
         HappensBefore.release(receiver);
         boolean obtruded = false;
         try {
@@ -736,6 +747,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static void obtrudeException(CompletableFuture<Object> receiver, Throwable failure) {
         ControlledSchedule.point();
+        noteObtrude(receiver);
         HappensBefore.release(receiver);
         boolean obtruded = false;
         try {

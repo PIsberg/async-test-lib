@@ -2411,6 +2411,12 @@ public final class AsyncTestContext {
         return context == null ? null : context.explicitGcDetector;
     }
 
+    /** {@return the {@link CompletableFutureObtrudeDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable CompletableFutureObtrudeDetector currentCompletableFutureObtrudeDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.completableFutureObtrudeDetector;
+    }
+
     /** {@return the {@link DaemonThreadHygieneDetector} for the calling thread's test, or {@code null}} */
     static @Nullable DaemonThreadHygieneDetector currentDaemonThreadHygieneDetector() {
         AsyncTestContext context = CURRENT.get();

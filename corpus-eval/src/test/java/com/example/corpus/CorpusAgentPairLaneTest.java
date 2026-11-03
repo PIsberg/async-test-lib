@@ -9,6 +9,8 @@ import com.google.common.util.concurrent.AbstractExecutionThreadService;
 import com.google.common.util.concurrent.Monitor;
 import com.google.common.util.concurrent.Uninterruptibles;
 import com.zaxxer.hikari.util.UtilityElf;
+import jakarta.persistence.EntityManager;
+import org.slf4j.MDC;
 import io.netty.util.internal.shaded.org.jctools.queues.MessagePassingQueue;
 import io.netty.util.internal.shaded.org.jctools.queues.MpscArrayQueue;
 import org.junit.jupiter.api.AfterAll;
@@ -23,6 +25,10 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CharsetEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -34,6 +40,9 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Formatter;
+import java.util.SplittableRandom;
+import java.util.zip.CRC32;
+import java.util.zip.Deflater;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -175,6 +184,7 @@ class CorpusAgentPairLaneTest {
         SHARED_POOL.shutdownNow();
         CorpusRecorder.uninstall();
         SHARED_FORMATTER.close();
+        SHARED_DEFLATER.end();
         CorpusLane lane = CorpusLane.current();
         Path report = CorpusReport.writeRecording(
                 CorpusRecorder.findings(), THREADS, INVOCATIONS, lane);
@@ -2751,6 +2761,225 @@ class CorpusAgentPairLaneTest {
     private interface InterruptibleBody {
         void run() throws InterruptedException;
     }
+
+    // --- Agent-fed detectors whose only pair recorded by hand (#1161, #1162, #1163). Each row is the
+    //     mistake as it is written, with nothing told to the detector: one instance in a static field
+    //     against one per thread, or a key left on a pool thread against one removed.
+
+    /** Every thread moves the one buffer's cursor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_byteBuffer_oneInstanceForEveryThread() {
+        swallowingTheRace(() -> {
+            SHARED_BUFFER.clear();
+            SHARED_BUFFER.putInt(1);
+        });
+    }
+
+    /** The same calls on a buffer each thread allocated. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_byteBuffer_oneInstancePerThread() {
+        swallowingTheRace(() -> {
+            ByteBuffer own = ByteBuffer.allocate(16);
+            own.clear();
+            own.putInt(1);
+        });
+    }
+
+    /** Every thread encodes through the one encoder, whose javadoc says it is not safe to share. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_charsetEncoder_oneInstanceForEveryThread() {
+        swallowingTheRace(() -> encode(SHARED_ENCODER));
+    }
+
+    /** The same encode on an encoder each thread made. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_charsetEncoder_oneInstancePerThread() {
+        swallowingTheRace(() -> encode(StandardCharsets.UTF_8.newEncoder()));
+    }
+
+    private static void encode(CharsetEncoder encoder) {
+        try {
+            encoder.encode(CharBuffer.wrap("corpus"));
+        } catch (CharacterCodingException e) {
+            throw new AssertionError("ASCII always encodes in UTF-8", e);
+        }
+    }
+
+    /** Every thread updates the one checksum, so no thread's value is the checksum of its bytes. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_checksum_oneInstanceForEveryThread() {
+        swallowingTheRace(() -> SHARED_CRC.update(PAYLOAD));
+    }
+
+    /** The same update on a checksum each thread made. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_checksum_oneInstancePerThread() {
+        swallowingTheRace(() -> new CRC32().update(PAYLOAD));
+    }
+
+    /** Every thread feeds and drains the one deflater, whose native stream is not synchronized. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_deflater_oneInstanceForEveryThread() {
+        swallowingTheRace(() -> {
+            SHARED_DEFLATER.reset();
+            SHARED_DEFLATER.setInput(PAYLOAD);
+        });
+    }
+
+    /** The same calls on a deflater each thread made and ends. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_deflater_oneInstancePerThread() {
+        swallowingTheRace(() -> {
+            Deflater own = new Deflater();
+            own.reset();
+            own.setInput(PAYLOAD);
+            own.end();
+        });
+    }
+
+    /** Every thread draws from the one generator, which its javadoc says is not thread-safe. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_splittableRandom_oneInstanceForEveryThread() {
+        swallowingTheRace(() -> assertTrue(SHARED_SPLITTABLE.nextInt(10) < 10));
+    }
+
+    /** The same draw from a generator each thread made. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_splittableRandom_oneInstancePerThread() {
+        swallowingTheRace(() -> assertTrue(new SplittableRandom().nextInt(10) < 10));
+    }
+
+    /** Pooled tasks put a request key in the MDC and leave it for the next task on that thread. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_mdc_leftSetOnAPoolThread() {
+        counted(() -> awaitOnSharedPool(() -> MDC.put("leaked-request", "r")));
+    }
+
+    /** The same put with the key removed in a finally block before the task ends. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_mdc_removedInAFinally() {
+        counted(() -> awaitOnSharedPool(() -> {
+            try {
+                MDC.put("scoped-request", "r");
+            } finally {
+                MDC.remove("scoped-request");
+            }
+        }));
+    }
+
+    /** Every thread calls the one persistence handle, the way a field in a singleton bean does. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_entityManager_oneInstanceForEveryThread() {
+        swallowingTheRace(() -> SHARED_ENTITY_MANAGER.find(String.class, 1L));
+    }
+
+    /** The same call on a handle each thread got. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_entityManager_oneInstancePerThread() {
+        swallowingTheRace(() -> newEntityManager().find(String.class, 1L));
+    }
+
+    /** {@return a handle that finds nothing, a new one each time as an entity manager factory hands out} */
+    private static EntityManager newEntityManager() {
+        return new EntityManager() {
+            @Override
+            public <T> T find(Class<T> entityClass, Object primaryKey) {
+                return null;
+            }
+        };
+    }
+
+    private static final ByteBuffer SHARED_BUFFER = ByteBuffer.allocate(16);
+    private static final CharsetEncoder SHARED_ENCODER = StandardCharsets.UTF_8.newEncoder();
+    private static final CRC32 SHARED_CRC = new CRC32();
+    private static final Deflater SHARED_DEFLATER = new Deflater();
+    private static final SplittableRandom SHARED_SPLITTABLE = new SplittableRandom();
+    private static final EntityManager SHARED_ENTITY_MANAGER = newEntityManager();
+
+    // --- The last refusals in this lane. Each firing row makes the JDK call that is the defect, and
+    //     its twin makes the call that replaces it, so what the pair shows is the weave telling the
+    //     two apart. A detector whose every recorded event is a finding has nothing else to show.
+
+    /** An explicit full collection requested from every worker. */
+    @AsyncTest(threads = 2, invocations = 2, timeoutMs = 20_000, detectAll = true)
+    void agent_systemGc_collectionRequestedByTheBody() {
+        counted(() -> System.gc());
+    }
+
+    /**
+     * A housekeeping method of the code's own that happens to be called {@code gc}, beside the read
+     * of the heap a caller usually wanted. A weave matching the name alone would report this.
+     */
+    @AsyncTest(threads = 2, invocations = 2, timeoutMs = 20_000, detectAll = true)
+    void agent_systemGc_ownHousekeepingAndAHeapRead() {
+        counted(() -> {
+            HOUSEKEEPING.gc();
+            assertTrue(Runtime.getRuntime().freeMemory() >= 0);
+        });
+    }
+
+    /** A cache's own eviction pass, named as such caches name it. */
+    private static final class Housekeeping {
+        private final ConcurrentHashMap<String, String> entries = new ConcurrentHashMap<>();
+
+        void gc() {
+            entries.clear();
+        }
+    }
+
+    private static final Housekeeping HOUSEKEEPING = new Housekeeping();
+
+    /** A published value overwritten, so a stage that already ran saw something else. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_obtrudeValue_overwritesAPublishedValue() {
+        counted(() -> overwrittenAfterCompletion(new CompletableFuture<>()));
+    }
+
+    /** The second completion loses and the published value stands, which is what complete promises. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_obtrudeValue_completeLeavesThePublishedValue() {
+        counted(() -> completedTwice(new CompletableFuture<>()));
+    }
+
+    private static void overwrittenAfterCompletion(CompletableFuture<String> future) {
+        future.complete("first");
+        future.obtrudeValue("second");
+    }
+
+    private static void completedTwice(CompletableFuture<String> future) {
+        future.complete("first");
+        future.complete("second");
+    }
+
+    /**
+     * A retry loop whose permit nobody ever releases: the workers spin until the round times out and
+     * the runner interrupts them. The lane expects that timeout, and nothing else, through
+     * {@link ExpectedRoundTimeout}.
+     */
+    @AsyncTest(threads = 2, invocations = 1, timeoutMs = 2_000, detectAll = true)
+    @ExtendWith(ExpectedRoundTimeout.class)
+    void agent_retryLoop_permitNeverReleased() {
+        counted(() -> retryThenRelease(NEVER_RELEASED_PERMIT));
+    }
+
+    /** The same retry loop on a permit its holder gives back, so every worker finishes. */
+    @AsyncTest(threads = 2, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_retryLoop_permitReleasedByItsHolder() {
+        counted(() -> retryThenRelease(RELEASED_PERMIT));
+    }
+
+    private static void retryThenRelease(AtomicBoolean permit) {
+        while (!permit.compareAndSet(false, true)) {
+            if (Thread.currentThread().isInterrupted()) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        permit.set(false);
+    }
+
+    private static final AtomicBoolean NEVER_RELEASED_PERMIT = new AtomicBoolean(true);
+    private static final AtomicBoolean RELEASED_PERMIT = new AtomicBoolean();
 
     /**
      * Runs {@code body} and counts the execution.

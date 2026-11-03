@@ -8,6 +8,8 @@ import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -15,34 +17,31 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Detects thread starvation and rapid state cycling.
+ * Says what a worker was doing when its round timed out, and reads snapshots a body takes itself.
  *
- * <p><strong>Not a livelock detector, despite the name.</strong> Starvation is a thread whose
- * recent snapshots are all BLOCKED or WAITING with flat CPU time; rapid state cycling is five
- * state changes in ten snapshots. A busy spin is neither, and is deliberately not reported: see
- * {@code madeProgress} below and {@code LivelockDetectorTest}, which pins it. Issue #373.
- * 
- * This detector monitors:
- * - Thread state transitions
- * - CPU usage (via getThreadCpuTime)
- * - Lock contention patterns
- * - Detection of circular waiting without actual deadlock
+ * <p><strong>The runner's feed: a round that timed out.</strong> A livelock is a body that does not
+ * finish, so the one observation that can show it is that the body did not finish. The runner marks
+ * each worker in and out of its body ({@link #workerEnteredBody}, {@link #workerLeftBody}) and calls
+ * {@link #roundTimedOut()} before it interrupts anyone. A worker still in its body then is sampled
+ * {@value #TIMEOUT_SAMPLES} times, {@value #TIMEOUT_SAMPLE_GAP_MS} ms apart, through
+ * {@link Thread#getState()}, which unlike a thread dump answers for a virtual thread too: RUNNABLE in
+ * any sample is a livelock candidate (a spin, a retry that never succeeds, a long computation or a
+ * blocking native call), every sample BLOCKED or WAITING is starvation, and anything else, such as a
+ * retry loop asleep in TIMED_WAITING, is no progress. A round that finishes is never reported, and the
+ * only threshold is the {@code timeoutMs} the test chose.
  *
- * <p><strong>What it cannot see: virtual threads.</strong> {@link #captureSnapshot()} takes
- * {@code ThreadMXBean.dumpAllThreads} and keeps only the threads that have called it, which is
- * how it learns which threads are running the test. A virtual thread is not in that dump, so with
- * {@code @AsyncTest(useVirtualThreads = true)}, the default, the history stays empty and
- * {@link #analyzeLivelocks()} returns a clean report whatever the code does. The runner says so
- * once per JVM at INFO ({@code runner.detector.inert}). Setting
- * {@code @AsyncTest(useVirtualThreads = false)} puts the workers in the dump.
+ * <p>The runner used to sample from each worker's own {@code finally} instead. A worker saw itself
+ * RUNNABLE there and its finished peers WAITING in the pool's queue, so a healthy platform-thread run
+ * alternated between the two and read as rapid state cycling at CRITICAL, on a body that only
+ * increments a counter.
  *
- * <p><strong>And what it will not report: a busy spin.</strong> {@code madeProgress} returns true
- * for any RUNNABLE thread, deliberately, because a busy worker's measured CPU time can look flat
- * when several snapshots land inside one clock tick and reporting those produced findings against
- * healthy JVMs. A spin-retry loop that burns attempts without completing work is therefore not a
- * finding here; the conditions that are are starvation, meaning BLOCKED or WAITING with flat CPU
- * time, and rapid state cycling. {@code examples/07-livelock} measures the retry burn directly
- * instead, and says so.
+ * <p><strong>A body's own snapshots.</strong> {@link #captureSnapshot()} is still public for a body
+ * that samples its peers. Those rules are thresholds: starvation is every recent snapshot BLOCKED or
+ * WAITING with flat CPU time, and rapid state cycling is five state changes in ten snapshots. It takes
+ * {@code ThreadMXBean.dumpAllThreads} and keeps only the threads that have called it, and a virtual
+ * thread is not in that dump. {@code madeProgress} returns true for any RUNNABLE thread, deliberately,
+ * because a busy worker's measured CPU time can look flat when several snapshots land inside one clock
+ * tick, so a snapshot cannot report a spin; {@code LivelockDetectorTest} pins that.
  */
 public class LivelockDetector {
 
@@ -51,6 +50,15 @@ public class LivelockDetector {
 
     /** How many of the latest snapshots the state changes are counted over. */
     private static final int RECENT_SNAPSHOTS = 10;
+
+    /** How many times a worker still in its body is sampled when its round times out. */
+    private static final int TIMEOUT_SAMPLES = 5;
+
+    /** The gap between those samples, in milliseconds. */
+    private static final long TIMEOUT_SAMPLE_GAP_MS = 10;
+
+    private static final Set<Thread.State> BLOCKED_OR_WAITING =
+            EnumSet.of(Thread.State.BLOCKED, Thread.State.WAITING);
     
     private static final class ThreadSnapshot {
         final String threadName;
@@ -66,13 +74,82 @@ public class LivelockDetector {
     
     private final Map<Long, List<ThreadSnapshot>> threadHistory = new ConcurrentHashMap<>();
     /**
-     * Ids of the threads running the test. Populated by {@link #captureSnapshot()}, which the
-     * runner calls from each worker's own finally block. Snapshots are kept only for these —
-     * a JVM daemon parked in WAITING is not a starved test worker.
+     * Ids of the threads that have called {@link #captureSnapshot()}. Snapshots are kept only for
+     * these: a JVM daemon parked in WAITING is not a starved test worker.
      */
     private final Set<Long> observedThreads = ConcurrentHashMap.newKeySet();
     private final ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
     private volatile boolean enabled = true;
+
+    /** The workers inside a test body right now, as the runner marks them. */
+    private final Set<Thread> workersInBody = ConcurrentHashMap.newKeySet();
+
+    /** Workers found running when a round timed out, by name. */
+    private final Set<String> timedOutRunning = ConcurrentHashMap.newKeySet();
+
+    /** Workers found BLOCKED or WAITING in every sample when a round timed out, by name. */
+    private final Set<String> timedOutBlocked = ConcurrentHashMap.newKeySet();
+
+    /** Workers found in any other state when a round timed out, by name. */
+    private final Set<String> timedOutElsewhere = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Marks a worker as inside the test body. The runner calls this after the round's barrier.
+     *
+     * @param worker the calling worker
+     * @since 1.14.1
+     */
+    public void workerEnteredBody(Thread worker) {
+        if (enabled) {
+            workersInBody.add(worker);
+        }
+    }
+
+    /**
+     * Marks a worker as out of the test body, however the body ended.
+     *
+     * @param worker the calling worker
+     * @since 1.14.1
+     */
+    public void workerLeftBody(Thread worker) {
+        workersInBody.remove(worker);
+    }
+
+    /**
+     * Classifies every worker still in its body. The runner calls this when a round has timed out,
+     * before it interrupts them, so that what is sampled is what the body was doing.
+     *
+     * @since 1.14.1
+     */
+    public void roundTimedOut() {
+        Map<Thread, Set<Thread.State>> seen = new HashMap<>();
+        for (int sample = 0; sample < TIMEOUT_SAMPLES; sample++) {
+            for (Thread worker : workersInBody) {
+                seen.computeIfAbsent(worker, k -> EnumSet.noneOf(Thread.State.class)).add(worker.getState());
+            }
+            try {
+                Thread.sleep(TIMEOUT_SAMPLE_GAP_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        for (Map.Entry<Thread, Set<Thread.State>> entry : seen.entrySet()) {
+            // Finished while it was being sampled: the deadline was close, and it was not stuck.
+            if (!workersInBody.contains(entry.getKey())) {
+                continue;
+            }
+            Set<Thread.State> states = entry.getValue();
+            String name = entry.getKey().getName();
+            if (states.contains(Thread.State.RUNNABLE)) {
+                timedOutRunning.add(name);
+            } else if (BLOCKED_OR_WAITING.containsAll(states)) {
+                timedOutBlocked.add(name);
+            } else {
+                timedOutElsewhere.add(name);
+            }
+        }
+    }
     
     /**
      * Capture current thread state. Call periodically during test execution.
@@ -80,8 +157,8 @@ public class LivelockDetector {
     public void captureSnapshot() {
         if (!enabled) return;
 
-        // The runner calls this from each worker's own finally block, so whoever is calling is
-        // a thread running the test. That is how we learn which threads are ours.
+        // Whoever is calling is a thread running the test. That is how we learn which threads are
+        // ours.
         observedThreads.add(Thread.currentThread().threadId());
 
         ThreadInfo[] allThreads = threadMXBean.dumpAllThreads(false, false);
@@ -140,6 +217,10 @@ public class LivelockDetector {
             }
         }
         
+        report.livelockCandidates.addAll(timedOutRunning);
+        report.starvedThreads.addAll(timedOutBlocked);
+        report.noProgressThreads.addAll(timedOutElsewhere);
+
         report.fillStructuredViolations();
         return DetectorFailurePolicy.checkedReport(this, report);
     }
@@ -208,6 +289,10 @@ public class LivelockDetector {
     public void reset() {
         threadHistory.clear();
         observedThreads.clear();
+        workersInBody.clear();
+        timedOutRunning.clear();
+        timedOutBlocked.clear();
+        timedOutElsewhere.clear();
     }
     /**
      * Disable.
@@ -254,7 +339,7 @@ public class LivelockDetector {
             }
             for (String thread : livelockCandidates) {
                 structuredViolations.add(new Violation("Livelocks", severity,
-                        thread + ": livelock candidate, changing state without progress",
+                        thread + ": livelock candidate, active without finishing",
                         List.of(), Map.of(), Instant.now()));
             }
             for (String thread : noProgressThreads) {
@@ -280,7 +365,7 @@ public class LivelockDetector {
             }
             
             if (!livelockCandidates.isEmpty()) {
-                sb.append("\nLivelock Candidates (rapid state changes):\n");
+                sb.append("\nLivelock Candidates (still running when the round timed out, or rapid state changes):\n");
                 for (String thread : livelockCandidates) {
                     sb.append("  - ").append(thread).append("\n");
                 }

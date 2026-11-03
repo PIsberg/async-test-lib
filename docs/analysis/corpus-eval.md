@@ -1530,7 +1530,7 @@ each rejection is worth more than the row would have been:
   what the class promises. A pair there would be separated by the size of the numbers rather than
   by the documented contract, which is not what this lane measures.
 
-**The thirteen the triage refused.** Six because the correct twin cannot be recorded at all - the
+**The thirteen the triage refused, all paired since (see "The last thirteen refusals").** Six because the correct twin cannot be recorded at all - the
 detector's only recording method produces a finding for every event it receives, so a silent row
 would be a row that made no call, which is the shape #410 removed from this lane rather than the
 shape to add back:
@@ -1573,8 +1573,8 @@ unreachable in a different lane. The corrected figure is thirteen, and it is no 
 this document maintains - see "Reopening the refusals" below.
 
 So the two lists are exhaustive, and that is the property worth keeping rather than the count.
-It is now checked rather than asserted: `EveryDetectorIsPairedOrRefusedTest` fails if any detector
-is in neither list, and fails again if one is in both.
+It was then checked rather than asserted, and since the last refusals were lifted
+`EveryDetectorIsPairedTest` fails on any detector with no pair.
 
 Extending the lane further now means a new corpus dependency, and `docs/DEPENDENCIES.md` makes
 that a proposal with a reason
@@ -1695,7 +1695,7 @@ calling thread already holds refuses its own `tryLock` on every attempt, whoever
 
 ### Three refusals, two of which were a defect rather than a limit
 
-`EXPLICIT_GC` is a clean refusal. `AgentGcHooks` records every `System.gc()` and `analyze()` turns
+`EXPLICIT_GC` was refused here, and is paired now (see "The last thirteen refusals"). `AgentGcHooks` records every `System.gc()` and `analyze()` turns
 every event into a violation, deliberately and with no lock guard - an explicit collection
 distorts every latency the run measures whether or not a lock was held. Its own javadoc says
 `System.gc()` "has no such innocent twin", so there is no silent row to write and a MUST_FIRE row
@@ -1759,7 +1759,7 @@ deterministic and carries the CRITICAL, VERDICT-tier finding, so that is the one
 the threads hold Alpha and ask for Beta, the other half the reverse, against a twin that ends the
 initializer it started.
 
-**`LIVELOCKS` is refused, on two independent grounds.** Its three findings are all thresholds over
+**`LIVELOCKS` was refused, on two grounds that a later reading overturned (see "The last thirteen refusals").** Its three findings are all thresholds over
 sampled thread state: starvation needs at least three snapshots, the last five all `BLOCKED` or
 `WAITING`, and the thread's CPU time *bit-identical* between its first and last sample; the
 rapid-state-changer rule needs ten snapshots with five state flips among them. Nothing about that
@@ -1805,14 +1805,11 @@ The accounting above was arithmetically right and wrong underneath, in two place
 found by turning this document's exhaustiveness claim into a gate rather than by re-reading it,
 which is the argument for the gate.
 
-`EveryDetectorIsPairedOrRefusedTest` asserts that every `DetectorType` is either paired by a
-corpus row or carries a written refusal in `DetectorCoverage`, and - the direction that earns its
-keep - that no detector is on the refusal list *and* paired. A refusal gets written once, when
-the detector looks unreachable, and nothing in a normal workflow ever revisits it, so a stale
-refusal outlives its reason indefinitely. Now pairing a refused detector fails the build until
-the entry is deleted. Both directions verified by mutation: dropping the `EXPLICIT_GC` entry
-reports `nothing records why: [EXPLICIT_GC]`, and adding a stale `SEMAPHORE` entry reports
-`delete the entry: [SEMAPHORE]`.
+`EveryDetectorIsPairedOrRefusedTest` asserted that every `DetectorType` was either paired by a
+corpus row or carried a written refusal in `DetectorCoverage`, and that no detector was on the
+refusal list *and* paired, since a refusal gets written once and nothing revisits it. That was the
+right gate for a list, and what the list held turned out to be out of date anyway: see "The last
+thirteen refusals". It is `EveryDetectorIsPairedTest` now, with no list.
 
 **Five were refused for answering the wrong question.** `SHARED_CHECKSUM`, `SHARED_DEFLATER`,
 `SHARED_KDF`, `SHARED_TIMEZONE` and `SHARED_XML_PARSER` were refused because no corpus *library*
@@ -1886,14 +1883,11 @@ silence, so a refusal cannot outlive a pair in that lane either.
 
 | | Detectors |
 |---|---|
-| Paired in the recording lane | 117 |
-| Paired in the agent-pair lane | 40 |
-| ...less those paired in both | -23 |
+| Paired in the recording lane | 127 |
+| Paired in the agent-pair lane | 50 |
+| ...less those paired in both | -30 |
 | Paired by neither of those lanes | +1 |
-| **Total paired** | **135** |
-| Refused: every recorded event is a finding, so no silent twin can exist | 5 |
-| Refused: the outcome is a threshold or a clock, not the recorded calls | 8 |
-| **Total** | **148** |
+| **Total paired** | **148** |
 
 `CorpusClaimsInDocsTest` derives every paired row from the corpus and fails when one stops being
 true. The one detector neither pair lane names is `SHARED_COLLECTIONS`, which lane one and the idiom
@@ -1903,25 +1897,64 @@ lane pair. The two lane figures can also be read from the generated reports:
 grep -E "MUST_" corpus-eval/target/corpus-eval/corpus-eval-recording.md | cut -d"|" -f4 | sort -u | wc -l
 ```
 
-and the two refusal figures are the size of `DetectorCoverage.refused()`, which
-`EveryDetectorIsPairedOrRefusedTest` holds to covering exactly the detectors no lane pairs.
+and `EveryDetectorIsPairedTest` holds the total to the roster, so a detector that appears in no
+report fails the build. There used to be a second column here, refusals with a written reason; the
+next section is what became of them.
 
-That is the property worth keeping, and it is no longer one this document asserts about itself. A
-detector that appears in no report and on no refusal list is a gap, and the build finds it - twice
-over, since a refusal that outlives its pair fails too.
+### The last thirteen refusals, read against their detectors
 
-**What the thirteen refusals actually cost, which is less than the number suggests.** The library's
-own `DetectorFiringContractTest` already requires every detector to have a test asserting a
-positive finding, so "can it fire" is gated for all 146 whether or not this corpus pairs them.
-What a corpus pair adds on top is the *other* direction: a case that goes through the same calls
-and must stay silent. That is the false-positive half, and it is the one no unit test tends to
-write, which is why it is worth a corpus at all.
+As of 2026-11-02 this table ended at 135 paired and 13 refused, with a paragraph explaining what the
+thirteen cost. Each refusal was then read against the detector it described, and each gave way. The list
+and the test that pinned its thresholds are gone. The earlier sections that give the reasons are left
+as the record of what was believed then.
 
-So the thirteen are not thirteen untested detectors. They are thirteen detectors whose
-false-positive half either provably cannot exist - five whose every recorded event is a finding
-by construction - or exists but cannot be asserted without the assertion resting on a clock, a
-core count or a GC pause. A row like that does not measure a detector; it measures the machine
-the build happened to run on, and it fails on somebody else's.
+| Detector | The refusal said | What the reading found | The pair |
+|---|---|---|---|
+| `THREAD_POOL_DEADLOCK` | any nested submission fires, whatever the pool size | false since the registry bound `hasIssues()`: it needs active tasks to reach the pool size | one-thread pool against one wider than all six workers |
+| `THIS_ESCAPE` | a correct constructor makes no recordable call | `recordConstructionComplete` and `recordExternalAccess` are those calls | a constructor adding `this` to a list against a factory adding it afterwards |
+| `FALSE_SHARING` | a flag, a 100-access threshold, differing thread sets | the flag can be set for one lane, the threshold belongs to the other rule, and a ticket decides the thread sets | adjacent fields against seven longs of padding |
+| `LOCK_DOWNGRADE` | what is left needs a cross-thread gap | latches put the other writer in the gap on every round | write released before the read against the documented order |
+| `MEMORY_ORDERING` | adjacency in a concurrently appended log | latches decide the order, and a real stale read can be forced | a read before the store against a read after it |
+| `VIRTUAL_THREAD_CPU_BOUND` | a measured segment against 50 ms | computing longer cannot be undone by a slow machine, and the twin's outcome depends on the thread kind, not a clock | a virtual worker against a platform worker |
+| `VIRTUAL_THREAD_CARRIER_EXHAUSTION` | fires on small runners and not on large ones | true of a row with a fixed count, so the row is sized from `availableProcessors` | as many blocked as carriers against a semaphore of one fewer |
+| `PLATFORM_THREAD_PER_TASK` | a probe against a 200 ms deadline | the churn branch reads no clock | twenty joined platform threads against twenty virtual ones |
+| `THREAD_STARVATION` | elapsed time against 1000 ms | a wait behind a 1100 ms blocker is over the threshold on any machine, with the submission time taken before the blocker | a one-thread pool against a two-thread pool |
+| `COMPLETABLE_FUTURE_OBTRUDE_ABUSE` | every recorded event is a violation | true, and the agent wove the call and told the detector nothing, so it is agent-fed now and the woven `complete` is the twin | `obtrudeValue` over a published value against a second `complete` |
+| `DEPRECATED_THREAD_API` | every recorded event is a violation | a defect: the published `DEPRECATED_APIS` list was never consulted, so any name was reported | `Thread.stop` against `Thread.interrupt` |
+| `EXPLICIT_GC` | a silent row would make no call | the twin's calls are what a weave matching a name or a neighbouring `Runtime` method would report | `System.gc` against a `gc` method of the code's own and `Runtime.freeMemory` |
+| `LIVELOCKS` | thresholds over samples, and inert on virtual threads | a defect, below | a retry loop whose permit is never released against one whose holder gives it back |
+
+Two of the thirteen were defects worth more than the rows. **`LIVELOCKS` reported
+`CRITICAL` on healthy code.** A probe on platform workers drew it from a body that only increments a
+counter: the runner sampled from each worker's own `finally`, where the worker saw itself `RUNNABLE`
+and its finished peers `WAITING` in the pool's queue, so a run that finished every round read as rapid
+state cycling. The refusal had described every rule of the detector and missed that. It now classifies
+the workers still in their bodies when a round times out, which also works on the default virtual
+threads. **`VIRTUAL_THREAD_CPU_BOUND` measured only the segment after the last yield**, so one yield
+just before the end excused all the computing before it.
+
+**What a pair here does and does not show.** Three detectors' silent half tests something narrower than
+a detector's judgement. `EXPLICIT_GC` and `COMPLETABLE_FUTURE_OBTRUDE_ABUSE` report every event they
+receive, so their twins hold the weave to selecting the right call. `DEPRECATED_THREAD_API` is told
+what happened, because `Thread.stop`, `suspend` and `resume` throw from JDK 20 and are gone in JDK 26,
+so its firing row cannot make the call on every JDK this module builds on. `recorded_threadStarvation_taskWithAThreadOfItsOwn`
+is the one row that a stall can still flip, at a whole second between submitting a task and starting
+it. And the bar for recording-fed detectors is still that the detector separates what it was told:
+`PairEvidence` holds them below `VERDICT` for that reason, and a pair does not change it.
+
+**That the rows can fail was measured, once, by breaking the library.** With 20 detectors made to report
+nothing, every one of the 20 new firing rows went red, and 7 older recorded rows for the same detectors
+with them. With the deciding condition removed from twelve detectors (the pool size, the padding
+distance, the value compared, the thread kind and so on), the twelve matching silent rows went red.
+Not measured that way: the `EXPLICIT_GC` twin, which needs a weave matching the wrong call, and the seven
+woven per-thread twins below. This was a one-off run on JDK 26 on Windows and is not a standing gate.
+
+**Woven pairs for the rest of the agent-fed set (#1161, #1162, #1163).** Seven agent-fed detectors had
+only a hand-recorded pair, so nothing showed the woven path telling the mistake from its fix. Each now
+has one: `SHARED_BYTE_BUFFER`, `SHARED_CHARSET_CODER`, `SHARED_CHECKSUM`, `SHARED_DEFLATER` and
+`SHARED_SPLITTABLE_RANDOM` as one instance against one per thread, `JDBC_CONNECTION_SHARED` through an
+`EntityManager` stub under the name the agent matches, and `MDC_CONTEXT_LEAK` through a provider in test
+sources that keeps the MDC with `slf4j-api`'s own `BasicMDCAdapter`, which replaced `slf4j-nop`.
 
 ### Which build produced a number
 
@@ -2246,7 +2279,7 @@ comment.
 
 **"Add subjects in pairs" was a rule with no gate.** `Corpus.pairedDetectors` counts a detector as
 paired if any row names it, direction ignored, so a lone `MUST_FIRE` row satisfied
-`EveryDetectorIsPairedOrRefusedTest` - passed, as the README itself points out, by any detector
+`EveryDetectorIsPairedTest` - passed, as the README itself points out, by any detector
 that fires on everything. All 129 detectors the pair lanes name happen to have both halves, so the
 new check costs nothing today and is purely a ratchet; that is the point. The rule was true by
 discipline, and discipline is what a gate is for.
@@ -2396,14 +2429,14 @@ mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair 
 the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
-added below, and the Guava service pair (#736), 19 of the 47 agent-fed detectors are measured in
-both directions on call sites inside a library. `LibraryReach` records why the other twenty-eight are not,
-and `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
-arrangement `DetectorCoverage` uses for refusals:
+added below, and the Guava service pair (#736), 19 of the 48 agent-fed detectors are measured in
+both directions on call sites inside a library. `LibraryReach` records why the other twenty-nine are not,
+and `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions:
 
 | Detector | Why no corpus library reaches it |
 |---|---|
-| `EXPLICIT_GC` | no corpus library calls `System.gc`, and the detector is refused in every lane |
+| `EXPLICIT_GC` | no corpus library calls `System.gc`, so its pair calls it from the test file |
+| `COMPLETABLE_FUTURE_OBTRUDE_ABUSE` | agent-fed through the woven `obtrudeValue` and `obtrudeException`. A firing library row needs a library that overwrites a published future, which their javadoc reserves for error recovery, and no corpus library ships that defect |
 | `MISSED_SIGNAL` | agent-fed since #694. A firing library row needs a library method that waits behind an `if`, and no corpus library ships that defect; `agent_wait_behindAnIf` and its looped twin pair it on `jdk:` call sites through the same `MONITOR_ENTRIES` |
 | `ABA_PROBLEM` | agent-fed since #817, through the woven `AtomicReference` calls. A firing library row needs a library that pushes a popped node back onto a lock-free stack, and no corpus library ships that defect; `agent_abaStack_nodePushedBackAfterTheRead` and its twin pair it on `jdk:` call sites |
 | `SYNCHRONIZED_NON_FINAL` | agent-fed since #793, through the woven monitor entry of `synchronized (owner.field)`. A firing library row needs a library that reassigns a field it synchronizes on, and no corpus library ships that defect; `agent_synchronized_onALockOneOwnerReassigns` and its twin pair it in the test file |

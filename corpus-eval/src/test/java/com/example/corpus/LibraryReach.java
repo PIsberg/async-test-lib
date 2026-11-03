@@ -38,8 +38,12 @@ final class LibraryReach {
                         + "corpus library ships that defect; Object.wait inside a library is "
                         + "woven by the same MONITOR_ENTRIES the jdk: pair goes through");
         unreached(DetectorType.EXPLICIT_GC,
-                "no corpus library calls System.gc, and the detector is refused a pair in every "
-                        + "lane anyway (DetectorCoverage)");
+                "no corpus library calls System.gc, so its pair calls it from the test file");
+        unreached(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE,
+                "agent-fed through the woven obtrudeValue and obtrudeException; a firing library "
+                        + "row needs a library that overwrites a published future, which their own "
+                        + "javadoc reserves for error recovery, and no corpus library ships that "
+                        + "defect, so its pair calls it from the test file");
         unreached(DetectorType.ABA_PROBLEM,
                 "agent-fed since #817 through the woven AtomicReference calls; a firing library "
                         + "row needs a library that pushes a popped node back onto a lock-free "

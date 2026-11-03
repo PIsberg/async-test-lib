@@ -2036,6 +2036,167 @@ final class Corpus {
             //     deadlock does not end. Both rows are therefore ordered last, and the silent row
             //     asserts it ran while the JVM was still clean rather than assuming it.
 
+            // --- The last refusals in this lane.
+
+            new RecordingSubject("agent_systemGc_collectionRequestedByTheBody", JDK,
+                    "java.lang.System",
+                    DetectorType.EXPLICIT_GC, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the body calls System.gc and the weave reports the call site. Its "
+                            + "javadoc calls it a hint for a full collection, which stops every thread "
+                            + "the run is measuring",
+                    IssueSeverity.LOW),
+
+            new RecordingSubject("agent_systemGc_ownHousekeepingAndAHeapRead", JDK,
+                    "java.lang.System",
+                    DetectorType.EXPLICIT_GC, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a gc method of the code's own and a read of Runtime.freeMemory, so the "
+                            + "pair shows the weave matching the JDK owner and not a name or a "
+                            + "neighbouring Runtime call"),
+
+            new RecordingSubject("agent_obtrudeValue_overwritesAPublishedValue", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a value is published and then overwritten by obtrudeValue, whose javadoc "
+                            + "says it is for error recovery and that later dependents may see the new "
+                            + "value while earlier ones saw the old",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_obtrudeValue_completeLeavesThePublishedValue", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same second write through complete, which is woven too and returns "
+                            + "false, leaving what was published. The pair separates on the one call "
+                            + "that overwrites"),
+
+            new RecordingSubject("agent_retryLoop_permitNeverReleased", JDK,
+                    "java.util.concurrent.atomic.AtomicBoolean",
+                    DetectorType.LIVELOCKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a retry loop on a permit nobody releases never finishes, so both workers "
+                            + "are running when the round times out, which is what livelock is and all "
+                            + "this detector decides on",
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("agent_retryLoop_permitReleasedByItsHolder", JDK,
+                    "java.util.concurrent.atomic.AtomicBoolean",
+                    DetectorType.LIVELOCKS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same retry loop on a permit its holder gives back, so every worker "
+                            + "finishes every round. A round that finished is never reported, however "
+                            + "the threads looked along the way"),
+
+            new RecordingSubject("agent_byteBuffer_oneInstanceForEveryThread", JDK,
+                    "java.nio.ByteBuffer",
+                    DetectorType.SHARED_BYTE_BUFFER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread moves the one buffer's cursor through woven clear and "
+                            + "putInt calls. The Buffer javadoc says buffers are not safe for use by "
+                            + "multiple concurrent threads",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_byteBuffer_oneInstancePerThread", JDK,
+                    "java.nio.ByteBuffer",
+                    DetectorType.SHARED_BYTE_BUFFER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same calls on a buffer each thread allocated. The pair separates on "
+                            + "which object is the receiver"),
+
+            new RecordingSubject("agent_charsetEncoder_oneInstanceForEveryThread", JDK,
+                    "java.nio.charset.CharsetEncoder",
+                    DetectorType.SHARED_CHARSET_CODER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread encodes through the one encoder, whose javadoc says "
+                            + "instances are not safe for use by multiple concurrent threads",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_charsetEncoder_oneInstancePerThread", JDK,
+                    "java.nio.charset.CharsetEncoder",
+                    DetectorType.SHARED_CHARSET_CODER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same encode on an encoder each thread made. The pair separates on "
+                            + "which object is the receiver"),
+
+            new RecordingSubject("agent_checksum_oneInstanceForEveryThread", JDK,
+                    "java.util.zip.CRC32",
+                    DetectorType.SHARED_CHECKSUM, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread updates the one CRC32, so its value is no thread's "
+                            + "checksum. The woven Checksum.update reports the receiver",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_checksum_oneInstancePerThread", JDK,
+                    "java.util.zip.CRC32",
+                    DetectorType.SHARED_CHECKSUM, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same update on a CRC32 each thread made. The pair separates on which "
+                            + "object is the receiver"),
+
+            new RecordingSubject("agent_deflater_oneInstanceForEveryThread", JDK,
+                    "java.util.zip.Deflater",
+                    DetectorType.SHARED_DEFLATER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread resets and feeds the one deflater, whose native stream "
+                            + "state nothing synchronizes. The woven calls report the receiver",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_deflater_oneInstancePerThread", JDK,
+                    "java.util.zip.Deflater",
+                    DetectorType.SHARED_DEFLATER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same calls on a deflater each thread made and ended. The pair "
+                            + "separates on which object is the receiver"),
+
+            new RecordingSubject("agent_splittableRandom_oneInstanceForEveryThread", JDK,
+                    "java.util.SplittableRandom",
+                    DetectorType.SHARED_SPLITTABLE_RANDOM, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread draws from the one generator, whose javadoc says instances "
+                            + "are not thread-safe, through a woven nextInt with nothing recorded",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_splittableRandom_oneInstancePerThread", JDK,
+                    "java.util.SplittableRandom",
+                    DetectorType.SHARED_SPLITTABLE_RANDOM, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same draw from a generator each thread made, which is the use its "
+                            + "javadoc describes. The pair separates on which object is the receiver"),
+
+            new RecordingSubject("agent_mdc_leftSetOnAPoolThread", JDK,
+                    "org.slf4j.MDC",
+                    DetectorType.MDC_CONTEXT_LEAK, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "pooled tasks put a request key and leave it, so the next task on that "
+                            + "thread logs under an earlier request. The woven submit snapshots the "
+                            + "real MDC at the start and end of each task",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_mdc_removedInAFinally", JDK,
+                    "org.slf4j.MDC",
+                    DetectorType.MDC_CONTEXT_LEAK, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same put with remove in a finally block, so each task ends as it "
+                            + "started. The pair separates on that one call"),
+
+            new RecordingSubject("agent_entityManager_oneInstanceForEveryThread", JDK,
+                    "jakarta.persistence.EntityManager",
+                    DetectorType.JDBC_CONNECTION_SHARED, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread calls the one EntityManager, as a field in a singleton bean "
+                            + "does, which JPA says is not required to be threadsafe. Matched by name "
+                            + "at the woven call site, with nothing recorded",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_entityManager_oneInstancePerThread", JDK,
+                    "jakarta.persistence.EntityManager",
+                    DetectorType.JDBC_CONNECTION_SHARED, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same call on a handle each thread got. The pair separates on which "
+                            + "object is the receiver"),
+
             new RecordingSubject("agent_deadlock_noThreadBlockedOnAnother", JDK,
                     "java.lang.Thread",
                     DetectorType.DEADLOCKS, Contract.THREAD_SAFE,
@@ -4775,6 +4936,180 @@ final class Corpus {
                     "the same catch with a recorded restore behind it, so catches and restores "
                             + "balance. The pair separates on whether the interrupt was put back"),
 
+            // --- The last refusals in this lane.
+
+            new RecordingSubject("recorded_deprecatedThreadApi_stopRecorded", JDK,
+                    "java.lang.Thread",
+                    DetectorType.DEPRECATED_THREAD_API, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the body records a call to Thread.stop, one of the names the detector "
+                            + "publishes in DEPRECATED_APIS. Told, not woven: the method throws "
+                            + "from JDK 20 and is gone in JDK 26, so no body that compiles on "
+                            + "every JDK this module builds on can make the call",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("recorded_deprecatedThreadApi_interruptRecorded", JDK,
+                    "java.lang.Thread",
+                    DetectorType.DEPRECATED_THREAD_API, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same call naming Thread.interrupt, which the body makes and which is "
+                            + "the replacement the report prescribes. The pair separates on "
+                            + "whether the name is on the detector's published list"),
+
+            new RecordingSubject("recorded_threadPoolDeadlock_nestedIntoAOneThreadPool", JDK,
+                    "java.util.concurrent.ThreadPoolExecutor",
+                    DetectorType.THREAD_POOL_DEADLOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a task submits to the one-thread pool it is running on, so active tasks "
+                            + "reach the pool size at the first nested submission. A task that then "
+                            + "waits for the nested one waits forever",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("recorded_threadPoolDeadlock_nestedIntoAWidePool", JDK,
+                    "java.util.concurrent.ThreadPoolExecutor",
+                    DetectorType.THREAD_POOL_DEADLOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same nested submissions into a pool wider than all six workers "
+                            + "together, so active tasks never reach its size. The pair separates on "
+                            + "the pool size the detector reads from the real executor"),
+
+            new RecordingSubject("recorded_thisEscape_publishedFromTheConstructor", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.THIS_ESCAPE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a constructor adds this to a list other threads read before it returned, "
+                            + "which JLS 17.5 gives no final-field guarantee for. The list is safe; "
+                            + "what is published through it is not",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("recorded_thisEscape_publishedAfterConstruction", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.THIS_ESCAPE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "construction is recorded complete, then the object is added and another "
+                            + "access recorded: the static factory the report prescribes, and the two "
+                            + "calls correct code makes to this detector"),
+
+            new RecordingSubject("recorded_lockDowngrade_writeReleasedBeforeTheReadIsTaken", JDK,
+                    "java.util.concurrent.locks.ReentrantReadWriteLock",
+                    DetectorType.LOCK_DOWNGRADE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the writer releases the write lock and then takes the read lock, and the "
+                            + "latches put the other writer inside that gap on every round, so the read "
+                            + "need not return what was written. Observed from the generation counter, "
+                            + "not declared by the body",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("recorded_lockDowngrade_readTakenBeforeTheWriteIsReleased", JDK,
+                    "java.util.concurrent.locks.ReentrantReadWriteLock",
+                    DetectorType.LOCK_DOWNGRADE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the downgrade the ReentrantReadWriteLock javadoc shows: the read lock is "
+                            + "taken while the write lock is held, so no gap opens, and the other "
+                            + "writer runs at the same point"),
+
+            new RecordingSubject("recorded_falseSharing_adjacentFieldsWithDifferentThreads", JDK,
+                    "java.lang.Object",
+                    DetectorType.FALSE_SHARING, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one thread writes a field all six read the neighbour of, eight bytes "
+                            + "apart on the estimated layout. Advisory by design: the offsets are "
+                            + "estimates and the finding is opt-in, which this lane sets",
+                    IssueSeverity.LOW),
+
+            new RecordingSubject("recorded_falseSharing_paddedFieldsWithDifferentThreads", JDK,
+                    "java.lang.Object",
+                    DetectorType.FALSE_SHARING, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same accesses with seven longs between the fields, the padding the "
+                            + "report prescribes, so the estimated distance is a cache line. The pair "
+                            + "separates on the declaration"),
+
+            new RecordingSubject("recorded_memoryOrdering_readReturnsAValueOlderThanTheRecordedWrite", JDK,
+                    "java.lang.Object",
+                    DetectorType.MEMORY_ORDERING, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the write is recorded and the other thread reads before the store "
+                            + "happens, forced by latches, so the read returns a real older value next "
+                            + "to the recorded write",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("recorded_memoryOrdering_readReturnsTheRecordedWrite", JDK,
+                    "java.lang.Object",
+                    DetectorType.MEMORY_ORDERING, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same two threads and the same record order with the store first, so "
+                            + "the read returns what the write recorded. The calls are the same and "
+                            + "only the value read differs"),
+
+            new RecordingSubject("recorded_threadStarvation_taskQueuedBehindABlocker", JDK,
+                    "java.util.concurrent.ThreadPoolExecutor",
+                    DetectorType.THREAD_STARVATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a task waits behind a 1100 ms blocker on a one-thread pool, and the "
+                            + "submission time is taken before the blocker is submitted, so the wait "
+                            + "exceeds the 1000 ms threshold on any machine",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("recorded_threadStarvation_taskWithAThreadOfItsOwn", JDK,
+                    "java.util.concurrent.ThreadPoolExecutor",
+                    DetectorType.THREAD_STARVATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same blocker and task on a two-thread pool, so the task starts at "
+                            + "once. Only a stall of a whole second between submitting and starting "
+                            + "could flip it"),
+
+            new RecordingSubject("recorded_platformThreadPerTask_oneShortLivedPlatformThreadPerTask", JDK,
+                    "java.lang.Thread",
+                    DetectorType.PLATFORM_THREAD_PER_TASK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "twenty one-task platform threads, all joined, so the churn count and the "
+                            + "terminated count are facts and no clock is read. The 200 ms probe "
+                            + "of a thread-per-task executor is the detector's other branch, which "
+                            + "only its unit test holds",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("recorded_platformThreadPerTask_oneVirtualThreadPerTask", JDK,
+                    "java.lang.Thread",
+                    DetectorType.PLATFORM_THREAD_PER_TASK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same twenty one-task threads as virtual threads, what the report "
+                            + "prescribes. The same call reaches the detector, and the pair separates "
+                            + "on the kind of thread it was given"),
+
+            new RecordingSubject("recorded_virtualThreadCpuBound_computedOnAVirtualThread", JDK,
+                    "java.lang.VirtualThread",
+                    DetectorType.VIRTUAL_THREAD_CPU_BOUND, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a virtual worker computes for 60 ms with no yield point, past the 50 ms "
+                            + "threshold on any machine, since a slower machine only computes for "
+                            + "longer",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("recorded_virtualThreadCpuBound_computedOnAPlatformThread", JDK,
+                    "java.lang.VirtualThread",
+                    DetectorType.VIRTUAL_THREAD_CPU_BOUND, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same computation on a platform worker, what the report prescribes. "
+                            + "The detector reads the thread kind, so no clock can flip this one"),
+
+            new RecordingSubject("recorded_carrierExhaustion_asManyBlockedAsThereAreCarriers", JDK,
+                    "java.lang.VirtualThread",
+                    DetectorType.VIRTUAL_THREAD_CARRIER_EXHAUSTION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one virtual thread per available processor, all recorded as blocked "
+                            + "before any is released, so the count reaches the carrier count on a "
+                            + "machine of any size because the row is sized from that machine",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("recorded_carrierExhaustion_gatedBelowTheCarrierCount", JDK,
+                    "java.lang.VirtualThread",
+                    DetectorType.VIRTUAL_THREAD_CARRIER_EXHAUSTION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same tasks through a semaphore of one fewer than the carriers, the "
+                            + "mitigation the report prescribes, so the count cannot reach the carrier "
+                            + "count. Needs two available processors"),
+
             new RecordingSubject("recorded_secureRandom_sharedAcrossThreads", JDK,
                     "java.security.SecureRandom",
                     DetectorType.SHARED_SECURE_RANDOM, Contract.THREAD_SAFE,
@@ -5493,8 +5828,7 @@ final class Corpus {
     /**
      * Correct idioms that still draw a finding from the detector they name, each with the reason.
      *
-     * <p>The mirror of {@link DetectorCoverage}'s refusals, for rows rather than detectors. A row
-     * here is correct code the happens-before model does not see yet, so its named detector still
+     * <p>A row here is correct code the happens-before model does not see yet, so its named detector still
      * reports on it. {@link CorpusGates#checkIdiomLane} holds each entry to that in both
      * directions: the row must still draw the finding, and the day a fix makes it silent the run
      * fails until the entry is deleted, so a closed gap cannot stay listed as open.

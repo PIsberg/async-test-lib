@@ -47,6 +47,9 @@ import java.util.concurrent.BlockingQueue;
 import java.util.zip.CRC32;
 import java.util.zip.Deflater;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.ExecutorService;
@@ -1089,6 +1092,8 @@ class CorpusRecordingLaneTest {
         theIllegalNotifyReallyThrew();
         pool.close();
         hoistedPool.close();
+        ONE_THREAD_POOL.close();
+        WIDE_POOL.close();
         seekChannel.close();
         guardedChannel.close();
         implicitChannel.close();
@@ -5227,6 +5232,400 @@ class CorpusRecordingLaneTest {
                 .recordAccess(CONFINED_SECURE_RANDOM.get(), "confined-csprng",
                         Thread.currentThread());
     }
+
+    // --- The last refusals, each lifted by reading the detector rather than its refusal. Both halves
+    //     decide structurally: where a detector reads a clock, the firing body exceeds the threshold
+    //     by construction, because waiting longer cannot be undone by a slow machine, and the silent
+    //     body's outcome does not depend on the clock at all, or only on a stall of a whole second.
+
+    /** A call to {@code Thread.stop}, recorded as a wrapper around it would. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void recorded_deprecatedThreadApi_stopRecorded() {
+        CorpusRecorder.countBodyExecution();
+        AsyncTestContext.deprecatedThreadApiDetector()
+                .recordApiUse("Thread.stop", Thread.currentThread());
+    }
+
+    /** The same wrapper around the replacement, which is really called here. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void recorded_deprecatedThreadApi_interruptRecorded() {
+        CorpusRecorder.countBodyExecution();
+        Thread.ofVirtual().unstarted(() -> { }).interrupt();
+        AsyncTestContext.deprecatedThreadApiDetector()
+                .recordApiUse("Thread.interrupt", Thread.currentThread());
+    }
+
+    /** A task on a one-thread pool submits to that pool: the pool has no thread left to run it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void recorded_threadPoolDeadlock_nestedIntoAOneThreadPool() {
+        CorpusRecorder.countBodyExecution();
+        nestedSubmission(ONE_THREAD_POOL, "one-thread");
+    }
+
+    /** The same nested submissions into a pool wider than all six workers at once. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void recorded_threadPoolDeadlock_nestedIntoAWidePool() {
+        CorpusRecorder.countBodyExecution();
+        nestedSubmission(WIDE_POOL, "wide");
+    }
+
+    private static void nestedSubmission(ExecutorService pool, String name) {
+        var detector = AsyncTestContext.threadPoolDeadlockDetector();
+        detector.registerPool(pool, name);
+        detector.recordNestedSubmission(pool, name);
+        detector.recordTaskCompleted(pool);
+    }
+
+    /** A constructor adds {@code this} to a list other threads read before it has returned. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void recorded_thisEscape_publishedFromTheConstructor() {
+        CorpusRecorder.countBodyExecution();
+        new SelfPublishingListener(ESCAPED_LISTENERS);
+    }
+
+    /** The same list, reached through a factory that adds the object after the constructor returned. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void recorded_thisEscape_publishedAfterConstruction() {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.thisEscapeDetector();
+        Object listener = new Object();
+        detector.recordConstructionComplete(listener);
+        PUBLISHED_LISTENERS.add(listener);
+        detector.recordExternalAccess(listener, Thread.currentThread());
+    }
+
+    /** The classic escape: the object is reachable from the list before its fields are assigned. */
+    private static final class SelfPublishingListener {
+        SelfPublishingListener(List<Object> listeners) {
+            AsyncTestContext.thisEscapeDetector().recordConstructorEscape(
+                    this, "listeners.add(this)", Thread.currentThread());
+            listeners.add(this);
+        }
+    }
+
+    /**
+     * The writer releases the write lock and only then takes the read lock, and the peer takes the
+     * write lock inside that gap, so the read need not return what was written. The latches put the
+     * peer inside the gap on every round: the writer takes the read lock only after the peer wrote.
+     */
+    @AsyncTest(threads = 2, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void recorded_lockDowngrade_writeReleasedBeforeTheReadIsTaken() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.lockDowngradeDetector();
+        var lock = UNSAFE_DOWNGRADE_LOCK;
+        TwoPartyTurn<Handoff> turn = UNSAFE_DOWNGRADES.next();
+        if (turn.first()) {
+            lockedWrite(lock);
+            turn.shared().firstDone.countDown();
+            turn.shared().secondDone.await();
+            lock.readLock().lock();
+            detector.recordReadLockAcquired(lock, "unsafe");
+            lock.readLock().unlock();
+            detector.recordReadLockReleased(lock, "unsafe");
+        } else {
+            turn.shared().firstDone.await();
+            lockedWrite(lock);
+            turn.shared().secondDone.countDown();
+        }
+    }
+
+    /** The documented downgrade: the read lock is taken while the write lock is still held. */
+    @AsyncTest(threads = 2, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void recorded_lockDowngrade_readTakenBeforeTheWriteIsReleased() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var detector = AsyncTestContext.lockDowngradeDetector();
+        var lock = SAFE_DOWNGRADE_LOCK;
+        TwoPartyTurn<Handoff> turn = SAFE_DOWNGRADES.next();
+        if (turn.first()) {
+            lock.writeLock().lock();
+            detector.recordWriteLockAcquired(lock, "unsafe");
+            lock.readLock().lock();
+            detector.recordReadLockAcquired(lock, "unsafe");
+            lock.writeLock().unlock();
+            detector.recordWriteLockReleased(lock, "unsafe");
+            lock.readLock().unlock();
+            detector.recordReadLockReleased(lock, "unsafe");
+            turn.shared().firstDone.countDown();
+            turn.shared().secondDone.await();
+        } else {
+            turn.shared().firstDone.await();
+            lockedWrite(lock);
+            turn.shared().secondDone.countDown();
+        }
+    }
+
+    private static void lockedWrite(ReentrantReadWriteLock lock) {
+        var detector = AsyncTestContext.lockDowngradeDetector();
+        lock.writeLock().lock();
+        detector.recordWriteLockAcquired(lock, "unsafe");
+        lock.writeLock().unlock();
+        detector.recordWriteLockReleased(lock, "unsafe");
+    }
+
+    /** One thread writes a field every peer reads, the two fields declared side by side. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void recorded_falseSharing_adjacentFieldsWithDifferentThreads() {
+        CorpusRecorder.countBodyExecution();
+        accessTwoFields(ADJACENT_FIELDS, ADJACENT_FIELD_TICKETS.getAndIncrement());
+    }
+
+    /** The same accesses with seven longs between the fields, which is the fix the report names. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void recorded_falseSharing_paddedFieldsWithDifferentThreads() {
+        CorpusRecorder.countBodyExecution();
+        accessTwoFields(PADDED_FIELDS, PADDED_FIELD_TICKETS.getAndIncrement());
+    }
+
+    private static void accessTwoFields(Object target, int ticket) {
+        var detector = AsyncTestContext.falseSharingDetector();
+        detector.recordFieldAccess(target, "readByAll", long.class, false);
+        if (ticket % THREADS == 0) {
+            detector.recordFieldAccess(target, "writtenByOne", long.class, true);
+        }
+    }
+
+    /** Two fields that the layout the detector estimates puts eight bytes apart. */
+    @SuppressWarnings("unused")
+    private static final class AdjacentFields {
+        long readByAll;
+        long writtenByOne;
+    }
+
+    /** The same two fields sixty-four bytes apart, on the detector's estimated layout. */
+    @SuppressWarnings("unused")
+    private static final class PaddedFields {
+        long readByAll;
+        long padding1;
+        long padding2;
+        long padding3;
+        long padding4;
+        long padding5;
+        long padding6;
+        long padding7;
+        long writtenByOne;
+    }
+
+    /**
+     * The write is recorded, the reader runs, and only then does the writer store the value: a real
+     * read of the old value, forced by the latches rather than hoped for.
+     */
+    @AsyncTest(threads = 2, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void recorded_memoryOrdering_readReturnsAValueOlderThanTheRecordedWrite() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var monitor = AsyncTestContext.memoryOrderingMonitor();
+        TwoPartyTurn<Slot> turn = STALE_SLOTS.next();
+        Slot slot = turn.shared();
+        if (turn.first()) {
+            monitor.recordWrite("slot.value", WRITTEN_VALUE);
+            slot.handoff.firstDone.countDown();
+            slot.handoff.secondDone.await();
+            slot.value = WRITTEN_VALUE;
+        } else {
+            slot.handoff.firstDone.await();
+            monitor.recordRead("slot.value", slot.value);
+            slot.handoff.secondDone.countDown();
+        }
+    }
+
+    /** The store happens before the record and the hand-off, so the read returns what was written. */
+    @AsyncTest(threads = 2, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void recorded_memoryOrdering_readReturnsTheRecordedWrite() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        var monitor = AsyncTestContext.memoryOrderingMonitor();
+        TwoPartyTurn<Slot> turn = FRESH_SLOTS.next();
+        Slot slot = turn.shared();
+        if (turn.first()) {
+            slot.value = WRITTEN_VALUE;
+            monitor.recordWrite("slot.value", WRITTEN_VALUE);
+            slot.handoff.firstDone.countDown();
+            slot.handoff.secondDone.await();
+        } else {
+            slot.handoff.firstDone.await();
+            monitor.recordRead("slot.value", slot.value);
+            slot.handoff.secondDone.countDown();
+        }
+    }
+
+    /** A plain field and the latches that decide who touches it when. */
+    private static final class Slot {
+        final Handoff handoff = new Handoff();
+        int value;
+    }
+
+    /**
+     * A task queued behind a blocker on a one-thread pool. The submission time is taken before the
+     * blocker is submitted, so the wait is at least the blocker's sleep on any machine.
+     */
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 20_000, detectAll = true)
+    void recorded_threadStarvation_taskQueuedBehindABlocker() throws Exception {
+        CorpusRecorder.countBodyExecution();
+        taskBehindABlocker(1);
+    }
+
+    /** The same blocker and task on a pool with a thread left for the task. */
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 20_000, detectAll = true)
+    void recorded_threadStarvation_taskWithAThreadOfItsOwn() throws Exception {
+        CorpusRecorder.countBodyExecution();
+        taskBehindABlocker(2);
+    }
+
+    private static void taskBehindABlocker(int poolSize) throws Exception {
+        var detector = AsyncTestContext.threadStarvationDetector();
+        try (ExecutorService executor = Executors.newFixedThreadPool(poolSize)) {
+            detector.registerExecutor(executor, "starvation", poolSize);
+            long submitted = detector.recordTaskSubmission(executor);
+            executor.submit(() -> {
+                Thread.sleep(STARVATION_BLOCKER_MS);
+                return null;
+            });
+            executor.submit(() -> {
+                detector.recordTaskStart("starvation", submitted);
+                detector.recordTaskEnd("starvation");
+            }).get();
+        }
+    }
+
+    /** Twenty platform threads, one short task each, every one finished before analysis. */
+    @AsyncTest(threads = 2, invocations = 10, timeoutMs = 20_000, detectAll = true)
+    void recorded_platformThreadPerTask_oneShortLivedPlatformThreadPerTask() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        oneThreadForOneTask(Thread.ofPlatform().unstarted(() -> { }));
+    }
+
+    /** The same twenty one-task threads as virtual threads, which is what the report asks for. */
+    @AsyncTest(threads = 2, invocations = 10, timeoutMs = 20_000, detectAll = true)
+    void recorded_platformThreadPerTask_oneVirtualThreadPerTask() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        oneThreadForOneTask(Thread.ofVirtual().unstarted(() -> { }));
+    }
+
+    private static void oneThreadForOneTask(Thread thread) throws InterruptedException {
+        AsyncTestContext.platformThreadPerTaskDetector().recordThreadCreated(thread);
+        thread.start();
+        thread.join();
+    }
+
+    /** A virtual worker computes for longer than the threshold without giving up its carrier. */
+    @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, detectAll = true)
+    void recorded_virtualThreadCpuBound_computedOnAVirtualThread() {
+        CorpusRecorder.countBodyExecution();
+        computeWithoutYielding();
+    }
+
+    /** The same computation on a platform worker, which is the fix the report names. */
+    @AsyncTest(threads = 2, invocations = 1, timeoutMs = 20_000, detectAll = true, useVirtualThreads = false)
+    void recorded_virtualThreadCpuBound_computedOnAPlatformThread() {
+        CorpusRecorder.countBodyExecution();
+        computeWithoutYielding();
+    }
+
+    private static void computeWithoutYielding() {
+        var detector = AsyncTestContext.virtualThreadCpuBoundTaskDetector();
+        String task = detector.recordTaskStart("compute");
+        long end = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(CPU_BOUND_MS);
+        while (System.nanoTime() < end) {
+            Thread.onSpinWait();
+        }
+        detector.recordTaskEnd(task);
+    }
+
+    /** As many virtual threads blocked at once as there are carriers, sized from this machine. */
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 20_000, detectAll = true)
+    void recorded_carrierExhaustion_asManyBlockedAsThereAreCarriers() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        blockThroughAGate(Runtime.getRuntime().availableProcessors());
+    }
+
+    /**
+     * The same tasks through a semaphore of one fewer than the carriers, the mitigation the report
+     * names. On one core that would be no permit at all, so the row needs two.
+     */
+    @AsyncTest(threads = 1, invocations = 1, timeoutMs = 20_000, detectAll = true)
+    void recorded_carrierExhaustion_gatedBelowTheCarrierCount() throws InterruptedException {
+        CorpusRecorder.countBodyExecution();
+        blockThroughAGate(Runtime.getRuntime().availableProcessors() - 1);
+    }
+
+    /**
+     * Runs one virtual thread per carrier, at most {@code permits} blocked at a time. Each blocks
+     * until {@code permits} are blocked together, so that many is reached on any scheduling.
+     */
+    private static void blockThroughAGate(int permits) throws InterruptedException {
+        var detector = AsyncTestContext.virtualThreadCarrierExhaustionDetector();
+        Semaphore gate = new Semaphore(permits);
+        java.util.concurrent.CyclicBarrier together = new java.util.concurrent.CyclicBarrier(permits);
+        int tasks = Runtime.getRuntime().availableProcessors();
+        List<Thread> threads = new ArrayList<>();
+        for (int task = 0; task < tasks - tasks % permits; task++) {
+            threads.add(Thread.ofVirtual().start(() -> {
+                try {
+                    gate.acquire();
+                    try {
+                        detector.recordBlockingStart("gated");
+                        together.await();
+                        detector.recordBlockingEnd("gated");
+                    } finally {
+                        gate.release();
+                    }
+                } catch (InterruptedException | java.util.concurrent.BrokenBarrierException e) {
+                    throw new IllegalStateException(e);
+                }
+            }));
+        }
+        for (Thread thread : threads) {
+            thread.join();
+        }
+    }
+
+    /** One round's latches, for a body whose two parties must take turns. */
+    private static final class Handoff {
+        final CountDownLatch firstDone = new CountDownLatch(1);
+        final CountDownLatch secondDone = new CountDownLatch(1);
+    }
+
+    /** Hands each two-thread round's bodies one object built before the run, and a role each. */
+    private static final class TwoPartyRounds<T> {
+        private final AtomicInteger tickets = new AtomicInteger();
+        private final Object[] perRound = new Object[INVOCATIONS];
+
+        TwoPartyRounds(java.util.function.Supplier<? extends T> fresh) {
+            for (int round = 0; round < INVOCATIONS; round++) {
+                perRound[round] = fresh.get();
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        TwoPartyTurn<T> next() {
+            int ticket = tickets.getAndIncrement();
+            return new TwoPartyTurn<>((T) perRound[ticket / 2], ticket % 2 == 0);
+        }
+    }
+
+    /** One body's share of a round: the round's object, and which of the two it plays. */
+    private record TwoPartyTurn<T>(T shared, boolean first) {
+    }
+
+    private static final ExecutorService ONE_THREAD_POOL = Executors.newFixedThreadPool(1);
+    private static final ExecutorService WIDE_POOL = Executors.newFixedThreadPool(THREADS + 2);
+    private static final List<Object> ESCAPED_LISTENERS = new CopyOnWriteArrayList<>();
+    private static final List<Object> PUBLISHED_LISTENERS = new CopyOnWriteArrayList<>();
+    private static final ReentrantReadWriteLock UNSAFE_DOWNGRADE_LOCK = new ReentrantReadWriteLock();
+    private static final ReentrantReadWriteLock SAFE_DOWNGRADE_LOCK = new ReentrantReadWriteLock();
+    private static final TwoPartyRounds<Handoff> UNSAFE_DOWNGRADES = new TwoPartyRounds<>(Handoff::new);
+    private static final TwoPartyRounds<Handoff> SAFE_DOWNGRADES = new TwoPartyRounds<>(Handoff::new);
+    private static final Object ADJACENT_FIELDS = new AdjacentFields();
+    private static final Object PADDED_FIELDS = new PaddedFields();
+    private static final AtomicInteger ADJACENT_FIELD_TICKETS = new AtomicInteger();
+    private static final AtomicInteger PADDED_FIELD_TICKETS = new AtomicInteger();
+    private static final TwoPartyRounds<Slot> STALE_SLOTS = new TwoPartyRounds<>(Slot::new);
+    private static final TwoPartyRounds<Slot> FRESH_SLOTS = new TwoPartyRounds<>(Slot::new);
+    private static final int WRITTEN_VALUE = 1;
+
+    /** Past the detector's default 1000 ms, so waiting behind it is starvation on any machine. */
+    private static final long STARVATION_BLOCKER_MS = 1_100;
+
+    /** Past the detector's default 50 ms, so computing for it is over the threshold on any machine. */
+    private static final long CPU_BOUND_MS = 60;
 
     private static void toleratingCorruption(Runnable operation) {
         try {

@@ -124,14 +124,6 @@
             <version>${groovy.version}</version>
             <scope>test</scope>
         </dependency>
-        <!-- HikariCP logs through SLF4J and warns on every pool operation without a binding.
-             The no-op binding keeps the corpus output readable; nothing here asserts on logs. -->
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-nop</artifactId>
-            <version>${slf4j.version}</version>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
 
     <build>
@@ -249,6 +241,9 @@
                                 <license.mock.mode>true</license.mock.mode>
                                 <async-test.strict-detectors>true</async-test.strict-detectors>
                                 <corpus.lane>recording</corpus.lane>
+                                <!-- FALSE_SHARING reports only with this on. Only a body that records to it
+                                     can feed it, so the flag changes nothing for any other row. -->
+                                <async-test.experimental.false-sharing>true</async-test.experimental.false-sharing>
                                 <!-- The agent is a dependency of this module, and the runner attaches it
                                      by default when it is on the test classpath; this lane is defined by
                                      its absence. -->

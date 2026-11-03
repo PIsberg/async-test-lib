@@ -15,7 +15,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /**
  * Detects use of deprecated and unsafe {@link Thread} API methods:
  * {@code Thread.stop()}, {@code Thread.suspend()}, {@code Thread.resume()},
- * {@code Thread.destroy()}, and {@code Thread.countStackFrames()}.
+ * {@code Thread.destroy()}, {@code Thread.countStackFrames()}, and {@code Thread.getId()}, which is
+ * deprecated in favour of {@code threadId()} rather than unsafe.
  *
  * <p>These methods were deprecated (and later removed or made no-ops in Java 20+) because:
  * <ul>
@@ -33,6 +34,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * targetThread.stop();  // dangerous!
  * }</pre>
  *
+ * <p>Fed by that call and not by the agent: {@code stop}, {@code suspend} and {@code resume} throw
+ * from JDK 20 and are gone in JDK 26, so a woven call site would exist only in bytecode built for an
+ * older release.
+ *
  * @since 0.10.0
  */
 public class DeprecatedThreadApiDetector {
@@ -41,7 +46,7 @@ public class DeprecatedThreadApiDetector {
     public static final Set<String> DEPRECATED_APIS = Collections.unmodifiableSet(
             new LinkedHashSet<>(Arrays.asList(
                     "Thread.stop", "Thread.suspend", "Thread.resume",
-                    "Thread.destroy", "Thread.countStackFrames")));
+                    "Thread.destroy", "Thread.countStackFrames", "Thread.getId")));
 
     private static class ApiUseEvent {
         final String apiName;
@@ -60,11 +65,13 @@ public class DeprecatedThreadApiDetector {
      *
      * @param apiName one of {@code "Thread.stop"}, {@code "Thread.suspend"},
      *                {@code "Thread.resume"}, {@code "Thread.destroy"},
-     *                {@code "Thread.countStackFrames"} (null-safe)
+     *                {@code "Thread.countStackFrames"}, {@code "Thread.getId"}; any other name, such as the
+     *                {@code "Thread.interrupt"} a wrapper around every thread call might pass, is
+     *                not recorded (null-safe)
      * @param thread  the calling thread (null-safe)
      */
     public void recordApiUse(String apiName, Thread thread) {
-        if (apiName == null || thread == null) return;
+        if (apiName == null || thread == null || !DEPRECATED_APIS.contains(apiName)) return;
         events.add(new ApiUseEvent(apiName, thread.getName()));
     }
 

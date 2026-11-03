@@ -190,21 +190,6 @@ public class ConcurrencyRunner {
             new java.util.concurrent.atomic.AtomicBoolean();
 
 
-    /**
-     * Latches the one-shot announcement that {@code LivelockDetector} cannot see the runner's own
-     * workers.
-     *
-     * <p>The third of the JMX-fed detectors, and inert for the same reason as the two above:
-     * {@code captureSnapshot()} filters {@code ThreadMXBean.dumpAllThreads} down to the ids of the
-     * threads that called it, and a virtual thread is not in that dump, so the history it analyzes
-     * stays empty. {@code detectLivelocks} is {@code false} on the annotation but {@code detectAll}
-     * turns it on, which is the default, so this is not a rare configuration.
-     *
-     * <p>Package-visible so the log-contract test can rearm it.
-     */
-    static final java.util.concurrent.atomic.AtomicBoolean LIVELOCK_INERT_LOGGED =
-            new java.util.concurrent.atomic.AtomicBoolean();
-
     /** See {@link #resolveTimeoutMultiplier()}. */
     private static final String TIMEOUT_MULTIPLIER_PROPERTY = "async-test.timeout.multiplier";
 
@@ -262,7 +247,7 @@ public class ConcurrencyRunner {
                  + "through timeoutError() a second time, producing two onTimeout callbacks and "
                  + "two copies of every report for one timeout. Or the cleanup steps are merged "
                  + "into one try, at which point a failing AsyncTestContext.uninstall() skips the "
-                 + "livelock snapshot and leaks context into the next test."
+                 + "latch.countDown() and the round waits out its timeout for nothing."
     )
     public static void execute(ReflectiveInvocationContext<Method> invocationContext,
                                AsyncTestConfig config) throws Throwable {
@@ -413,20 +398,6 @@ public class ConcurrencyRunner {
                     + "@AsyncTest(useVirtualThreads = false) on the test whose deadlock is "
                     + "between the runner's own threads, or read a clean report as 'not "
                     + "observed' rather than 'no deadlock'\"",
-                invocationContext.getExecutable().getName());
-        }
-
-        // The livelock detector is enabled and the runner is on virtual threads, so the thread
-        // dump it filters cannot contain the workers it is filtering for. Said once per JVM at
-        // INFO, for the same reason as the announcements above.
-        if (config.detectLivelocks && virtualWorkers
-                && LIVELOCK_INERT_LOGGED.compareAndSet(false, true)) {
-            log.info("runner.detector.inert test={} detector=LivelockDetector "
-                    + "reason=\"dumpAllThreads() does not report virtual threads, and "
-                    + "useVirtualThreads=true, so the snapshots this detector filters for are "
-                    + "never in the dump\" hint=\"set @AsyncTest(useVirtualThreads = false) on "
-                    + "the test whose threads you want watched, or read a clean report as 'not "
-                    + "observed' rather than 'no livelock'\"",
                 invocationContext.getExecutable().getName());
         }
 
@@ -1202,7 +1173,7 @@ public class ConcurrencyRunner {
             final int workerSlot = t;
             workerFutures.add(executor.submit(() -> {
                 // latch.countDown() MUST always run, regardless of any failure in
-                // install / test body / uninstall / snapshot. Without this guarantee
+                // install / test body / uninstall. Without this guarantee
                 // the runner blocks on latch.await() until timeoutMs, turning any
                 // bug in worker cleanup into a fake "deadlock detected" report.
                 // Join the set the telemetry bridge filters on, so accesses this worker makes
@@ -1224,6 +1195,9 @@ public class ConcurrencyRunner {
                         if (schedule != null) {
                             schedule.enter(workerSlot);
                         }
+                        if (phase1.livelock != null) {
+                            phase1.livelock.workerEnteredBody(Thread.currentThread());
+                        }
                         try {
                             Object result = method.invoke(target, args);
                             // Async test body support: if the method returns a CompletionStage,
@@ -1236,6 +1210,9 @@ public class ConcurrencyRunner {
                                      .get(roundTimeoutMs, TimeUnit.MILLISECONDS);
                             }
                         } finally {
+                            if (phase1.livelock != null) {
+                                phase1.livelock.workerLeftBody(Thread.currentThread());
+                            }
                             if (schedule != null) {
                                 schedule.leave();
                             }
@@ -1260,14 +1237,6 @@ public class ConcurrencyRunner {
                             failures.add(uninstallErr);
                         }
                     }
-                    if (phase1.livelock != null) {
-                        try {
-                            phase1.livelock.captureSnapshot();
-                        } catch (Throwable snapErr) {
-                            // Diagnostic-only path; never fail the test on this.
-                            log.warn("Livelock snapshot failed: {}", snapErr.toString(), snapErr);
-                        }
-                    }
                     latch.countDown();
                 }
             }));
@@ -1283,6 +1252,10 @@ public class ConcurrencyRunner {
             // Say so before interrupting: a body that catches this interrupt and records it has
             // not left its work on its own, and a detector must not read it as though it had (#598).
             phase2Context.markRoundTimedOut();
+            // Before the interrupts, so what is sampled is what the bodies were doing.
+            if (phase1.livelock != null) {
+                phase1.livelock.roundTimedOut();
+            }
             for (Future<?> future : workerFutures) {
                 future.cancel(true);
             }
@@ -1514,7 +1487,7 @@ public class ConcurrencyRunner {
      * <p>{@code shutdownNow()} interrupts anything still running (idempotent — the
      * {@code finally} block in {@link #execute} calls it again harmlessly), and the
      * bounded wait gives cancelled workers time to unwind out of the test body, the
-     * {@code AsyncTestContext.uninstall()} call and the livelock snapshot before
+     * {@code AsyncTestContext.uninstall()} call before
      * analysis reads the detectors they were writing to. The bound defaults to 2s and is
      * tunable via {@code -Dasync-test.quiesce.grace.ms} for suites whose code unwinds
      * slowly after cancellation. A worker stuck in uninterruptible user code can outlive

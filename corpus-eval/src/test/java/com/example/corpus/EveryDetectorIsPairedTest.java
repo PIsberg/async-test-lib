@@ -14,73 +14,55 @@ import java.util.TreeSet;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Holds the corpus to accounting for every detector the library ships.
+ * Holds the corpus to pairing every detector the library ships.
  *
- * <p>This is the check {@code docs/analysis/corpus-eval.md} has twice described as "one command"
- * without anyone being able to run it. Adding a {@code DetectorType} now fails here until it is
- * either paired or refused in writing, which is the only arrangement under which the document's
- * exhaustiveness claim stays true without someone remembering to re-derive it.
+ * <p>Adding a {@code DetectorType} fails here until a row must fire for it and a twin must stay
+ * silent. There used to be a second way out, a written refusal, and the last of those were lifted on
+ * 2026-11-03, so the document's exhaustiveness claim no longer has an exception to go stale.
  *
- * <p>A third check holds the pairs themselves to being pairs. {@code Corpus.pairedDetectors}
+ * <p>A second check holds the pairs themselves to being pairs. {@code Corpus.pairedDetectors}
  * counts a detector as paired if any row names it, direction ignored, so a lone
  * {@code MUST_FIRE} row satisfied the accounting above while proving nothing: the README's
  * own rule for adding a row says one direction is passed by a detector that fires on
  * everything. Every detector the pair lanes name already has both halves, so that check is a
  * ratchet rather than a fix.
  *
- * <p>It runs in the agent-on lane because it needs no run at all - it reads
- * {@link Corpus}'s subject lists and {@link DetectorCoverage}'s refusals, both of which are
- * static. Putting it in a lane that executes bodies would make a bookkeeping check depend on a
- * measurement.
+ * <p>It runs in the agent-on lane because it needs no run at all - it reads {@link Corpus}'s subject
+ * lists, which are static. Putting it in a lane that executes bodies would make a bookkeeping check
+ * depend on a measurement.
  */
-class EveryDetectorIsPairedOrRefusedTest {
+class EveryDetectorIsPairedTest {
 
     @Test
-    @DisplayName("every detector is paired in some lane or refused with a reason")
-    void everyDetectorIsPairedOrRefused() {
+    @DisplayName("every detector is paired in some lane")
+    void everyDetectorIsPaired() {
         Set<DetectorType> unaccounted = EnumSet.allOf(DetectorType.class);
         unaccounted.removeAll(DetectorCoverage.paired());
-        unaccounted.removeAll(DetectorCoverage.refused().keySet());
 
         assertTrue(unaccounted.isEmpty(),
-                "these detectors are neither paired by a corpus row nor refused with a reason, so "
-                        + "the corpus reports no rate for them and nothing records why: "
-                        + names(unaccounted));
-    }
-
-    @Test
-    @DisplayName("no detector is refused after it has been paired")
-    void noRefusalOutlivesItsPair() {
-        Set<DetectorType> both = EnumSet.noneOf(DetectorType.class);
-        both.addAll(DetectorCoverage.refused().keySet());
-        both.retainAll(DetectorCoverage.paired());
-
-        assertTrue(both.isEmpty(),
-                "these detectors have a pair and a refusal at the same time. A refusal is written "
-                        + "once and revisited by nothing, so a stale one reads as a standing "
-                        + "limitation long after the limitation is gone - delete the entry: "
-                        + names(both));
+                "these detectors have no corpus row that must fire and twin that must stay silent, "
+                        + "so nothing shows them working on a real call: " + names(unaccounted));
     }
 
     /**
-     * #761 paired THREAD_LOCAL_RANDOM_MISUSE in the idiom lane and its refusal stood, because
-     * {@link DetectorCoverage#paired()} read only the other lanes. The refused detector here is
-     * paired by a synthetic idiom pair and nothing else, which is that case.
+     * #761 paired THREAD_LOCAL_RANDOM_MISUSE in the idiom lane and nothing counted it, because
+     * {@link DetectorCoverage#paired()} read only the other lanes. The detector here is paired by a
+     * synthetic idiom pair and nothing else, which is that case.
      */
     @Test
-    @DisplayName("a pair in the idiom lane counts, so a refusal cannot outlive it there")
+    @DisplayName("a pair in the idiom lane counts")
     void anIdiomLanePairCounts() {
-        DetectorType refused = DetectorCoverage.refused().keySet().iterator().next();
+        DetectorType detector = notPairedByLaneOne().get(0);
         List<RecordingSubject> idioms = List.of(
-                idiomRow("idiom_synthetic_correct", refused, RecordingSubject.Expectation.MUST_STAY_SILENT),
-                idiomRow("idiom_synthetic_broken", refused, RecordingSubject.Expectation.MUST_FIRE));
+                idiomRow("idiom_synthetic_correct", detector, RecordingSubject.Expectation.MUST_STAY_SILENT),
+                idiomRow("idiom_synthetic_broken", detector, RecordingSubject.Expectation.MUST_FIRE));
 
         Set<DetectorType> paired = DetectorCoverage.paired(
                 lane -> lane == CorpusLane.IDIOMS ? idioms : List.of());
 
-        assertTrue(paired.contains(refused),
-                refused + " has both directions in the idiom lane and is not counted as paired, so "
-                        + "noRefusalOutlivesItsPair cannot see its refusal go stale: " + names(paired));
+        assertTrue(paired.contains(detector),
+                detector + " has both directions in the idiom lane and is not counted as paired: "
+                        + names(paired));
     }
 
     /**
@@ -91,10 +73,10 @@ class EveryDetectorIsPairedOrRefusedTest {
     @Test
     @DisplayName("an idiom row without its other direction in that lane pairs nothing")
     void anIdiomRowWithoutItsOtherDirectionPairsNothing() {
-        List<DetectorType> refused = List.copyOf(DetectorCoverage.refused().keySet());
-        DetectorType silentOnly = refused.get(0);
-        DetectorType fireOnly = refused.get(1);
-        DetectorType noteOnly = refused.get(2);
+        List<DetectorType> detectors = notPairedByLaneOne();
+        DetectorType silentOnly = detectors.get(0);
+        DetectorType fireOnly = detectors.get(1);
+        DetectorType noteOnly = detectors.get(2);
         List<RecordingSubject> idioms = List.of(
                 idiomRow("idiom_synthetic_correct", silentOnly, RecordingSubject.Expectation.MUST_STAY_SILENT),
                 idiomRow("idiom_synthetic_broken", fireOnly, RecordingSubject.Expectation.MUST_FIRE),
@@ -110,6 +92,13 @@ class EveryDetectorIsPairedOrRefusedTest {
                         && !paired.contains(noteOnly),
                 "a detector with one direction in the idiom lane, or a note where the silent half "
                         + "should be, is counted as paired: " + names(paired));
+    }
+
+    /** {@return detectors only a synthetic row can pair here, since lane one's count is always added} */
+    private static List<DetectorType> notPairedByLaneOne() {
+        Set<DetectorType> detectors = EnumSet.allOf(DetectorType.class);
+        detectors.removeAll(CorpusGates.exercisedAgentDetectors());
+        return List.copyOf(detectors);
     }
 
     private static RecordingSubject idiomRow(String method,
