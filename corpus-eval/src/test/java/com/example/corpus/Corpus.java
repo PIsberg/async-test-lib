@@ -5390,6 +5390,22 @@ final class Corpus {
                             + "copy (#1156)",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_spinLockFlag_contendedInsideCaffeine", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.Interner",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread interns through Caffeine, whose striped buffer checks tableBusy, "
+                            + "swaps it from 0 to 1 and writes 0 back. Those accesses are the "
+                            + "spinlock's own protocol (#1171)"),
+
+            new RecordingSubject("idiom_spinLockFlag_checkedWithNoSwap", JDK,
+                    IDIOM_LANE + "CheckedFlag",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same check and release with no swap between them, so two threads can both "
+                            + "find the flag 0 and both go in. Without the swap it is no lock",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_runAsync_counterUnderALock", JDK,
                     IDIOM_LANE + "Ledger",
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,

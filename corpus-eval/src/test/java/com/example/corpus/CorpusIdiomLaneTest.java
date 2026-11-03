@@ -1515,6 +1515,51 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    /** Long enough per body that Caffeine's striped buffer resizes under contention (#1171). */
+    private static final int INTERNS_PER_BODY = 200;
+
+    private static final com.github.benmanes.caffeine.cache.Interner<String> WEAK_INTERNER =
+            com.github.benmanes.caffeine.cache.Interner.newWeakInterner();
+
+    /**
+     * Every thread keeps interning through Caffeine, whose striped buffer checks {@code tableBusy}
+     * with no lock, swaps it from 0 to 1 and writes 0 back. Each flag access is the spinlock's own
+     * protocol, and the class documents itself as thread-safe.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 60_000, detectAll = true)
+    void idiom_spinLockFlag_contendedInsideCaffeine() {
+        correct(() -> {
+            for (int i = 0; i < INTERNS_PER_BODY; i++) {
+                use(WEAK_INTERNER.intern(new String("shared")).length());
+            }
+        });
+    }
+
+    private static final class CheckedFlag {
+        volatile int busy;
+        int table;
+    }
+
+    private static final Rounds<CheckedFlag> CHECKED_FLAGS = new Rounds<>(CheckedFlag::new);
+
+    /**
+     * The same check and release with no compare-and-swap between them, so the flag excludes nobody
+     * and is plain shared state: two threads can both find it 0 and both go in.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 60_000, detectAll = true)
+    void idiom_spinLockFlag_checkedWithNoSwap() {
+        broken(() -> {
+            CheckedFlag flag = CHECKED_FLAGS.next().shared();
+            for (int i = 0; i < INTERNS_PER_BODY; i++) {
+                if (flag.busy == 0) {
+                    flag.busy = 1;
+                    flag.table++;
+                    flag.busy = 0;
+                }
+            }
+        });
+    }
+
     /** How many tasks each runAsync row starts. Two must overlap, and the rest add contention. */
     private static final int ASYNC_TASKS = 8;
 

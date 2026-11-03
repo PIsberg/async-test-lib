@@ -32,6 +32,11 @@ tier, which is now `PROMPT`.
 
 ### Fixed
 
+- **A spinlock flag's own reads and release are no longer reported (#1171).** A `volatile` flag taken with
+  a compare-and-swap from 0 to 1 and released by writing 0 drew `PROMPT`/`HIGH` from `AtomicityValidator`
+  when threads overlapped on it, intermittently on Caffeine's `StripedBuffer.tableBusy`. Once a receiver's
+  flag has been won that way, its accesses are not published as data. A flag checked and set with no swap
+  excludes nobody and still reports. `idiom_spinLockFlag_*` is the pair.
 - **A read after `CompletableFuture.allOf(...).join()` is no longer reported.** `allOf` was not woven,
   so a join on its future ordered nothing, and correct code that read a result after it drew
   `AtomicityValidator`. A woven `allOf` now remembers its children, and observing its completion observes
