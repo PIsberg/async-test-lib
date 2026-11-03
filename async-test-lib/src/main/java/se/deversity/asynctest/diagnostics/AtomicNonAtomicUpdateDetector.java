@@ -158,6 +158,24 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
     }
 
     /**
+     * Records a store to an {@code AtomicReference} the agent saw (#1174). An enum, a
+     * {@code Boolean} or {@code null} is a status rather than something built from the read, which is
+     * what Jackson's {@code drainStatus} is, so it ends the read as a swap does. Anything else is
+     * judged as {@link #agentStore} judges a number.
+     *
+     * @param reference the reference the call site wrote, tracked by identity
+     * @param stored    what it stored
+     * @since 1.14.1
+     */
+    public void agentReferenceStore(Object reference, @Nullable Object stored) {
+        if (stored == null || stored instanceof Enum<?> || stored instanceof Boolean) {
+            agentSwap(reference);
+        } else {
+            agentStore(reference);
+        }
+    }
+
+    /**
      * Records an atomic update the agent saw at a call site, which ends a pending read (#1157).
      *
      * @param atomic the atomic the call site updated, tracked by identity

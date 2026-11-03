@@ -152,9 +152,9 @@ public final class DetectorFeeds {
             // System.setProperty and clearProperty, and the JVM's default Locale and TimeZone,
             // which every thread reads and nothing else in the library covered.
             DetectorType.SYSTEM_PROPERTY_MUTATION,
-            // The woven AtomicInteger and AtomicLong calls (#1157): a get then a set from two threads
-            // of a round, with nothing in common held, loses an update. Not AtomicReference, whose
-            // stores are mostly status flags: read in one method, set to a constant in another.
+            // The woven AtomicInteger, AtomicLong and AtomicReference calls (#1157, #1174): a get then
+            // a set from two threads of a round, with nothing in common held, loses an update. On a
+            // reference an enum, a Boolean or null is a status rather than something built from the read.
             DetectorType.ATOMIC_NON_ATOMIC_UPDATE,
             // The woven get (#1160): a task blocking on a task of its own pool, with no thread free
             // to run it.

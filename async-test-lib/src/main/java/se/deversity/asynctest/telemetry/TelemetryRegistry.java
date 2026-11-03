@@ -459,6 +459,14 @@ public final class TelemetryRegistry {
             // lands, so the lock never reads as held after it truly is not.
             SpinLocks.release(receiver, qualifiedName);
         }
+        // A volatile flag this receiver has really been locked through: its checks and its release
+        // are the lock's own protocol, not data it guards (#1171). They could not be excused as a
+        // constant, because the weaver leaves untagged a write whose method read the field, and a
+        // contended check does read it. A flag never won by a swap has no lock and stays judged.
+        if (volatileField && !staticField && receiver != null && SpinLocks.isSpinField(qualifiedName)
+                && SpinLocks.lockFor(receiver, qualifiedName) != null) {
+            return;
+        }
         int ownMonitor = receiver != null && Thread.holdsLock(receiver)
                 ? System.identityHashCode(receiver) : 0;
         int method = methodMonitor == null ? 0 : System.identityHashCode(methodMonitor);
@@ -2459,6 +2467,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
+        AgentConcurrencyUtilHooks.atomicReferenceStored(slot, value);
         ControlledSchedule.point();
         ownershipOffered(value, slot);
         slotStored(slot, value);
@@ -2479,6 +2488,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void lazySetAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
+        AgentConcurrencyUtilHooks.atomicReferenceStored(slot, value);
         ControlledSchedule.point();
         ownershipOffered(value, slot);
         slotStored(slot, value);
@@ -2499,6 +2509,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setReleaseAtomicReference(AtomicReference<Object> slot, @Nullable Object value) {
+        AgentConcurrencyUtilHooks.atomicReferenceStored(slot, value);
         ControlledSchedule.point();
         ownershipOffered(value, slot);
         slotStored(slot, value);
@@ -2524,6 +2535,7 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetAtomicReference(AtomicReference<Object> slot,
                                                        @Nullable Object expected,
                                                        @Nullable Object update) {
+        AgentConcurrencyUtilHooks.atomicSwapped(slot);
         ControlledSchedule.point();
         ownershipOffered(update, slot);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
@@ -2551,6 +2563,7 @@ public final class TelemetryRegistry {
      */
     public static @Nullable Object getAndSetAtomicReference(AtomicReference<Object> slot,
                                                             @Nullable Object value) {
+        AgentConcurrencyUtilHooks.atomicSwapped(slot);
         ControlledSchedule.point();
         slotStored(slot, value);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
@@ -2586,6 +2599,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static @Nullable Object getAtomicReference(AtomicReference<Object> slot) {
+        AgentConcurrencyUtilHooks.atomicRead(slot);
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         Object value = aba == null ? slot.get() : aba.get(slot);
@@ -2602,6 +2616,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static @Nullable Object getAcquireAtomicReference(AtomicReference<Object> slot) {
+        AgentConcurrencyUtilHooks.atomicRead(slot);
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         Object value = aba == null ? slot.getAcquire() : aba.getAcquire(slot);

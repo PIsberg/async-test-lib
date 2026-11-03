@@ -1265,7 +1265,20 @@ class CorpusIdiomLaneTest {
 
     private static final class Ledger {
         final Object lock = new Object();
+        final AtomicInteger tasksStarted = new AtomicInteger();
         int balance;
+
+        /**
+         * Holds a pool task until a second has started, so two pool threads each run one in this
+         * round. One thread running them all has no race to report, and a row whose outcome rests on
+         * that is a coin toss: this one went silent on CI.
+         */
+        void awaitASecondTask() {
+            tasksStarted.incrementAndGet();
+            for (int spins = 0; tasksStarted.get() < 2 && spins < SPIN_LIMIT; spins++) {
+                Thread.onSpinWait();
+            }
+        }
     }
 
     private static final Rounds<Ledger> LOCKED_READS = new Rounds<>(Ledger::new);
@@ -1414,6 +1427,7 @@ class CorpusIdiomLaneTest {
         correct(() -> {
             Ledger ledger = LOCKED_POOL_COUNTS.next().shared();
             getUnchecked(COUNTING_POOL.submit(() -> {
+                ledger.awaitASecondTask();
                 synchronized (ledger.lock) {
                     ledger.balance++;
                 }
@@ -1427,6 +1441,7 @@ class CorpusIdiomLaneTest {
         broken(() -> {
             Ledger ledger = PLAIN_POOL_COUNTS.next().shared();
             getUnchecked(COUNTING_POOL.submit(() -> {
+                ledger.awaitASecondTask();
                 ledger.balance++;
             }));
         });
@@ -1442,6 +1457,7 @@ class CorpusIdiomLaneTest {
             Ledger ledger = LOCKED_EXECUTE_COUNTS.next().shared();
             CountDownLatch done = new CountDownLatch(1);
             COUNTING_POOL.execute(() -> {
+                ledger.awaitASecondTask();
                 synchronized (ledger.lock) {
                     ledger.balance++;
                 }
@@ -1458,6 +1474,7 @@ class CorpusIdiomLaneTest {
             Ledger ledger = PLAIN_EXECUTE_COUNTS.next().shared();
             CountDownLatch done = new CountDownLatch(1);
             COUNTING_POOL.execute(() -> {
+                ledger.awaitASecondTask();
                 ledger.balance++;
                 done.countDown();
             });
@@ -1512,6 +1529,51 @@ class CorpusIdiomLaneTest {
             List<Integer> out = new ArrayList<>();
             IntStream.range(0, PARALLEL_ELEMENTS).parallel().forEach(i -> out.add(i));
             use(out.size());
+        });
+    }
+
+    /** Long enough per body that Caffeine's striped buffer resizes under contention (#1171). */
+    private static final int INTERNS_PER_BODY = 200;
+
+    private static final com.github.benmanes.caffeine.cache.Interner<String> WEAK_INTERNER =
+            com.github.benmanes.caffeine.cache.Interner.newWeakInterner();
+
+    /**
+     * Every thread keeps interning through Caffeine, whose striped buffer checks {@code tableBusy}
+     * with no lock, swaps it from 0 to 1 and writes 0 back. Each flag access is the spinlock's own
+     * protocol, and the class documents itself as thread-safe.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 60_000, detectAll = true)
+    void idiom_spinLockFlag_contendedInsideCaffeine() {
+        correct(() -> {
+            for (int i = 0; i < INTERNS_PER_BODY; i++) {
+                use(WEAK_INTERNER.intern(new String("shared")).length());
+            }
+        });
+    }
+
+    private static final class CheckedFlag {
+        volatile int busy;
+        int table;
+    }
+
+    private static final Rounds<CheckedFlag> CHECKED_FLAGS = new Rounds<>(CheckedFlag::new);
+
+    /**
+     * The same check and release with no compare-and-swap between them, so the flag excludes nobody
+     * and is plain shared state: two threads can both find it 0 and both go in.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 60_000, detectAll = true)
+    void idiom_spinLockFlag_checkedWithNoSwap() {
+        broken(() -> {
+            CheckedFlag flag = CHECKED_FLAGS.next().shared();
+            for (int i = 0; i < INTERNS_PER_BODY; i++) {
+                if (flag.busy == 0) {
+                    flag.busy = 1;
+                    flag.table++;
+                    flag.busy = 0;
+                }
+            }
         });
     }
 

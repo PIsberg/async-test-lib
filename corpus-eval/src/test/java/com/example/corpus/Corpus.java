@@ -1406,6 +1406,20 @@ final class Corpus {
                             + "draft of this feed judged the whole instance and drew VERDICT/HIGH "
                             + "on Spring and Jackson, which keep their counts this way"),
 
+            new RecordingSubject("agent_atomicReference_everyThreadBuildsFromAGet", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread builds a new list from get and stores it with set, so one thread's "
+                            + "element can overwrite another's (#1174)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_atomicReference_oneWriterBuildsFromAGet", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same get and set from one writer a round while the others read"),
+
             new RecordingSubject("agent_atomicLong_everyThreadGetsThenSets", JDK,
                     "java.util.concurrent.atomic.AtomicLong",
                     DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
@@ -5388,6 +5402,22 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same adds to an ArrayList, which loses elements or throws from the array "
                             + "copy (#1156)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_spinLockFlag_contendedInsideCaffeine", CAFFEINE,
+                    "com.github.benmanes.caffeine.cache.Interner",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread interns through Caffeine, whose striped buffer checks tableBusy, "
+                            + "swaps it from 0 to 1 and writes 0 back. Those accesses are the "
+                            + "spinlock's own protocol (#1171)"),
+
+            new RecordingSubject("idiom_spinLockFlag_checkedWithNoSwap", JDK,
+                    IDIOM_LANE + "CheckedFlag",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same check and release with no swap between them, so two threads can both "
+                            + "find the flag 0 and both go in. Without the swap it is no lock",
                     IssueSeverity.HIGH),
 
             new RecordingSubject("idiom_runAsync_counterUnderALock", JDK,

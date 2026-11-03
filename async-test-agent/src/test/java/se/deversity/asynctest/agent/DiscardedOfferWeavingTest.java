@@ -629,6 +629,34 @@ class DiscardedOfferWeavingTest {
             return java.util.concurrent.CompletableFuture.allOf(children);
         }
 
+        public static java.util.List<java.util.concurrent.Future<Object>> invokeAll(
+                java.util.concurrent.ExecutorService receiver,
+                java.util.Collection<? extends java.util.concurrent.Callable<Object>> tasks)
+                throws InterruptedException {
+            return receiver.invokeAll(tasks);
+        }
+
+        public static java.util.List<java.util.concurrent.Future<Object>> invokeAll(
+                java.util.concurrent.ExecutorService receiver,
+                java.util.Collection<? extends java.util.concurrent.Callable<Object>> tasks,
+                long timeout, java.util.concurrent.TimeUnit unit) throws InterruptedException {
+            return receiver.invokeAll(tasks, timeout, unit);
+        }
+
+        public static Object invokeAny(java.util.concurrent.ExecutorService receiver,
+                                       java.util.Collection<? extends java.util.concurrent.Callable<Object>> tasks)
+                throws InterruptedException, java.util.concurrent.ExecutionException {
+            return receiver.invokeAny(tasks);
+        }
+
+        public static Object invokeAny(java.util.concurrent.ExecutorService receiver,
+                                       java.util.Collection<? extends java.util.concurrent.Callable<Object>> tasks,
+                                       long timeout, java.util.concurrent.TimeUnit unit)
+                throws InterruptedException, java.util.concurrent.ExecutionException,
+                java.util.concurrent.TimeoutException {
+            return receiver.invokeAny(tasks, timeout, unit);
+        }
+
         public static java.util.List<Runnable> shutdownNow(java.util.concurrent.ExecutorService receiver) {
             return receiver.shutdownNow();
         }

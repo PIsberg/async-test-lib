@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.DoubleStream;
@@ -760,12 +761,15 @@ public final class AgentConcurrencyUtilHooks {
         if (!receiver.isDone()) {
             blocking("CompletableFuture.join", true);
         }
+        Object siblingPool = siblingWaitBegins(receiver);
         Object value;
         try {
             value = receiver.join();
         } catch (CompletionException failed) {
             completionObserved(receiver);
             throw failed;
+        } finally {
+            siblingWaitEnds(siblingPool);
         }
         completionObserved(receiver);
         return value;
@@ -2932,7 +2936,7 @@ public final class AgentConcurrencyUtilHooks {
                                                         Executor executor) {
         ControlledSchedule.point();
         // The NullPointerException the call itself throws for a missing function.
-        HandedTask handed = new HandedTask(Objects.requireNonNull(supplier));
+        HandedTask handed = new HandedTask(Objects.requireNonNull(supplier)).onExecutor(executor);
         if (executor == ForkJoinPool.commonPool()) { // NOPMD CompareObjectsWithEquals - the one pool, by identity
             handed.onTheCommonPool();
         }
@@ -2987,7 +2991,7 @@ public final class AgentConcurrencyUtilHooks {
     public static CompletableFuture<Void> runAsync(Runnable task, Executor executor) {
         ControlledSchedule.point();
         // The NullPointerException the call itself throws for a missing function.
-        HandedTask handed = new HandedTask(Objects.requireNonNull(task));
+        HandedTask handed = new HandedTask(Objects.requireNonNull(task)).onExecutor(executor);
         if (executor == ForkJoinPool.commonPool()) { // NOPMD CompareObjectsWithEquals - the one pool, by identity
             handed.onTheCommonPool();
         }
@@ -3767,8 +3771,18 @@ public final class AgentConcurrencyUtilHooks {
                 || nested.executor != running.executor) { // NOPMD CompareObjectsWithEquals - identity
             return null;
         }
+        return recordSiblingWait(running.executor, 1);
+    }
+
+    /**
+     * Records that a task of {@code pool} now waits on tasks of it, and {@return {@code pool}, or
+     * {@code null} when it has no bound this can read}.
+     *
+     * @param pool       the pool the caller is running on
+     * @param notStarted how many of those tasks cannot be running, for a pool whose queue is not read
+     */
+    private static @Nullable Object recordSiblingWait(Object pool, int notStarted) {
         ExecutorDeadlockDetector detector = AsyncTestContext.currentExecutorDeadlockDetector();
-        Object pool = running.executor;
         if (detector == null) {
             return null;
         }
@@ -3776,15 +3790,119 @@ public final class AgentConcurrencyUtilHooks {
             // A pool only grows past its core once the queue refuses a task.
             int threads = bounded.getQueue().remainingCapacity() > 0
                     ? bounded.getCorePoolSize() : bounded.getMaximumPoolSize();
-            detector.agentSiblingWait(pool, threads, bounded.getQueue().size());
+            detector.agentSiblingWait(pool, threads, Math.max(bounded.getQueue().size(), notStarted));
             return pool;
         }
         if (SINGLE_THREAD_WRAPPERS.contains(pool.getClass().getName())) {
-            // The only thread is this one, so the nested task, which is not done, is queued.
+            // The only thread is this one, so a task it waits for, which is not done, is queued.
             detector.agentSiblingWait(pool, 1, 1);
             return pool;
         }
         return null;
+    }
+
+    /** {@return the executor of the task this thread runs, when it is {@code pool}, else {@code null}} */
+    @SuppressWarnings("ReferenceEquality") // the same pool, by identity
+    private static @Nullable Object runningOn(ExecutorService pool) {
+        HandedTask running = RUNNING_HANDED.get();
+        return running != null && running.executor == pool ? pool : null; // NOPMD CompareObjectsWithEquals - identity
+    }
+
+    /**
+     * Weaves {@code ExecutorService.invokeAll(Collection)}. A task of this pool that calls it waits
+     * for tasks of its own pool, as a {@code get} on one does (#1175).
+     *
+     * @param receiver the executor
+     * @param tasks    the tasks to run and wait for
+     * @return their futures
+     * @throws InterruptedException if interrupted while waiting
+     * @since 1.14.1
+     */
+    public static List<Future<Object>> invokeAll(ExecutorService receiver,
+                                                 Collection<? extends Callable<Object>> tasks)
+            throws InterruptedException {
+        ControlledSchedule.point();
+        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, tasks.size());
+        try {
+            return receiver.invokeAll(tasks);
+        } finally {
+            siblingWaitEnds(pool);
+        }
+    }
+
+    /**
+     * Weaves {@code ExecutorService.invokeAny(Collection)}, as
+     * {@link #invokeAll(ExecutorService, Collection)}.
+     *
+     * @param receiver the executor
+     * @param tasks    the tasks to run, one of which must finish
+     * @return the result of one that did
+     * @throws InterruptedException if interrupted while waiting
+     * @throws ExecutionException   if none finished normally
+     * @since 1.14.1
+     */
+    public static @Nullable Object invokeAny(ExecutorService receiver,
+                                             Collection<? extends Callable<Object>> tasks)
+            throws InterruptedException, ExecutionException {
+        ControlledSchedule.point();
+        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, tasks.size());
+        try {
+            return receiver.invokeAny(tasks);
+        } finally {
+            siblingWaitEnds(pool);
+        }
+    }
+
+    /**
+     * Weaves {@code ExecutorService.invokeAny(Collection, long, TimeUnit)}, as
+     * {@link #invokeAll(ExecutorService, Collection)}.
+     *
+     * @param receiver the executor
+     * @param tasks    the tasks to run, one of which must finish
+     * @param timeout  how long to wait
+     * @param unit     the unit of {@code timeout}
+     * @return the result of one that did
+     * @throws InterruptedException if interrupted while waiting
+     * @throws ExecutionException   if none finished normally
+     * @throws TimeoutException     if the wait timed out
+     * @since 1.14.1
+     */
+    public static @Nullable Object invokeAny(ExecutorService receiver,
+                                             Collection<? extends Callable<Object>> tasks,
+                                             long timeout, TimeUnit unit)
+            throws InterruptedException, ExecutionException, TimeoutException {
+        ControlledSchedule.point();
+        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, tasks.size());
+        try {
+            return receiver.invokeAny(tasks, timeout, unit);
+        } finally {
+            siblingWaitEnds(pool);
+        }
+    }
+
+    /**
+     * Weaves {@code ExecutorService.invokeAll(Collection, long, TimeUnit)}, as
+     * {@link #invokeAll(ExecutorService, Collection)}.
+     *
+     * @param receiver the executor
+     * @param tasks    the tasks to run and wait for
+     * @param timeout  how long to wait
+     * @param unit     the unit of {@code timeout}
+     * @return their futures
+     * @throws InterruptedException if interrupted while waiting
+     * @since 1.14.1
+     */
+    public static List<Future<Object>> invokeAll(ExecutorService receiver,
+                                                 Collection<? extends Callable<Object>> tasks,
+                                                 long timeout, TimeUnit unit)
+            throws InterruptedException {
+        ControlledSchedule.point();
+        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, tasks.size());
+        try {
+            return receiver.invokeAll(tasks, timeout, unit);
+        } finally {
+            siblingWaitEnds(pool);
+        }
     }
 
     /** What {@code Executors.newSingleThreadExecutor()} returns, on the JDKs this library supports. */
@@ -3882,7 +4000,7 @@ public final class AgentConcurrencyUtilHooks {
     /**
      * The futures an {@code allOf} waits for, and the work this thread knew to be behind each. It
      * completes only once they all have, so observing it observes every one of them. Taken when
-     * {@code allOf} is called, because a thread remembers only its last {@link Submissions#KEPT}
+     * {@code allOf} is called, because a thread remembers only its last {@link Submissions#MAX_KEPT}
      * submissions: a child submitted further back than that, like one this thread did not submit, is
      * observed only through what a woven {@code complete} released to it.
      */
@@ -4022,6 +4140,21 @@ public final class AgentConcurrencyUtilHooks {
         AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
         if (detector != null) {
             detector.agentStore(atomic);
+        }
+    }
+
+    /**
+     * A woven store to an {@code AtomicReference} (#1174). Only a stored object can have been built
+     * from the read, so an enum or a {@code Boolean}, which is a status, or {@code null}, ends the
+     * read instead.
+     *
+     * @param reference the reference the call site wrote
+     * @param stored    what it stored
+     */
+    public static void atomicReferenceStored(Object reference, @Nullable Object stored) {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
+        if (detector != null) {
+            detector.agentReferenceStore(reference, stored);
         }
     }
 
@@ -4311,10 +4444,14 @@ public final class AgentConcurrencyUtilHooks {
             if (other != null) {
                 HappensBefore.acquire(other);
             }
-            if (sourceWork != null) {
+            if (sourceWork instanceof HandedAll all) {
+                all.observed();
+            } else if (sourceWork != null) {
                 HappensBefore.receive(sourceWork.finished());
             }
-            if (otherWork != null) {
+            if (otherWork instanceof HandedAll all) {
+                all.observed();
+            } else if (otherWork != null) {
                 HappensBefore.receive(otherWork.finished());
             }
             AsyncTestContext lentBefore = AsyncTestContext.lend(registeredIn);
@@ -4490,21 +4627,35 @@ public final class AgentConcurrencyUtilHooks {
      */
     static final class Submissions {
 
-        /** How many submissions a thread remembers. */
-        static final int KEPT = 16;
+        /** How many submissions a thread starts out able to remember. */
+        private static final int INITIAL_KEPT = 16;
+
+        /**
+         * The most a thread remembers. A thread that submits, then gets each future, then reads the
+         * results is correct however many it submitted, and anything forgotten reports it (#1176). It
+         * grows on demand, so a thread that submits a few tasks pays for sixteen slots as before.
+         */
+        static final int MAX_KEPT = 1024;
 
         private static final ThreadLocal<Submissions> MINE = ThreadLocal.withInitial(Submissions::new);
 
-        private final Object[] futures = new Object[KEPT];
-        private final Handed[] tasks = new Handed[KEPT];
+        private @Nullable Object[] futures = new Object[INITIAL_KEPT];
+        private @Nullable Handed[] tasks = new Handed[INITIAL_KEPT];
         private int next;
 
         /** {@return {@code future}, remembered on this thread with the task behind it} */
         static <F> F remember(F future, Handed task) {
             Submissions mine = MINE.get();
+            if (mine.next == mine.futures.length && mine.futures.length < MAX_KEPT) {
+                mine.futures = Arrays.copyOf(mine.futures, mine.futures.length * 2);
+                mine.tasks = Arrays.copyOf(mine.tasks, mine.tasks.length * 2);
+            }
+            if (mine.next == mine.futures.length) {
+                mine.next = 0; // full at its largest: the oldest goes
+            }
             mine.futures[mine.next] = future;
             mine.tasks[mine.next] = task;
-            mine.next = (mine.next + 1) % KEPT;
+            mine.next++;
             return future;
         }
 
@@ -4512,7 +4663,7 @@ public final class AgentConcurrencyUtilHooks {
         @SuppressWarnings("ReferenceEquality") // the same future, not an equal one
         static @Nullable Handed forget(Object future) {
             Submissions mine = MINE.get();
-            for (int i = 0; i < KEPT; i++) {
+            for (int i = 0; i < mine.futures.length; i++) {
                 if (mine.futures[i] == future) { // NOPMD CompareObjectsWithEquals - identity
                     Handed task = mine.tasks[i];
                     mine.futures[i] = null;
@@ -4530,7 +4681,7 @@ public final class AgentConcurrencyUtilHooks {
         @SuppressWarnings("ReferenceEquality") // the same future, not an equal one
         static @Nullable Handed peek(Object future) {
             Submissions mine = MINE.get();
-            for (int i = 0; i < KEPT; i++) {
+            for (int i = 0; i < mine.futures.length; i++) {
                 if (mine.futures[i] == future) { // NOPMD CompareObjectsWithEquals - identity
                     return mine.tasks[i];
                 }

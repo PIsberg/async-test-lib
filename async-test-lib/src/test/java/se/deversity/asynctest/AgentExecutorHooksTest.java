@@ -9,6 +9,7 @@ import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -119,6 +120,88 @@ class AgentExecutorHooksTest {
     void aTaskWaitingOnACachedPoolIsNotReported() throws Exception {
         ExecutorService pool = kept(Executors.newCachedThreadPool());
         assertFalse(taskWaitingOnAPoolIsReported(pool, pool), "a cached pool starts another thread");
+    }
+
+    /** Runs a task on {@code outer} that waits on {@code inner} through {@code waits}. */
+    private boolean taskWaitingThroughReported(ExecutorService outer, Callable<Object> waits)
+            throws Exception {
+        AsyncTestContext context = installed();
+        try {
+            AgentConcurrencyUtilHooks.get(AgentConcurrencyUtilHooks.submit(outer, waits));
+            return context.executorDeadlockDetector.analyze().hasIssues();
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    /** A wait on {@code inner} through a join on a future {@code supplyAsync} gave it (#1175). */
+    @SuppressWarnings("unchecked")
+    private static Callable<Object> joinOn(ExecutorService inner) {
+        return () -> {
+            CompletableFuture<Object> nested = AgentConcurrencyUtilHooks.supplyAsync(() -> "done", inner);
+            nested.completeOnTimeout("timed out", 100, TimeUnit.MILLISECONDS);
+            return AgentConcurrencyUtilHooks.join(nested);
+        };
+    }
+
+    /** A wait on {@code inner} through invokeAll, with a timeout so the deadlock ends (#1175). */
+    private static Callable<Object> invokeAllOn(ExecutorService inner) {
+        return () -> AgentConcurrencyUtilHooks.invokeAll(inner,
+                List.<Callable<Object>>of(() -> "done"), 100, TimeUnit.MILLISECONDS);
+    }
+
+    @Test
+    @DisplayName("a task joining a future on its own full pool is reported")
+    void aTaskJoiningOnItsOwnPoolIsReported() throws Exception {
+        ExecutorService pool = kept(Executors.newSingleThreadExecutor());
+        assertTrue(taskWaitingThroughReported(pool, joinOn(pool)),
+                "the nested supplier can only run on the thread that is joining it");
+    }
+
+    @Test
+    @DisplayName("a task joining a future on another pool is not reported")
+    void aTaskJoiningOnAnotherPoolIsNotReported() throws Exception {
+        assertFalse(taskWaitingThroughReported(kept(Executors.newSingleThreadExecutor()),
+                        joinOn(kept(Executors.newSingleThreadExecutor()))),
+                "the nested supplier has a thread of its own");
+    }
+
+    @Test
+    @DisplayName("a task calling invokeAll on its own full pool is reported")
+    void aTaskInvokingAllOnItsOwnPoolIsReported() throws Exception {
+        ExecutorService pool = kept(Executors.newFixedThreadPool(1));
+        assertTrue(taskWaitingThroughReported(pool, invokeAllOn(pool)),
+                "invokeAll waits for tasks only this thread could run");
+    }
+
+    @Test
+    @DisplayName("a task calling invokeAny on its own full pool is reported")
+    void aTaskInvokingAnyOnItsOwnPoolIsReported() throws Exception {
+        ExecutorService pool = kept(Executors.newFixedThreadPool(1));
+        assertTrue(taskWaitingThroughReported(pool, () -> {
+            try {
+                return AgentConcurrencyUtilHooks.invokeAny(pool,
+                        List.<Callable<Object>>of(() -> "done"), 100, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException expected) {
+                return "timed out";
+            }
+        }), "invokeAny waits for a task only this thread could run");
+    }
+
+    @Test
+    @DisplayName("a task calling invokeAll on another pool is not reported")
+    void aTaskInvokingAllOnAnotherPoolIsNotReported() throws Exception {
+        assertFalse(taskWaitingThroughReported(kept(Executors.newFixedThreadPool(1)),
+                        invokeAllOn(kept(Executors.newFixedThreadPool(1)))),
+                "those tasks have a thread of their own");
+    }
+
+    @Test
+    @DisplayName("a task calling invokeAll on its own pool with threads to spare is not reported")
+    void aTaskInvokingAllWithAFreeThreadIsNotReported() throws Exception {
+        ExecutorService pool = kept(Executors.newFixedThreadPool(2));
+        assertFalse(taskWaitingThroughReported(pool, invokeAllOn(pool)),
+                "the second thread runs them");
     }
 
     // --- A ThreadPoolExecutor's execute inside a run (#1155) -----------------------------------
