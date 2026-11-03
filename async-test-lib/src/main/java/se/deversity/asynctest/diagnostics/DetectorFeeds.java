@@ -156,6 +156,9 @@ public final class DetectorFeeds {
             // of a round, with nothing in common held, loses an update. Not AtomicReference, whose
             // stores are mostly status flags: read in one method, set to a constant in another.
             DetectorType.ATOMIC_NON_ATOMIC_UPDATE,
+            // The woven get (#1160): a task blocking on a task of its own pool, with no thread free
+            // to run it.
+            DetectorType.EXECUTOR_DEADLOCK,
             // Process.waitFor, and the getters that take a child's stdout or stderr pipe: a wait
             // no other thread drains for is a hang once the child writes a pipe's worth.
             DetectorType.PROCESS_STREAM_STARVATION,

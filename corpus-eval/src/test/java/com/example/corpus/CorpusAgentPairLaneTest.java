@@ -1100,6 +1100,43 @@ class CorpusAgentPairLaneTest {
         counted(() -> loadByHand(true));
     }
 
+    /**
+     * Runs a task on {@code outer} that submits to {@code inner} and waits briefly. On one pool the
+     * nested task can never start, which the timeout turns from a hang into a row that finishes.
+     */
+    private static void taskWaitsOn(ExecutorService outer, ExecutorService inner)
+            throws InterruptedException {
+        try {
+            outer.submit(() -> {
+                Future<String> nested = inner.submit(() -> "done");
+                try {
+                    return nested.get(20, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException | ExecutionException waitEnded) {
+                    return "gave up";
+                }
+            }).get();
+        } catch (ExecutionException e) {
+            throw new AssertionError("the outer task failed", e.getCause());
+        } finally {
+            outer.shutdownNow();
+            inner.shutdownNow();
+        }
+    }
+
+    /** A task waits on its own one-thread pool, the thread the nested task would need. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_executor_taskWaitsOnItsOwnPool() {
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        counted(() -> taskWaitsOn(pool, pool));
+    }
+
+    /** The same wait on a second pool, so the nested task has a thread of its own. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_executor_taskWaitsOnAnotherPool() {
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        counted(() -> taskWaitsOn(pool, Executors.newSingleThreadExecutor()));
+    }
+
     private static final AtomicInteger RACED_INT = new AtomicInteger();
     private static final AtomicInteger SINGLE_WRITER_INT = new AtomicInteger();
     private static final AtomicLong RACED_LONG = new AtomicLong();

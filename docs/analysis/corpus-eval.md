@@ -1887,8 +1887,8 @@ silence, so a refusal cannot outlive a pair in that lane either.
 | | Detectors |
 |---|---|
 | Paired in the recording lane | 117 |
-| Paired in the agent-pair lane | 39 |
-| ...less those paired in both | -22 |
+| Paired in the agent-pair lane | 40 |
+| ...less those paired in both | -23 |
 | Paired by neither of those lanes | +1 |
 | **Total paired** | **135** |
 | Refused: every recorded event is a finding, so no silent twin can exist | 5 |
@@ -2131,7 +2131,6 @@ have no row yet. A row lands with the fix, because a `MUST_FIRE` row cannot pin 
 |---|---|
 | `parallel().forEach(list::add)` and a plain counter in a stream, with one caller | [#1156](https://github.com/PIsberg/async-test-lib/issues/1156) |
 | Contains-then-add on a `synchronizedList` | [#1159](https://github.com/PIsberg/async-test-lib/issues/1159) |
-| A task waiting on its own single-thread pool, with a timed get | [#1160](https://github.com/PIsberg/async-test-lib/issues/1160) |
 
 A plain counter in `CompletableFuture.runAsync` tasks reported in two of the four lanes
 ([#1158](https://github.com/PIsberg/async-test-lib/issues/1158)). The probe's first draft wrote every body's result to one shared `volatile`
@@ -2377,8 +2376,8 @@ mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair 
 the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
-added below, and the Guava service pair (#736), 19 of the 46 agent-fed detectors are measured in
-both directions on call sites inside a library. `LibraryReach` records why the other twenty-seven are not,
+added below, and the Guava service pair (#736), 19 of the 47 agent-fed detectors are measured in
+both directions on call sites inside a library. `LibraryReach` records why the other twenty-eight are not,
 and `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:
 

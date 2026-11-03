@@ -1369,6 +1369,20 @@ final class Corpus {
                     "the same future with completeExceptionally on the failure path, so every "
                             + "path completes it"),
 
+            new RecordingSubject("agent_executor_taskWaitsOnItsOwnPool", JDK,
+                    "java.util.concurrent.Executors",
+                    DetectorType.EXECUTOR_DEADLOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a task submits to its own single-thread pool and waits for the result. The "
+                            + "nested task can only run on the thread that is waiting for it (#1160)",
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("agent_executor_taskWaitsOnAnotherPool", JDK,
+                    "java.util.concurrent.Executors",
+                    DetectorType.EXECUTOR_DEADLOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same wait on a second pool, so the nested task has a thread of its own"),
+
             new RecordingSubject("agent_atomicInteger_everyThreadGetsThenSets", JDK,
                     "java.util.concurrent.atomic.AtomicInteger",
                     DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,

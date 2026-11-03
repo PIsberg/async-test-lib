@@ -8,6 +8,7 @@ import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -16,6 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -54,6 +56,69 @@ class AgentExecutorHooksTest {
     private <E extends ExecutorService> E kept(E executor) {
         made.add(executor);
         return executor;
+    }
+
+    // --- A task waiting on its own pool (#1160) ------------------------------------------------
+
+    /**
+     * Runs a task on {@code outer} that submits to {@code inner} and waits for it, briefly, through
+     * the woven calls, and {@return what the run's detector reports}.
+     */
+    private boolean taskWaitingOnAPoolIsReported(ExecutorService outer, ExecutorService inner)
+            throws Exception {
+        AsyncTestContext context = installed();
+        try {
+            Future<Object> task = AgentConcurrencyUtilHooks.submit(outer, (Callable<Object>) () -> {
+                Future<Object> nested = AgentConcurrencyUtilHooks.submit(inner, (Callable<Object>) () -> "done");
+                try {
+                    return AgentConcurrencyUtilHooks.get(nested, 100, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException expected) {
+                    return "timed out";
+                }
+            });
+            AgentConcurrencyUtilHooks.get(task);
+            return context.executorDeadlockDetector.analyze().hasIssues();
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("a task waiting on its own single-thread pool is reported")
+    void aTaskWaitingOnItsOwnSingleThreadPoolIsReported() throws Exception {
+        ExecutorService pool = kept(Executors.newSingleThreadExecutor());
+        assertTrue(taskWaitingOnAPoolIsReported(pool, pool),
+                "the nested task can only run on the thread that is waiting for it");
+    }
+
+    @Test
+    @DisplayName("a task waiting on its own one-thread fixed pool is reported")
+    void aTaskWaitingOnItsOwnFixedPoolIsReported() throws Exception {
+        ExecutorService pool = kept(Executors.newFixedThreadPool(1));
+        assertTrue(taskWaitingOnAPoolIsReported(pool, pool),
+                "the same deadlock through the class newFixedThreadPool builds");
+    }
+
+    @Test
+    @DisplayName("a task waiting on another pool is not reported")
+    void aTaskWaitingOnAnotherPoolIsNotReported() throws Exception {
+        assertFalse(taskWaitingOnAPoolIsReported(kept(Executors.newSingleThreadExecutor()),
+                        kept(Executors.newSingleThreadExecutor())),
+                "the nested task has a thread of its own");
+    }
+
+    @Test
+    @DisplayName("a task waiting on its own pool with a thread to spare is not reported")
+    void aTaskWaitingOnAPoolWithAFreeThreadIsNotReported() throws Exception {
+        ExecutorService pool = kept(Executors.newFixedThreadPool(2));
+        assertFalse(taskWaitingOnAPoolIsReported(pool, pool), "the second thread runs the nested task");
+    }
+
+    @Test
+    @DisplayName("a task waiting on its own growing pool is not reported")
+    void aTaskWaitingOnACachedPoolIsNotReported() throws Exception {
+        ExecutorService pool = kept(Executors.newCachedThreadPool());
+        assertFalse(taskWaitingOnAPoolIsReported(pool, pool), "a cached pool starts another thread");
     }
 
     // --- A ThreadPoolExecutor's execute inside a run (#1155) -----------------------------------

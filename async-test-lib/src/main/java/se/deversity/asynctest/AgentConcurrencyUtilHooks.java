@@ -13,6 +13,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.Objects;
 import java.util.WeakHashMap;
@@ -61,6 +62,7 @@ import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector;
 import se.deversity.asynctest.diagnostics.AtomicNonAtomicUpdateDetector;
+import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
 import se.deversity.asynctest.diagnostics.MdcContextLeakDetector;
 import se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector;
 import se.deversity.asynctest.diagnostics.ThreadLocalMonitor;
@@ -778,12 +780,15 @@ public final class AgentConcurrencyUtilHooks {
         if (!receiver.isDone()) {
             blockingOn(receiver);
         }
+        Object siblingPool = siblingWaitBegins(receiver);
         Object value;
         try {
             value = receiver.get();
         } catch (ExecutionException failed) {
             completionObserved(receiver);
             throw failed;
+        } finally {
+            siblingWaitEnds(siblingPool);
         }
         completionObserved(receiver);
         return value;
@@ -808,12 +813,15 @@ public final class AgentConcurrencyUtilHooks {
         if (!receiver.isDone()) {
             blockingOn(receiver);
         }
+        Object siblingPool = siblingWaitBegins(receiver);
         Object value;
         try {
             value = receiver.get(timeout, unit);
         } catch (ExecutionException failed) {
             completionObserved(receiver);
             throw failed;
+        } finally {
+            siblingWaitEnds(siblingPool);
         }
         completionObserved(receiver);
         return value;
@@ -3099,7 +3107,7 @@ public final class AgentConcurrencyUtilHooks {
             if (!wrapsInvisibly(receiver, task)) {
                 return receiver.submit(task);
             }
-            handed = new HandedTask(task);
+            handed = new HandedTask(task).onExecutor(receiver);
             return Submissions.remember(receiver.submit((Callable<Object>) handed), handed);
         } catch (RejectedExecutionException e) {
             if (handed != null) {
@@ -3126,7 +3134,7 @@ public final class AgentConcurrencyUtilHooks {
             if (!wrapsInvisibly(receiver, task)) {
                 return receiver.submit(task);
             }
-            handed = new HandedTask(task);
+            handed = new HandedTask(task).onExecutor(receiver);
             return Submissions.remember(receiver.submit((Runnable) handed), handed);
         } catch (RejectedExecutionException e) {
             if (handed != null) {
@@ -3156,7 +3164,7 @@ public final class AgentConcurrencyUtilHooks {
             if (!wrapsInvisibly(receiver, task)) {
                 return receiver.submit(task, result);
             }
-            handed = new HandedTask(task);
+            handed = new HandedTask(task).onExecutor(receiver);
             return Submissions.remember(receiver.submit((Runnable) handed, result), handed);
         } catch (RejectedExecutionException e) {
             if (handed != null) {
@@ -3585,6 +3593,58 @@ public final class AgentConcurrencyUtilHooks {
         return e;
     }
 
+    /** The task the calling thread is running, for a get to compare its pool with the future's. */
+    private static final ThreadLocal<@Nullable HandedTask> RUNNING_HANDED = new ThreadLocal<>();
+
+    /**
+     * Tells {@code EXECUTOR_DEADLOCK} when a task is about to block on a task of its own pool
+     * (#1160), and {@return that pool, for {@link #siblingWaitEnds}, or {@code null}} when this get
+     * is anything else. A {@code ForkJoinPool} is left out: a waiting worker runs other tasks.
+     */
+    @SuppressWarnings("ReferenceEquality") // the same pool, by identity
+    private static @Nullable Object siblingWaitBegins(Future<?> future) {
+        HandedTask running = RUNNING_HANDED.get();
+        if (running == null || running.executor == null || future.isDone()
+                || !(Submissions.peek(future) instanceof HandedTask nested)
+                || nested.executor != running.executor) { // NOPMD CompareObjectsWithEquals - identity
+            return null;
+        }
+        ExecutorDeadlockDetector detector = AsyncTestContext.currentExecutorDeadlockDetector();
+        Object pool = running.executor;
+        if (detector == null) {
+            return null;
+        }
+        if (pool instanceof ThreadPoolExecutor bounded) {
+            // A pool only grows past its core once the queue refuses a task.
+            int threads = bounded.getQueue().remainingCapacity() > 0
+                    ? bounded.getCorePoolSize() : bounded.getMaximumPoolSize();
+            detector.agentSiblingWait(pool, threads, bounded.getQueue().size());
+            return pool;
+        }
+        if (SINGLE_THREAD_WRAPPERS.contains(pool.getClass().getName())) {
+            // The only thread is this one, so the nested task, which is not done, is queued.
+            detector.agentSiblingWait(pool, 1, 1);
+            return pool;
+        }
+        return null;
+    }
+
+    /** What {@code Executors.newSingleThreadExecutor()} returns, on the JDKs this library supports. */
+    private static final Set<String> SINGLE_THREAD_WRAPPERS = Set.of(
+            "java.util.concurrent.Executors$AutoShutdownDelegatedExecutorService",
+            "java.util.concurrent.Executors$FinalizableDelegatedExecutorService");
+
+    /** Ends the wait {@link #siblingWaitBegins} recorded, if it recorded one. */
+    private static void siblingWaitEnds(@Nullable Object pool) {
+        if (pool == null) {
+            return;
+        }
+        ExecutorDeadlockDetector detector = AsyncTestContext.currentExecutorDeadlockDetector();
+        if (detector != null) {
+            detector.recordSiblingWaitEnded(pool);
+        }
+    }
+
     /**
      * {@return the controlled schedule's adoption of the task behind {@code future}, or
      * {@code null}}: what a wait for its result hands the schedule, so the wait happens inside it
@@ -3835,6 +3895,9 @@ public final class AgentConcurrencyUtilHooks {
         private final long token;
         private final @Nullable AsyncTestContext submittedIn;
 
+        /** The executor a woven submit gave this task to, or {@code null}. */
+        @Nullable Object executor;
+
         /** Whether the task was handed to the common pool, and declared to the blocking detector. */
         private volatile boolean commonPool;
 
@@ -3851,6 +3914,12 @@ public final class AgentConcurrencyUtilHooks {
             this.submittedIn = AsyncTestContext.agentContext();
             this.adoption = ControlledSchedule.submitting();
             TelemetryRegistry.taskSubmitted(token);
+        }
+
+        /** {@return this task, remembering the executor it is submitted to} */
+        HandedTask onExecutor(Object submittedTo) {
+            executor = submittedTo;
+            return this;
         }
 
         /** Tells the controlled schedule this task will never run: its executor rejected it. */
@@ -3913,9 +3982,12 @@ public final class AgentConcurrencyUtilHooks {
             long taskBefore = enterTask();
             HandedTask outer = COMMON_POOL_TASK.get();
             boolean entered = enterPool();
+            HandedTask outerRunning = RUNNING_HANDED.get();
+            RUNNING_HANDED.set(this);
             try {
                 ((Runnable) task).run();
             } finally {
+                RUNNING_HANDED.set(outerRunning);
                 leavePool(entered, outer);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
@@ -3936,9 +4008,12 @@ public final class AgentConcurrencyUtilHooks {
             long taskBefore = enterTask();
             HandedTask outer = COMMON_POOL_TASK.get();
             boolean entered = enterPool();
+            HandedTask outerRunning = RUNNING_HANDED.get();
+            RUNNING_HANDED.set(this);
             try {
                 return ((Callable<?>) task).call();
             } finally {
+                RUNNING_HANDED.set(outerRunning);
                 leavePool(entered, outer);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
@@ -3959,9 +4034,12 @@ public final class AgentConcurrencyUtilHooks {
             long taskBefore = enterTask();
             HandedTask outer = COMMON_POOL_TASK.get();
             boolean entered = enterPool();
+            HandedTask outerRunning = RUNNING_HANDED.get();
+            RUNNING_HANDED.set(this);
             try {
                 return ((Supplier<?>) task).get();
             } finally {
+                RUNNING_HANDED.set(outerRunning);
                 leavePool(entered, outer);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();

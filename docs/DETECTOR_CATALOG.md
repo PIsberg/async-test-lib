@@ -343,7 +343,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (46)
+### Agent-fed (47)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -490,6 +490,12 @@ and `PipedInputStream.read` calls, paired through the writer's private `sink` (t
 `java.io` to the library to read it), report a thread that both writes to and reads from one pair,
 which the `PipedInputStream` javadoc warns may deadlock.
 
+`ExecutorDeadlockDetector` hears the woven `Future.get` (#1160). A task blocking on a task of its own
+pool is reported when every thread the pool can run is waiting that way with work queued. The bound
+and the queue are read from the pool: a `ThreadPoolExecutor`'s, counting its core size while its queue
+has room, and one thread behind `newSingleThreadExecutor`. A `ForkJoinPool` is left out, since a worker
+that waits runs other tasks, and so is any executor whose bound it cannot read.
+
 `AtomicNonAtomicUpdateDetector` hears the woven `get`, `set` and compare-and-set calls on
 `AtomicInteger` and `AtomicLong` (#1157). A woven get then set is reported once a
 second thread of the same round has done the same with no lock in common. Each read-then-store pair
@@ -517,7 +523,7 @@ another, which is correct code.
 `SystemPropertyMutationDetector`, `ProcessStreamStarvationDetector`, `JdbcConnectionSharedDetector`,
 `ThreadLocalMonitor`, `MdcContextLeakDetector`, `BlockingOnNonBlockingThreadDetector`,
 `ThreadLeakDetector`, `ThreadPoolMonitor`, `CompletableFutureCompletionLeakDetector`,
-`AtomicNonAtomicUpdateDetector`
+`AtomicNonAtomicUpdateDetector`, `ExecutorDeadlockDetector`
 
 ### Zero-config (4)
 
@@ -579,7 +585,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (98)
+### Recording-only (97)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -621,7 +627,7 @@ recording is the feed:
 `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`,
 `FileChannelPositionRaceDetector`, `SharedIteratorDetector`, `HighContentionAtomicDetector`,
 `SharedJsonMapperReconfigDetector`, `LazyConstantMisuseDetector`, `FinalFieldMutationDetector`,
-`SharedKdfDetector`, `ExecutorDeadlockDetector`, `FutureBlockingDetector`,
+`SharedKdfDetector`, `FutureBlockingDetector`,
 `FlowPublisherConcurrencyDetector`, `ConfinedArenaThreadEscapeDetector`,
 `SharedMemorySegmentRaceDetector`, `VarHandleNonAtomicUpdateDetector`,
 `RecordMutableComponentLeakDetector`, `VirtualThreadPoolingDetector`,

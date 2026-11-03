@@ -2140,6 +2140,17 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link ExecutorDeadlockDetector} for the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>The woven {@code get} hands it a task waiting on its own pool (#1160).
+     */
+    static @Nullable ExecutorDeadlockDetector currentExecutorDeadlockDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.executorDeadlockDetector;
+    }
+
+    /**
      * {@return the {@link AtomicNonAtomicUpdateDetector} for the run the calling thread works for,
      * or {@code null}}
      *

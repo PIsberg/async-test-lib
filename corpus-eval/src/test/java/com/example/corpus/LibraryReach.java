@@ -128,6 +128,10 @@ final class LibraryReach {
                         + "library method that reads then sets an atomic from several threads, and "
                         + "no corpus library ships that defect, so its pair calls the JDK types "
                         + "from the test file");
+        unreached(DetectorType.EXECUTOR_DEADLOCK,
+                "agent-fed since #1160 through the woven get and submit; a firing library row needs "
+                        + "a library task that waits on its own full pool, and no corpus library "
+                        + "ships that defect, so its pair submits from the test file");
         unreached(DetectorType.SHARED_DEFLATER,
                 "agent-fed through the woven Deflater and Inflater calls; no corpus library "
                         + "shares a Deflater or Inflater across threads, so its recording-lane "
