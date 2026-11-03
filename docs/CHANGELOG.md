@@ -32,6 +32,14 @@ tier, which is now `PROMPT`.
 
 ### Fixed
 
+- **Tasks given to a `ThreadPoolExecutor`'s `execute` are observed (#1155).** A plain counter in
+  such tasks drew nothing while the same tasks through `submit` were reported, and
+  `Executors.newFixedThreadPool` builds exactly this class. Inside a run the woven `execute` now
+  wraps the task, as it already did on the other JDK pools, so the pool thread works for the run
+  while it runs it and the task is ordered after the call. The pool used to be left alone because it
+  hands the task back; the woven `shutdownNow` and `remove` now give back and find your own task.
+  `getQueue()` still shows the wrapper to code that looks at the elements, and a subclass is left
+  alone because its `beforeExecute` would see it. `idiom_poolExecute_*` is the pair.
 - **`AtomicInteger.set(get() + 1)` is reported without a record call (#1157).**
   `ATOMIC_NON_ATOMIC_UPDATE` was recording-fed, so the mistake it names drew nothing from ordinary
   code. It is agent-fed now through the woven `AtomicInteger` and `AtomicLong` calls. A get then set
@@ -116,8 +124,8 @@ tier, which is now `PROMPT`.
   give `THREAD_LOCAL_LEAKS`, `THREAD_POOL` and `COMPLETABLE_FUTURE_COMPLETION_LEAKS` their first pair
   through the woven path, and ten idiom pairs cover shared collections, get-then-put counting, lazy
   init, reads outside the lock, a lock per caller, a lock on a boxed counter, `sleep` as ordering
-  and plain counters in pool tasks. Four other common mistakes drew no finding and are filed as
-  #1155, #1156, #1159 and #1160, with an inconsistent `runAsync` result in #1158.
+  and plain counters in pool tasks. Three other common mistakes drew no finding and are filed as
+  #1156, #1159 and #1160, with an inconsistent `runAsync` result in #1158.
   `CorpusClaimsInDocsTest` now holds the roster table in `corpus-eval.md` to the rows; its agent-pair
   figure said 19 where the lane pairs 38, under a sentence saying nothing there was kept by hand.
 - **The workflows' supply-chain settings are now a gate (#1148).** An audit of the 21 workflows

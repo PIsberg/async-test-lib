@@ -10,6 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
@@ -52,6 +54,77 @@ class AgentExecutorHooksTest {
     private <E extends ExecutorService> E kept(E executor) {
         made.add(executor);
         return executor;
+    }
+
+    // --- A ThreadPoolExecutor's execute inside a run (#1155) -----------------------------------
+
+    /** A one-thread pool whose thread is held until {@code release} counts down. */
+    private ThreadPoolExecutor heldPool(CountDownLatch release) {
+        ThreadPoolExecutor pool = kept(new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>()));
+        pool.execute(() -> {
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        return pool;
+    }
+
+    @Test
+    @DisplayName("shutdownNow gives back the task a woven execute was given, not its wrapper")
+    void shutdownNowGivesBackTheTaskItself() {
+        installed();
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            ThreadPoolExecutor pool = heldPool(release);
+            Runnable queued = () -> { };
+            AgentConcurrencyUtilHooks.execute(pool, queued);
+
+            assertEquals(List.of(queued), AgentConcurrencyUtilHooks.shutdownNow(pool),
+                    "code that re-queues or inspects what shutdownNow returned sees its own task");
+        } finally {
+            release.countDown();
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("remove finds the task a woven execute was given, not only its wrapper")
+    void removeFindsTheTaskItself() {
+        installed();
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            ThreadPoolExecutor pool = heldPool(release);
+            Runnable queued = () -> { };
+            AgentConcurrencyUtilHooks.execute(pool, queued);
+
+            assertTrue(AgentConcurrencyUtilHooks.removeFromPool(pool, queued),
+                    "the task is still queued, so remove must find it");
+            assertTrue(pool.getQueue().isEmpty(), "and the queue must really have let it go");
+            assertFalse(AgentConcurrencyUtilHooks.removeFromPool(pool, queued),
+                    "a second remove has nothing left to find");
+        } finally {
+            release.countDown();
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("outside a run a ThreadPoolExecutor's task is not wrapped at all")
+    void outsideARunTheTaskIsLeftAlone() {
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            ThreadPoolExecutor pool = heldPool(release);
+            Runnable queued = () -> { };
+            AgentConcurrencyUtilHooks.execute(pool, queued);
+
+            assertTrue(pool.getQueue().contains(queued),
+                    "no run is watching, so nothing here should change what the pool holds");
+        } finally {
+            release.countDown();
+        }
     }
 
     // --- EXECUTOR_SHUTDOWN --------------------------------------------------------------------

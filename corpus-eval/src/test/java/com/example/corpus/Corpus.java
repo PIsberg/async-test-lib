@@ -5330,6 +5330,21 @@ final class Corpus {
                     "the same tasks with no lock, so the lost update happens on pool threads the "
                             + "test never named. Each get orders one task for its own submitter "
                             + "and says nothing about the others",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_poolExecute_counterUnderALock", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same tasks handed over with execute, each incrementing under the ledger's "
+                            + "lock, on the fixed pool most code has"),
+
+            new RecordingSubject("idiom_poolExecute_plainCounter", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same execute with no lock. A ThreadPoolExecutor's tasks were not observed "
+                            + "at all before #1155, so this drew nothing from any detector",
                     IssueSeverity.HIGH)
     );
 

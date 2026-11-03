@@ -809,8 +809,8 @@ class AgentHappensBeforeFeedTest {
         /** A ForkJoinPool, with the input written after execute. */
         INPUT_AFTER_EXECUTE,
         /**
-         * A ThreadPoolExecutor, input written before execute. It hands the task itself back from
-         * getQueue, shutdownNow and remove, so the hook leaves it unwrapped and orders nothing.
+         * A ThreadPoolExecutor, input written before execute. Inside a run the hook wraps its task
+         * too (#1155), and the woven shutdownNow and remove keep the wrapper from showing.
          */
         THREAD_POOL_EXECUTOR,
         /**
@@ -819,7 +819,7 @@ class AgentHappensBeforeFeedTest {
          * that never hands the task back, so the hook looks through it.
          */
         UNCONFIGURABLE_SCHEDULED_POOL,
-        /** A ThreadPoolExecutor behind the same wrapper: still handed back, so still unwrapped. */
+        /** A ThreadPoolExecutor behind the same wrapper, which the hook looks through as well. */
         UNCONFIGURABLE_THREAD_POOL
     }
 
@@ -874,6 +874,16 @@ class AgentHappensBeforeFeedTest {
         return detector.analyzeRaceConditions().hasIssues();
     }
 
+    /** {@link #executionReported} with a run installed, which is when a ThreadPoolExecutor wraps. */
+    private static boolean executionReportedInARun(Execution shape) throws Exception {
+        AsyncTestContext.install(new AsyncTestContext(AsyncTestConfig.builder().detectAll(true).build()));
+        try {
+            return executionReported(shape);
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
     @Test
     @DisplayName("a woven execute orders the caller before the task where the executor never hands the task back (#741, #834)")
     void executionPublishes() throws Exception {
@@ -885,8 +895,10 @@ class AgentHappensBeforeFeedTest {
                 "the same through a virtual thread per task");
         assertTrue(executionReported(Execution.INPUT_AFTER_EXECUTE),
                 "the input was written after execute, which orders nothing before the task");
+        assertFalse(executionReportedInARun(Execution.THREAD_POOL_EXECUTOR),
+                "the same through a ThreadPoolExecutor, the pool most code has (#1155)");
         assertTrue(executionReported(Execution.THREAD_POOL_EXECUTOR),
-                "a ThreadPoolExecutor's task is left unwrapped, since its queue hands it back");
+                "outside a run nothing is watching, so that pool's task is left unwrapped");
     }
 
     @Test
@@ -895,9 +907,8 @@ class AgentHappensBeforeFeedTest {
         assertFalse(executionReported(Execution.UNCONFIGURABLE_SCHEDULED_POOL),
                 "the wrapper forwards to a ScheduledThreadPoolExecutor, which orders the caller"
                         + " before the task, as kotlinx's newSingleThreadContext relies on");
-        assertTrue(executionReported(Execution.UNCONFIGURABLE_THREAD_POOL),
-                "behind the wrapper is a ThreadPoolExecutor, whose queue hands the task back, so"
-                        + " the exact-class rule still leaves it unwrapped");
+        assertFalse(executionReportedInARun(Execution.UNCONFIGURABLE_THREAD_POOL),
+                "behind the wrapper is a ThreadPoolExecutor, which the hook wraps too (#1155)");
     }
 
     /** Where the submitter below breaks the order an executor makes, if it does. */

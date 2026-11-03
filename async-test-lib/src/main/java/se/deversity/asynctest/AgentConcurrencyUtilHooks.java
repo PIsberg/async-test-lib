@@ -11,6 +11,7 @@ import java.nio.charset.Charset;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -33,6 +34,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -3491,9 +3493,9 @@ public final class AgentConcurrencyUtilHooks {
      * thread-per-task executor behind {@code Executors.newVirtualThreadPerTaskExecutor()} qualify,
      * by exact class: the first runs it inside its own adapter and returns no queued task from
      * {@code shutdownNow}, the second queues its own futures, and the third queues nothing. A
-     * {@code ThreadPoolExecutor} returns the task itself from {@code getQueue},
-     * {@code shutdownNow} and {@code remove}, and passes it to {@code beforeExecute}, so its tasks
-     * are left alone, as are a subclass's and any executor outside the JDK's.
+     * {@code ThreadPoolExecutor} qualifies too, inside a run (#1155); see
+     * {@link #executesInvisibly}. A subclass's tasks are left alone, since its {@code beforeExecute}
+     * would see the wrapper, as are those of any executor outside the JDK's.
      *
      * @param receiver the executor the call site invoked
      * @param command  what to run; the executor rejects {@code null}
@@ -3518,6 +3520,52 @@ public final class AgentConcurrencyUtilHooks {
             }
             throw rejected(receiver, e);
         }
+    }
+
+    /**
+     * Weaves {@code ExecutorService.shutdownNow()}: what comes back is the tasks {@link #execute}
+     * was given, not the wrappers it queued (#1155), so code that re-queues or inspects them sees
+     * its own. A list with no wrapper in it is returned as the executor made it.
+     *
+     * @param receiver the executor the call site invoked
+     * @return the tasks that never started
+     * @since 1.14.1
+     */
+    public static List<Runnable> shutdownNow(ExecutorService receiver) {
+        List<Runnable> queued = receiver.shutdownNow();
+        List<Runnable> unwrapped = null;
+        for (int i = 0; i < queued.size(); i++) {
+            if (queued.get(i) instanceof HandedTask handed && handed.task instanceof Runnable task) {
+                handed.abandoned();
+                if (unwrapped == null) {
+                    unwrapped = new ArrayList<>(queued);
+                }
+                unwrapped.set(i, task);
+            }
+        }
+        return unwrapped == null ? queued : unwrapped;
+    }
+
+    /**
+     * Weaves {@code ThreadPoolExecutor.remove(Runnable)}: the caller names the task it gave to
+     * {@link #execute}, and the queue holds the wrapper around it (#1155).
+     *
+     * @param pool the pool the call site invoked
+     * @param task the task to remove
+     * @return whether it was removed
+     * @since 1.14.1
+     */
+    public static boolean removeFromPool(ThreadPoolExecutor pool, Runnable task) {
+        for (Runnable queued : pool.getQueue()) {
+            if (queued instanceof HandedTask handed && Objects.equals(task, handed.task)) {
+                boolean removed = pool.remove(queued);
+                if (removed) {
+                    handed.abandoned();
+                }
+                return removed;
+            }
+        }
+        return pool.remove(task);
     }
 
     /**
@@ -3547,7 +3595,12 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
-     * {@return whether {@code executor} is one whose tasks no caller can get back}
+     * {@return whether {@code execute} wraps its task for {@code executor}}
+     *
+     * <p>A {@code ThreadPoolExecutor} qualifies inside a run (#1155), and by exact class, so no
+     * {@code beforeExecute} override can see the wrapper. {@link #shutdownNow} and
+     * {@link #removeFromPool} keep it from showing there. {@code getQueue} still shows it, to code
+     * that looks at the elements rather than the size; outside a run nothing is wrapped.
      *
      * <p>An {@code Executors.unconfigurable*} wrapper hands back only what the executor behind it
      * hands back, so it is judged by that executor, when a woven call made it (#1107). The map is
@@ -3558,6 +3611,9 @@ public final class AgentConcurrencyUtilHooks {
         if (type == ForkJoinPool.class || type == ScheduledThreadPoolExecutor.class
                 || "java.util.concurrent.ThreadPerTaskExecutor".equals(type.getName())) {
             return true;
+        }
+        if (type == ThreadPoolExecutor.class) {
+            return AsyncTestContext.agentContext() != null;
         }
         if (!type.getName().startsWith("java.util.concurrent.Executors$")) {
             return false;

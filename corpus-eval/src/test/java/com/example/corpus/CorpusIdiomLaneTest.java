@@ -1429,6 +1429,39 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    private static final Rounds<Ledger> LOCKED_EXECUTE_COUNTS = new Rounds<>(Ledger::new);
+    private static final Rounds<Ledger> PLAIN_EXECUTE_COUNTS = new Rounds<>(Ledger::new);
+
+    /** Every thread hands the pool a task through execute, which increments under a lock. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_poolExecute_counterUnderALock() {
+        correct(() -> {
+            Ledger ledger = LOCKED_EXECUTE_COUNTS.next().shared();
+            CountDownLatch done = new CountDownLatch(1);
+            COUNTING_POOL.execute(() -> {
+                synchronized (ledger.lock) {
+                    ledger.balance++;
+                }
+                done.countDown();
+            });
+            done.await();
+        });
+    }
+
+    /** The same tasks with no lock (#1155). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_poolExecute_plainCounter() {
+        broken(() -> {
+            Ledger ledger = PLAIN_EXECUTE_COUNTS.next().shared();
+            CountDownLatch done = new CountDownLatch(1);
+            COUNTING_POOL.execute(() -> {
+                ledger.balance++;
+                done.countDown();
+            });
+            done.await();
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**

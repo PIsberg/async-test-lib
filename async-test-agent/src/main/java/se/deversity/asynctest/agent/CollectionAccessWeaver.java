@@ -45,6 +45,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Exchanger;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -830,6 +831,10 @@ final class CollectionAccessWeaver {
             // execute wraps its task only on the JDK executors that never hand it back; the
             // hook decides by the executor's exact class (#741, #834).
             Entry.call(Executor.class, "execute", "execute", Runnable.class),
+            // On a ThreadPoolExecutor inside a run that wrapper sits in the pool's queue (#1155), so
+            // these two give the caller back the task it gave and find it by that task.
+            Entry.call(ExecutorService.class, "shutdownNow", "shutdownNow"),
+            Entry.call(ThreadPoolExecutor.class, "remove", "removeFromPool", Runnable.class),
             // A submit whose future the caller pops can never be inspected, so the task's
             // exception reaches nobody; the POP becomes submitResultDiscarded, and a store, a
             // return or a get is left alone.

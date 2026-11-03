@@ -2114,22 +2114,21 @@ hand-off now names `AtomicityValidator`, and `SharedCollectionDetector` reports 
 only the report says so. The idioms are the ones the probe and the model's documented limits named,
 not a survey of user code, so a clean lane is a floor under those shapes and no statement about any
 other. Work a body hands to a thread in a way the agent does not see, a thread started in unwoven
-code, or a task given to a `ThreadPoolExecutor`'s `execute`, is still dropped, and no row measures
-it.
+code, or a task given to `execute` on a `ThreadPoolExecutor` subclass, is still dropped, and no row
+measures it.
 
 ## The most common mistakes
 
 A throwaway probe wrote common concurrency mistakes as plain code, each beside its fix, with every
 detector on and nothing recorded by hand. What fired became rows: three agent-pair pairs
 (`THREAD_LOCAL_LEAKS`, `THREAD_POOL`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS`, whose only pairs were
-recorded before) and eleven idiom pairs. The list is a judgement, not a survey of user code.
+recorded before) and twelve idiom pairs. The list is a judgement, not a survey of user code.
 
 These mistakes drew no finding in the probe (JDK 26, Windows 11, all four attached lanes), so they
 have no row yet. A row lands with the fix, because a `MUST_FIRE` row cannot pin a miss.
 
 | Mistake | Issue |
 |---|---|
-| A plain counter in tasks given to a `ThreadPoolExecutor`'s `execute` | [#1155](https://github.com/PIsberg/async-test-lib/issues/1155) |
 | `parallel().forEach(list::add)` and a plain counter in a stream, with one caller | [#1156](https://github.com/PIsberg/async-test-lib/issues/1156) |
 | Contains-then-add on a `synchronizedList` | [#1159](https://github.com/PIsberg/async-test-lib/issues/1159) |
 | A task waiting on its own single-thread pool, with a timed get | [#1160](https://github.com/PIsberg/async-test-lib/issues/1160) |
