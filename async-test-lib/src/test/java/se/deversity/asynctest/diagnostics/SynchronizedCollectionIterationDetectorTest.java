@@ -65,6 +65,21 @@ public class SynchronizedCollectionIterationDetectorTest {
     }
 
     @Test
+    void anElementWhoseHashCodeThrowsDoesNotEscapeTheHook() {
+        var d = new SynchronizedCollectionIterationDetector();
+        Object unhashable = new Object() {
+            @Override
+            public int hashCode() {
+                throw new IllegalStateException("not hashable");
+            }
+        };
+        assertDoesNotThrow(() -> {
+            d.agentContains(SHARED_LIST, unhashable, false);
+            d.agentAdd(SHARED_LIST, unhashable);
+        }, "the hook runs inside the code under test, which never asked for a hash");
+    }
+
+    @Test
     void pairsInDifferentRoundsAreCorrect() throws InterruptedException {
         var d = new SynchronizedCollectionIterationDetector();
         checkThenAdd(d, SHARED_LIST, "x", null);

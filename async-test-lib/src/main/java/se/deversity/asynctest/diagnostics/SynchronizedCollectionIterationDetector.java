@@ -179,7 +179,7 @@ public class SynchronizedCollectionIterationDetector extends AbstractInstanceDet
             state.absentChecks.remove(thread);
         } else {
             state.absentChecks.put(thread,
-                    new AbsentCheck(Objects.hashCode(element), HeldLocks.intersect(null, list, true)));
+                    new AbsentCheck(elementHash(element), HeldLocks.intersect(null, list, true)));
         }
     }
 
@@ -199,7 +199,7 @@ public class SynchronizedCollectionIterationDetector extends AbstractInstanceDet
         if (state == null) return;
         long thread = Thread.currentThread().threadId();
         AbsentCheck check = state.absentChecks.remove(thread);
-        int hash = Objects.hashCode(element);
+        int hash = elementHash(element);
         if (check == null || check.elementHash() != hash) return;
         int[] held = HeldLocks.intersect(check.locks(), list, true);
         int[] common = state.roundPairLocks.merge(hash, held, Lockset::intersect);
@@ -207,6 +207,21 @@ public class SynchronizedCollectionIterationDetector extends AbstractInstanceDet
         adders.add(thread);
         if (adders.size() >= 2 && common.length == 0) {
             state.checkThenAdds.incrementAndGet();
+        }
+    }
+
+    /**
+     * {@return the element's hash, or its identity's when its own {@code hashCode} throws}
+     *
+     * <p>This runs inside the code under test, on an object that code owns, and a hook must never
+     * throw from its recording path. An element that throws here can still be found by the list's
+     * own {@code equals}, so it is tracked by identity rather than left out.
+     */
+    private static int elementHash(@Nullable Object element) {
+        try {
+            return Objects.hashCode(element);
+        } catch (RuntimeException unhashable) {
+            return System.identityHashCode(element);
         }
     }
 
