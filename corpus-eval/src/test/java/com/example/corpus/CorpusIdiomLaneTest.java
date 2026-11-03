@@ -1265,7 +1265,20 @@ class CorpusIdiomLaneTest {
 
     private static final class Ledger {
         final Object lock = new Object();
+        final AtomicInteger tasksStarted = new AtomicInteger();
         int balance;
+
+        /**
+         * Holds a pool task until a second has started, so two pool threads each run one in this
+         * round. One thread running them all has no race to report, and a row whose outcome rests on
+         * that is a coin toss: this one went silent on CI.
+         */
+        void awaitASecondTask() {
+            tasksStarted.incrementAndGet();
+            for (int spins = 0; tasksStarted.get() < 2 && spins < SPIN_LIMIT; spins++) {
+                Thread.onSpinWait();
+            }
+        }
     }
 
     private static final Rounds<Ledger> LOCKED_READS = new Rounds<>(Ledger::new);
@@ -1414,6 +1427,7 @@ class CorpusIdiomLaneTest {
         correct(() -> {
             Ledger ledger = LOCKED_POOL_COUNTS.next().shared();
             getUnchecked(COUNTING_POOL.submit(() -> {
+                ledger.awaitASecondTask();
                 synchronized (ledger.lock) {
                     ledger.balance++;
                 }
@@ -1427,6 +1441,7 @@ class CorpusIdiomLaneTest {
         broken(() -> {
             Ledger ledger = PLAIN_POOL_COUNTS.next().shared();
             getUnchecked(COUNTING_POOL.submit(() -> {
+                ledger.awaitASecondTask();
                 ledger.balance++;
             }));
         });
@@ -1442,6 +1457,7 @@ class CorpusIdiomLaneTest {
             Ledger ledger = LOCKED_EXECUTE_COUNTS.next().shared();
             CountDownLatch done = new CountDownLatch(1);
             COUNTING_POOL.execute(() -> {
+                ledger.awaitASecondTask();
                 synchronized (ledger.lock) {
                     ledger.balance++;
                 }
@@ -1458,6 +1474,7 @@ class CorpusIdiomLaneTest {
             Ledger ledger = PLAIN_EXECUTE_COUNTS.next().shared();
             CountDownLatch done = new CountDownLatch(1);
             COUNTING_POOL.execute(() -> {
+                ledger.awaitASecondTask();
                 ledger.balance++;
                 done.countDown();
             });
