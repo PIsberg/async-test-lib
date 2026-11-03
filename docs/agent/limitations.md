@@ -43,7 +43,9 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   `Thread.startVirtualThread` (#834), and a pool thread while it runs a task a worker submitted
   to a JDK executor (#745), registered as a dependent `CompletableFuture` stage, or executed on a
   `ThreadPoolExecutor` (#1155), `ForkJoinPool`, `ScheduledThreadPoolExecutor` or virtual-thread-per-task
-  executor (#741), or an `Executors.unconfigurable*` wrapper around one that a woven call made (#1107).
+  executor (#741), or an `Executors.unconfigurable*` wrapper around one that a woven call made (#1107),
+  or helping a parallel stream's `forEach` the run started (#1156; a lambda given to `map`, `filter` or
+  `reduce` runs unattributed, #1172).
   Accesses on other application threads during the round, a thread started in unwoven code or a task
   given to `execute` on a `ThreadPoolExecutor` subclass included, are treated as noise and dropped. To
   observe a `ThreadPoolExecutor`'s task, the run's `execute` queues a wrapper around it: the woven

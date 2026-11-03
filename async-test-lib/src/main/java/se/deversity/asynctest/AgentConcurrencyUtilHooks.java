@@ -13,6 +13,14 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.DoubleStream;
+import java.util.stream.LongStream;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
+import java.util.function.DoubleConsumer;
+import java.util.function.LongConsumer;
+import java.util.function.IntConsumer;
 import java.util.Set;
 import java.util.Map;
 import java.util.Objects;
@@ -2937,6 +2945,19 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * Weaves {@code CompletableFuture.allOf}: a join on what it returns observes every child (see
+     * {@link HandedAll}).
+     *
+     * @param children the futures to wait for
+     * @return the future that completes when they all have
+     * @since 1.14.1
+     */
+    public static CompletableFuture<Void> allOf(CompletableFuture<?>[] children) {
+        CompletableFuture<Void> all = CompletableFuture.allOf(children);
+        return Submissions.remember(all, new HandedAll(children));
+    }
+
+    /**
      * Weaves {@code CompletableFuture.runAsync(Runnable)}, as {@link #supplyAsync(Supplier)}.
      *
      * @param task the work to run asynchronously, not null; it is wrapped, so its start is ordered
@@ -3531,6 +3552,136 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * One parallel {@code forEach} the run started (#1156): the common pool's workers help it in
+     * JDK code the agent does not weave, so nothing attributes them to the run on its own.
+     *
+     * <p>An element on a helping thread runs as a small handed task: ordered after the call, with
+     * the run lent to the thread and the task token published around it. The caller's own elements
+     * need none of that. When the operation returns, the caller receives each helper's clock, since
+     * a terminal operation has joined its tasks: reading a result afterwards is correct. No element
+     * is ordered against another, which is the race this exists to see.
+     */
+    static final class ParallelForEach extends Handed {
+
+        private final Thread caller = Thread.currentThread();
+        private final HappensBefore.Stamp started = HappensBefore.handOff();
+        private final long token = TOKENS.incrementAndGet();
+        private final @Nullable AsyncTestContext startedIn = AsyncTestContext.agentContext();
+        private final Map<Long, HappensBefore.Stamp> helpers = new ConcurrentHashMap<>();
+
+        ParallelForEach() {
+            TelemetryRegistry.taskSubmitted(token);
+        }
+
+        @SuppressWarnings("ReferenceEquality") // the calling thread, by identity
+        void element(Runnable body) {
+            Thread thread = Thread.currentThread();
+            if (thread == caller) { // NOPMD CompareObjectsWithEquals - the same thread
+                body.run();
+                return;
+            }
+            HappensBefore.receive(started);
+            AsyncTestContext lentBefore = AsyncTestContext.lend(startedIn);
+            TelemetryRegistry.taskStarted(token);
+            long taskBefore = enterTask();
+            try {
+                body.run();
+            } finally {
+                helpers.put(thread.threadId(), HappensBefore.handOff());
+                TelemetryRegistry.taskEnded();
+                leaveTask(taskBefore);
+                AsyncTestContext.restoreLent(lentBefore);
+            }
+        }
+
+        /** Orders the caller after every helper; the operation has returned. */
+        void joined() {
+            helpers.values().forEach(HappensBefore::receive);
+        }
+    }
+
+    /**
+     * Weaves {@code Stream.forEach}: see {@link ParallelForEach}. A sequential stream, or one outside
+     * a run, takes the call as it was (#1156).
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element
+     * @since 1.14.1
+     */
+    public static void streamForEach(Stream<Object> receiver, Consumer<Object> action) {
+        if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
+            receiver.forEach(action);
+            return;
+        }
+        ParallelForEach forEach = new ParallelForEach();
+        try {
+            receiver.forEach(value -> forEach.element(() -> action.accept(value)));
+        } finally {
+            forEach.joined();
+        }
+    }
+
+    /**
+     * Weaves {@code IntStream.forEach}, as {@link #streamForEach}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element
+     * @since 1.14.1
+     */
+    public static void intStreamForEach(IntStream receiver, IntConsumer action) {
+        if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
+            receiver.forEach(action);
+            return;
+        }
+        ParallelForEach forEach = new ParallelForEach();
+        try {
+            receiver.forEach(value -> forEach.element(() -> action.accept(value)));
+        } finally {
+            forEach.joined();
+        }
+    }
+
+    /**
+     * Weaves {@code LongStream.forEach}, as {@link #streamForEach}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element
+     * @since 1.14.1
+     */
+    public static void longStreamForEach(LongStream receiver, LongConsumer action) {
+        if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
+            receiver.forEach(action);
+            return;
+        }
+        ParallelForEach forEach = new ParallelForEach();
+        try {
+            receiver.forEach(value -> forEach.element(() -> action.accept(value)));
+        } finally {
+            forEach.joined();
+        }
+    }
+
+    /**
+     * Weaves {@code DoubleStream.forEach}, as {@link #streamForEach}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element
+     * @since 1.14.1
+     */
+    public static void doubleStreamForEach(DoubleStream receiver, DoubleConsumer action) {
+        if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
+            receiver.forEach(action);
+            return;
+        }
+        ParallelForEach forEach = new ParallelForEach();
+        try {
+            receiver.forEach(value -> forEach.element(() -> action.accept(value)));
+        } finally {
+            forEach.joined();
+        }
+    }
+
+    /**
      * Weaves {@code ExecutorService.shutdownNow()}: what comes back is the tasks {@link #execute}
      * was given, not the wrappers it queued (#1155), so code that re-queues or inspects them sees
      * its own. A list with no wrapper in it is returned as the executor made it.
@@ -3700,10 +3851,17 @@ public final class AgentConcurrencyUtilHooks {
      * the lookup costs a key, and an executor's future would pay it on every get for nothing.
      */
     private static void completionObserved(Object future) {
+        observed(future, Submissions.forget(future));
+    }
+
+    /** What {@link #completionObserved} does, given the work known to be behind {@code future}. */
+    private static void observed(Object future, @Nullable Handed handed) {
         if (future instanceof CompletableFuture) {
             HappensBefore.acquire(future);
         }
-        Handed handed = Submissions.forget(future);
+        if (handed instanceof HandedAll all) {
+            all.observed();
+        }
         if (handed != null) {
             HappensBefore.receive(handed.finished());
         }
@@ -3711,6 +3869,33 @@ public final class AgentConcurrencyUtilHooks {
             // A composed stage completes when the stage its function returned does, so what was
             // released to that one is observed too (#741).
             HappensBefore.acquire(stage.composed);
+        }
+    }
+
+    /**
+     * The futures an {@code allOf} waits for, and the work this thread knew to be behind each. It
+     * completes only once they all have, so observing it observes every one of them. Taken when
+     * {@code allOf} is called, because a thread remembers only its last {@link Submissions#KEPT}
+     * submissions: a child submitted further back than that, like one this thread did not submit, is
+     * observed only through what a woven {@code complete} released to it.
+     */
+    static final class HandedAll extends Handed {
+
+        private final CompletableFuture<?>[] children;
+        private final @Nullable Handed[] work;
+
+        HandedAll(CompletableFuture<?>[] children) {
+            this.children = children.clone();
+            this.work = new Handed[children.length];
+            for (int i = 0; i < children.length; i++) {
+                work[i] = Submissions.peek(children[i]);
+            }
+        }
+
+        void observed() {
+            for (int i = 0; i < children.length; i++) {
+                AgentConcurrencyUtilHooks.observed(children[i], work[i]);
+            }
         }
     }
 

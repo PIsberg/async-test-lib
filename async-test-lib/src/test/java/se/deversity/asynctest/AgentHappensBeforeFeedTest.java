@@ -911,6 +911,40 @@ class AgentHappensBeforeFeedTest {
                 "behind the wrapper is a ThreadPoolExecutor, which the hook wraps too (#1155)");
     }
 
+    /** Whether a read after both tasks finished is reported, by how the caller waited for them. */
+    @SuppressWarnings("unchecked")
+    private static boolean readAfterAllOfReported(boolean throughTheWovenJoin) throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Object result = new Object();
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            java.util.concurrent.CompletableFuture<Void> writes = AgentConcurrencyUtilHooks.runAsync(
+                    () -> detector.recordFieldWrite(result, "value"), pool);
+            java.util.concurrent.CompletableFuture<Void> idles = AgentConcurrencyUtilHooks.runAsync(() -> { }, pool);
+            java.util.concurrent.CompletableFuture<Void> all = AgentConcurrencyUtilHooks.allOf(
+                    new java.util.concurrent.CompletableFuture<?>[] {writes, idles});
+            if (throughTheWovenJoin) {
+                AgentConcurrencyUtilHooks.join((java.util.concurrent.CompletableFuture<Object>) (Object) all);
+            } else {
+                all.join();
+            }
+            detector.recordFieldRead(result, "value");
+            return detector.analyzeRaceConditions().hasIssues();
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("a join on allOf orders the caller after every task it waited for")
+    void aJoinOnAllOfOrdersTheCallerAfterItsTasks() throws Exception {
+        assertFalse(readAfterAllOfReported(true),
+                "allOf completes only when its children have, so a join on it observed each of them");
+        assertTrue(readAfterAllOfReported(false),
+                "the same tasks and the same read, with a join the agent did not see: the edge "
+                        + "comes from the woven call, not from the timing");
+    }
+
     /** Where the submitter below breaks the order an executor makes, if it does. */
     private enum Submission {
         /** Input written before submit, output read after get. */

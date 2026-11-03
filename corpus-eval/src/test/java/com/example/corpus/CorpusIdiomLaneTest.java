@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.StampedLock;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 /**
  * The idiom lane: correct user-code concurrency, with every detector switched on.
@@ -1461,6 +1462,99 @@ class CorpusIdiomLaneTest {
                 done.countDown();
             });
             done.await();
+        });
+    }
+
+    /** How many elements a parallel row walks, enough that the common pool's workers help. */
+    private static final int PARALLEL_ELEMENTS = 2_000;
+
+    /**
+     * One caller, so the only other threads are the common pool's: its workers increment under one
+     * lock, and the caller reads the result after the terminal operation has joined them.
+     */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelForEach_countsUnderALock() {
+        correct(() -> {
+            Ledger ledger = new Ledger();
+            IntStream.range(0, PARALLEL_ELEMENTS).parallel().forEach(i -> {
+                synchronized (ledger.lock) {
+                    ledger.balance++;
+                }
+            });
+            use(ledger.balance);
+        });
+    }
+
+    /** The same stream with no lock (#1156). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelForEach_plainCounter() {
+        broken(() -> {
+            Ledger ledger = new Ledger();
+            IntStream.range(0, PARALLEL_ELEMENTS).parallel().forEach(i -> ledger.balance++);
+            use(ledger.balance);
+        });
+    }
+
+    /** Adding to a list from the same stream, through a lambda so that the add is a call site. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelForEach_addsToASynchronizedList() {
+        correct(() -> {
+            List<Integer> out = Collections.synchronizedList(new ArrayList<>());
+            IntStream.range(0, PARALLEL_ELEMENTS).parallel().forEach(i -> out.add(i));
+            use(out.size());
+        });
+    }
+
+    /** The same adds to an ArrayList, the textbook parallel forEach mistake (#1156). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelForEach_addsToAnArrayList() {
+        broken(() -> {
+            List<Integer> out = new ArrayList<>();
+            IntStream.range(0, PARALLEL_ELEMENTS).parallel().forEach(i -> out.add(i));
+            use(out.size());
+        });
+    }
+
+    /** How many tasks each runAsync row starts. Two must overlap, and the rest add contention. */
+    private static final int ASYNC_TASKS = 8;
+
+    /** Starts {@code count} under the caller's eyes and spins until a second task has started too. */
+    private static CompletableFuture<Void> overlappingTasks(Runnable count) {
+        AtomicInteger started = new AtomicInteger();
+        CompletableFuture<?>[] tasks = new CompletableFuture<?>[ASYNC_TASKS];
+        for (int i = 0; i < ASYNC_TASKS; i++) {
+            tasks[i] = CompletableFuture.runAsync(() -> {
+                started.incrementAndGet();
+                for (int spins = 0; started.get() < 2 && spins < SPIN_LIMIT; spins++) {
+                    Thread.onSpinWait();
+                }
+                count.run();
+            });
+        }
+        return CompletableFuture.allOf(tasks);
+    }
+
+    /** Tasks on the default executor increment under one lock, and the caller reads after the join. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_runAsync_counterUnderALock() {
+        correct(() -> {
+            Ledger ledger = new Ledger();
+            overlappingTasks(() -> {
+                synchronized (ledger.lock) {
+                    ledger.balance++;
+                }
+            }).join();
+            use(ledger.balance);
+        });
+    }
+
+    /** The same tasks with no lock (#1158). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_runAsync_plainCounter() {
+        broken(() -> {
+            Ledger ledger = new Ledger();
+            overlappingTasks(() -> ledger.balance++).join();
+            use(ledger.balance);
         });
     }
 

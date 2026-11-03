@@ -32,6 +32,22 @@ tier, which is now `PROMPT`.
 
 ### Fixed
 
+- **A read after `CompletableFuture.allOf(...).join()` is no longer reported.** `allOf` was not woven,
+  so a join on its future ordered nothing, and correct code that read a result after it drew
+  `AtomicityValidator`. A woven `allOf` now remembers its children, and observing its completion observes
+  theirs. A child submitted more than 16 submissions before the `allOf`, or a callback chained on `allOf`
+  rather than a join, is still not ordered this way.
+- **Locked writes followed by a plain read after a join are no longer reported.** Workers writing a
+  field under one lock, then a thread that joined them reading it with none, is correct and common.
+  `AtomicityValidator` reported it: no lock covered the round, and a lock is no clock edge, so neither of
+  its rules cleared the group. It now clears a group when each conflicting pair is covered by an edge or
+  a common lock. Writes under two locks before the join, and a read with no join, still report.
+- **A parallel stream's `forEach` is observed with one caller (#1156).** The common pool's workers were
+  never attributed to the run, so `parallel().forEach(list::add)` threw from the race and no detector named
+  it, and a plain counter published 160,229 events and drew nothing. A woven `forEach` on `Stream`,
+  `IntStream`, `LongStream` and `DoubleStream` now lends the run to each worker for each element, and
+  orders the caller after them when it returns, since a terminal operation has joined its tasks. Other
+  lambdas in the pipeline stay unattributed (#1172). `idiom_parallelForEach_*` are the pairs.
 - **Contains-then-add on a `synchronizedList` is reported (#1159).** Each call on the wrapper is safe
   and the pair is not, and nothing said so. `SYNCHRONIZED_COLLECTION_ITERATION` now also hears the woven
   `contains` and `add`, and reports two threads of a round that each saw one element absent and then
@@ -137,8 +153,7 @@ tier, which is now `PROMPT`.
   give `THREAD_LOCAL_LEAKS`, `THREAD_POOL` and `COMPLETABLE_FUTURE_COMPLETION_LEAKS` their first pair
   through the woven path, and ten idiom pairs cover shared collections, get-then-put counting, lazy
   init, reads outside the lock, a lock per caller, a lock on a boxed counter, `sleep` as ordering
-  and plain counters in pool tasks. Another common mistake drew no finding and are filed as
-  #1156, with an inconsistent `runAsync` result in #1158.
+  and plain counters in pool tasks.
   `CorpusClaimsInDocsTest` now holds the roster table in `corpus-eval.md` to the rows; its agent-pair
   figure said 19 where the lane pairs 38, under a sentence saying nothing there was kept by hand.
 - **The workflows' supply-chain settings are now a gate (#1148).** An audit of the 21 workflows

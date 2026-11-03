@@ -45,6 +45,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Exchanger;
 import java.util.concurrent.Executor;
+import java.util.stream.DoubleStream;
+import java.util.stream.LongStream;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
+import java.util.function.DoubleConsumer;
+import java.util.function.LongConsumer;
+import java.util.function.IntConsumer;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -824,6 +831,8 @@ final class CollectionAccessWeaver {
                     .whenResultDiscarded("asyncResultDiscarded"),
             Entry.staticCall(CompletableFuture.class, "supplyAsync", "supplyAsync", Supplier.class,
                     Executor.class).whenResultDiscarded("asyncResultDiscarded"),
+            // A join on allOf orders the caller after every child, and nothing else says so.
+            Entry.staticCall(CompletableFuture.class, "allOf", "allOf", CompletableFuture[].class),
             Entry.staticCall(CompletableFuture.class, "runAsync", "runAsync", Runnable.class)
                     .whenResultDiscarded("asyncResultDiscarded"),
             Entry.staticCall(CompletableFuture.class, "runAsync", "runAsync", Runnable.class,
@@ -835,6 +844,12 @@ final class CollectionAccessWeaver {
             // these two give the caller back the task it gave and find it by that task.
             Entry.call(ExecutorService.class, "shutdownNow", "shutdownNow"),
             Entry.call(ThreadPoolExecutor.class, "remove", "removeFromPool", Runnable.class),
+            // A parallel forEach's helpers are common-pool workers no woven call hands anything to,
+            // so the action is what carries the run to them (#1156).
+            Entry.call(Stream.class, "forEach", "streamForEach", Consumer.class),
+            Entry.call(IntStream.class, "forEach", "intStreamForEach", IntConsumer.class),
+            Entry.call(LongStream.class, "forEach", "longStreamForEach", LongConsumer.class),
+            Entry.call(DoubleStream.class, "forEach", "doubleStreamForEach", DoubleConsumer.class),
             // A submit whose future the caller pops can never be inspected, so the task's
             // exception reaches nobody; the POP becomes submitResultDiscarded, and a store, a
             // return or a get is left alone.

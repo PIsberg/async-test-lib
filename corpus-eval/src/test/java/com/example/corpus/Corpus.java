@@ -5361,6 +5361,50 @@ final class Corpus {
                             + "at all before #1155, so this drew nothing from any detector",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_parallelForEach_countsUnderALock", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one caller, so the other threads are the common pool's: its workers increment "
+                            + "under one lock, and the caller reads after the join"),
+
+            new RecordingSubject("idiom_parallelForEach_plainCounter", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same stream with no lock. These workers were not observed before #1156, so "
+                            + "with one caller there was only one thread to see",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_parallelForEach_addsToASynchronizedList", JDK,
+                    "java.util.Collections",
+                    DetectorType.SHARED_COLLECTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a parallel forEach adding to a synchronizedList: each add is one guarded call"),
+
+            new RecordingSubject("idiom_parallelForEach_addsToAnArrayList", JDK,
+                    "java.util.ArrayList",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same adds to an ArrayList, which loses elements or throws from the array "
+                            + "copy (#1156)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_runAsync_counterUnderALock", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "runAsync tasks on the default executor increment under one lock, and the caller "
+                            + "reads after allOf has joined them"),
+
+            new RecordingSubject("idiom_runAsync_plainCounter", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same tasks with no lock. Two are held until both have started, because a "
+                            + "run whose tasks all land on one thread has nothing to report (#1158)",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_synchronizedList_containsThenAddUnderItsMonitor", JDK,
                     "java.util.Collections",
                     DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, Contract.THREAD_SAFE,
