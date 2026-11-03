@@ -247,7 +247,7 @@ public class ConcurrencyRunner {
                  + "through timeoutError() a second time, producing two onTimeout callbacks and "
                  + "two copies of every report for one timeout. Or the cleanup steps are merged "
                  + "into one try, at which point a failing AsyncTestContext.uninstall() skips the "
-                 + "livelock snapshot and leaks context into the next test."
+                 + "latch.countDown() and the round waits out its timeout for nothing."
     )
     public static void execute(ReflectiveInvocationContext<Method> invocationContext,
                                AsyncTestConfig config) throws Throwable {

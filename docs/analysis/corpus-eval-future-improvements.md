@@ -32,8 +32,7 @@ The gates (`everySubjectIsExercised`, `everySilentRowReachesItsDetector`, `every
 source, and subject lists, with the existing no-arg variants delegating to the static corpus defaults.
 
 What the fixes under "The most common mistakes" in [corpus-eval.md](corpus-eval.md) still leave out is
-#1172 and #1173. Agent-fed detectors whose only pair still records by
-hand are #1161, #1162 and #1163.
+#1172 and #1173.
 
 What follows is the remainder, in the order worth doing them.
 
@@ -190,9 +189,9 @@ matrix is the first place that would be seen.
 
 Closed on 2026-09-16, completed on 2026-09-17. `CorpusGates` exposes parameterized overloads for all gates whose input can be synthesized (including `everySubjectIsExercised`, `everyRecordingSubjectIsExercised`, `everySilentRowReachesItsDetector`, `everyCorpusBackedVerdictResolvesToItsPair`, `noAgentRowRecordedItsOwnFinding`, `everyPairedDetectorIsExposed`, `checkLibraryExclusionLane`, `everyFindingIsAttributed`, `everyRecordingFindingIsAttributed`, and `everyReportingDetectorWasExposed`), as well as lane premise gates (`theDeadlockRowsRanInOrder`, `thePooledRowsPremiseHeld`, `theIllegalNotifyReallyThrew`). Finding diagnostics strictly require non-null severity, non-blank message, and non-null, non-blank evidence descriptions. `CorpusGatesTest` covers all 18 gates, diagnostics, and premises in `CorpusGates` in both failing and accepting directions. `DetectorEffectivenessAndCorrectnessTest` validates recording twin symmetry, trust tier mappings, and finding diagnostic requirements.
 
-## 6. The refusal list is reviewed by nothing but a build (Closed 2026-09-16)
+## 6. The refusal list is reviewed by nothing but a build (Closed 2026-11-03)
 
-Closed on 2026-09-16. `DetectorRefusalThresholdsTest` pins the exact thresholds, experimental flags, and model assumptions cited across the entries in `DetectorCoverage.refused()`: the 100-access threshold and experimental property of `FALSE_SHARING`, the 1000ms threshold of `THREAD_STARVATION`, the 200ms probe deadline of `PLATFORM_THREAD_PER_TASK`, the 50ms segment threshold of `VIRTUAL_THREAD_CPU_BOUND`, the `availableProcessors` carrier count of `VIRTUAL_THREAD_CARRIER_EXHAUSTION`, the registry deferral of `LOCK_DOWNGRADE`, the virtual-thread inertia of `LIVELOCKS`, the adjacent-log requirement of `MEMORY_ORDERING`, and the no-innocent-twin rationale for every single-direction detector (seven then; six since `THREAD_LOCAL_RANDOM_MISUSE` was paired in #761).
+There is no refusal list any more. Read against their detectors on 2026-11-03, the last thirteen did not hold, so `DetectorRefusalThresholdsTest`, which pinned what they cited, went with them. A threshold a row depends on is pinned by that row, whose outcome changes if the threshold moves.
 
 ## 7. Harness and build verification suites (Added 2026-09-17)
 

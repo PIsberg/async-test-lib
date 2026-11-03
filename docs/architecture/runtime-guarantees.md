@@ -34,8 +34,8 @@ a single `LicenseGuard.check(config)` call.
 ## Worker latch.countDown() guarantee (1.6.0)
 
 The per-worker code in `runSingleInvocationRound` previously placed the
-`AsyncTestContext.uninstall()` and `phase1.livelock.captureSnapshot()` calls
-**before** `latch.countDown()` inside a single `finally` block. If any of those
+`AsyncTestContext.uninstall()` call and a livelock snapshot, removed since,
+**before** `latch.countDown()` inside a single `finally` block. If either of those
 cleanup calls threw, `countDown()` was skipped and the runner blocked on
 `latch.await(roundTimeoutMs)` until the deadline elapsed — surfacing a
 misleading "timed out — possible deadlock" instead of the real cause.
@@ -54,14 +54,11 @@ try {
 } finally {
     if (installed) { try { AsyncTestContext.uninstall(); }
                      catch (Throwable e) { failures.add(e); } }
-    if (phase1.livelock != null) { try { phase1.livelock.captureSnapshot(); }
-                                   catch (Throwable e) { /* warn-only */ } }
     latch.countDown();   // ALWAYS — last statement in the outermost finally
 }
 ```
 
-Each cleanup step is independently guarded so one failure cannot suppress the
-next. The `installed` flag preserves the ThreadLocal install/uninstall symmetry
+The cleanup step is guarded so its failure cannot suppress the `countDown()`. The `installed` flag preserves the ThreadLocal install/uninstall symmetry
 rule from `CLAUDE.md` (only uninstall what was installed).
 
 ---

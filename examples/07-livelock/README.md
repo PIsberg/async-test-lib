@@ -1,7 +1,7 @@
 # Livelock Example
 
-This example demonstrates **detection of a livelock** in a distributed lock retry
-service using the `LivelockDetector`.
+This example measures the cost of a zero-delay retry in a distributed lock service, and says what
+`LivelockDetector` does and does not report about it.
 
 ## The Problem
 
@@ -29,11 +29,11 @@ a second winner to emerge before all losers flood back in.
 | Thread state | `BLOCKED` | `RUNNABLE` |
 | CPU usage | Near zero | High (busy-spinning) |
 | Appears to make progress | No | Appears active, but doesn't |
-| Detectable by timeout alone | Yes | No — timeout fires but threads look healthy |
+| What a round timeout shows | Workers `BLOCKED` or `WAITING` | Workers still `RUNNABLE` |
 
 Because livelock threads are `RUNNABLE`, `ThreadMXBean.findDeadlockedThreads()`
-returns nothing. `LivelockDetector` catches it by analysing patterns over time:
-rapid state transitions, CPU growth without work completion, and no-progress threads.
+returns nothing. `LivelockDetector` catches it from the one thing that shows it: the body did not
+finish. When a round times out, it reads the state of each worker still in its body.
 
 ## Why Sequential Tests Miss This Bug
 
@@ -58,55 +58,25 @@ mvn clean test
 # ✅ All @Test methods pass
 ```
 
-### 2. Run with @AsyncTest (LIVELOCK DETECTED)
+### 2. Why there is no @AsyncTest demonstration here
 
-Remove `@Disabled` from `testAcquireLock_concurrent_detectsLivelock()` and run:
-
-```bash
-mvn clean test
-# Many invocations fail (MAX_RETRIES exhausted) and LivelockDetector fires
-```
-
-Expected output:
-
-```
-LIVELOCK / STARVATION ISSUES DETECTED:
-
-Livelock Candidates (rapid state changes):
-  - async-test-thread-3
-  - async-test-thread-5
-  → Threads keep changing state without making progress
-
-Threads with No Progress:
-  - async-test-thread-1
-  - async-test-thread-2
-
-Why: Livelock threads appear active (CPU time accumulates) but make no real
-progress — they keep reacting to each other's state changes in a tight cycle,
-burning CPU indefinitely without completing any work.
-
-Fix:
-  - Livelock: introduce randomised back-off between retries — e.g.
-    Thread.sleep(ThreadLocalRandom.current().nextInt(10, 50)) — so threads
-    yield to each other rather than thrashing in lock-step
-```
+`acquireLock` gives up after 200 attempts, so a round ends and the detector correctly has nothing to
+say: what this design loses is the work the other nodes threw away, which is a throughput bug rather
+than a stall. The tests measure that directly. A retry loop with no such limit does draw the finding,
+which `agent_retryLoop_permitNeverReleased` in `corpus-eval` holds against its twin.
 
 ## How the Detector Works
 
-`LivelockDetector` is a **Phase 1 detector** — no manual instrumentation calls are
-needed in the test body. The framework automatically calls
-`livelockDetector.captureSnapshot()` at the end of each invocation round.
+No manual instrumentation is needed in the test body. The runner marks each worker in and out of the
+body, and when a round times out, before it interrupts anyone, it asks the detector to sample the
+workers still inside through `Thread.getState()`, on platform and virtual workers alike:
 
-Each snapshot records all JVM thread states (via `ThreadMXBean.dumpAllThreads()`)
-and CPU times. After all invocation rounds complete, the detector analyses the
-history for:
+1. **Livelock candidate**: `RUNNABLE` in any sample, which is a spin, a retry that never succeeds, a
+   long computation or a blocking native call
+2. **Starvation**: `BLOCKED` or `WAITING` in every sample
+3. **No progress**: anything else, such as a retry loop asleep in `TIMED_WAITING`
 
-1. **Rapid state cycling**: thread changes state 5+ times in 10 consecutive snapshots
-2. **Starvation**: thread is always `BLOCKED` or `WAITING` and CPU time never grows
-3. **No progress**: CPU time did not increase and thread state did not change
-
-Under a livelock, threads show rapid state cycling (`RUNNABLE` → brief yield →
-`RUNNABLE` repeatedly) and CPU time growing without work completing.
+A round that finishes is never reported. The only threshold is the `timeoutMs` the test chose.
 
 ## The Fix
 

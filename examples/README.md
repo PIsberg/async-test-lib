@@ -45,7 +45,7 @@ JavaBean accessors and feeds the detectors for you, see [../docs/AGENT.md](../do
 | 04 | [Virtual Thread Context Leak](04-virtual-thread-context-leak/) | `VirtualThreadContextLeakDetector` | ThreadLocal leaks in virtual threads cause memory leaks | 🟡 Medium |
 | 05 | [Lock Contention](05-lock-contention/) | `LockContentionDetector` | Many threads competing for one monitor — wait time dominates, throughput collapses before the CPUs are busy | 🟡 High |
 | 06 | [Deadlock](06-deadlock/) | `DeadlockDetector` | Two threads acquire the same pair of locks in opposite order — circular wait, neither can proceed | 🔴 Critical |
-| 07 | [Livelock](07-livelock/) | `LivelockDetector` (reports starvation, not a busy spin) | Two nodes back off and retry without delay — threads stay active but make no progress | 🔴 Critical |
+| 07 | [Livelock](07-livelock/) | `LivelockDetector` (reports a round that timed out with the spin still running) | Two nodes back off and retry without delay — threads stay active but make no progress | 🔴 Critical |
 | 08 | [Race Condition](08-race-condition/) | `RaceConditionDetector` | Non-atomic check-then-update lets multiple threads pass the stock threshold, driving count negative | 🔴 Critical |
 | 10 | [Shared Non-Thread-Safe Types](10-shared-non-thread-safe-types/) | `SharedMatcherDetector`, `SharedDecimalFormatDetector`, `SharedMessageDigestDetector` | Shared `Matcher`, `DecimalFormat`, and `MessageDigest` fields silently produce wrong results under concurrent load | 🔴 Critical |
 | 11 | [Interrupt Swallowing](11-interrupt-swallowing/) | `InterruptSwallowingDetector` | `catch(InterruptedException)` without restoring the flag permanently suppresses cooperative cancellation | 🔴 Critical |

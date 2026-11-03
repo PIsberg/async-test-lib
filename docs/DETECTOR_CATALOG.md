@@ -343,7 +343,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (47)
+### Agent-fed (48)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -522,7 +522,8 @@ method and set to a constant in another, and they were the rule's false positive
 `SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
 `SharedSplittableRandomDetector`, `SemaphoreMisuseDetector`,
 `CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
-`MissedSignalDetector`, `ExplicitGcDetector`, `DaemonThreadHygieneDetector`, `ABAProblemDetector`,
+`MissedSignalDetector`, `ExplicitGcDetector`, `CompletableFutureObtrudeDetector`,
+`DaemonThreadHygieneDetector`, `ABAProblemDetector`,
 `SynchronizedNonFinalDetector`, `NonAtomicConcurrentMapUpdateDetector`, `ExecutorShutdownDetector`,
 `FutureIgnoredDetector`, `CompletableFutureExceptionDetector`,
 `CompletableFutureBlockingCallbackDetector`, `CompletableFutureCommonPoolBlockingDetector`,
@@ -534,8 +535,8 @@ method and set to a constant in another, and they were the rule's false positive
 
 ### Zero-config (4)
 
-Watch the JVM and the harness themselves (`ThreadMXBean` deadlock scans, per-round thread-dump
-snapshots, live `<clinit>` stacks, the JVM's `jdk.VirtualThreadPinned` JFR event) and can fire with
+Watch the JVM and the harness themselves (`ThreadMXBean` deadlock scans, the state of the workers
+still in their bodies when a round times out, live `<clinit>` stacks, the JVM's `jdk.VirtualThreadPinned` JFR event) and can fire with
 no agent and no recording call.
 
 The pinning detector takes the JFR feed for a run on virtual workers (`useVirtualThreads`, the
@@ -592,7 +593,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (97)
+### Recording-only (96)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -628,7 +629,7 @@ recording is the feed:
 `NotifyWithoutMonitorDetector`, `SharedSecureRandomDetector`,
 `WeakHashMapSharedDetector`, `SharedStatefulCryptoDetector`,
 `ThisEscapeDetector`,
-`ThreadLocalRandomMisuseDetector`, `CompletableFutureObtrudeDetector`, `SpuriousWakeupDetector`,
+`ThreadLocalRandomMisuseDetector`, `SpuriousWakeupDetector`,
 `LockUpgradeDeadlockDetector`,
 `StableValueMisuseDetector`,
 `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`,

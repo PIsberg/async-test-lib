@@ -32,6 +32,24 @@ tier, which is now `PROMPT`.
 
 ### Fixed
 
+- **`LIVELOCKS` no longer reports healthy code, and now reports a real spin.** On platform workers it
+  reported `CRITICAL` on a body that only increments a counter, because each worker sampled itself
+  `RUNNABLE` and its finished peers `WAITING`, and on the default virtual workers it saw nothing. It now
+  classifies the workers still in their bodies when a round times out, through `Thread.getState()`, on
+  both kinds of worker. The `runner.detector.inert detector=LivelockDetector` event is gone, and so is a
+  `dumpAllThreads` per body execution.
+- **`DEPRECATED_THREAD_API` reads its own list.** A name off `DEPRECATED_APIS`, such as the
+  `Thread.interrupt` a wrapper around every thread call might pass, was reported at `HIGH`.
+- **`VIRTUAL_THREAD_CPU_BOUND` keeps the longest segment.** It measured the one after the last yield, so
+  a yield just before the end excused all the computing before it.
+- **`COMPLETABLE_FUTURE_OBTRUDE_ABUSE` is agent-fed.** The agent wove `obtrudeValue` and
+  `obtrudeException` and told the detector nothing, so a woven call needed a hand-written record as well.
+  Its evidence class moves from `ASSERTED` to `OBSERVED`; its tier stays `PROMPT`, because a recovery path
+  uses `obtrudeValue` correctly and draws the same finding.
+- **Every detector has a corpus pair.** All 148 now have a row that must fire and a twin that must stay
+  silent, the list of refusals is gone, and a detector with no pair fails the build. Seven agent-fed
+  detectors that had only a hand-recorded pair also have a woven one (#1161, #1162, #1163). The corpus
+  module no longer depends on `slf4j-nop`.
 - **Waiting on your own full pool is reported through `join`, `invokeAll` and `invokeAny` too (#1175).** A task
   joining a future `supplyAsync` gave to its own pool, or calling `invokeAll` or `invokeAny` on it, makes
   the wait #1160 reports for `Future.get`.

@@ -86,7 +86,7 @@ When modifying these elements, audit for:
 
 ### se.deversity.asynctest.runner.ConcurrencyRunner.execute(org.junit.jupiter.api.extension.ReflectiveInvocationContext<java.lang.reflect.Method>,se.deversity.asynctest.AsyncTestConfig)
 - **Invariant**: The timeoutAlreadyReported flag, and the per-step guarded cleanup in the finally block, are both deliberate. A pre-round deadline check throws an error that has already been through timeoutError(), and each cleanup step is wrapped in its own try so one failure cannot suppress the next.
-- **Breaks if changed**: The flag is removed as redundant — the catch block then sends the same error through timeoutError() a second time, producing two onTimeout callbacks and two copies of every report for one timeout. Or the cleanup steps are merged into one try, at which point a failing AsyncTestContext.uninstall() skips the livelock snapshot and leaks context into the next test.
+- **Breaks if changed**: The flag is removed as redundant — the catch block then sends the same error through timeoutError() a second time, producing two onTimeout callbacks and two copies of every report for one timeout. Or the cleanup steps are merged into one try, at which point a failing AsyncTestContext.uninstall() skips the latch.countDown() and the round waits out its timeout for nothing.
 
 ## PII / Privacy Guardrails
 

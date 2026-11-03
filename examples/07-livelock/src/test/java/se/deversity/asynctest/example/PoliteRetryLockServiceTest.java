@@ -36,15 +36,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * the critical section runs immediately, and the method returns {@code true}.
  *
  * WHY LivelockDetector DOES NOT REPORT IT:
- * Its rules are starvation (a thread that stays BLOCKED or WAITING with flat
- * CPU time) and rapid state cycling. A thread spinning in this retry loop is
- * RUNNABLE throughout, and the detector treats RUNNABLE as progress on purpose.
- * It also reads ThreadMXBean.dumpAllThreads, which does not report virtual
- * threads, and the runner's workers are virtual by default. Part 2 below says
- * so in full, and measures the retry burn directly instead.
- *
- * DETECTORS TRIGGERED:
- * LivelockDetector — rapid state cycling and starvation in the retry loop
+ * It reports a worker still in its body when a round times out, and this retry
+ * loop gives up after 200 attempts, so the round ends. Part 2 below says so in
+ * full, and measures the retry burn directly instead.
  *
  * FIX:
  * Introduce randomised exponential back-off before each retry:
@@ -100,19 +94,12 @@ class PoliteRetryLockServiceTest {
 
     /**
      * This example carried a disabled {@code @AsyncTest} promising "livelock detected by
-     * LivelockDetector". It never fired, and three separate things stood in the way, each of
-     * which would have been enough on its own. See issue #362.
+     * LivelockDetector". It never fired, and the reason that still stands is below. See issue
+     * #362.
      *
-     * <p>LivelockDetector does not report a busy spin. Its rules are starvation, meaning a
-     * thread that stays BLOCKED or WAITING with flat CPU time, and rapid state cycling.
-     * {@code madeProgress} returns true for any RUNNABLE thread, deliberately: a busy worker's
-     * measured CPU time can look flat when several snapshots land inside one clock tick, and
-     * reporting those as stuck produced findings against healthy JVMs. A thread spinning in
-     * this retry loop is RUNNABLE the whole time.
-     *
-     * <p>It reads {@code ThreadMXBean.dumpAllThreads}, which does not report virtual threads,
-     * and the runner's workers are virtual by default. Nothing about the workers reaches the
-     * detector's history at all.
+     * <p>LivelockDetector reports a worker still in its body when a round times out, on platform
+     * and virtual workers alike, and this subject's rounds end: {@code acquireLock} gives up after
+     * two hundred attempts.
      *
      * <p>And the subject makes progress under contention. One node wins the CAS on every cycle
      * and runs its critical section, so {@code acquireLock} returns true; what is lost is the
