@@ -624,6 +624,39 @@ class DiscardedOfferWeavingTest {
             return java.util.concurrent.CompletableFuture.supplyAsync(s, e);
         }
 
+        public static java.util.concurrent.CompletableFuture<Void> allOf(
+                java.util.concurrent.CompletableFuture<?>[] children) {
+            return java.util.concurrent.CompletableFuture.allOf(children);
+        }
+
+        public static java.util.List<Runnable> shutdownNow(java.util.concurrent.ExecutorService receiver) {
+            return receiver.shutdownNow();
+        }
+
+        public static boolean removeFromPool(java.util.concurrent.ThreadPoolExecutor pool, Runnable task) {
+            return pool.remove(task);
+        }
+
+        public static void streamForEach(java.util.stream.Stream<Object> receiver,
+                                         java.util.function.Consumer<Object> action) {
+            receiver.forEach(action);
+        }
+
+        public static void intStreamForEach(java.util.stream.IntStream receiver,
+                                            java.util.function.IntConsumer action) {
+            receiver.forEach(action);
+        }
+
+        public static void longStreamForEach(java.util.stream.LongStream receiver,
+                                             java.util.function.LongConsumer action) {
+            receiver.forEach(action);
+        }
+
+        public static void doubleStreamForEach(java.util.stream.DoubleStream receiver,
+                                               java.util.function.DoubleConsumer action) {
+            receiver.forEach(action);
+        }
+
         public static java.util.concurrent.CompletableFuture<Void> runAsync(Runnable r) {
             return java.util.concurrent.CompletableFuture.runAsync(r);
         }

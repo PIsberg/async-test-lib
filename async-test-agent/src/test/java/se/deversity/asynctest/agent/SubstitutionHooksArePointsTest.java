@@ -57,7 +57,9 @@ class SubstitutionHooksArePointsTest {
     /** Hook-class methods that are not substitutions. */
     private static final Set<String> NOT_OPERATIONS = Set.of(
             // Emitted in place of the POP after an offer, to say its result was dropped.
-            "offerResultDiscarded");
+            "offerResultDiscarded",
+            // Called by TelemetryRegistry's atomic hooks, after the point those take (#1157).
+            "atomicRead", "atomicStored", "atomicSwapped");
 
     @Test
     void everyCollectionWeaverHookReachesAPoint() {

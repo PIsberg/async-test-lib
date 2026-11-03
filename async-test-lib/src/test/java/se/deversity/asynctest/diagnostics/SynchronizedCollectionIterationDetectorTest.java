@@ -65,6 +65,15 @@ public class SynchronizedCollectionIterationDetectorTest {
     }
 
     @Test
+    void differentElementsWhoseHashesCollideAreCorrect() throws InterruptedException {
+        assertEquals("Aa".hashCode(), "BB".hashCode(), "the pair this test relies on");
+        var d = new SynchronizedCollectionIterationDetector();
+        checkThenAdd(d, SHARED_LIST, "Aa", null);
+        checkThenAdd(d, SHARED_LIST, "BB", null);
+        assertFalse(d.analyze().hasIssues(), "two elements, so neither answer was made stale");
+    }
+
+    @Test
     void anElementWhoseHashCodeThrowsDoesNotEscapeTheHook() {
         var d = new SynchronizedCollectionIterationDetector();
         Object unhashable = new Object() {

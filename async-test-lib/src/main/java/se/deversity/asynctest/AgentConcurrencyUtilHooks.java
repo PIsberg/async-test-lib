@@ -2953,6 +2953,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static CompletableFuture<Void> allOf(CompletableFuture<?>[] children) {
+        ControlledSchedule.point();
         CompletableFuture<Void> all = CompletableFuture.allOf(children);
         return Submissions.remember(all, new HandedAll(children));
     }
@@ -3609,6 +3610,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static void streamForEach(Stream<Object> receiver, Consumer<Object> action) {
+        ControlledSchedule.point();
         if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
             receiver.forEach(action);
             return;
@@ -3629,6 +3631,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static void intStreamForEach(IntStream receiver, IntConsumer action) {
+        ControlledSchedule.point();
         if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
             receiver.forEach(action);
             return;
@@ -3649,6 +3652,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static void longStreamForEach(LongStream receiver, LongConsumer action) {
+        ControlledSchedule.point();
         if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
             receiver.forEach(action);
             return;
@@ -3669,6 +3673,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static void doubleStreamForEach(DoubleStream receiver, DoubleConsumer action) {
+        ControlledSchedule.point();
         if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
             receiver.forEach(action);
             return;
@@ -3691,6 +3696,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static List<Runnable> shutdownNow(ExecutorService receiver) {
+        ControlledSchedule.point();
         List<Runnable> queued = receiver.shutdownNow();
         List<Runnable> unwrapped = null;
         for (int i = 0; i < queued.size(); i++) {
@@ -3715,6 +3721,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static boolean removeFromPool(ThreadPoolExecutor pool, Runnable task) {
+        ControlledSchedule.point();
         for (Runnable queued : pool.getQueue()) {
             if (queued instanceof HandedTask handed && Objects.equals(task, handed.task)) {
                 boolean removed = pool.remove(queued);

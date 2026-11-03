@@ -47,17 +47,51 @@ public class SynchronizedCollectionIterationDetector extends AbstractInstanceDet
         final List<String>  details          = new CopyOnWriteArrayList<>();
         /** Per thread, the element it last saw absent and the locks it held then (#1159). */
         final Map<Long, AbsentCheck> absentChecks = new ConcurrentHashMap<>();
-        /** Per element hash, the threads of this round that saw it absent and then added it. */
-        final Map<Integer, Set<Long>> roundAdders = new ConcurrentHashMap<>();
-        /** Per element hash, the locks every such pair of this round held throughout. */
-        final Map<Integer, int[]> roundPairLocks = new ConcurrentHashMap<>();
+        /** Per element, the threads of this round that saw it absent and then added it. */
+        final Map<ElementKey, Set<Long>> roundAdders = new ConcurrentHashMap<>();
+        /** Per element, the locks every such pair of this round held throughout. */
+        final Map<ElementKey, int[]> roundPairLocks = new ConcurrentHashMap<>();
         final AtomicInteger checkThenAdds = new AtomicInteger();
 
         WrapperInfo(String name) { this.name = name; }
     }
 
     /** What a thread saw when {@code contains} said an element was absent. */
-    record AbsentCheck(int elementHash, int[] locks) {
+    record AbsentCheck(ElementKey element, int[] locks) {
+    }
+
+    /**
+     * An element by the list's own idea of sameness, {@code equals}, so two elements whose hashes
+     * collide stay two. Both calls run the caller's code inside their test, and a hook must never
+     * throw from its recording path, so an element whose {@code equals} throws matches nothing.
+     */
+    record ElementKey(@Nullable Object element, int hash) {
+
+        /** {@return the key for {@code element}, or {@code null} when its {@code hashCode} throws} */
+        static @Nullable ElementKey of(@Nullable Object element) {
+            try {
+                return new ElementKey(element, Objects.hashCode(element));
+            } catch (RuntimeException unhashable) {
+                return null;
+            }
+        }
+
+        @Override
+        public int hashCode() {
+            return hash;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (!(other instanceof ElementKey key) || key.hash != hash) {
+                return false;
+            }
+            try {
+                return Objects.equals(element, key.element);
+            } catch (RuntimeException incomparable) {
+                return false;
+            }
+        }
     }
 
     @Override
@@ -175,11 +209,11 @@ public class SynchronizedCollectionIterationDetector extends AbstractInstanceDet
         if (list == null) return;
         WrapperInfo state = stateFor(list, null, "SynchronizedList");
         long thread = Thread.currentThread().threadId();
-        if (found) {
+        ElementKey key = found ? null : ElementKey.of(element);
+        if (key == null) {
             state.absentChecks.remove(thread);
         } else {
-            state.absentChecks.put(thread,
-                    new AbsentCheck(elementHash(element), HeldLocks.intersect(null, list, true)));
+            state.absentChecks.put(thread, new AbsentCheck(key, HeldLocks.intersect(null, list, true)));
         }
     }
 
@@ -199,29 +233,15 @@ public class SynchronizedCollectionIterationDetector extends AbstractInstanceDet
         if (state == null) return;
         long thread = Thread.currentThread().threadId();
         AbsentCheck check = state.absentChecks.remove(thread);
-        int hash = elementHash(element);
-        if (check == null || check.elementHash() != hash) return;
+        if (check == null) return;
+        ElementKey key = ElementKey.of(element);
+        if (key == null || !key.equals(check.element())) return;
         int[] held = HeldLocks.intersect(check.locks(), list, true);
-        int[] common = state.roundPairLocks.merge(hash, held, Lockset::intersect);
-        Set<Long> adders = state.roundAdders.computeIfAbsent(hash, ignored -> ConcurrentHashMap.newKeySet());
+        int[] common = state.roundPairLocks.merge(key, held, Lockset::intersect);
+        Set<Long> adders = state.roundAdders.computeIfAbsent(key, ignored -> ConcurrentHashMap.newKeySet());
         adders.add(thread);
         if (adders.size() >= 2 && common.length == 0) {
             state.checkThenAdds.incrementAndGet();
-        }
-    }
-
-    /**
-     * {@return the element's hash, or its identity's when its own {@code hashCode} throws}
-     *
-     * <p>This runs inside the code under test, on an object that code owns, and a hook must never
-     * throw from its recording path. An element that throws here can still be found by the list's
-     * own {@code equals}, so it is tracked by identity rather than left out.
-     */
-    private static int elementHash(@Nullable Object element) {
-        try {
-            return Objects.hashCode(element);
-        } catch (RuntimeException unhashable) {
-            return System.identityHashCode(element);
         }
     }
 

@@ -837,14 +837,15 @@ public final class TelemetryRegistry {
     }
 
     /**
-     * Weaves {@code AtomicInteger.get}, which only {@code ATOMIC_NON_ATOMIC_UPDATE} reads (#1157). It
-     * is no scheduling point: a read here changes nothing a peer's next step can observe.
+     * Weaves {@code AtomicInteger.get}, which only {@code ATOMIC_NON_ATOMIC_UPDATE} reads (#1157). The
+     * point is what lets a seed put another thread between a get and the set after it.
      *
      * @param count the atomic the call site invoked
      * @return what the atomic held
      * @since 1.14.1
      */
     public static int getAtomicInteger(AtomicInteger count) {
+        ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicRead(count);
         return count.get();
     }
@@ -854,24 +855,28 @@ public final class TelemetryRegistry {
      * @return what the atomic held @since 1.14.1
      */
     public static long getAtomicLong(AtomicLong count) {
+        ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicRead(count);
         return count.get();
     }
 
     /** Weaves {@code AtomicLong.set}. @param count the atomic @param value the value @since 1.14.1 */
     public static void setAtomicLong(AtomicLong count, long value) {
+        ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicStored(count);
         count.set(value);
     }
 
     /** Weaves {@code AtomicLong.lazySet}. @param count the atomic @param value the value @since 1.14.1 */
     public static void lazySetAtomicLong(AtomicLong count, long value) {
+        ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicStored(count);
         count.lazySet(value);
     }
 
     /** Weaves {@code AtomicLong.setRelease}. @param count the atomic @param value the value @since 1.14.1 */
     public static void setReleaseAtomicLong(AtomicLong count, long value) {
+        ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicStored(count);
         count.setRelease(value);
     }
@@ -881,6 +886,7 @@ public final class TelemetryRegistry {
      * value @param update the new value @return whether it swapped @since 1.14.1
      */
     public static boolean compareAndSetAtomicLong(AtomicLong count, long expected, long update) {
+        ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         return count.compareAndSet(expected, update);
     }
@@ -890,6 +896,7 @@ public final class TelemetryRegistry {
      * expected value @param update the new value @return whether it swapped @since 1.14.1
      */
     public static boolean weakCompareAndSetPlainAtomicLong(AtomicLong count, long expected, long update) {
+        ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         return count.weakCompareAndSetPlain(expected, update);
     }
@@ -899,6 +906,7 @@ public final class TelemetryRegistry {
      * the expected value @param update the new value @return whether it swapped @since 1.14.1
      */
     public static boolean weakCompareAndSetVolatileAtomicLong(AtomicLong count, long expected, long update) {
+        ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         return count.weakCompareAndSetVolatile(expected, update);
     }
