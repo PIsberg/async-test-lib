@@ -88,11 +88,12 @@ still fire when the two threads take *different* locks, which is a race no matte
 are held. The twins that do fire on correct code share one cause - the guard is a lock nothing
 told the library about.
 
-**VERDICT in the code, each with both directions measured, from two sources.** Four are backed by
-tests in this repository, which the gate resolves by reflection: `DEADLOCKS`, `LOCK_ORDER`,
-`ATOMIC_NON_ATOMIC_UPDATE` and `COMPLETABLE_FUTURE_COMPLETION_LEAKS`. Six more had such tests and
-are no longer VERDICT, for the reason under "A pair is necessary, not sufficient" below. Only `DEADLOCKS` and
-`COMPLETABLE_FUTURE_COMPLETION_LEAKS` of the four are in the `ESSENTIALS` preset, so a
+**VERDICT in the code, each with both directions measured, from two sources.** Three are backed by
+tests in this repository, which the gate resolves by reflection: `DEADLOCKS`, `LOCK_ORDER` and
+`COMPLETABLE_FUTURE_COMPLETION_LEAKS`. Seven more had such tests and
+are no longer VERDICT, six for the reason under "A pair is necessary, not sufficient" below and
+`ATOMIC_NON_ATOMIC_UPDATE` because it now grades each finding (#1157). Only `DEADLOCKS` and
+`COMPLETABLE_FUTURE_COMPLETION_LEAKS` of the three are in the `ESSENTIALS` preset, so a
 `minTrust = VERDICT` gate on that preset now fails on those two alone.
 
 The rest are backed by the corpus eval's pair lanes, where the pair is two uses of an
@@ -318,7 +319,7 @@ not brings back the accesses since the latest earlier hand-off it is ordered aft
 access when there is none.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 38 VERDICT, 74 PROMPT, 29 FACT and 7
+tier is one a reader has to rank alone. The split is 37 VERDICT, 75 PROMPT, 29 FACT and 7
 ADVISORY. PROMPT is the honest default: it says nobody has measured that detector's
 silent-on-correct-code direction, or that what it decides from is a thread count or a threshold,
 not that the detector is wrong. FACT and ADVISORY are statements about the kind of claim a finding
@@ -342,7 +343,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (45)
+### Agent-fed (47)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -489,6 +490,30 @@ and `PipedInputStream.read` calls, paired through the writer's private `sink` (t
 `java.io` to the library to read it), report a thread that both writes to and reads from one pair,
 which the `PipedInputStream` javadoc warns may deadlock.
 
+`SynchronizedCollectionIterationDetector` also hears the woven `contains` and `add` on a synchronized
+list (#1159). Two threads of a round that each saw one element absent and then added it, with no lock
+held across the check and the add, have left it in the list twice. Hearing it takes a real overlap: a
+second thread that arrives after the add sees the element and does nothing. A `Set` is left out, since
+adding twice loses nothing.
+
+`ExecutorDeadlockDetector` hears the woven `Future.get` (#1160). A task blocking on a task of its own
+pool is reported when every thread the pool can run is waiting that way with work queued. The bound
+and the queue are read from the pool: a `ThreadPoolExecutor`'s, counting its core size while its queue
+has room, and one thread behind `newSingleThreadExecutor`. A `ForkJoinPool` is left out, since a worker
+that waits runs other tasks, and so is any executor whose bound it cannot read.
+
+`AtomicNonAtomicUpdateDetector` hears the woven `get`, `set` and compare-and-set calls on
+`AtomicInteger` and `AtomicLong` (#1157). A woven get then set is reported once a
+second thread of the same round has done the same with no lock in common. Each read-then-store pair
+is judged by the locks it held throughout, so a lock-free read elsewhere does not taint an update
+made under a lock. One writer among readers loses nothing, and a compare-and-set spends the read. It
+sees calls and not values, so it cannot
+tell `set(get() + 1)` from a thread that reads a gauge and then stores an unrelated value, which is
+why a woven pair is graded `PROMPT`. A recorded pair stays `VERDICT`: the test's own call says the
+update was compound, and one thread is enough. `AtomicReference` is not fed: on Jackson's
+`PrivateMaxEntriesMap` the woven rule fired on a status read in one method and set to a constant in
+another, which is correct code.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
@@ -503,7 +528,8 @@ which the `PipedInputStream` javadoc warns may deadlock.
 `InterruptSwallowingDetector`, `InterruptMonitor`, `SynchronizedCollectionIterationDetector`,
 `SystemPropertyMutationDetector`, `ProcessStreamStarvationDetector`, `JdbcConnectionSharedDetector`,
 `ThreadLocalMonitor`, `MdcContextLeakDetector`, `BlockingOnNonBlockingThreadDetector`,
-`ThreadLeakDetector`, `ThreadPoolMonitor`, `CompletableFutureCompletionLeakDetector`
+`ThreadLeakDetector`, `ThreadPoolMonitor`, `CompletableFutureCompletionLeakDetector`,
+`AtomicNonAtomicUpdateDetector`, `ExecutorDeadlockDetector`
 
 ### Zero-config (4)
 
@@ -565,7 +591,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (99)
+### Recording-only (97)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -591,7 +617,6 @@ recording is the feed:
 `CacheConcurrencyDetector`, `CompletableFutureChainDetector`,
 `MutableMapKeyDetector`, `NestedMonitorLockoutDetector`, `LockDowngradeDetector`,
 `InheritableThreadLocalMisuseDetector`, `ThreadLocalContaminationDetector`,
-`AtomicNonAtomicUpdateDetector`,
 `ConcurrentMapComputeRecursionDetector`,
 `SynchronizedOnLiteralDetector`, `PublicLockExposureDetector`, `ForkJoinTaskBlockingDetector`,
 `OptimisticReadValidationDetector`,
@@ -608,7 +633,7 @@ recording is the feed:
 `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`,
 `FileChannelPositionRaceDetector`, `SharedIteratorDetector`, `HighContentionAtomicDetector`,
 `SharedJsonMapperReconfigDetector`, `LazyConstantMisuseDetector`, `FinalFieldMutationDetector`,
-`SharedKdfDetector`, `ExecutorDeadlockDetector`, `FutureBlockingDetector`,
+`SharedKdfDetector`, `FutureBlockingDetector`,
 `FlowPublisherConcurrencyDetector`, `ConfinedArenaThreadEscapeDetector`,
 `SharedMemorySegmentRaceDetector`, `VarHandleNonAtomicUpdateDetector`,
 `RecordMutableComponentLeakDetector`, `VirtualThreadPoolingDetector`,

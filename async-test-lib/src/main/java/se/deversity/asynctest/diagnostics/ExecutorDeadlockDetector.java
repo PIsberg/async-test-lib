@@ -134,6 +134,28 @@ public class ExecutorDeadlockDetector extends AbstractInstanceDetector<ExecutorD
         }
     }
     /**
+     * Records a wait the agent saw: a task of {@code executor} blocking on the future of a task
+     * submitted to the same executor (#1160). The agent reads the pool's bound and queue at that
+     * moment, so a pool is registered here on first sight and needs no earlier record calls. End it
+     * with {@link #recordSiblingWaitEnded(Object)}.
+     *
+     * @param executor   the executor, tracked by identity
+     * @param maxThreads how many threads it can run at most
+     * @param queued     how many of its tasks are waiting for a thread right now
+     * @since 1.14.1
+     */
+    public void agentSiblingWait(Object executor, int maxThreads, int queued) {
+        ExecutorState state = stateFor(executor, null, "executor",
+                label -> new ExecutorState(label, maxThreads));
+        state.openWaits.merge(Thread.currentThread(), 1, Integer::sum);
+        int waiting = state.waitingNow.incrementAndGet();
+        if (waiting >= state.maxThreads && queued > 0
+                && state.saturatedWaiters.getAndAccumulate(waiting, Math::max) < waiting) {
+            state.queuedWhenSaturated = queued;
+        }
+    }
+
+    /**
      * Records that the wait the calling thread recorded with
      * {@link #recordWaitingOnSibling(Object)} is over: the sibling finished, or the wait gave up.
      * Without it the wait lasts until this thread records its task completed. Does nothing when the

@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
@@ -821,6 +822,7 @@ public final class TelemetryRegistry {
      * @param update the value to store @return whether the swap happened @since 1.12.1
      */
     public static boolean compareAndSetAtomicInteger(AtomicInteger count, int expected, int update) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         if (expected == 0 && update == 1) {
             SpinLocks.aboutToAcquire(count);
@@ -834,8 +836,84 @@ public final class TelemetryRegistry {
         return won;
     }
 
+    /**
+     * Weaves {@code AtomicInteger.get}, which only {@code ATOMIC_NON_ATOMIC_UPDATE} reads (#1157). The
+     * point is what lets a seed put another thread between a get and the set after it.
+     *
+     * @param count the atomic the call site invoked
+     * @return what the atomic held
+     * @since 1.14.1
+     */
+    public static int getAtomicInteger(AtomicInteger count) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicRead(count);
+        return count.get();
+    }
+
+    /**
+     * Weaves {@code AtomicLong.get}, as {@link #getAtomicInteger}. @param count the atomic
+     * @return what the atomic held @since 1.14.1
+     */
+    public static long getAtomicLong(AtomicLong count) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicRead(count);
+        return count.get();
+    }
+
+    /** Weaves {@code AtomicLong.set}. @param count the atomic @param value the value @since 1.14.1 */
+    public static void setAtomicLong(AtomicLong count, long value) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicStored(count);
+        count.set(value);
+    }
+
+    /** Weaves {@code AtomicLong.lazySet}. @param count the atomic @param value the value @since 1.14.1 */
+    public static void lazySetAtomicLong(AtomicLong count, long value) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicStored(count);
+        count.lazySet(value);
+    }
+
+    /** Weaves {@code AtomicLong.setRelease}. @param count the atomic @param value the value @since 1.14.1 */
+    public static void setReleaseAtomicLong(AtomicLong count, long value) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicStored(count);
+        count.setRelease(value);
+    }
+
+    /**
+     * Weaves {@code AtomicLong.compareAndSet}. @param count the atomic @param expected the expected
+     * value @param update the new value @return whether it swapped @since 1.14.1
+     */
+    public static boolean compareAndSetAtomicLong(AtomicLong count, long expected, long update) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        return count.compareAndSet(expected, update);
+    }
+
+    /**
+     * Weaves {@code AtomicLong.weakCompareAndSetPlain}. @param count the atomic @param expected the
+     * expected value @param update the new value @return whether it swapped @since 1.14.1
+     */
+    public static boolean weakCompareAndSetPlainAtomicLong(AtomicLong count, long expected, long update) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        return count.weakCompareAndSetPlain(expected, update);
+    }
+
+    /**
+     * Weaves {@code AtomicLong.weakCompareAndSetVolatile}. @param count the atomic @param expected
+     * the expected value @param update the new value @return whether it swapped @since 1.14.1
+     */
+    public static boolean weakCompareAndSetVolatileAtomicLong(AtomicLong count, long expected, long update) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        return count.weakCompareAndSetVolatile(expected, update);
+    }
+
     /** Weaves {@code AtomicInteger.set}; storing 0 releases. @param count the atomic @param value the value @since 1.12.1 */
     public static void setAtomicInteger(AtomicInteger count, int value) {
+        AgentConcurrencyUtilHooks.atomicStored(count);
         ControlledSchedule.point();
         if (value == 0) {
             SpinLocks.release(count);
@@ -845,6 +923,7 @@ public final class TelemetryRegistry {
 
     /** Weaves {@code AtomicInteger.lazySet}; storing 0 releases. @param count the atomic @param value the value @since 1.12.1 */
     public static void lazySetAtomicInteger(AtomicInteger count, int value) {
+        AgentConcurrencyUtilHooks.atomicStored(count);
         ControlledSchedule.point();
         if (value == 0) {
             SpinLocks.release(count);
@@ -1084,6 +1163,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int getAndSetAtomicInteger(AtomicInteger count, int value) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int previous = count.getAndSet(value);
         if (value != 1) {
@@ -1101,6 +1181,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int getAndAddAtomicInteger(AtomicInteger count, int delta) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int previous = count.getAndAdd(delta);
         if (previous + delta != 1) {
@@ -1118,6 +1199,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int addAndGetAtomicInteger(AtomicInteger count, int delta) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int current = count.addAndGet(delta);
         if (current != 1) {
@@ -1134,6 +1216,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int getAndDecrementAtomicInteger(AtomicInteger count) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int previous = count.getAndDecrement();
         if (previous != 2) {
@@ -1150,6 +1233,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int decrementAndGetAtomicInteger(AtomicInteger count) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int current = count.decrementAndGet();
         if (current != 1) {
@@ -1168,6 +1252,7 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int compareAndExchangeAtomicInteger(AtomicInteger count, int expected, int update) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int witness = count.compareAndExchange(expected, update);
         if (witness == expected && update != 1) {
@@ -1187,6 +1272,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetPlainAtomicInteger(AtomicInteger count, int expected,
                                                               int update) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         boolean won = count.weakCompareAndSetPlain(expected, update);
         if (won && update != 1) {
@@ -1207,6 +1293,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetVolatileAtomicInteger(AtomicInteger count, int expected,
                                                                  int update) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         boolean won = count.weakCompareAndSetVolatile(expected, update);
         if (won && update != 1) {
@@ -1677,6 +1764,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setPlainAtomicInteger(AtomicInteger count, int value) {
+        AgentConcurrencyUtilHooks.atomicStored(count);
         ControlledSchedule.point();
         if (value == 0) {
             SpinLocks.release(count);
@@ -1692,6 +1780,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setOpaqueAtomicInteger(AtomicInteger count, int value) {
+        AgentConcurrencyUtilHooks.atomicStored(count);
         ControlledSchedule.point();
         if (value == 0) {
             SpinLocks.release(count);
@@ -1707,6 +1796,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static void setReleaseAtomicInteger(AtomicInteger count, int value) {
+        AgentConcurrencyUtilHooks.atomicStored(count);
         ControlledSchedule.point();
         if (value == 0) {
             SpinLocks.release(count);
@@ -1726,6 +1816,7 @@ public final class TelemetryRegistry {
      */
     @SuppressWarnings("deprecation")
     public static boolean weakCompareAndSetAtomicInteger(AtomicInteger count, int expected, int update) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         boolean won = count.weakCompareAndSet(expected, update);
         if (won && update != 1) {
@@ -1745,6 +1836,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetAcquireAtomicInteger(AtomicInteger count, int expected,
                                                                 int update) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         boolean won = count.weakCompareAndSetAcquire(expected, update);
         if (won && update != 1) {
@@ -1764,6 +1856,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetReleaseAtomicInteger(AtomicInteger count, int expected,
                                                                 int update) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         boolean won = count.weakCompareAndSetRelease(expected, update);
         if (won && update != 1) {
@@ -1783,6 +1876,7 @@ public final class TelemetryRegistry {
      */
     public static int compareAndExchangeAcquireAtomicInteger(AtomicInteger count, int expected,
                                                              int update) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int witness = count.compareAndExchangeAcquire(expected, update);
         if (witness == expected && update != 1) {
@@ -1802,6 +1896,7 @@ public final class TelemetryRegistry {
      */
     public static int compareAndExchangeReleaseAtomicInteger(AtomicInteger count, int expected,
                                                              int update) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int witness = count.compareAndExchangeRelease(expected, update);
         if (witness == expected && update != 1) {
@@ -1820,6 +1915,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndUpdateAtomicInteger(AtomicInteger count, IntUnaryOperator function) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int previous = count.getAndUpdate(function);
         if (count.get() != 1) {
@@ -1837,6 +1933,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int updateAndGetAtomicInteger(AtomicInteger count, IntUnaryOperator function) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int current = count.updateAndGet(function);
         if (current != 1) {
@@ -1857,6 +1954,7 @@ public final class TelemetryRegistry {
      */
     public static int getAndAccumulateAtomicInteger(AtomicInteger count, int operand,
                                                     IntBinaryOperator function) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int previous = count.getAndAccumulate(operand, function);
         if (count.get() != 1) {
@@ -1876,6 +1974,7 @@ public final class TelemetryRegistry {
      */
     public static int accumulateAndGetAtomicInteger(AtomicInteger count, int operand,
                                                     IntBinaryOperator function) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int current = count.accumulateAndGet(operand, function);
         if (current != 1) {

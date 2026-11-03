@@ -51,13 +51,16 @@ import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.StampedLock;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -978,6 +981,226 @@ class CorpusAgentPairLaneTest {
         CompletableFuture<Void> future =
                 CompletableFuture.runAsync(CorpusAgentPairLaneTest::failingTask, SHARED_POOL);
         counted(() -> readTheFailure(future));
+    }
+
+    // --- Common mistakes the woven path had no pair for: state left on a pool thread, a rejection
+    //     dropped, a future left pending. Each detector's only pair recorded by hand until now.
+
+    /** The value a task leaves behind for the next task on its thread. */
+    private static final ThreadLocal<String> LEFT_SET = new ThreadLocal<>();
+
+    /** The same per-request value, removed by every task that sets it. */
+    private static final ThreadLocal<String> REMOVED = new ThreadLocal<>();
+
+    private static final AtomicInteger REQUESTS = new AtomicInteger();
+
+    /** Runs {@code task} on the shared pool and waits for it, as a request handler does. */
+    private static void awaitOnSharedPool(Runnable task) throws InterruptedException {
+        try {
+            SHARED_POOL.submit(task).get();
+        } catch (ExecutionException e) {
+            throw new AssertionError("a pooled request failed", e.getCause());
+        }
+    }
+
+    /**
+     * Every task reads the request context and sets its own, and none removes it, so with two pool
+     * threads and 240 tasks a later task reads what an earlier one left.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_threadLocal_leftSetOnAPoolThread() {
+        counted(() -> awaitOnSharedPool(() -> {
+            String inherited = LEFT_SET.get();
+            LEFT_SET.set("request-" + REQUESTS.incrementAndGet());
+            assertTrue(inherited == null || inherited.startsWith("request-"), inherited);
+        }));
+    }
+
+    /** The same read and set, with the value removed in a finally block before the task ends. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_threadLocal_removedInAFinally() {
+        counted(() -> awaitOnSharedPool(() -> {
+            String inherited = REMOVED.get();
+            REMOVED.set("request-" + REQUESTS.incrementAndGet());
+            try {
+                assertTrue(inherited == null || inherited.startsWith("request-"), inherited);
+            } finally {
+                REMOVED.remove();
+            }
+        }));
+    }
+
+    /**
+     * Submits three tasks to a one-thread pool with {@code queue} behind it, dropping any rejection,
+     * while the first task holds the thread. With a queue of one, the third submit has nowhere to
+     * go whatever the timing: the first task is running, the second is queued.
+     */
+    private static void submitThreeDroppingRejections(BlockingQueue<Runnable> queue)
+            throws InterruptedException {
+        ThreadPoolExecutor pool = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS, queue);
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            for (int task = 0; task < 3; task++) {
+                try {
+                    pool.submit(() -> {
+                        release.await();
+                        return "done";
+                    });
+                } catch (RejectedExecutionException dropped) {
+                    // The mistake: the task is gone and nothing says so.
+                }
+            }
+        } finally {
+            release.countDown();
+            pool.shutdown();
+            assertTrue(pool.awaitTermination(10, TimeUnit.SECONDS), "the pool did not terminate");
+        }
+    }
+
+    /** A bounded pool saturated, its rejection caught and dropped by the submitting code. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_threadPool_rejectionCaughtAndDropped() {
+        counted(() -> submitThreeDroppingRejections(new ArrayBlockingQueue<>(1)));
+    }
+
+    /** The same three submits to a pool with room for them, so there is nothing to drop. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_threadPool_queueHasRoom() {
+        counted(() -> submitThreeDroppingRejections(new ArrayBlockingQueue<>(2)));
+    }
+
+    /**
+     * Builds a future by hand and completes it on the path that works. Half the calls fail, and on
+     * that path the future is completed only if {@code completeOnFailure} says so.
+     */
+    private static CompletableFuture<Integer> loadByHand(boolean completeOnFailure) {
+        CompletableFuture<Integer> loaded = new CompletableFuture<>();
+        try {
+            if (REQUESTS.incrementAndGet() % 2 == 0) {
+                throw new IllegalStateException("the load failed");
+            }
+            loaded.complete(1);
+        } catch (IllegalStateException failure) {
+            if (completeOnFailure) {
+                loaded.completeExceptionally(failure);
+            }
+        }
+        return loaded;
+    }
+
+    /** The failure path skips the completion, so anyone joining that future waits forever. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_failurePathLeavesItPending() {
+        counted(() -> loadByHand(false));
+    }
+
+    /** The same future, completed exceptionally on the failure path. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_completableFuture_failurePathCompletesIt() {
+        counted(() -> loadByHand(true));
+    }
+
+    /**
+     * Runs a task on {@code outer} that submits to {@code inner} and waits briefly. On one pool the
+     * nested task can never start, which the timeout turns from a hang into a row that finishes.
+     */
+    private static void taskWaitsOn(ExecutorService outer, ExecutorService inner)
+            throws InterruptedException {
+        try {
+            outer.submit(() -> {
+                Future<String> nested = inner.submit(() -> "done");
+                try {
+                    return nested.get(20, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException | ExecutionException waitEnded) {
+                    return "gave up";
+                }
+            }).get();
+        } catch (ExecutionException e) {
+            throw new AssertionError("the outer task failed", e.getCause());
+        } finally {
+            outer.shutdownNow();
+            inner.shutdownNow();
+        }
+    }
+
+    /** A task waits on its own one-thread pool, the thread the nested task would need. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_executor_taskWaitsOnItsOwnPool() {
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        counted(() -> taskWaitsOn(pool, pool));
+    }
+
+    /** The same wait on a second pool, so the nested task has a thread of its own. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_executor_taskWaitsOnAnotherPool() {
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        counted(() -> taskWaitsOn(pool, Executors.newSingleThreadExecutor()));
+    }
+
+    private static final AtomicInteger RACED_INT = new AtomicInteger();
+    private static final AtomicInteger SINGLE_WRITER_INT = new AtomicInteger();
+    private static final AtomicLong RACED_LONG = new AtomicLong();
+    private static final AtomicLong SINGLE_WRITER_LONG = new AtomicLong();
+    private static final AtomicInteger INT_TICKETS = new AtomicInteger();
+    private static final AtomicInteger LONG_TICKETS = new AtomicInteger();
+
+    /** {@return whether this body is the first of its round, so the one writer of a silent row} */
+    private static boolean opensTheRound(AtomicInteger tickets) {
+        return tickets.getAndIncrement() % THREADS == 0;
+    }
+
+    /** Every thread increments with a get and then a set, which is two calls and no atomicity. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_atomicInteger_everyThreadGetsThenSets() {
+        counted(() -> RACED_INT.set(RACED_INT.get() + 1));
+    }
+
+    /** The same get and set from one writer a round, with the others only reading. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_atomicInteger_oneWriterGetsThenSets() {
+        counted(() -> {
+            int seen = SINGLE_WRITER_INT.get();
+            if (opensTheRound(INT_TICKETS)) {
+                SINGLE_WRITER_INT.set(seen + 1);
+            }
+        });
+    }
+
+    private static final AtomicInteger LOCKED_INT = new AtomicInteger();
+    private static final ReentrantLock COUNT_LOCK = new ReentrantLock();
+
+    /**
+     * Every thread reads lock-free, then gets and sets under one lock: how Spring's segment count
+     * and Jackson's weighted size are kept, each of which a run over the whole instance misjudged.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_atomicInteger_lockFreeReadThenLockedGetAndSet() {
+        counted(() -> {
+            int hint = LOCKED_INT.get();
+            COUNT_LOCK.lock();
+            try {
+                LOCKED_INT.set(LOCKED_INT.get() + (hint < 0 ? 0 : 1));
+            } finally {
+                COUNT_LOCK.unlock();
+            }
+        });
+    }
+
+    /** The same two calls on an AtomicLong. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_atomicLong_everyThreadGetsThenSets() {
+        counted(() -> RACED_LONG.set(RACED_LONG.get() + 1));
+    }
+
+    /** The same get and set from one writer a round, with the others only reading. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_atomicLong_oneWriterGetsThenSets() {
+        counted(() -> {
+            long seen = SINGLE_WRITER_LONG.get();
+            if (opensTheRound(LONG_TICKETS)) {
+                SINGLE_WRITER_LONG.set(seen + 1);
+            }
+        });
     }
 
     /**

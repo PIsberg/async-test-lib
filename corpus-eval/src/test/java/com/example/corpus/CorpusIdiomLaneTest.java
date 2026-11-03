@@ -13,15 +13,21 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.SplittableRandom;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Exchanger;
 import java.util.concurrent.ExecutorService;
@@ -35,6 +41,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.StampedLock;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 /**
  * The idiom lane: correct user-code concurrency, with every detector switched on.
@@ -81,6 +88,7 @@ class CorpusIdiomLaneTest {
 
     @AfterAll
     static void reportAndGate() throws IOException {
+        COUNTING_POOL.shutdownNow();
         CorpusRecorder.uninstall();
         CorpusLane lane = CorpusLane.current();
         Path report = CorpusReport.writeIdioms(CorpusRecorder.findings(), THREADS, INVOCATIONS, lane);
@@ -1071,6 +1079,527 @@ class CorpusIdiomLaneTest {
             throw new IllegalStateException("SHA-256 is required of every JRE", e);
         }
         return pool;
+    }
+
+    // --- Common mistakes, each after its fix ----------------------------------------------------
+
+    private static final Rounds<Map<Integer, Integer>> CONCURRENT_MAPS =
+            new Rounds<>(ConcurrentHashMap::new);
+    private static final Rounds<Map<Integer, Integer>> PLAIN_MAPS = new Rounds<>(HashMap::new);
+
+    /** Every thread puts its own key into one ConcurrentHashMap. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentHashMap_putByEveryThread() {
+        correct(() -> {
+            Turn<Map<Integer, Integer>> turn = CONCURRENT_MAPS.next();
+            turn.shared().put(turn.ticket(), turn.ticket());
+            use(turn.shared().size());
+        });
+    }
+
+    /** The same puts into a HashMap. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_hashMap_putByEveryThread() {
+        broken(() -> {
+            Turn<Map<Integer, Integer>> turn = PLAIN_MAPS.next();
+            turn.shared().put(turn.ticket(), turn.ticket());
+            use(turn.shared().size());
+        });
+    }
+
+    private static final Rounds<List<Integer>> SYNCHRONIZED_LISTS =
+            new Rounds<>(() -> Collections.synchronizedList(new ArrayList<>()));
+    private static final Rounds<List<Integer>> PLAIN_LISTS = new Rounds<>(ArrayList::new);
+
+    /** Every thread adds to one synchronizedList. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_synchronizedList_addedToByEveryThread() {
+        correct(() -> {
+            Turn<List<Integer>> turn = SYNCHRONIZED_LISTS.next();
+            turn.shared().add(turn.ticket());
+        });
+    }
+
+    /** The same adds to an ArrayList. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_arrayList_addedToByEveryThread() {
+        broken(() -> {
+            Turn<List<Integer>> turn = PLAIN_LISTS.next();
+            turn.shared().add(turn.ticket());
+        });
+    }
+
+    private static final Rounds<List<Integer>> COPY_ON_WRITE_LISTS =
+            new Rounds<>(CopyOnWriteArrayList::new);
+    private static final Rounds<List<Integer>> ITERATED_LISTS = new Rounds<>(ArrayList::new);
+
+    /** Half the threads add, half iterate, over a list whose iterator is a snapshot. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_copyOnWriteList_iteratedWhileAdding() {
+        correct(() -> addOrIterate(COPY_ON_WRITE_LISTS.next()));
+    }
+
+    /** The same adds and iteration over an ArrayList. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_arrayList_iteratedWhileAdding() {
+        broken(() -> addOrIterate(ITERATED_LISTS.next()));
+    }
+
+    private static void addOrIterate(Turn<List<Integer>> turn) {
+        if (turn.ticket() % 2 == 0) {
+            turn.shared().add(turn.ticket());
+        } else {
+            for (int value : turn.shared()) {
+                use(value);
+            }
+        }
+    }
+
+    private static final Rounds<Map<String, Integer>> MERGED_COUNTS =
+            new Rounds<>(ConcurrentHashMap::new);
+    private static final Rounds<Map<String, Integer>> RACED_COUNTS =
+            new Rounds<>(ConcurrentHashMap::new);
+
+    /** Every thread counts one key with merge. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentMap_countsWithMerge() {
+        correct(() -> MERGED_COUNTS.next().shared().merge("hits", 1, Integer::sum));
+    }
+
+    /** The same count as a get and then a put. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentMap_countsWithGetThenPut() {
+        broken(() -> {
+            Map<String, Integer> counts = RACED_COUNTS.next().shared();
+            Integer seen = counts.get("hits");
+            counts.put("hits", seen == null ? 1 : seen + 1);
+        });
+    }
+
+    private static final class Settings {
+        int size = 7;
+    }
+
+    private static final class LazySettings {
+        private Settings settings;
+
+        Settings unsynchronized() {
+            if (settings == null) {
+                settings = new Settings();
+            }
+            return settings;
+        }
+
+        synchronized Settings guarded() {
+            if (settings == null) {
+                settings = new Settings();
+            }
+            return settings;
+        }
+    }
+
+    private static final Rounds<LazySettings> GUARDED_SETTINGS = new Rounds<>(LazySettings::new);
+    private static final Rounds<LazySettings> RACED_SETTINGS = new Rounds<>(LazySettings::new);
+
+    /** The first caller builds the object, inside a synchronized getter. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_lazyInit_synchronizedGetter() {
+        correct(() -> use(GUARDED_SETTINGS.next().shared().guarded().size));
+    }
+
+    /** The same getter with no monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_lazyInit_unsynchronizedGetter() {
+        broken(() -> use(RACED_SETTINGS.next().shared().unsynchronized().size));
+    }
+
+    private static final class VolatileLazySettings {
+        private volatile Settings settings;
+
+        Settings get() {
+            Settings local = settings;
+            if (local == null) {
+                synchronized (this) {
+                    local = settings;
+                    if (local == null) {
+                        local = new Settings();
+                        settings = local;
+                    }
+                }
+            }
+            return local;
+        }
+    }
+
+    private static final class PlainLazySettings {
+        private Settings settings;
+
+        Settings get() {
+            if (settings == null) {
+                synchronized (this) {
+                    if (settings == null) {
+                        settings = new Settings();
+                    }
+                }
+            }
+            return settings;
+        }
+    }
+
+    private static final Rounds<VolatileLazySettings> VOLATILE_SETTINGS =
+            new Rounds<>(VolatileLazySettings::new);
+    private static final Rounds<PlainLazySettings> PLAIN_SETTINGS =
+            new Rounds<>(PlainLazySettings::new);
+
+    /** Double-checked locking on a volatile field, the form that is correct since Java 5. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_doubleCheckedLocking_volatileField() {
+        correct(() -> use(VOLATILE_SETTINGS.next().shared().get().size));
+    }
+
+    /** The same check, lock and recheck on a plain field (#1154). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_doubleCheckedLocking_plainField() {
+        broken(() -> use(PLAIN_SETTINGS.next().shared().get().size));
+    }
+
+    private static final class Ledger {
+        final Object lock = new Object();
+        int balance;
+    }
+
+    private static final Rounds<Ledger> LOCKED_READS = new Rounds<>(Ledger::new);
+    private static final Rounds<Ledger> PLAIN_READS = new Rounds<>(Ledger::new);
+
+    /** Half the threads write, half read, all under the ledger's lock. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_guardedField_readAndWrittenUnderTheLock() {
+        correct(() -> {
+            Turn<Ledger> turn = LOCKED_READS.next();
+            Ledger ledger = turn.shared();
+            synchronized (ledger.lock) {
+                if (turn.ticket() % 2 == 0) {
+                    ledger.balance = turn.ticket() + 1;
+                } else {
+                    use(ledger.balance);
+                }
+            }
+        });
+    }
+
+    /** The same writes under the lock, with the reads outside it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_guardedField_readWithoutTheLock() {
+        broken(() -> {
+            Turn<Ledger> turn = PLAIN_READS.next();
+            Ledger ledger = turn.shared();
+            if (turn.ticket() % 2 == 0) {
+                synchronized (ledger.lock) {
+                    ledger.balance = turn.ticket() + 1;
+                }
+            } else {
+                use(ledger.balance);
+            }
+        });
+    }
+
+    private static final Rounds<Ledger> ONE_LOCK = new Rounds<>(Ledger::new);
+    private static final Rounds<Ledger> LOCK_PER_CALLER = new Rounds<>(Ledger::new);
+
+    /** Every thread increments under the ledger's one lock. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_oneLock_guardsTheCounter() {
+        correct(() -> {
+            Ledger ledger = ONE_LOCK.next().shared();
+            synchronized (ledger.lock) {
+                ledger.balance++;
+            }
+        });
+    }
+
+    /** The same increment, each caller synchronizing on a lock it just built for itself. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_lockPerCaller_guardsNothing() {
+        broken(() -> {
+            Ledger ledger = LOCK_PER_CALLER.next().shared();
+            Object mine = new Object();
+            synchronized (mine) {
+                ledger.balance++;
+            }
+        });
+    }
+
+    private static final class BoxedCount {
+        final Object lock = new Object();
+        Integer count = 0;
+    }
+
+    private static final Rounds<BoxedCount> LOCKED_COUNTS = new Rounds<>(BoxedCount::new);
+    private static final Rounds<BoxedCount> SELF_LOCKED_COUNTS = new Rounds<>(BoxedCount::new);
+
+    /** A boxed counter updated under a separate final lock. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_finalLock_guardsABoxedCounter() {
+        correct(() -> {
+            BoxedCount boxed = LOCKED_COUNTS.next().shared();
+            synchronized (boxed.lock) {
+                boxed.count = boxed.count + 1;
+            }
+        });
+    }
+
+    /** The same update synchronized on the field it replaces. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_boxedCounter_synchronizesOnItself() {
+        broken(() -> {
+            BoxedCount boxed = SELF_LOCKED_COUNTS.next().shared();
+            synchronized (boxed.count) {
+                boxed.count = boxed.count + 1;
+            }
+        });
+    }
+
+    private static final class LatchedReader {
+        final CountDownLatch written = new CountDownLatch(1);
+        int value;
+    }
+
+    private static final class SleepingReader {
+        int value;
+    }
+
+    private static final Rounds<LatchedReader> LATCHED_READERS = new Rounds<>(LatchedReader::new);
+    private static final Rounds<SleepingReader> SLEEPING_READERS = new Rounds<>(SleepingReader::new);
+
+    /** The round's first thread writes and counts down; the others await and read. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_latch_ordersAWrittenField() {
+        correct(() -> {
+            Turn<LatchedReader> turn = LATCHED_READERS.next();
+            LatchedReader reader = turn.shared();
+            if (turn.opensTheRound()) {
+                reader.value = turn.ticket() + 1;
+                reader.written.countDown();
+            } else {
+                reader.written.await();
+                use(reader.value);
+            }
+        });
+    }
+
+    /** The same write, with the others sleeping instead of waiting for it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_sleep_ordersNothing() {
+        broken(() -> {
+            Turn<SleepingReader> turn = SLEEPING_READERS.next();
+            SleepingReader reader = turn.shared();
+            if (turn.opensTheRound()) {
+                reader.value = turn.ticket() + 1;
+            } else {
+                Thread.sleep(2);
+                use(reader.value);
+            }
+        });
+    }
+
+    /** Lives as long as the class: a pool the tasks of a whole round share is the point. */
+    private static final ExecutorService COUNTING_POOL = Executors.newFixedThreadPool(2);
+
+    private static final Rounds<Ledger> LOCKED_POOL_COUNTS = new Rounds<>(Ledger::new);
+    private static final Rounds<Ledger> PLAIN_POOL_COUNTS = new Rounds<>(Ledger::new);
+
+    /** Every thread submits a task that increments under the ledger's lock, and gets it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_poolTasks_counterUnderALock() {
+        correct(() -> {
+            Ledger ledger = LOCKED_POOL_COUNTS.next().shared();
+            getUnchecked(COUNTING_POOL.submit(() -> {
+                synchronized (ledger.lock) {
+                    ledger.balance++;
+                }
+            }));
+        });
+    }
+
+    /** The same tasks with no lock. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_poolTasks_plainCounter() {
+        broken(() -> {
+            Ledger ledger = PLAIN_POOL_COUNTS.next().shared();
+            getUnchecked(COUNTING_POOL.submit(() -> {
+                ledger.balance++;
+            }));
+        });
+    }
+
+    private static final Rounds<Ledger> LOCKED_EXECUTE_COUNTS = new Rounds<>(Ledger::new);
+    private static final Rounds<Ledger> PLAIN_EXECUTE_COUNTS = new Rounds<>(Ledger::new);
+
+    /** Every thread hands the pool a task through execute, which increments under a lock. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_poolExecute_counterUnderALock() {
+        correct(() -> {
+            Ledger ledger = LOCKED_EXECUTE_COUNTS.next().shared();
+            CountDownLatch done = new CountDownLatch(1);
+            COUNTING_POOL.execute(() -> {
+                synchronized (ledger.lock) {
+                    ledger.balance++;
+                }
+                done.countDown();
+            });
+            done.await();
+        });
+    }
+
+    /** The same tasks with no lock (#1155). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_poolExecute_plainCounter() {
+        broken(() -> {
+            Ledger ledger = PLAIN_EXECUTE_COUNTS.next().shared();
+            CountDownLatch done = new CountDownLatch(1);
+            COUNTING_POOL.execute(() -> {
+                ledger.balance++;
+                done.countDown();
+            });
+            done.await();
+        });
+    }
+
+    /** How many elements a parallel row walks, enough that the common pool's workers help. */
+    private static final int PARALLEL_ELEMENTS = 2_000;
+
+    /**
+     * One caller, so the only other threads are the common pool's: its workers increment under one
+     * lock, and the caller reads the result after the terminal operation has joined them.
+     */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelForEach_countsUnderALock() {
+        correct(() -> {
+            Ledger ledger = new Ledger();
+            IntStream.range(0, PARALLEL_ELEMENTS).parallel().forEach(i -> {
+                synchronized (ledger.lock) {
+                    ledger.balance++;
+                }
+            });
+            use(ledger.balance);
+        });
+    }
+
+    /** The same stream with no lock (#1156). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelForEach_plainCounter() {
+        broken(() -> {
+            Ledger ledger = new Ledger();
+            IntStream.range(0, PARALLEL_ELEMENTS).parallel().forEach(i -> ledger.balance++);
+            use(ledger.balance);
+        });
+    }
+
+    /** Adding to a list from the same stream, through a lambda so that the add is a call site. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelForEach_addsToASynchronizedList() {
+        correct(() -> {
+            List<Integer> out = Collections.synchronizedList(new ArrayList<>());
+            IntStream.range(0, PARALLEL_ELEMENTS).parallel().forEach(i -> out.add(i));
+            use(out.size());
+        });
+    }
+
+    /** The same adds to an ArrayList, the textbook parallel forEach mistake (#1156). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelForEach_addsToAnArrayList() {
+        broken(() -> {
+            List<Integer> out = new ArrayList<>();
+            IntStream.range(0, PARALLEL_ELEMENTS).parallel().forEach(i -> out.add(i));
+            use(out.size());
+        });
+    }
+
+    /** How many tasks each runAsync row starts. Two must overlap, and the rest add contention. */
+    private static final int ASYNC_TASKS = 8;
+
+    /** Starts {@code count} under the caller's eyes and spins until a second task has started too. */
+    private static CompletableFuture<Void> overlappingTasks(Runnable count) {
+        AtomicInteger started = new AtomicInteger();
+        CompletableFuture<?>[] tasks = new CompletableFuture<?>[ASYNC_TASKS];
+        for (int i = 0; i < ASYNC_TASKS; i++) {
+            tasks[i] = CompletableFuture.runAsync(() -> {
+                started.incrementAndGet();
+                for (int spins = 0; started.get() < 2 && spins < SPIN_LIMIT; spins++) {
+                    Thread.onSpinWait();
+                }
+                count.run();
+            });
+        }
+        return CompletableFuture.allOf(tasks);
+    }
+
+    /** Tasks on the default executor increment under one lock, and the caller reads after the join. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_runAsync_counterUnderALock() {
+        correct(() -> {
+            Ledger ledger = new Ledger();
+            overlappingTasks(() -> {
+                synchronized (ledger.lock) {
+                    ledger.balance++;
+                }
+            }).join();
+            use(ledger.balance);
+        });
+    }
+
+    /** The same tasks with no lock (#1158). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_runAsync_plainCounter() {
+        broken(() -> {
+            Ledger ledger = new Ledger();
+            overlappingTasks(() -> ledger.balance++).join();
+            use(ledger.balance);
+        });
+    }
+
+    private static final Rounds<List<Integer>> MONITORED_MEMBERS =
+            new Rounds<>(() -> Collections.synchronizedList(new ArrayList<>()));
+    private static final Rounds<List<Integer>> RACED_MEMBERS =
+            new Rounds<>(() -> Collections.synchronizedList(new ArrayList<>()));
+    private static final Rounds<CyclicBarrier> MEMBER_CHECKS = new Rounds<>(() -> new CyclicBarrier(THREADS));
+
+    /** Every thread adds one element if absent, holding the list's monitor across both calls. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_synchronizedList_containsThenAddUnderItsMonitor() {
+        correct(() -> {
+            List<Integer> members = MONITORED_MEMBERS.next().shared();
+            synchronized (members) {
+                if (!members.contains(1)) {
+                    members.add(1);
+                }
+            }
+        });
+    }
+
+    /**
+     * The same two calls with no monitor. The barrier lines the checks up so that every thread saw
+     * the element absent before any adds: the overlap a stress run hopes for, every round (#1159).
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_synchronizedList_containsThenAddWithoutIt() {
+        broken(() -> {
+            Turn<List<Integer>> turn = RACED_MEMBERS.next();
+            CyclicBarrier checked = MEMBER_CHECKS.next().shared();
+            List<Integer> members = turn.shared();
+            if (!members.contains(1)) {
+                awaitAll(checked);
+                members.add(1);
+            }
+        });
+    }
+
+    private static void awaitAll(CyclicBarrier barrier) throws InterruptedException {
+        try {
+            barrier.await(10, TimeUnit.SECONDS);
+        } catch (BrokenBarrierException | TimeoutException e) {
+            throw new IllegalStateException("the workers did not line up", e);
+        }
     }
 
     // --- Harness -----------------------------------------------------------------------------

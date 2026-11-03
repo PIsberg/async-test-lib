@@ -11,7 +11,17 @@ import java.nio.charset.Charset;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.DoubleStream;
+import java.util.stream.LongStream;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
+import java.util.function.DoubleConsumer;
+import java.util.function.LongConsumer;
+import java.util.function.IntConsumer;
+import java.util.Set;
 import java.util.Map;
 import java.util.Objects;
 import java.util.WeakHashMap;
@@ -33,6 +43,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -58,6 +69,8 @@ import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector;
+import se.deversity.asynctest.diagnostics.AtomicNonAtomicUpdateDetector;
+import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
 import se.deversity.asynctest.diagnostics.MdcContextLeakDetector;
 import se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector;
 import se.deversity.asynctest.diagnostics.ThreadLocalMonitor;
@@ -775,12 +788,15 @@ public final class AgentConcurrencyUtilHooks {
         if (!receiver.isDone()) {
             blockingOn(receiver);
         }
+        Object siblingPool = siblingWaitBegins(receiver);
         Object value;
         try {
             value = receiver.get();
         } catch (ExecutionException failed) {
             completionObserved(receiver);
             throw failed;
+        } finally {
+            siblingWaitEnds(siblingPool);
         }
         completionObserved(receiver);
         return value;
@@ -805,12 +821,15 @@ public final class AgentConcurrencyUtilHooks {
         if (!receiver.isDone()) {
             blockingOn(receiver);
         }
+        Object siblingPool = siblingWaitBegins(receiver);
         Object value;
         try {
             value = receiver.get(timeout, unit);
         } catch (ExecutionException failed) {
             completionObserved(receiver);
             throw failed;
+        } finally {
+            siblingWaitEnds(siblingPool);
         }
         completionObserved(receiver);
         return value;
@@ -2926,6 +2945,20 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * Weaves {@code CompletableFuture.allOf}: a join on what it returns observes every child (see
+     * {@link HandedAll}).
+     *
+     * @param children the futures to wait for
+     * @return the future that completes when they all have
+     * @since 1.14.1
+     */
+    public static CompletableFuture<Void> allOf(CompletableFuture<?>[] children) {
+        ControlledSchedule.point();
+        CompletableFuture<Void> all = CompletableFuture.allOf(children);
+        return Submissions.remember(all, new HandedAll(children));
+    }
+
+    /**
      * Weaves {@code CompletableFuture.runAsync(Runnable)}, as {@link #supplyAsync(Supplier)}.
      *
      * @param task the work to run asynchronously, not null; it is wrapped, so its start is ordered
@@ -3096,7 +3129,7 @@ public final class AgentConcurrencyUtilHooks {
             if (!wrapsInvisibly(receiver, task)) {
                 return receiver.submit(task);
             }
-            handed = new HandedTask(task);
+            handed = new HandedTask(task).onExecutor(receiver);
             return Submissions.remember(receiver.submit((Callable<Object>) handed), handed);
         } catch (RejectedExecutionException e) {
             if (handed != null) {
@@ -3123,7 +3156,7 @@ public final class AgentConcurrencyUtilHooks {
             if (!wrapsInvisibly(receiver, task)) {
                 return receiver.submit(task);
             }
-            handed = new HandedTask(task);
+            handed = new HandedTask(task).onExecutor(receiver);
             return Submissions.remember(receiver.submit((Runnable) handed), handed);
         } catch (RejectedExecutionException e) {
             if (handed != null) {
@@ -3153,7 +3186,7 @@ public final class AgentConcurrencyUtilHooks {
             if (!wrapsInvisibly(receiver, task)) {
                 return receiver.submit(task, result);
             }
-            handed = new HandedTask(task);
+            handed = new HandedTask(task).onExecutor(receiver);
             return Submissions.remember(receiver.submit((Runnable) handed, result), handed);
         } catch (RejectedExecutionException e) {
             if (handed != null) {
@@ -3490,9 +3523,9 @@ public final class AgentConcurrencyUtilHooks {
      * thread-per-task executor behind {@code Executors.newVirtualThreadPerTaskExecutor()} qualify,
      * by exact class: the first runs it inside its own adapter and returns no queued task from
      * {@code shutdownNow}, the second queues its own futures, and the third queues nothing. A
-     * {@code ThreadPoolExecutor} returns the task itself from {@code getQueue},
-     * {@code shutdownNow} and {@code remove}, and passes it to {@code beforeExecute}, so its tasks
-     * are left alone, as are a subclass's and any executor outside the JDK's.
+     * {@code ThreadPoolExecutor} qualifies too, inside a run (#1155); see
+     * {@link #executesInvisibly}. A subclass's tasks are left alone, since its {@code beforeExecute}
+     * would see the wrapper, as are those of any executor outside the JDK's.
      *
      * @param receiver the executor the call site invoked
      * @param command  what to run; the executor rejects {@code null}
@@ -3520,6 +3553,188 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * One parallel {@code forEach} the run started (#1156): the common pool's workers help it in
+     * JDK code the agent does not weave, so nothing attributes them to the run on its own.
+     *
+     * <p>An element on a helping thread runs as a small handed task: ordered after the call, with
+     * the run lent to the thread and the task token published around it. The caller's own elements
+     * need none of that. When the operation returns, the caller receives each helper's clock, since
+     * a terminal operation has joined its tasks: reading a result afterwards is correct. No element
+     * is ordered against another, which is the race this exists to see.
+     */
+    static final class ParallelForEach extends Handed {
+
+        private final Thread caller = Thread.currentThread();
+        private final HappensBefore.Stamp started = HappensBefore.handOff();
+        private final long token = TOKENS.incrementAndGet();
+        private final @Nullable AsyncTestContext startedIn = AsyncTestContext.agentContext();
+        private final Map<Long, HappensBefore.Stamp> helpers = new ConcurrentHashMap<>();
+
+        ParallelForEach() {
+            TelemetryRegistry.taskSubmitted(token);
+        }
+
+        @SuppressWarnings("ReferenceEquality") // the calling thread, by identity
+        void element(Runnable body) {
+            Thread thread = Thread.currentThread();
+            if (thread == caller) { // NOPMD CompareObjectsWithEquals - the same thread
+                body.run();
+                return;
+            }
+            HappensBefore.receive(started);
+            AsyncTestContext lentBefore = AsyncTestContext.lend(startedIn);
+            TelemetryRegistry.taskStarted(token);
+            long taskBefore = enterTask();
+            try {
+                body.run();
+            } finally {
+                helpers.put(thread.threadId(), HappensBefore.handOff());
+                TelemetryRegistry.taskEnded();
+                leaveTask(taskBefore);
+                AsyncTestContext.restoreLent(lentBefore);
+            }
+        }
+
+        /** Orders the caller after every helper; the operation has returned. */
+        void joined() {
+            helpers.values().forEach(HappensBefore::receive);
+        }
+    }
+
+    /**
+     * Weaves {@code Stream.forEach}: see {@link ParallelForEach}. A sequential stream, or one outside
+     * a run, takes the call as it was (#1156).
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element
+     * @since 1.14.1
+     */
+    public static void streamForEach(Stream<Object> receiver, Consumer<Object> action) {
+        ControlledSchedule.point();
+        if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
+            receiver.forEach(action);
+            return;
+        }
+        ParallelForEach forEach = new ParallelForEach();
+        try {
+            receiver.forEach(value -> forEach.element(() -> action.accept(value)));
+        } finally {
+            forEach.joined();
+        }
+    }
+
+    /**
+     * Weaves {@code IntStream.forEach}, as {@link #streamForEach}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element
+     * @since 1.14.1
+     */
+    public static void intStreamForEach(IntStream receiver, IntConsumer action) {
+        ControlledSchedule.point();
+        if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
+            receiver.forEach(action);
+            return;
+        }
+        ParallelForEach forEach = new ParallelForEach();
+        try {
+            receiver.forEach(value -> forEach.element(() -> action.accept(value)));
+        } finally {
+            forEach.joined();
+        }
+    }
+
+    /**
+     * Weaves {@code LongStream.forEach}, as {@link #streamForEach}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element
+     * @since 1.14.1
+     */
+    public static void longStreamForEach(LongStream receiver, LongConsumer action) {
+        ControlledSchedule.point();
+        if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
+            receiver.forEach(action);
+            return;
+        }
+        ParallelForEach forEach = new ParallelForEach();
+        try {
+            receiver.forEach(value -> forEach.element(() -> action.accept(value)));
+        } finally {
+            forEach.joined();
+        }
+    }
+
+    /**
+     * Weaves {@code DoubleStream.forEach}, as {@link #streamForEach}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element
+     * @since 1.14.1
+     */
+    public static void doubleStreamForEach(DoubleStream receiver, DoubleConsumer action) {
+        ControlledSchedule.point();
+        if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
+            receiver.forEach(action);
+            return;
+        }
+        ParallelForEach forEach = new ParallelForEach();
+        try {
+            receiver.forEach(value -> forEach.element(() -> action.accept(value)));
+        } finally {
+            forEach.joined();
+        }
+    }
+
+    /**
+     * Weaves {@code ExecutorService.shutdownNow()}: what comes back is the tasks {@link #execute}
+     * was given, not the wrappers it queued (#1155), so code that re-queues or inspects them sees
+     * its own. A list with no wrapper in it is returned as the executor made it.
+     *
+     * @param receiver the executor the call site invoked
+     * @return the tasks that never started
+     * @since 1.14.1
+     */
+    public static List<Runnable> shutdownNow(ExecutorService receiver) {
+        ControlledSchedule.point();
+        List<Runnable> queued = receiver.shutdownNow();
+        List<Runnable> unwrapped = null;
+        for (int i = 0; i < queued.size(); i++) {
+            if (queued.get(i) instanceof HandedTask handed && handed.task instanceof Runnable task) {
+                handed.abandoned();
+                if (unwrapped == null) {
+                    unwrapped = new ArrayList<>(queued);
+                }
+                unwrapped.set(i, task);
+            }
+        }
+        return unwrapped == null ? queued : unwrapped;
+    }
+
+    /**
+     * Weaves {@code ThreadPoolExecutor.remove(Runnable)}: the caller names the task it gave to
+     * {@link #execute}, and the queue holds the wrapper around it (#1155).
+     *
+     * @param pool the pool the call site invoked
+     * @param task the task to remove
+     * @return whether it was removed
+     * @since 1.14.1
+     */
+    public static boolean removeFromPool(ThreadPoolExecutor pool, Runnable task) {
+        ControlledSchedule.point();
+        for (Runnable queued : pool.getQueue()) {
+            if (queued instanceof HandedTask handed && Objects.equals(task, handed.task)) {
+                boolean removed = pool.remove(queued);
+                if (removed) {
+                    handed.abandoned();
+                }
+                return removed;
+            }
+        }
+        return pool.remove(task);
+    }
+
+    /**
      * Records a rejected submission with the run's {@code ThreadPoolMonitor} and hands the same
      * exception back to be rethrown unchanged (#1055). A rejection that propagates fails the test
      * anyway; one the calling code catches and drops loses the task silently, and this record is
@@ -3536,6 +3751,58 @@ public final class AgentConcurrencyUtilHooks {
         return e;
     }
 
+    /** The task the calling thread is running, for a get to compare its pool with the future's. */
+    private static final ThreadLocal<@Nullable HandedTask> RUNNING_HANDED = new ThreadLocal<>();
+
+    /**
+     * Tells {@code EXECUTOR_DEADLOCK} when a task is about to block on a task of its own pool
+     * (#1160), and {@return that pool, for {@link #siblingWaitEnds}, or {@code null}} when this get
+     * is anything else. A {@code ForkJoinPool} is left out: a waiting worker runs other tasks.
+     */
+    @SuppressWarnings("ReferenceEquality") // the same pool, by identity
+    private static @Nullable Object siblingWaitBegins(Future<?> future) {
+        HandedTask running = RUNNING_HANDED.get();
+        if (running == null || running.executor == null || future.isDone()
+                || !(Submissions.peek(future) instanceof HandedTask nested)
+                || nested.executor != running.executor) { // NOPMD CompareObjectsWithEquals - identity
+            return null;
+        }
+        ExecutorDeadlockDetector detector = AsyncTestContext.currentExecutorDeadlockDetector();
+        Object pool = running.executor;
+        if (detector == null) {
+            return null;
+        }
+        if (pool instanceof ThreadPoolExecutor bounded) {
+            // A pool only grows past its core once the queue refuses a task.
+            int threads = bounded.getQueue().remainingCapacity() > 0
+                    ? bounded.getCorePoolSize() : bounded.getMaximumPoolSize();
+            detector.agentSiblingWait(pool, threads, bounded.getQueue().size());
+            return pool;
+        }
+        if (SINGLE_THREAD_WRAPPERS.contains(pool.getClass().getName())) {
+            // The only thread is this one, so the nested task, which is not done, is queued.
+            detector.agentSiblingWait(pool, 1, 1);
+            return pool;
+        }
+        return null;
+    }
+
+    /** What {@code Executors.newSingleThreadExecutor()} returns, on the JDKs this library supports. */
+    private static final Set<String> SINGLE_THREAD_WRAPPERS = Set.of(
+            "java.util.concurrent.Executors$AutoShutdownDelegatedExecutorService",
+            "java.util.concurrent.Executors$FinalizableDelegatedExecutorService");
+
+    /** Ends the wait {@link #siblingWaitBegins} recorded, if it recorded one. */
+    private static void siblingWaitEnds(@Nullable Object pool) {
+        if (pool == null) {
+            return;
+        }
+        ExecutorDeadlockDetector detector = AsyncTestContext.currentExecutorDeadlockDetector();
+        if (detector != null) {
+            detector.recordSiblingWaitEnded(pool);
+        }
+    }
+
     /**
      * {@return the controlled schedule's adoption of the task behind {@code future}, or
      * {@code null}}: what a wait for its result hands the schedule, so the wait happens inside it
@@ -3546,7 +3813,12 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
-     * {@return whether {@code executor} is one whose tasks no caller can get back}
+     * {@return whether {@code execute} wraps its task for {@code executor}}
+     *
+     * <p>A {@code ThreadPoolExecutor} qualifies inside a run (#1155), and by exact class, so no
+     * {@code beforeExecute} override can see the wrapper. {@link #shutdownNow} and
+     * {@link #removeFromPool} keep it from showing there. {@code getQueue} still shows it, to code
+     * that looks at the elements rather than the size; outside a run nothing is wrapped.
      *
      * <p>An {@code Executors.unconfigurable*} wrapper hands back only what the executor behind it
      * hands back, so it is judged by that executor, when a woven call made it (#1107). The map is
@@ -3557,6 +3829,9 @@ public final class AgentConcurrencyUtilHooks {
         if (type == ForkJoinPool.class || type == ScheduledThreadPoolExecutor.class
                 || "java.util.concurrent.ThreadPerTaskExecutor".equals(type.getName())) {
             return true;
+        }
+        if (type == ThreadPoolExecutor.class) {
+            return AsyncTestContext.agentContext() != null;
         }
         if (!type.getName().startsWith("java.util.concurrent.Executors$")) {
             return false;
@@ -3583,10 +3858,17 @@ public final class AgentConcurrencyUtilHooks {
      * the lookup costs a key, and an executor's future would pay it on every get for nothing.
      */
     private static void completionObserved(Object future) {
+        observed(future, Submissions.forget(future));
+    }
+
+    /** What {@link #completionObserved} does, given the work known to be behind {@code future}. */
+    private static void observed(Object future, @Nullable Handed handed) {
         if (future instanceof CompletableFuture) {
             HappensBefore.acquire(future);
         }
-        Handed handed = Submissions.forget(future);
+        if (handed instanceof HandedAll all) {
+            all.observed();
+        }
         if (handed != null) {
             HappensBefore.receive(handed.finished());
         }
@@ -3594,6 +3876,33 @@ public final class AgentConcurrencyUtilHooks {
             // A composed stage completes when the stage its function returned does, so what was
             // released to that one is observed too (#741).
             HappensBefore.acquire(stage.composed);
+        }
+    }
+
+    /**
+     * The futures an {@code allOf} waits for, and the work this thread knew to be behind each. It
+     * completes only once they all have, so observing it observes every one of them. Taken when
+     * {@code allOf} is called, because a thread remembers only its last {@link Submissions#KEPT}
+     * submissions: a child submitted further back than that, like one this thread did not submit, is
+     * observed only through what a woven {@code complete} released to it.
+     */
+    static final class HandedAll extends Handed {
+
+        private final CompletableFuture<?>[] children;
+        private final @Nullable Handed[] work;
+
+        HandedAll(CompletableFuture<?>[] children) {
+            this.children = children.clone();
+            this.work = new Handed[children.length];
+            for (int i = 0; i < children.length; i++) {
+                work[i] = Submissions.peek(children[i]);
+            }
+        }
+
+        void observed() {
+            for (int i = 0; i < children.length; i++) {
+                AgentConcurrencyUtilHooks.observed(children[i], work[i]);
+            }
         }
     }
 
@@ -3693,6 +4002,42 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * A woven read of an {@code AtomicInteger} or {@code AtomicLong} (#1157).
+     *
+     * @param atomic the atomic the call site read
+     */
+    public static void atomicRead(Object atomic) {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
+        if (detector != null) {
+            detector.agentRead(atomic);
+        }
+    }
+
+    /**
+     * A woven plain store to one of those atomics (#1157).
+     *
+     * @param atomic the atomic the call site wrote
+     */
+    public static void atomicStored(Object atomic) {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
+        if (detector != null) {
+            detector.agentStore(atomic);
+        }
+    }
+
+    /**
+     * A woven atomic update of one of those atomics, which needs no read before it (#1157).
+     *
+     * @param atomic the atomic the call site updated
+     */
+    public static void atomicSwapped(Object atomic) {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
+        if (detector != null) {
+            detector.agentSwap(atomic);
+        }
+    }
+
+    /**
      * Snapshots the MDC at the start of a pooled task the run handed over, for
      * {@code MDC_CONTEXT_LEAK} (#995): a key the task leaves behind is in the end snapshot and not in
      * this one. Inside the loan, so the detector is the submitting run's.
@@ -3742,6 +4087,9 @@ public final class AgentConcurrencyUtilHooks {
         private final long token;
         private final @Nullable AsyncTestContext submittedIn;
 
+        /** The executor a woven submit gave this task to, or {@code null}. */
+        @Nullable Object executor;
+
         /** Whether the task was handed to the common pool, and declared to the blocking detector. */
         private volatile boolean commonPool;
 
@@ -3758,6 +4106,12 @@ public final class AgentConcurrencyUtilHooks {
             this.submittedIn = AsyncTestContext.agentContext();
             this.adoption = ControlledSchedule.submitting();
             TelemetryRegistry.taskSubmitted(token);
+        }
+
+        /** {@return this task, remembering the executor it is submitted to} */
+        HandedTask onExecutor(Object submittedTo) {
+            executor = submittedTo;
+            return this;
         }
 
         /** Tells the controlled schedule this task will never run: its executor rejected it. */
@@ -3820,9 +4174,12 @@ public final class AgentConcurrencyUtilHooks {
             long taskBefore = enterTask();
             HandedTask outer = COMMON_POOL_TASK.get();
             boolean entered = enterPool();
+            HandedTask outerRunning = RUNNING_HANDED.get();
+            RUNNING_HANDED.set(this);
             try {
                 ((Runnable) task).run();
             } finally {
+                RUNNING_HANDED.set(outerRunning);
                 leavePool(entered, outer);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
@@ -3843,9 +4200,12 @@ public final class AgentConcurrencyUtilHooks {
             long taskBefore = enterTask();
             HandedTask outer = COMMON_POOL_TASK.get();
             boolean entered = enterPool();
+            HandedTask outerRunning = RUNNING_HANDED.get();
+            RUNNING_HANDED.set(this);
             try {
                 return ((Callable<?>) task).call();
             } finally {
+                RUNNING_HANDED.set(outerRunning);
                 leavePool(entered, outer);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
@@ -3866,9 +4226,12 @@ public final class AgentConcurrencyUtilHooks {
             long taskBefore = enterTask();
             HandedTask outer = COMMON_POOL_TASK.get();
             boolean entered = enterPool();
+            HandedTask outerRunning = RUNNING_HANDED.get();
+            RUNNING_HANDED.set(this);
             try {
                 return ((Supplier<?>) task).get();
             } finally {
+                RUNNING_HANDED.set(outerRunning);
                 leavePool(entered, outer);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();

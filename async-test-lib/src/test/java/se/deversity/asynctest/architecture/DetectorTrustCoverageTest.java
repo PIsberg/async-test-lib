@@ -76,9 +76,6 @@ class DetectorTrustCoverageTest {
             entry(DetectorType.LOCK_ORDER, List.of(
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#lockOrderValidatorFiresOnInversion",
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#lockOrderValidatorStaysSilentOnConsistentOrdering")),
-            entry(DetectorType.ATOMIC_NON_ATOMIC_UPDATE, List.of(
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#nonAtomicUpdateDetectorFiresOnGetThenSet",
-                    "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#nonAtomicUpdateDetectorStaysSilentOnCas")),
             entry(DetectorType.COMPLETABLE_FUTURE_COMPLETION_LEAKS, List.of(
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completionLeakDetectorFiresOnAFutureThatIsNeverCompleted",
                     "se.deversity.asynctest.diagnostics.DetectorAccuracyEvalTest#completionLeakDetectorStaysSilentWhenTheFutureIsCompleted"))

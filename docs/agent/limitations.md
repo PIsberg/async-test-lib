@@ -42,10 +42,15 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   forwarded: a thread a worker starts through a woven `Thread.start`, `Thread.Builder` start or
   `Thread.startVirtualThread` (#834), and a pool thread while it runs a task a worker submitted
   to a JDK executor (#745), registered as a dependent `CompletableFuture` stage, or executed on a
-  `ForkJoinPool`, `ScheduledThreadPoolExecutor` or virtual-thread-per-task executor (#741), or an
-  `Executors.unconfigurable*` wrapper around one that a woven call made (#1107). Accesses
-  on other application threads during the round, a thread started in unwoven code or a task given
-  to a `ThreadPoolExecutor`'s `execute` included, are treated as noise and dropped. The
+  `ThreadPoolExecutor` (#1155), `ForkJoinPool`, `ScheduledThreadPoolExecutor` or virtual-thread-per-task
+  executor (#741), or an `Executors.unconfigurable*` wrapper around one that a woven call made (#1107),
+  or helping a parallel stream's `forEach` the run started (#1156; a lambda given to `map`, `filter` or
+  `reduce` runs unattributed, #1172).
+  Accesses on other application threads during the round, a thread started in unwoven code or a task
+  given to `execute` on a `ThreadPoolExecutor` subclass included, are treated as noise and dropped. To
+  observe a `ThreadPoolExecutor`'s task, the run's `execute` queues a wrapper around it: the woven
+  `shutdownNow` and `remove` give back and find your own task, but `getQueue()` shows the wrapper to code
+  that looks at the elements rather than the size. The
   shared-instance hooks (a `MessageDigest`, a `Calendar`, a `SimpleDateFormat` and the rest) reach
   the same threads: a thread started through a woven start works for the run of the thread that
   started it until that run is analysed, and a pool thread for the run that handed it a task or

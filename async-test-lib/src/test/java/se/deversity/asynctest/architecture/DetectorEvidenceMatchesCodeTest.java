@@ -162,6 +162,9 @@ class DetectorEvidenceMatchesCodeTest {
      * an entry that no longer disagrees.
      */
     private static final Map<DetectorType, String> FED_BELOW_OBSERVED = Map.ofEntries(
+            entry(DetectorType.EXECUTOR_DEADLOCK, "the feed reads the pool's own bound and queue, but "
+                    + "registerExecutor, recordTaskSubmitted and recordWaitingOnSibling still take the "
+                    + "caller's word for all three, and they decide the same finding"),
             entry(DetectorType.ATOMICITY_VIOLATIONS, "the woven field accesses are judged against the "
                     + "lockset, while a recorded compound operation or detectCheckThenActViolation "
                     + "compares values the caller passed"),
@@ -216,7 +219,7 @@ class DetectorEvidenceMatchesCodeTest {
                     + "recordStreamTaken takes the caller's word for the take itself"));
 
     /** How many entries {@link #FED_BELOW_OBSERVED} may hold; lower it when an entry leaves. */
-    private static final int FED_BELOW_OBSERVED_CEILING = 15;
+    private static final int FED_BELOW_OBSERVED_CEILING = 16;
 
     /**
      * Ungraded detectors above the PROMPT cap that name a threshold, each with why the threshold

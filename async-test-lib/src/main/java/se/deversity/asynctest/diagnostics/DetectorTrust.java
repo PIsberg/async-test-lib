@@ -279,7 +279,7 @@ public final class DetectorTrust {
             row(DetectorType.LOCK_DOWNGRADE, "LockDowngradeDetector", "LockDowngrade", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.INHERITABLE_THREAD_LOCAL, "InheritableThreadLocalMisuseDetector", "InheritableThreadLocal", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.THREAD_LOCAL_CONTAMINATION, "ThreadLocalContaminationDetector", "ThreadLocalContamination", TrustTier.FACT, Evidence.ASSERTED),
-            row(DetectorType.ATOMIC_NON_ATOMIC_UPDATE, "AtomicNonAtomicUpdateDetector", "AtomicNonAtomicUpdate", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.ATOMIC_NON_ATOMIC_UPDATE, "AtomicNonAtomicUpdateDetector", "AtomicNonAtomicUpdate", TrustTier.PROMPT, Evidence.CONTEXTUAL),
             row(DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, "SynchronizedCollectionIterationDetector", "SynchronizedCollectionIteration", TrustTier.FACT, Evidence.ASSERTED),
             row(DetectorType.SHARED_FORMATTER, "SharedFormatterDetector", "SharedFormatter", TrustTier.VERDICT, Evidence.OBSERVED),
             row(DetectorType.CONCURRENT_MAP_COMPUTE_RECURSION, "ConcurrentMapComputeRecursionDetector", "ConcurrentMapComputeRecursion", TrustTier.FACT, Evidence.ASSERTED),

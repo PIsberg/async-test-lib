@@ -8,12 +8,16 @@ import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -52,6 +56,140 @@ class AgentExecutorHooksTest {
     private <E extends ExecutorService> E kept(E executor) {
         made.add(executor);
         return executor;
+    }
+
+    // --- A task waiting on its own pool (#1160) ------------------------------------------------
+
+    /**
+     * Runs a task on {@code outer} that submits to {@code inner} and waits for it, briefly, through
+     * the woven calls, and {@return what the run's detector reports}.
+     */
+    private boolean taskWaitingOnAPoolIsReported(ExecutorService outer, ExecutorService inner)
+            throws Exception {
+        AsyncTestContext context = installed();
+        try {
+            Future<Object> task = AgentConcurrencyUtilHooks.submit(outer, (Callable<Object>) () -> {
+                Future<Object> nested = AgentConcurrencyUtilHooks.submit(inner, (Callable<Object>) () -> "done");
+                try {
+                    return AgentConcurrencyUtilHooks.get(nested, 100, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException expected) {
+                    return "timed out";
+                }
+            });
+            AgentConcurrencyUtilHooks.get(task);
+            return context.executorDeadlockDetector.analyze().hasIssues();
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("a task waiting on its own single-thread pool is reported")
+    void aTaskWaitingOnItsOwnSingleThreadPoolIsReported() throws Exception {
+        ExecutorService pool = kept(Executors.newSingleThreadExecutor());
+        assertTrue(taskWaitingOnAPoolIsReported(pool, pool),
+                "the nested task can only run on the thread that is waiting for it");
+    }
+
+    @Test
+    @DisplayName("a task waiting on its own one-thread fixed pool is reported")
+    void aTaskWaitingOnItsOwnFixedPoolIsReported() throws Exception {
+        ExecutorService pool = kept(Executors.newFixedThreadPool(1));
+        assertTrue(taskWaitingOnAPoolIsReported(pool, pool),
+                "the same deadlock through the class newFixedThreadPool builds");
+    }
+
+    @Test
+    @DisplayName("a task waiting on another pool is not reported")
+    void aTaskWaitingOnAnotherPoolIsNotReported() throws Exception {
+        assertFalse(taskWaitingOnAPoolIsReported(kept(Executors.newSingleThreadExecutor()),
+                        kept(Executors.newSingleThreadExecutor())),
+                "the nested task has a thread of its own");
+    }
+
+    @Test
+    @DisplayName("a task waiting on its own pool with a thread to spare is not reported")
+    void aTaskWaitingOnAPoolWithAFreeThreadIsNotReported() throws Exception {
+        ExecutorService pool = kept(Executors.newFixedThreadPool(2));
+        assertFalse(taskWaitingOnAPoolIsReported(pool, pool), "the second thread runs the nested task");
+    }
+
+    @Test
+    @DisplayName("a task waiting on its own growing pool is not reported")
+    void aTaskWaitingOnACachedPoolIsNotReported() throws Exception {
+        ExecutorService pool = kept(Executors.newCachedThreadPool());
+        assertFalse(taskWaitingOnAPoolIsReported(pool, pool), "a cached pool starts another thread");
+    }
+
+    // --- A ThreadPoolExecutor's execute inside a run (#1155) -----------------------------------
+
+    /** A one-thread pool whose thread is held until {@code release} counts down. */
+    private ThreadPoolExecutor heldPool(CountDownLatch release) {
+        ThreadPoolExecutor pool = kept(new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>()));
+        pool.execute(() -> {
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        return pool;
+    }
+
+    @Test
+    @DisplayName("shutdownNow gives back the task a woven execute was given, not its wrapper")
+    void shutdownNowGivesBackTheTaskItself() {
+        installed();
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            ThreadPoolExecutor pool = heldPool(release);
+            Runnable queued = () -> { };
+            AgentConcurrencyUtilHooks.execute(pool, queued);
+
+            assertEquals(List.of(queued), AgentConcurrencyUtilHooks.shutdownNow(pool),
+                    "code that re-queues or inspects what shutdownNow returned sees its own task");
+        } finally {
+            release.countDown();
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("remove finds the task a woven execute was given, not only its wrapper")
+    void removeFindsTheTaskItself() {
+        installed();
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            ThreadPoolExecutor pool = heldPool(release);
+            Runnable queued = () -> { };
+            AgentConcurrencyUtilHooks.execute(pool, queued);
+
+            assertTrue(AgentConcurrencyUtilHooks.removeFromPool(pool, queued),
+                    "the task is still queued, so remove must find it");
+            assertTrue(pool.getQueue().isEmpty(), "and the queue must really have let it go");
+            assertFalse(AgentConcurrencyUtilHooks.removeFromPool(pool, queued),
+                    "a second remove has nothing left to find");
+        } finally {
+            release.countDown();
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("outside a run a ThreadPoolExecutor's task is not wrapped at all")
+    void outsideARunTheTaskIsLeftAlone() {
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            ThreadPoolExecutor pool = heldPool(release);
+            Runnable queued = () -> { };
+            AgentConcurrencyUtilHooks.execute(pool, queued);
+
+            assertTrue(pool.getQueue().contains(queued),
+                    "no run is watching, so nothing here should change what the pool holds");
+        } finally {
+            release.countDown();
+        }
     }
 
     // --- EXECUTOR_SHUTDOWN --------------------------------------------------------------------

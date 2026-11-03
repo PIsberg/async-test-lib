@@ -216,6 +216,29 @@ public final class AgentCollectionHooks {
         return collection.getClass().getName().startsWith("java.util.Collections$Synchronized");
     }
 
+    /** Tells the iteration detector what a {@code contains} on a synchronized list found (#1159). */
+    private static void checkedSynchronizedList(Collection<?> receiver, @Nullable Object element,
+                                                boolean found) {
+        if (receiver instanceof List && synchronizedWrapper(receiver)) {
+            SynchronizedCollectionIterationDetector detector =
+                    AsyncTestContext.currentSynchronizedCollectionIterationDetector();
+            if (detector != null) {
+                detector.agentContains(receiver, element, found);
+            }
+        }
+    }
+
+    /** Tells the iteration detector about an {@code add} on a synchronized list (#1159). */
+    private static void addingToSynchronizedList(Collection<?> receiver, @Nullable Object element) {
+        if (receiver instanceof List && synchronizedWrapper(receiver)) {
+            SynchronizedCollectionIterationDetector detector =
+                    AsyncTestContext.currentSynchronizedCollectionIterationDetector();
+            if (detector != null) {
+                detector.agentAdd(receiver, element);
+            }
+        }
+    }
+
     /** Hands an iteration of a synchronized wrapper to its detector, which knows its monitor. */
     private static void iterated(Object collection) {
         // Walking a collection reads all of it: beside another thread's add, that is the concurrent
@@ -384,6 +407,7 @@ public final class AgentCollectionHooks {
                                         @Nullable Object monitor) {
         ControlledSchedule.point();
         record(receiver, "add", true);
+        addingToSynchronizedList(receiver, element);
         if (receiver instanceof Queue) {
             // Queue.add is an offer that throws instead of returning false (#630).
             TelemetryRegistry.ownershipOffered(element, receiver, monitor);
@@ -569,7 +593,9 @@ public final class AgentCollectionHooks {
     public static boolean collectionContains(Collection<Object> receiver, Object element) {
         ControlledSchedule.point();
         record(receiver, "contains", false);
-        return receiver.contains(element);
+        boolean found = receiver.contains(element);
+        checkedSynchronizedList(receiver, element, found);
+        return found;
     }
 
     /** Weaves {@code Collection.clear}. @param receiver the collection */

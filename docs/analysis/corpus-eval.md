@@ -1887,16 +1887,17 @@ silence, so a refusal cannot outlive a pair in that lane either.
 | | Detectors |
 |---|---|
 | Paired in the recording lane | 117 |
-| Paired in the agent-pair lane | 19 |
-| ...less `SHARED_MESSAGE_DIGEST`, `LATCH_MISUSE` and `BLOCKING_QUEUE`, which are paired in both | -3 |
-| Paired by lane one over 139 subjects (`ATOMICITY_VIOLATIONS`, `SHARED_COLLECTIONS`) | +2 |
+| Paired in the agent-pair lane | 40 |
+| ...less those paired in both | -23 |
+| Paired by neither of those lanes | +1 |
 | **Total paired** | **135** |
 | Refused: every recorded event is a finding, so no silent twin can exist | 5 |
 | Refused: the outcome is a threshold or a clock, not the recorded calls | 8 |
 | **Total** | **148** |
 
-Nothing in that table is maintained by hand. The two lane figures come from the generated
-reports:
+`CorpusClaimsInDocsTest` derives every paired row from the corpus and fails when one stops being
+true. The one detector neither pair lane names is `SHARED_COLLECTIONS`, which lane one and the idiom
+lane pair. The two lane figures can also be read from the generated reports:
 
 ```bash
 grep -E "MUST_" corpus-eval/target/corpus-eval/corpus-eval-recording.md | cut -d"|" -f4 | sort -u | wc -l
@@ -2113,8 +2114,40 @@ hand-off now names `AtomicityValidator`, and `SharedCollectionDetector` reports 
 only the report says so. The idioms are the ones the probe and the model's documented limits named,
 not a survey of user code, so a clean lane is a floor under those shapes and no statement about any
 other. Work a body hands to a thread in a way the agent does not see, a thread started in unwoven
-code, or a task given to a `ThreadPoolExecutor`'s `execute`, is still dropped, and no row measures
-it.
+code, or a task given to `execute` on a `ThreadPoolExecutor` subclass, is still dropped, and no row
+measures it.
+
+## The most common mistakes
+
+A throwaway probe wrote common concurrency mistakes as plain code, each beside its fix, with every
+detector on and nothing recorded by hand. What fired became rows: three agent-pair pairs
+(`THREAD_LOCAL_LEAKS`, `THREAD_POOL`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS`, whose only pairs were
+recorded before) and sixteen idiom pairs. The list is a judgement, not a survey of user code.
+
+Six mistakes drew no finding from any detector at first, and each got a fix and then its row: double-checked
+locking without `volatile` (#1154), a plain counter in `execute` tasks on a `ThreadPoolExecutor` (#1155),
+a parallel `forEach` with one caller (#1156), `AtomicInteger.set(get() + 1)` (#1157), contains-then-add on
+a `synchronizedList` (#1159) and a task waiting on its own full pool (#1160). What each fix still leaves
+out is filed: [#1172](https://github.com/PIsberg/async-test-lib/issues/1172), [#1173](https://github.com/PIsberg/async-test-lib/issues/1173), [#1174](https://github.com/PIsberg/async-test-lib/issues/1174)
+and [#1175](https://github.com/PIsberg/async-test-lib/issues/1175).
+
+**The corpus rejected three first drafts.** #1157 judged the whole atomic, which drew `VERDICT`/`HIGH` on
+Spring's `ConcurrentReferenceHashMap` and on Jackson, which read lock-free and update under a lock, so
+each read-then-store pair is now judged by the locks it held throughout. It then drew one on Jackson's
+`drainStatus`, an `AtomicReference` read in one method and set to a constant in another, so that type is
+not fed and a woven finding is graded `PROMPT`. And the correct row for #1156 was reported, which
+exposed a false positive that was not about streams: workers writing under a lock and a joined thread
+reading with none. No lock covered the round and a lock is no clock edge, so neither rule cleared it.
+`AtomicityValidator` now clears a group when each conflicting pair is covered by one or the other.
+
+**`runAsync` was inconsistent once and is not diagnosed.** A plain counter in eight `runAsync` tasks reported
+in two of four lanes in the first probe, and in 9 of 9 lane runs in a later one. Silence is what the model
+gives if every task of a run lands on one thread, but no run was caught doing that, so this is a guess. The
+pair `idiom_runAsync_*` makes two tasks overlap, which takes the question out of the row.
+
+**The probe's first draft misled.** It wrote every body's result to one shared `volatile` field, which drew
+`AtomicityValidator` on correct code and on the double-checked locking row alike, and hid that row's
+silence. The rows use the lane's `use` method for that reason.
 
 ## Reproducing it
 
@@ -2355,8 +2388,8 @@ mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair 
 the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
-added below, and the Guava service pair (#736), 19 of the 45 agent-fed detectors are measured in
-both directions on call sites inside a library. `LibraryReach` records why the other nineteen are not,
+added below, and the Guava service pair (#736), 19 of the 47 agent-fed detectors are measured in
+both directions on call sites inside a library. `LibraryReach` records why the other twenty-eight are not,
 and `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions, the same
 arrangement `DetectorCoverage` uses for refusals:
 

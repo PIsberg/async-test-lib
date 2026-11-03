@@ -1074,6 +1074,9 @@ public final class AsyncTestContext {
         if (registry.threadLocalMonitor != null) {
             registry.threadLocalMonitor.markInvocationStart();
         }
+        if (registry.synchronizedCollectionIterationDetector != null) {
+            registry.synchronizedCollectionIterationDetector.markInvocationStart();
+        }
         if (registry.atomicNonAtomicUpdateDetector != null) {
             registry.atomicNonAtomicUpdateDetector.markInvocationStart();
         }
@@ -2137,6 +2140,28 @@ public final class AsyncTestContext {
     static @Nullable MdcContextLeakDetector currentMdcContextLeakDetector() {
         AsyncTestContext context = agentContext();
         return context == null ? null : context.mdcContextLeakDetector;
+    }
+
+    /**
+     * {@return the {@link ExecutorDeadlockDetector} for the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>The woven {@code get} hands it a task waiting on its own pool (#1160).
+     */
+    static @Nullable ExecutorDeadlockDetector currentExecutorDeadlockDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.executorDeadlockDetector;
+    }
+
+    /**
+     * {@return the {@link AtomicNonAtomicUpdateDetector} for the run the calling thread works for,
+     * or {@code null}}
+     *
+     * <p>The woven atomic calls hand it each read and store (#1157).
+     */
+    static @Nullable AtomicNonAtomicUpdateDetector currentAtomicNonAtomicUpdateDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.atomicNonAtomicUpdateDetector;
     }
 
     static @Nullable JdbcConnectionSharedDetector currentJdbcConnectionSharedDetector() {

@@ -23,8 +23,68 @@ An `@AsyncTest` method that returns a value, or is `private` or `static`, now fa
 (see Fixed). Such a method never ran, so a build that goes red here was passing without testing it;
 declare the method `void`, and package-private or wider, on an instance.
 
+With the agent attached, two threads of a round that each read an `AtomicInteger` or `AtomicLong` and
+then set it, with no lock held across both, are now a `PROMPT`/`HIGH` finding (see Fixed). A build
+that fails on `HIGH` below `VERDICT` can go red where it was green. Use `updateAndGet` or a
+compare-and-set loop, or exclude `ATOMIC_NON_ATOMIC_UPDATE` where the stored value does not depend on
+the read. A recorded get and set is still `VERDICT`, as a finding rather than through the detector's
+tier, which is now `PROMPT`.
+
 ### Fixed
 
+- **A read after `CompletableFuture.allOf(...).join()` is no longer reported.** `allOf` was not woven,
+  so a join on its future ordered nothing, and correct code that read a result after it drew
+  `AtomicityValidator`. A woven `allOf` now remembers its children, and observing its completion observes
+  theirs. A child submitted more than 16 submissions before the `allOf`, or a callback chained on `allOf`
+  rather than a join, is still not ordered this way.
+- **Locked writes followed by a plain read after a join are no longer reported.** Workers writing a
+  field under one lock, then a thread that joined them reading it with none, is correct and common.
+  `AtomicityValidator` reported it: no lock covered the round, and a lock is no clock edge, so neither of
+  its rules cleared the group. It now clears a group when each conflicting pair is covered by an edge or
+  a common lock. Writes under two locks before the join, and a read with no join, still report.
+- **A parallel stream's `forEach` is observed with one caller (#1156).** The common pool's workers were
+  never attributed to the run, so `parallel().forEach(list::add)` threw from the race and no detector named
+  it, and a plain counter published 160,229 events and drew nothing. A woven `forEach` on `Stream`,
+  `IntStream`, `LongStream` and `DoubleStream` now lends the run to each worker for each element, and
+  orders the caller after them when it returns, since a terminal operation has joined its tasks. Other
+  lambdas in the pipeline stay unattributed (#1172). `idiom_parallelForEach_*` are the pairs.
+- **Contains-then-add on a `synchronizedList` is reported (#1159).** Each call on the wrapper is safe
+  and the pair is not, and nothing said so. `SYNCHRONIZED_COLLECTION_ITERATION` now also hears the woven
+  `contains` and `add`, and reports two threads of a round that each saw one element absent and then
+  added it with no lock held across both. It needs a real overlap, so a second thread that arrives
+  after the add reports nothing, and a `Set` is left out because adding twice loses nothing.
+  `idiom_synchronizedList_containsThenAdd*` is the pair.
+- **A task waiting on its own full pool is reported (#1160).** `EXECUTOR_DEADLOCK` was recording-fed,
+  so a task that submits to its own single-thread pool and waits drew nothing from any detector; an
+  untimed wait failed the test on timeout without naming why. It is agent-fed now: a woven `Future.get`
+  on a task of the pool the caller is running on is reported when every thread that pool can run is
+  waiting that way with work queued. Another pool, a pool with a thread free and a cached pool stay
+  silent, and so does a `ForkJoinPool`, whose waiting worker runs other tasks.
+  `agent_executor_taskWaits*` is the pair.
+- **Tasks given to a `ThreadPoolExecutor`'s `execute` are observed (#1155).** A plain counter in
+  such tasks drew nothing while the same tasks through `submit` were reported, and
+  `Executors.newFixedThreadPool` builds exactly this class. Inside a run the woven `execute` now
+  wraps the task, as it already did on the other JDK pools, so the pool thread works for the run
+  while it runs it and the task is ordered after the call. The pool used to be left alone because it
+  hands the task back; the woven `shutdownNow` and `remove` now give back and find your own task.
+  `getQueue()` still shows the wrapper to code that looks at the elements, and a subclass is left
+  alone because its `beforeExecute` would see it. `idiom_poolExecute_*` is the pair.
+- **`AtomicInteger.set(get() + 1)` is reported without a record call (#1157).**
+  `ATOMIC_NON_ATOMIC_UPDATE` was recording-fed, so the mistake it names drew nothing from ordinary
+  code. It is agent-fed now through the woven `AtomicInteger` and `AtomicLong` calls. A get then set
+  is reported once two threads of a round have each done it with no lock held across both; one
+  writer among readers stays silent and a compare-and-set spends the read. It sees calls and not
+  values, so a woven pair is graded `PROMPT`/`HIGH`; a recorded pair stays `VERDICT`. The corpus shaped
+  all of this: the first draft drew `VERDICT` findings on Spring's and Jackson's documented-safe
+  caches, one because it judged the whole atomic rather than each pair, and one on a status flag in
+  an `AtomicReference`, which is why that type is not fed. `agent_atomicInteger_*` and
+  `agent_atomicLong_*` are the pairs.
+- **Double-checked locking without `volatile` is reported (#1154).** `AtomicityValidator`'s excuse
+  for a plain hint reread under the write lock (#311) never looked at what the field held, so the
+  textbook broken form drew no finding from any detector. A reader that finds a plain reference
+  non-null skips the recheck and may see a partly built object, so a non-volatile field whose
+  writes store a reference no longer gets the excuse. A plain `int` hint keeps it, and the volatile
+  form stays silent. `idiom_doubleCheckedLocking_*` is the pair.
 - **A LemonSqueezy key without `ls.store.id` no longer auto-mocks in CI (#1144).** Under
   LemonSqueezy a key counted as a commercial claim only together with the store id, so a key set
   without one read as "no credentials". With `CI` or `GITHUB_ACTIONS` set that run auto-mocked
@@ -89,6 +149,13 @@ declare the method `void`, and package-private or wider, on an instance.
 
 ### Maintenance
 
+- **The corpus now pairs common concurrency mistakes written as plain code.** Three agent pairs
+  give `THREAD_LOCAL_LEAKS`, `THREAD_POOL` and `COMPLETABLE_FUTURE_COMPLETION_LEAKS` their first pair
+  through the woven path, and ten idiom pairs cover shared collections, get-then-put counting, lazy
+  init, reads outside the lock, a lock per caller, a lock on a boxed counter, `sleep` as ordering
+  and plain counters in pool tasks.
+  `CorpusClaimsInDocsTest` now holds the roster table in `corpus-eval.md` to the rows; its agent-pair
+  figure said 19 where the lane pairs 38, under a sentence saying nothing there was kept by hand.
 - **The workflows' supply-chain settings are now a gate (#1148).** An audit of the 21 workflows
   found nothing to change: every third-party action pinned to a commit SHA, a
   read-only top-level token (`contents: read`, or `read-all` in Scorecard's own workflow), no

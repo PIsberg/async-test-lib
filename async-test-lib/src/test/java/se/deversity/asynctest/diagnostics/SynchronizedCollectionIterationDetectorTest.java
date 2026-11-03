@@ -6,6 +6,97 @@ import static org.junit.jupiter.api.Assertions.*;
 
 public class SynchronizedCollectionIterationDetectorTest {
 
+    /** One thread's woven check that found nothing, then its add, optionally under {@code lock}. */
+    private static void checkThenAdd(SynchronizedCollectionIterationDetector d, Object list,
+                                     Object element, Object lock) throws InterruptedException {
+        Thread thread = new Thread(() -> {
+            if (lock != null) {
+                HeldLocks.acquired(lock);
+            }
+            try {
+                d.agentContains(list, element, false);
+                d.agentAdd(list, element);
+            } finally {
+                if (lock != null) {
+                    HeldLocks.released(lock);
+                }
+            }
+        });
+        thread.start();
+        thread.join();
+    }
+
+    private static final Object SHARED_LIST =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
+    @Test
+    void twoThreadsAddingAnElementBothSawAbsentIsReported() throws InterruptedException {
+        var d = new SynchronizedCollectionIterationDetector();
+        checkThenAdd(d, SHARED_LIST, "x", null);
+        checkThenAdd(d, SHARED_LIST, "x", null);
+        assertTrue(d.analyze().hasIssues(), "the list now holds the element twice");
+    }
+
+    @Test
+    void theSamePairsUnderOneLockAreCorrect() throws InterruptedException {
+        var d = new SynchronizedCollectionIterationDetector();
+        Object lock = new Object();
+        checkThenAdd(d, SHARED_LIST, "x", lock);
+        checkThenAdd(d, SHARED_LIST, "x", lock);
+        assertFalse(d.analyze().hasIssues(), "the monitor makes the check and the add one step");
+    }
+
+    @Test
+    void differentElementsAreCorrect() throws InterruptedException {
+        var d = new SynchronizedCollectionIterationDetector();
+        checkThenAdd(d, SHARED_LIST, "x", null);
+        checkThenAdd(d, SHARED_LIST, "y", null);
+        assertFalse(d.analyze().hasIssues(), "neither thread's answer was made stale by the other");
+    }
+
+    @Test
+    void aSecondThreadThatSawTheElementDoesNotAdd() throws InterruptedException {
+        var d = new SynchronizedCollectionIterationDetector();
+        checkThenAdd(d, SHARED_LIST, "x", null);
+        Thread second = new Thread(() -> d.agentContains(SHARED_LIST, "x", true));
+        second.start();
+        second.join();
+        assertFalse(d.analyze().hasIssues(), "the check did its job, so nothing was duplicated");
+    }
+
+    @Test
+    void differentElementsWhoseHashesCollideAreCorrect() throws InterruptedException {
+        assertEquals("Aa".hashCode(), "BB".hashCode(), "the pair this test relies on");
+        var d = new SynchronizedCollectionIterationDetector();
+        checkThenAdd(d, SHARED_LIST, "Aa", null);
+        checkThenAdd(d, SHARED_LIST, "BB", null);
+        assertFalse(d.analyze().hasIssues(), "two elements, so neither answer was made stale");
+    }
+
+    @Test
+    void anElementWhoseHashCodeThrowsDoesNotEscapeTheHook() {
+        var d = new SynchronizedCollectionIterationDetector();
+        Object unhashable = new Object() {
+            @Override
+            public int hashCode() {
+                throw new IllegalStateException("not hashable");
+            }
+        };
+        assertDoesNotThrow(() -> {
+            d.agentContains(SHARED_LIST, unhashable, false);
+            d.agentAdd(SHARED_LIST, unhashable);
+        }, "the hook runs inside the code under test, which never asked for a hash");
+    }
+
+    @Test
+    void pairsInDifferentRoundsAreCorrect() throws InterruptedException {
+        var d = new SynchronizedCollectionIterationDetector();
+        checkThenAdd(d, SHARED_LIST, "x", null);
+        d.markInvocationStart();
+        checkThenAdd(d, SHARED_LIST, "x", null);
+        assertFalse(d.analyze().hasIssues(), "the harness orders rounds");
+    }
+
     @Test
     void testNoIssuesWhenEmpty() {
         var d = new SynchronizedCollectionIterationDetector();
