@@ -172,9 +172,10 @@ class DetectorEvidenceMatchesCodeTest {
                     + "discarded false, is an event no probe of the queue at analysis confirms and a "
                     + "lossy queue makes by design, so its strongest grade is FACT on ASSERTED "
                     + "evidence; the 90% saturation grade is HEURISTIC"),
-            entry(DetectorType.LIVELOCKS, "the runner feeds it thread dumps, but starvation is every "
-                    + "recent snapshot BLOCKED or WAITING with flat CPU time and rapid cycling is five "
-                    + "state changes in ten snapshots: thresholds over what the JVM showed"),
+            entry(DetectorType.LIVELOCKS, "the runner feeds it the state of each worker still in its "
+                    + "body when a round times out, which a slow correct body also shows, and a body's "
+                    + "own snapshots decide on five state changes in ten: thresholds over what the "
+                    + "JVM showed"),
             entry(DetectorType.STATIC_INIT_DEADLOCK, "the live stack sample is graded FACT on OBSERVED "
                     + "evidence, since one slow initializer looks the same, and the cycle of recorded "
                     + "init requests is FACT on ASSERTED; with no grade above FACT it keeps ASSERTED"),
