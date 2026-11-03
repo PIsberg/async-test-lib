@@ -2122,7 +2122,7 @@ measures it.
 A throwaway probe wrote common concurrency mistakes as plain code, each beside its fix, with every
 detector on and nothing recorded by hand. What fired became rows: three agent-pair pairs
 (`THREAD_LOCAL_LEAKS`, `THREAD_POOL`, `COMPLETABLE_FUTURE_COMPLETION_LEAKS`, whose only pairs were
-recorded before) and twelve idiom pairs. The list is a judgement, not a survey of user code.
+recorded before) and thirteen idiom pairs. The list is a judgement, not a survey of user code.
 
 These mistakes drew no finding in the probe (JDK 26, Windows 11, all four attached lanes), so they
 have no row yet. A row lands with the fix, because a `MUST_FIRE` row cannot pin a miss.
@@ -2130,7 +2130,6 @@ have no row yet. A row lands with the fix, because a `MUST_FIRE` row cannot pin 
 | Mistake | Issue |
 |---|---|
 | `parallel().forEach(list::add)` and a plain counter in a stream, with one caller | [#1156](https://github.com/PIsberg/async-test-lib/issues/1156) |
-| Contains-then-add on a `synchronizedList` | [#1159](https://github.com/PIsberg/async-test-lib/issues/1159) |
 
 A plain counter in `CompletableFuture.runAsync` tasks reported in two of the four lanes
 ([#1158](https://github.com/PIsberg/async-test-lib/issues/1158)). The probe's first draft wrote every body's result to one shared `volatile`

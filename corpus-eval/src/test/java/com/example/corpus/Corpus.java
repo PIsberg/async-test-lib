@@ -5359,6 +5359,21 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same execute with no lock. A ThreadPoolExecutor's tasks were not observed "
                             + "at all before #1155, so this drew nothing from any detector",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_synchronizedList_containsThenAddUnderItsMonitor", JDK,
+                    "java.util.Collections",
+                    DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "if (!list.contains(x)) list.add(x) inside synchronized (list), which the "
+                            + "Collections javadoc's own monitor makes one step"),
+
+            new RecordingSubject("idiom_synchronizedList_containsThenAddWithoutIt", JDK,
+                    "java.util.Collections",
+                    DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same two calls with no monitor: each is safe and the pair is not, so "
+                            + "threads that all saw the element absent each add it (#1159)",
                     IssueSeverity.HIGH)
     );
 

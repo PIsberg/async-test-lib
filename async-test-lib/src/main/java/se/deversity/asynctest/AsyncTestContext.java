@@ -1074,6 +1074,9 @@ public final class AsyncTestContext {
         if (registry.threadLocalMonitor != null) {
             registry.threadLocalMonitor.markInvocationStart();
         }
+        if (registry.synchronizedCollectionIterationDetector != null) {
+            registry.synchronizedCollectionIterationDetector.markInvocationStart();
+        }
         if (registry.atomicNonAtomicUpdateDetector != null) {
             registry.atomicNonAtomicUpdateDetector.markInvocationStart();
         }

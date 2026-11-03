@@ -8,6 +8,9 @@ import java.util.Collections;
 import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -42,8 +45,19 @@ public class SynchronizedCollectionIterationDetector extends AbstractInstanceDet
         final String name;
         final AtomicInteger unsafeIterations = new AtomicInteger();
         final List<String>  details          = new CopyOnWriteArrayList<>();
+        /** Per thread, the element it last saw absent and the locks it held then (#1159). */
+        final Map<Long, AbsentCheck> absentChecks = new ConcurrentHashMap<>();
+        /** Per element hash, the threads of this round that saw it absent and then added it. */
+        final Map<Integer, Set<Long>> roundAdders = new ConcurrentHashMap<>();
+        /** Per element hash, the locks every such pair of this round held throughout. */
+        final Map<Integer, int[]> roundPairLocks = new ConcurrentHashMap<>();
+        final AtomicInteger checkThenAdds = new AtomicInteger();
 
         WrapperInfo(String name) { this.name = name; }
+    }
+
+    /** What a thread saw when {@code contains} said an element was absent. */
+    record AbsentCheck(int elementHash, int[] locks) {
     }
 
     @Override
@@ -148,6 +162,69 @@ public class SynchronizedCollectionIterationDetector extends AbstractInstanceDet
     }
 
     /**
+     * Records a {@code contains} on a synchronized list the agent saw (#1159). Each call is safe and
+     * the pair with the {@code add} after it is not. A check that found the element ends the
+     * pattern, and one that did not waits for this thread's next add.
+     *
+     * @param list    the synchronized list
+     * @param element what was looked for
+     * @param found   what {@code contains} returned
+     * @since 1.14.1
+     */
+    public void agentContains(Object list, @Nullable Object element, boolean found) {
+        if (list == null) return;
+        WrapperInfo state = stateFor(list, null, "SynchronizedList");
+        long thread = Thread.currentThread().threadId();
+        if (found) {
+            state.absentChecks.remove(thread);
+        } else {
+            state.absentChecks.put(thread,
+                    new AbsentCheck(Objects.hashCode(element), HeldLocks.intersect(null, list, true)));
+        }
+    }
+
+    /**
+     * Records an {@code add} on a synchronized list the agent saw (#1159). Two threads of a round
+     * that each saw one element absent and then added it, with no lock held across both pairs, have
+     * each acted on an answer the other made stale, and the list now holds it twice. An add with no
+     * check before it, or of another element, is an ordinary add.
+     *
+     * @param list    the synchronized list
+     * @param element what is being added
+     * @since 1.14.1
+     */
+    public void agentAdd(Object list, @Nullable Object element) {
+        if (list == null) return;
+        WrapperInfo state = trackedState(list);
+        if (state == null) return;
+        long thread = Thread.currentThread().threadId();
+        AbsentCheck check = state.absentChecks.remove(thread);
+        int hash = Objects.hashCode(element);
+        if (check == null || check.elementHash() != hash) return;
+        int[] held = HeldLocks.intersect(check.locks(), list, true);
+        int[] common = state.roundPairLocks.merge(hash, held, Lockset::intersect);
+        Set<Long> adders = state.roundAdders.computeIfAbsent(hash, ignored -> ConcurrentHashMap.newKeySet());
+        adders.add(thread);
+        if (adders.size() >= 2 && common.length == 0) {
+            state.checkThenAdds.incrementAndGet();
+        }
+    }
+
+    /**
+     * Closes the round in progress: the runner orders rounds, so a check in one says nothing about
+     * an add in the next.
+     *
+     * @since 1.14.1
+     */
+    public void markInvocationStart() {
+        for (WrapperInfo state : states()) {
+            state.absentChecks.clear();
+            state.roundAdders.clear();
+            state.roundPairLocks.clear();
+        }
+    }
+
+    /**
      * {@return report of unsafe iterations}
      */
     public SynchronizedCollectionIterationReport analyze() {
@@ -157,6 +234,11 @@ public class SynchronizedCollectionIterationDetector extends AbstractInstanceDet
                 r.violations.add(String.format("'%s': %d unsafe iteration(s) detected",
                     w.name, w.unsafeIterations.get()));
                 r.details.addAll(w.details);
+            }
+            if (w.checkThenAdds.get() > 0) {
+                r.violations.add(String.format("'%s': %d check-then-add(s): two threads each saw one "
+                    + "element absent and added it, with no lock held across the check and the add",
+                    w.name, w.checkThenAdds.get()));
             }
         }
         if (r.hasIssues()) {

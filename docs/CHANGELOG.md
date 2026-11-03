@@ -32,6 +32,12 @@ tier, which is now `PROMPT`.
 
 ### Fixed
 
+- **Contains-then-add on a `synchronizedList` is reported (#1159).** Each call on the wrapper is safe
+  and the pair is not, and nothing said so. `SYNCHRONIZED_COLLECTION_ITERATION` now also hears the woven
+  `contains` and `add`, and reports two threads of a round that each saw one element absent and then
+  added it with no lock held across both. It needs a real overlap, so a second thread that arrives
+  after the add reports nothing, and a `Set` is left out because adding twice loses nothing.
+  `idiom_synchronizedList_containsThenAdd*` is the pair.
 - **A task waiting on its own full pool is reported (#1160).** `EXECUTOR_DEADLOCK` was recording-fed,
   so a task that submits to its own single-thread pool and waits drew nothing from any detector; an
   untimed wait failed the test on timeout without naming why. It is agent-fed now: a woven `Future.get`
@@ -131,8 +137,8 @@ tier, which is now `PROMPT`.
   give `THREAD_LOCAL_LEAKS`, `THREAD_POOL` and `COMPLETABLE_FUTURE_COMPLETION_LEAKS` their first pair
   through the woven path, and ten idiom pairs cover shared collections, get-then-put counting, lazy
   init, reads outside the lock, a lock per caller, a lock on a boxed counter, `sleep` as ordering
-  and plain counters in pool tasks. Two other common mistakes drew no finding and are filed as
-  #1156 and #1159, with an inconsistent `runAsync` result in #1158.
+  and plain counters in pool tasks. Another common mistake drew no finding and are filed as
+  #1156, with an inconsistent `runAsync` result in #1158.
   `CorpusClaimsInDocsTest` now holds the roster table in `corpus-eval.md` to the rows; its agent-pair
   figure said 19 where the lane pairs 38, under a sentence saying nothing there was kept by hand.
 - **The workflows' supply-chain settings are now a gate (#1148).** An audit of the 21 workflows

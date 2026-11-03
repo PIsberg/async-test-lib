@@ -21,11 +21,13 @@ import java.util.Map;
 import java.util.Random;
 import java.util.SplittableRandom;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Exchanger;
 import java.util.concurrent.ExecutorService;
@@ -1460,6 +1462,50 @@ class CorpusIdiomLaneTest {
             });
             done.await();
         });
+    }
+
+    private static final Rounds<List<Integer>> MONITORED_MEMBERS =
+            new Rounds<>(() -> Collections.synchronizedList(new ArrayList<>()));
+    private static final Rounds<List<Integer>> RACED_MEMBERS =
+            new Rounds<>(() -> Collections.synchronizedList(new ArrayList<>()));
+    private static final Rounds<CyclicBarrier> MEMBER_CHECKS = new Rounds<>(() -> new CyclicBarrier(THREADS));
+
+    /** Every thread adds one element if absent, holding the list's monitor across both calls. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_synchronizedList_containsThenAddUnderItsMonitor() {
+        correct(() -> {
+            List<Integer> members = MONITORED_MEMBERS.next().shared();
+            synchronized (members) {
+                if (!members.contains(1)) {
+                    members.add(1);
+                }
+            }
+        });
+    }
+
+    /**
+     * The same two calls with no monitor. The barrier lines the checks up so that every thread saw
+     * the element absent before any adds: the overlap a stress run hopes for, every round (#1159).
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_synchronizedList_containsThenAddWithoutIt() {
+        broken(() -> {
+            Turn<List<Integer>> turn = RACED_MEMBERS.next();
+            CyclicBarrier checked = MEMBER_CHECKS.next().shared();
+            List<Integer> members = turn.shared();
+            if (!members.contains(1)) {
+                awaitAll(checked);
+                members.add(1);
+            }
+        });
+    }
+
+    private static void awaitAll(CyclicBarrier barrier) throws InterruptedException {
+        try {
+            barrier.await(10, TimeUnit.SECONDS);
+        } catch (BrokenBarrierException | TimeoutException e) {
+            throw new IllegalStateException("the workers did not line up", e);
+        }
     }
 
     // --- Harness -----------------------------------------------------------------------------

@@ -490,6 +490,12 @@ and `PipedInputStream.read` calls, paired through the writer's private `sink` (t
 `java.io` to the library to read it), report a thread that both writes to and reads from one pair,
 which the `PipedInputStream` javadoc warns may deadlock.
 
+`SynchronizedCollectionIterationDetector` also hears the woven `contains` and `add` on a synchronized
+list (#1159). Two threads of a round that each saw one element absent and then added it, with no lock
+held across the check and the add, have left it in the list twice. Hearing it takes a real overlap: a
+second thread that arrives after the add sees the element and does nothing. A `Set` is left out, since
+adding twice loses nothing.
+
 `ExecutorDeadlockDetector` hears the woven `Future.get` (#1160). A task blocking on a task of its own
 pool is reported when every thread the pool can run is waiting that way with work queued. The bound
 and the queue are read from the pool: a `ThreadPoolExecutor`'s, counting its core size while its queue
