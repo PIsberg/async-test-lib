@@ -33,6 +33,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * targetThread.stop();  // dangerous!
  * }</pre>
  *
+ * <p>Fed by that call and not by the agent: {@code stop}, {@code suspend} and {@code resume} throw
+ * from JDK 20 and are gone in JDK 26, so a woven call site would exist only in bytecode built for an
+ * older release.
+ *
  * @since 0.10.0
  */
 public class DeprecatedThreadApiDetector {
@@ -60,11 +64,13 @@ public class DeprecatedThreadApiDetector {
      *
      * @param apiName one of {@code "Thread.stop"}, {@code "Thread.suspend"},
      *                {@code "Thread.resume"}, {@code "Thread.destroy"},
-     *                {@code "Thread.countStackFrames"} (null-safe)
+     *                {@code "Thread.countStackFrames"}; any other name, such as the
+     *                {@code "Thread.interrupt"} a wrapper around every thread call might pass, is
+     *                not recorded (null-safe)
      * @param thread  the calling thread (null-safe)
      */
     public void recordApiUse(String apiName, Thread thread) {
-        if (apiName == null || thread == null) return;
+        if (apiName == null || thread == null || !DEPRECATED_APIS.contains(apiName)) return;
         events.add(new ApiUseEvent(apiName, thread.getName()));
     }
 

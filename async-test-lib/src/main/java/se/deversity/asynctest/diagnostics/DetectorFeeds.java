@@ -162,6 +162,9 @@ public final class DetectorFeeds {
             // Process.waitFor, and the getters that take a child's stdout or stderr pipe: a wait
             // no other thread drains for is a hang once the child writes a pipe's worth.
             DetectorType.PROCESS_STREAM_STARVATION,
+            // The woven obtrudeValue and obtrudeException, which the happens-before model already
+            // read: the call overwrites what a stage may already have seen, so it is the finding.
+            DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE,
             // Every call on a JPA EntityManager or Hibernate Session, matched by name, since
             // neither may be on the agent's class path (#992).
             DetectorType.JDBC_CONNECTION_SHARED,
@@ -177,8 +180,9 @@ public final class DetectorFeeds {
      * Fed by the JVM and the harness with no recording call.
      *
      * <p>Four, each with the deciding source: {@code DeadlockDetector.analyze()} samples
-     * {@code ThreadMXBean.findDeadlockedThreads()} on its own; {@code ConcurrencyRunner} pushes a
-     * thread-dump snapshot into {@code LivelockDetector} for every worker of every round;
+     * {@code ThreadMXBean.findDeadlockedThreads()} on its own; {@code ConcurrencyRunner} tells
+     * {@code LivelockDetector} which workers are in their bodies, and asks it to classify them when a
+     * round times out;
      * {@code StaticInitDeadlockDetector.analyze()} walks the live stacks for threads parked in
      * {@code <clinit>} frames; and {@code ConcurrencyRunner} opens a {@link JfrPinningStream} that
      * hands {@code VirtualThreadPinningDetector} the JVM's {@code jdk.VirtualThreadPinned} events

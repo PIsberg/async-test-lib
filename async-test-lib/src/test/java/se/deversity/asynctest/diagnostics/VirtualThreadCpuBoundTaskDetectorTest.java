@@ -170,4 +170,25 @@ class VirtualThreadCpuBoundTaskDetectorTest {
         assertEquals(1, first, "a virtual task over threshold and still running is one violation");
         assertEquals(first, second, "analyze() appended the still-running line to instance state on every call");
     }
+
+    /**
+     * The segment measured was the one after the last yield, so one yield just before the end
+     * excused everything before it, on a report that says "ran N ms without a yield point".
+     */
+    @Test
+    void aLongSegmentBeforeTheLastYieldIsStillReported() throws Exception {
+        VirtualThreadCpuBoundTaskDetector early = new VirtualThreadCpuBoundTaskDetector(50);
+        Thread.ofVirtual().start(() -> {
+            String id = early.recordTaskStart("long-then-yield");
+            long end = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(80);
+            while (System.nanoTime() < end) {
+                Thread.onSpinWait();
+            }
+            early.recordYieldPoint(id);
+            early.recordTaskEnd(id);
+        }).join();
+
+        org.junit.jupiter.api.Assertions.assertTrue(early.analyze().hasIssues(),
+                "80 ms ran without a yield point before the only one, past the 50 ms threshold");
+    }
 }

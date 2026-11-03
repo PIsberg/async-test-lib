@@ -60,6 +60,7 @@ public class VirtualThreadCpuBoundTaskDetector {
         volatile long endNanos = -1;
         final AtomicInteger yieldCount = new AtomicInteger(0);
         volatile long lastYieldNanos;
+        final AtomicLong longestSegmentNanos = new AtomicLong();
 
         TaskRecord(String taskName, Thread thread) {
             this.taskName = taskName;
@@ -76,7 +77,14 @@ public class VirtualThreadCpuBoundTaskDetector {
 
         long maxSegmentMs() {
             long end = endNanos >= 0 ? endNanos : System.nanoTime();
-            return (end - lastYieldNanos) / 1_000_000L;
+            return Math.max(longestSegmentNanos.get(), end - lastYieldNanos) / 1_000_000L;
+        }
+
+        void yielded() {
+            long now = System.nanoTime();
+            longestSegmentNanos.accumulateAndGet(now - lastYieldNanos, Math::max);
+            lastYieldNanos = now;
+            yieldCount.incrementAndGet();
         }
     }
 
@@ -139,8 +147,7 @@ public class VirtualThreadCpuBoundTaskDetector {
     public void recordYieldPoint(String taskId) {
         TaskRecord rec = activeTasks.get(taskId);
         if (rec != null) {
-            rec.lastYieldNanos = System.nanoTime();
-            rec.yieldCount.incrementAndGet();
+            rec.yielded();
         }
     }
 
