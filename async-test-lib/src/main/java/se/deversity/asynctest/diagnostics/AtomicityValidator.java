@@ -1461,7 +1461,8 @@ public class AtomicityValidator {
                 // the interleaving of a compound operation, and like every excuse here it only
                 // ever removes a finding: a group whose accesses carry no stamps is not ordered.
                 if (sawUnguarded && threads.size() > 1
-                        && HappensBefore.everyConflictOrdered(roundAccesses, true)) {
+                        && (HappensBefore.everyConflictOrdered(roundAccesses, true)
+                            || everyConflictOrderedOrLocked(roundAccesses))) {
                     sawUnguarded = false;
                 }
                 // A volatile field written by one thread in the round: that thread's
@@ -1795,6 +1796,58 @@ public class AtomicityValidator {
             }
         }
         return false;
+    }
+
+    /**
+     * {@return whether every conflicting pair in {@code trace} is covered by an edge or a lock}
+     *
+     * <p>Neither rule above sees this shape alone: workers write under one lock and the thread that
+     * joined them reads with none. No lock covers the round, and the writes have no edge between
+     * them because a monitor is not one, yet every pair is safe. Being a pairwise question it cannot
+     * use {@link HappensBefore#everyConflictOrdered}'s last-write shortcut: that rests on the clocks
+     * being transitive, and a pair covered by a lock adds nothing to a clock. So each access is held
+     * against the latest access of each thread under each set of locks. Within one of those, an
+     * earlier access is ordered before the latest by program order and holds the same locks, so it
+     * adds nothing.
+     */
+    private static boolean everyConflictOrderedOrLocked(List<FieldAccessRecord> trace) {
+        List<FieldAccessRecord> latest = new ArrayList<>();
+        for (FieldAccessRecord access : trace) {
+            if (access.fingerprint == UNMODELLED) {
+                return false;
+            }
+            boolean replaced = false;
+            for (int i = 0; i < latest.size(); i++) {
+                FieldAccessRecord earlier = latest.get(i);
+                if (conflictUncovered(earlier, access)) {
+                    return false;
+                }
+                if (earlier.threadId == access.threadId && earlier.write == access.write
+                        && sameLocks(earlier, access)) {
+                    latest.set(i, access);
+                    replaced = true;
+                }
+            }
+            if (!replaced) {
+                latest.add(access);
+            }
+        }
+        return true;
+    }
+
+    /** {@return whether two accesses from two threads conflict with neither edge nor common lock} */
+    private static boolean conflictUncovered(FieldAccessRecord earlier, FieldAccessRecord later) {
+        if (earlier.threadId == later.threadId || !(earlier.write || later.write)) {
+            return false;
+        }
+        return !HappensBefore.ordered(earlier.orderThread(), earlier.orderStamp(),
+                        later.orderThread(), later.orderStamp())
+                && Lockset.intersect(heldLocksOf(earlier), heldLocksOf(later)).length == 0;
+    }
+
+    private static boolean sameLocks(FieldAccessRecord one, FieldAccessRecord other) {
+        return one.fingerprint == other.fingerprint && one.ownMonitor == other.ownMonitor
+                && one.methodMonitor == other.methodMonitor;
     }
 
     /** {@return whether some write to {@code instance} in {@code history} stored a named reference} */

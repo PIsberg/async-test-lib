@@ -601,6 +601,57 @@ class DetectorAccuracyEvalTest {
                         + "resizeThreshold hint - and reporting it reports the idiom, not a bug");
     }
 
+    /**
+     * Two threads each increment one plain field under {@code firstLock} and {@code secondLock}, and
+     * the calling thread then reads it with no lock, after joining them when {@code joined} says so.
+     */
+    private static AtomicityValidator lockedWritesThenAPlainRead(long firstLock, long secondLock,
+                                                                 boolean joined)
+            throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        long[] locks = {firstLock, secondLock};
+        HappensBefore.Stamp[] finished = new HappensBefore.Stamp[2];
+        for (int i = 0; i < 2; i++) {
+            int worker = i;
+            Thread thread = new Thread(() -> {
+                long self = Thread.currentThread().threadId();
+                agentAccess(validator, "ledger.balance", false, self, locks[worker], 83);
+                agentAccess(validator, "ledger.balance", true, self, locks[worker], 83);
+                finished[worker] = HappensBefore.handOff();
+            });
+            thread.start();
+            thread.join();
+        }
+        if (joined) {
+            HappensBefore.receive(finished[0]);
+            HappensBefore.receive(finished[1]);
+        }
+        agentAccess(validator, "ledger.balance", false, Thread.currentThread().threadId(), NO_LOCKS, 83);
+        return validator;
+    }
+
+    @Test
+    @DisplayName("atomicity: locked writes then a plain read after the join is silent")
+    void atomicityStaysSilentOnLockedWritesThenAReadAfterTheJoin() throws InterruptedException {
+        assertFalse(lockedWritesThenAPlainRead(WRITE_LOCK, WRITE_LOCK, true).analyze().hasIssues(),
+                "the writes exclude each other by the lock and the join orders the read after both, "
+                        + "so every conflicting pair is covered, each by one or the other");
+    }
+
+    @Test
+    @DisplayName("atomicity: the same read with no join still fires")
+    void atomicityFiresOnLockedWritesThenAnUnorderedPlainRead() throws InterruptedException {
+        assertTrue(lockedWritesThenAPlainRead(WRITE_LOCK, WRITE_LOCK, false).analyze().hasIssues(),
+                "nothing orders the read after the writes and it holds no lock");
+    }
+
+    @Test
+    @DisplayName("atomicity: writes under two locks still fire, whatever orders the read")
+    void atomicityFiresOnWritesUnderTwoLocksBeforeAJoin() throws InterruptedException {
+        assertTrue(lockedWritesThenAPlainRead(WRITE_LOCK, WRITE_LOCK + 1, true).analyze().hasIssues(),
+                "the join covers the read, and nothing covers the two writes");
+    }
+
     /** One access of double-checked locking on a field that stores {@code stored} (#1154). */
     private static void lazyAccess(AtomicityValidator validator, boolean write, long thread,
                                    long fingerprint, boolean volatileField, int stored) {
