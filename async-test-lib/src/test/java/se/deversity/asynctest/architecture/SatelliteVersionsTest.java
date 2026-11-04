@@ -59,6 +59,15 @@ class SatelliteVersionsTest {
     private static final int MIN_SATELLITE_POMS = 150;
     private static final int MIN_SATELLITE_GRADLE_BUILDS = 150;
     private static final int MIN_SHARED_PROPERTIES = 5;
+    private static final int MIN_INSTALL_COORDINATES = 5;
+
+    /** The documents whose install snippets {@code bump-version.sh} rewrites. */
+    private static final List<String> INSTALL_DOCS =
+            List.of("README.md", "docs/QUICK_REFERENCE.md", "docs/DISTRIBUTION.md", ".claude/SKILL.md");
+
+    /** A Gradle-shaped coordinate of one of this project's artifacts: {@code group:async-test-agent:1.2.3}. */
+    private static final Pattern LIBRARY_COORDINATE =
+            Pattern.compile("se\\.deversity\\.async-test-lib:async-test-[a-z-]+:(\\d[A-Za-z0-9.-]*)");
 
     private static final Pattern POM_PROPERTY = Pattern.compile("<([A-Za-z0-9._-]+)>([^<>]*)</\\1>");
     private static final Pattern PARENT_BLOCK = Pattern.compile("<parent>.*?</parent>", Pattern.DOTALL);
@@ -113,6 +122,34 @@ class SatelliteVersionsTest {
                 "versions/pom.xml <async-test.version> must equal the reactor version. CI publishes the working tree "
                         + "to the local repository as " + reactorVersion + "; a satellite pinned elsewhere resolves "
                         + "another release from Central and tests that instead. The release skill bumps both.");
+    }
+
+    /**
+     * The install snippets are what a reader copies. README's agent line sat on the previous
+     * release through 1.14.0 and into the 1.14.1 bump, because the bump script matched only the
+     * {@code async-test-lib:} coordinate and reported the {@code async-test-agent:} one as prose.
+     */
+    @Test
+    void installSnippetsNameTheReactorVersion() {
+        String reactorVersion = firstGroup(REACTOR_VERSION, read(repoRoot().resolve("pom.xml")));
+        List<String> stale = new ArrayList<>();
+        int seen = 0;
+        for (String doc : INSTALL_DOCS) {
+            Matcher coordinate = LIBRARY_COORDINATE.matcher(read(repoRoot().resolve(doc)));
+            while (coordinate.find()) {
+                seen++;
+                if (!coordinate.group(1).equals(reactorVersion)) {
+                    stale.add(doc + ": " + coordinate.group());
+                }
+            }
+        }
+        assertTrue(seen >= MIN_INSTALL_COORDINATES,
+                "Only " + seen + " library coordinates found in " + INSTALL_DOCS + ", expected at least "
+                        + MIN_INSTALL_COORDINATES + ". The snippets moved, or the pattern stopped matching them.");
+        assertTrue(stale.isEmpty(),
+                "Install snippets disagree with the reactor version " + reactorVersion + ". The release skill's "
+                        + "bump-version.sh rewrites these, so a hit here is a coordinate it did not match:\n  "
+                        + String.join("\n  ", stale));
     }
 
     @Test

@@ -46,7 +46,7 @@ import java.lang.reflect.Modifier;
  * are not {@code @AsyncTest}, and issues about an {@code @AsyncTest} for any other reason, are
  * left alone: an unresolvable parameter, for one, already fails the test visibly when it runs.
  *
- * @since 1.15.0
+ * @since 1.14.1
  */
 @API(status = Status.INTERNAL)
 public final class InvalidAsyncTestListener implements LauncherDiscoveryListener {

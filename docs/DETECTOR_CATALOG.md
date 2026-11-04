@@ -510,7 +510,7 @@ is judged by the locks it held throughout, so a lock-free read elsewhere does no
 made under a lock. One writer among readers loses nothing, and a compare-and-set spends the read. It
 sees calls and not values, so it cannot
 tell `set(get() + 1)` from a thread that reads a gauge and then stores an unrelated value, which is
-why a woven pair is graded `PROMPT`. A recorded pair stays `VERDICT`: the test's own call says the
+why a woven pair is graded `PROMPT` (#1187 tracks telling them apart). A recorded pair stays `VERDICT`: the test's own call says the
 update was compound, and one thread is enough. On an `AtomicReference`, storing an enum, a `Boolean` or
 `null` ends the read instead: those are statuses, like Jackson's `drainStatus`, which is read in one
 method and set to a constant in another, and they were the rule's false positive.

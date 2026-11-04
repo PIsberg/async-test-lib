@@ -445,7 +445,7 @@ public class AtomicityValidator {
      * Generation 0's owner named from an offer is not a take. Walks the takers on call, so it adds
      * nothing to the record path; a call during a run sees what has been drained so far.
      *
-     * @since 1.15.0
+     * @since 1.14.1
      */
     @API(status = Status.INTERNAL)
     public int ownershipTakes() {

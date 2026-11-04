@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-11-04
+
 ### Upgrading
+
+Read this before taking 1.14.1 as a routine patch. It carries what
+[SUPPORT_POLICY.md](SUPPORT_POLICY.md) calls minor: detectors that now fire on cases they missed
+(see Fixed), any of which can fail a build gating on that severity. Of the changes below, one removes
+a finding, and four can turn a green build red, on purpose: each names a test that never ran, a check
+that never failed, a key that was never verified, or an update that can be lost. The owner chose on
+2026-11-04 to keep the patch number.
 
 `DeprecatedThreadApiDetector.recordApiUse` now reports only the names in `DEPRECATED_APIS`, as it always
 documented (see Fixed). A wrapper passing another name, or one spelled with parentheses such as
@@ -30,8 +39,9 @@ declare the method `void`, and package-private or wider, on an instance.
 With the agent attached, two threads of a round that each read an `AtomicInteger` or `AtomicLong` and
 then set it, with no lock held across both, are now a `PROMPT`/`HIGH` finding (see Fixed). A build
 that fails on `HIGH` below `VERDICT` can go red where it was green. Use `updateAndGet` or a
-compare-and-set loop, or exclude `ATOMIC_NON_ATOMIC_UPDATE` where the stored value does not depend on
-the read. A recorded get and set is still `VERDICT`, as a finding rather than through the detector's
+compare-and-set loop. The check sees calls and not values, so it also reports a correct
+`log(gauge.get()); gauge.set(queue.size());` (#1187); exclude `ATOMIC_NON_ATOMIC_UPDATE` on such a test,
+which also drops the check for real lost updates in it. A recorded get and set is still `VERDICT`, as a finding rather than through the detector's
 tier, which is now `PROMPT`.
 
 ### Fixed
@@ -184,6 +194,10 @@ tier, which is now `PROMPT`.
 
 ### Maintenance
 
+- **`bump-version.sh` now moves every module's coordinate.** It matched `async-test-lib:` only, so
+  README's `asyncTestAgent(...)` line was reported as prose and stayed on the previous release, in
+  the 1.14.0 bump and again in this one. `SatelliteVersionsTest.installSnippetsNameTheReactorVersion`
+  now fails when an install snippet names another version.
 - **The corpus now pairs common concurrency mistakes written as plain code.** Three agent pairs
   give `THREAD_LOCAL_LEAKS`, `THREAD_POOL` and `COMPLETABLE_FUTURE_COMPLETION_LEAKS` their first pair
   through the woven path, and ten idiom pairs cover shared collections, get-then-put counting, lazy
