@@ -32,6 +32,11 @@ selects. The owner chose on 2026-10-06 to keep the 1.x line rather than call it 
 deleted the waiver, so every break against 1.13.1 fails the build. 1.13.0 itself never reached Maven Central (#949), so the first 1.13
 on Central is 1.13.1, which ships the same breaks.
 
+**The 1.14.1 exception.** 1.14.1 is a patch release carrying what the table above calls minor:
+detectors that now fire on cases they missed, and four behaviour changes that can turn a green build
+red, listed under Upgrading in [its changelog entry](CHANGELOG.md). The owner chose on 2026-11-04 to
+keep the patch number. japicmp sees neither kind of change, because the signatures stay compatible.
+
 **What is not covered.** Anything in a package containing `internal`,
 the exact text of a report or an assertion message, and the `async-test-agent` and
 `async-test-analysis` artifacts' internals. The agent's `-javaagent` contract and the analysis

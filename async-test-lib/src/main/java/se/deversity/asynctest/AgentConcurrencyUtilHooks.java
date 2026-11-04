@@ -3443,7 +3443,7 @@ public final class AgentConcurrencyUtilHooks {
      *
      * @param executor the executor to wrap
      * @return what the JDK returns
-     * @since 1.15.0
+     * @since 1.14.1
      */
     public static ExecutorService unconfigurableExecutorService(ExecutorService executor) {
         ControlledSchedule.point();
@@ -3458,7 +3458,7 @@ public final class AgentConcurrencyUtilHooks {
      *
      * @param executor the executor to wrap
      * @return what the JDK returns
-     * @since 1.15.0
+     * @since 1.14.1
      */
     public static ScheduledExecutorService unconfigurableScheduledExecutorService(
             ScheduledExecutorService executor) {
