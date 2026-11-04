@@ -5,7 +5,7 @@
 #
 # Two passes:
 #   1. Allowlisted files  — rewrite the current version only where it is a PIN
-#                           (<version>, <*.version>, an async-test-lib coordinate, or
+#                           (<version>, <*.version>, an async-test-* module coordinate, or
 #                           asyncTestVersion). Prose that merely mentions the version is
 #                           reported, never rewritten: this pass used to be a blind
 #                           s/CURRENT/NEW/g, which moved "since 1.7.0" notes onto the new
@@ -123,7 +123,7 @@ for f in "${ALLOWLIST[@]}"; do
     unless ($in_old) {
       s{(<version>)\Q$ENV{CURRENT}\E(</version>)}{$1$ENV{NEW}$2}g;
       s{(<async-test(?:-lib)?\.version>)\Q$ENV{CURRENT}\E(</async-test(?:-lib)?\.version>)}{$1$ENV{NEW}$2}g;
-      s{(async-test-lib:)\Q$ENV{CURRENT}\E}{$1$ENV{NEW}}g;
+      s{(async-test-[a-z-]+:)\Q$ENV{CURRENT}\E}{$1$ENV{NEW}}g;
       s{(asyncTestVersion = ")\Q$ENV{CURRENT}\E(")}{$1$ENV{NEW}$2}g;
     }
     $in_old = 0 if m{</oldVersion>};
@@ -156,7 +156,7 @@ for f in "${ALLOWLIST[@]}"; do
     $in_old = 1 if m{<oldVersion>};
     print "$ENV{FILE}:$.:$_"
       if !$in_old
-      && /(?:<version>|<async-test(?:-lib)?\.version>|async-test-lib:|asyncTestVersion = ")\Q$ENV{CURRENT}\E/;
+      && /(?:<version>|<async-test(?:-lib)?\.version>|async-test-[a-z-]+:|asyncTestVersion = ")\Q$ENV{CURRENT}\E/;
     $in_old = 0 if m{</oldVersion>};
   ' "$f")"
   # Not `[[ ... ]] && missed=...`: under `set -e` a false test as the last command in the loop
