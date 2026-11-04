@@ -1,0 +1,92 @@
+package se.deversity.asynctest.agent;
+
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * The side analysis reads a class's own bytes and says, for each atomic store, whether the stored
+ * value was built from an atomic read (#1187). A store from an unrelated size is not a lost update;
+ * one built from the read is.
+ */
+class AtomicStoreTaintAnalysisTest {
+
+    private static byte[] classBytes(String internalName) throws IOException {
+        try (InputStream in = AtomicStoreTaintAnalysisTest.class.getClassLoader()
+                .getResourceAsStream(internalName + ".class")) {
+            assertTrue(in != null, "fixture class must be on the test class path: " + internalName);
+            return in.readAllBytes();
+        }
+    }
+
+    private static AtomicStoreTaintAnalysis.StoreVerdict onlyStoreIn(List<AtomicStoreTaintAnalysis.StoreVerdict> all,
+                                                                    String method) {
+        List<AtomicStoreTaintAnalysis.StoreVerdict> here = all.stream()
+                .filter(v -> v.method().startsWith(method + "(")).toList();
+        assertEquals(1, here.size(), "exactly one atomic store in " + method + ": " + all);
+        return here.get(0);
+    }
+
+    @Test
+    void aStoreFromAnUnrelatedSizeIsNotDerivedFromTheRead() throws IOException {
+        var verdicts = AtomicStoreTaintAnalysis.analyze(
+                classBytes("com/example/agentfixture/ReadThenUnrelatedStoreBean"));
+
+        var store = onlyStoreIn(verdicts, "sample");
+        assertEquals("java/util/concurrent/atomic/AtomicInteger", store.owner());
+        assertFalse(store.derived(),
+                "gauge.set(queue.size()) builds nothing from the gauge's read, so no update is lost");
+    }
+
+    @Test
+    void aStoreBuiltFromTheReadIsDerived() throws IOException {
+        var verdicts = AtomicStoreTaintAnalysis.analyze(
+                classBytes("com/example/agentfixture/ReadThenDerivedStoreBean"));
+
+        assertTrue(onlyStoreIn(verdicts, "increment").derived(),
+                "counter.set(v + 1) with v read from counter is the lost update the rule exists for");
+    }
+
+    @Test
+    void aTwoWordValueBuiltFromTheReadIsDerived() throws IOException {
+        var verdicts = AtomicStoreTaintAnalysis.analyze(
+                classBytes("com/example/agentfixture/AtomicStoreShapesBean"));
+
+        assertTrue(onlyStoreIn(verdicts, "longIncrement").derived(),
+                "total.set(v + 1L) with a long v read from total is derived, and the analysis must keep "
+                        + "the long's second word through the add to see it");
+    }
+
+    @Test
+    void aConstantStoreAfterAnIgnoredReadIsNotDerived() throws IOException {
+        var verdicts = AtomicStoreTaintAnalysis.analyze(
+                classBytes("com/example/agentfixture/AtomicStoreShapesBean"));
+
+        assertFalse(onlyStoreIn(verdicts, "constantAfterAnIgnoredRead").derived(),
+                "the read's result is dropped, so set(0) builds on nothing the read returned");
+    }
+
+    @Test
+    void aReadThatReachesTheStoreOnOnePathIsDerived() throws IOException {
+        var verdicts = AtomicStoreTaintAnalysis.analyze(
+                classBytes("com/example/agentfixture/AtomicStoreShapesBean"));
+
+        assertTrue(onlyStoreIn(verdicts, "readOnOneBranch").derived(),
+                "the merge keeps a value derived on any path into it: a lost update on that path is still one");
+    }
+
+    @Test
+    void aReadOfOneAtomicStoredIntoAnotherIsDerivedByTheConservativeRule() throws IOException {
+        var verdicts = AtomicStoreTaintAnalysis.analyze(
+                classBytes("com/example/agentfixture/AtomicStoreShapesBean"));
+
+        assertTrue(onlyStoreIn(verdicts, "readOfOneAtomicStoredInAnother").derived(),
+                "a read of any atomic taints a store into any other: the analysis does not track which atomic");
+    }
+}

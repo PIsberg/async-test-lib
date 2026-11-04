@@ -39,6 +39,22 @@
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy-agent</artifactId>
         </dependency>
+        <!-- ASM tree and analysis: a side analysis of a woven class's own bytes, so the agent can tell a
+             get-then-set whose stored value is built from the read from one whose value is not (#1187).
+             Byte Buddy's shaded ASM has no tree or analysis package, so these are the unshaded artifacts,
+             relocated into the agent jar below. -->
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-tree</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-analysis</artifactId>
+        </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -130,12 +146,21 @@
                         <includes>
                             <include>net.bytebuddy:byte-buddy</include>
                             <include>net.bytebuddy:byte-buddy-agent</include>
+                            <include>org.ow2.asm:asm</include>
+                            <include>org.ow2.asm:asm-tree</include>
+                            <include>org.ow2.asm:asm-analysis</include>
                         </includes>
                     </artifactSet>
                     <relocations>
                         <relocation>
                             <pattern>net.bytebuddy</pattern>
                             <shadedPattern>se.deversity.asynctest.agent.shaded.bytebuddy</shadedPattern>
+                        </relocation>
+                        <!-- Unshaded ASM would clash with an application's own ASM copy on the
+                             classpath, which Byte Buddy's relocation already avoids. -->
+                        <relocation>
+                            <pattern>org.objectweb.asm</pattern>
+                            <shadedPattern>se.deversity.asynctest.agent.shaded.asm</shadedPattern>
                         </relocation>
                     </relocations>
                     <filters>
