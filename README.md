@@ -811,15 +811,20 @@ Chapter 17, "The Asynchronous Trap", is about the class of bug AI-generated conc
 
 ### Commercial licensing — pricing
 
-Commercial use requires an annual license. One key covers your whole team — there are no per-seat
-keys. Prices are per year, excluding VAT or sales tax:
+Commercial use requires an annual license, priced in bands by the number of developers whose builds
+run the library. One key covers every developer in your band, with no per-seat keys. Prices are per
+year, excluding VAT or sales tax:
 
 | Developers | Price (EUR/year) |
 |---|---|
 | 1–9 | €250 |
 | 10–49 | €900 |
 | 50–199 | €2,500 |
-| 200+ | €6,000 |
+| 200–399 | €6,000 |
+| 400–599 | €9,000 |
+| 600–799 | €12,000 |
+| 800–999 | €15,000 |
+| 1,000 or more | quoted by email |
 | OEM / redistribution | from €10,000, negotiated |
 
 **[Buy a license at deversity.se/pricing.html →](https://deversity.se/pricing.html)**
