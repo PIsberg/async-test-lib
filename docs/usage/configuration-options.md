@@ -222,7 +222,7 @@ AsyncTestContext.cfCommonPoolBlockingDetector()             // CompletableFuture
 | `SYSTEM_PROPERTY_MUTATION` | Detect concurrent `System.setProperty()` / `clearProperty()` calls causing non-deterministic configuration |
 | `FUTURE_IGNORED` | Detect `Future`s from `submit()` that are never inspected — exceptions from failed tasks are silently swallowed |
 | `EXPLICIT_GC` | Detect `System.gc()` / `Runtime.gc()` invocations that trigger unpredictable STW pauses mid-test |
-| `DEPRECATED_THREAD_API` | Detect calls to `Thread.stop()`, `Thread.suspend()`, `Thread.resume()`, `Thread.destroy()`, `Thread.countStackFrames()` |
+| `DEPRECATED_THREAD_API` | Detect calls to `Thread.stop()`, `Thread.suspend()`, `Thread.resume()`, `Thread.destroy()`, `Thread.countStackFrames()`, `Thread.getId()` |
 | `SHARED_XML_PARSER` | Detect `DocumentBuilder` / `SAXParser` / `Transformer` / `XPath` instances accessed from multiple threads |
 | `BOXED_PRIMITIVE_LOCK` | Detect `synchronized` on cached `Integer`/`Long` (−128..127), `Boolean.TRUE/FALSE`, or interned `String` literals |
 | `SHARED_TIMEZONE` | Detect `TimeZone` instances mutated (`setRawOffset`, `setID`) from multiple threads |
