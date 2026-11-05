@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Dependencies bumped to their latest stable releases: error-prone 2.50.0 to 2.52.0 (with NullAway 0.14.2 to 0.14.3), PMD 7.28.0 to 7.29.0, Checkstyle 14.3.0 to 14.4.0, Guava 33.7.2 to 33.8.0, Netty 4.2.19 to 4.2.20, Spring 7.0.9 to 7.0.10, Byte Buddy 1.18.16 to 1.18.17, Pitest 1.30.1 to 1.30.2, japicmp plugin 0.26.5 to 0.27.0, vibetags 1.4.0 to 1.4.1, the Gradle plugin pins (errorprone 5.2.0, JMH 0.7.4, IntelliJ platform 2.20.0, logback 1.6.6), the Copilot CLI 1.0.105, and the GitHub Actions SHAs (harden-runner 2.22.3, gradle actions 6.4.1, CodeQL 4.39.1, setup-java 6.2.0, cosign-installer 4.1.3, claude-code-action).
+
 ### Fixed
 
 - `AtomicNonAtomicUpdate` no longer reports a plain store whose value was never built from the
