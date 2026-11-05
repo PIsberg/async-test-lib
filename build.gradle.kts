@@ -8,7 +8,7 @@ plugins {
     // java-library / jacoco / pmd are core Gradle plugins — they are already on the classpath and
     // cannot be declared here with `apply false`. Subprojects apply them directly below.
     id("com.vanniktech.maven.publish") version "0.37.0" apply false
-    id("net.ltgt.errorprone") version "5.1.1" apply false
+    id("net.ltgt.errorprone") version "5.2.0" apply false
     id("com.github.spotbugs") version "6.5.13" apply false
     id("org.cyclonedx.bom") version "3.5.1"
     // Shades a relocated Byte Buddy into the agent jar, as maven-shade-plugin does. Applied only
@@ -80,7 +80,7 @@ extra["pmdVersion"] = pomVersion("pmd.version")
 // Gradle-only, with no Maven twin: Maven's test run has no SLF4J binding, so this backend exists
 // only for `./gradlew test`. Kept current by the gradle Dependabot ecosystem, along with the
 // plugin versions above.
-extra["logbackVersion"] = "1.6.5"     // test-only SLF4J backend, built against slf4j 2.0.18
+extra["logbackVersion"] = "1.6.6"     // test-only SLF4J backend, built against slf4j 2.0.18
 
 subprojects {
     apply(plugin = "java-library")
