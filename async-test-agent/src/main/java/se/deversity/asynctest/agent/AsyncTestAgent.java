@@ -4,6 +4,7 @@ import net.bytebuddy.agent.ByteBuddyAgent;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.dynamic.ClassFileLocator;
 import net.bytebuddy.dynamic.DynamicType;
 import net.bytebuddy.matcher.ElementMatcher;
 import net.bytebuddy.asm.AsmVisitorWrapper;
@@ -14,6 +15,7 @@ import se.deversity.vibetags.annotations.AICore;
 
 import java.lang.instrument.Instrumentation;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 
@@ -423,8 +425,12 @@ public final class AsyncTestAgent {
                     // monitor. That weaker duplicate re-merged every instance of a field under
                     // one identity-0 key and is exactly why Guava's cache entries kept a finding
                     // that the per-instance stream had already cleared.
+                    // Read from the class file the loader supplies, since the transformer is only
+                    // handed a type description. A class that cannot be read keeps every store on
+                    // the hook it had before (#1187).
                     DynamicType.Builder<?> woven = weaveFields
-                            ? b.visit(FieldAccessWeaver.visitor())
+                            ? b.visit(FieldAccessWeaver.visitor(true,
+                                    storeVerdicts(typeDescription, classLoader)))
                             : b.visit(Advice.to(ReadAccessAdvice.class)
                                              .on(ElementMatchers.isGetter()))
                                .visit(Advice.to(WriteAccessAdvice.class)
@@ -634,6 +640,32 @@ public final class AsyncTestAgent {
             matcher = matcher.or(ElementMatchers.nameStartsWith(prefix));
         }
         return matcher;
+    }
+
+    /**
+     * {@return, for each atomic store of the type, whether its stored value was built from an atomic
+     * read, read from the class file its loader supplies (#1187)}
+     *
+     * <p>Empty when the bytes cannot be read or analysed, which leaves every store woven as it was
+     * before the analysis existed: a finding kept, never a finding lost by accident.
+     *
+     * @param type   the type being woven
+     * @param loader the type's defining loader, which resolves its class file
+     */
+    private static Map<String, List<Boolean>> storeVerdicts(TypeDescription type,
+                                                            @Nullable ClassLoader loader) {
+        if (loader == null) {
+            return Map.of();
+        }
+        try {
+            ClassFileLocator.Resolution resolution =
+                    ClassFileLocator.ForClassLoader.of(loader).locate(type.getName());
+            return resolution.isResolved()
+                    ? AtomicStoreTaintAnalysis.derivedByMethod(resolution.resolve())
+                    : Map.of();
+        } catch (Throwable t) { // NOPMD - any failure to read the bytes means "keep the old finding"
+            return Map.of();
+        }
     }
 
     /**

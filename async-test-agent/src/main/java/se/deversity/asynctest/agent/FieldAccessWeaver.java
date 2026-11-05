@@ -287,7 +287,21 @@ final class FieldAccessWeaver {
      * @param weaveFieldInstructions whether {@code GETFIELD} and {@code PUTFIELD} are observed too
      */
     static AsmVisitorWrapper visitor(boolean weaveFieldInstructions) {
-        return new ClassLevelWrapper(weaveFieldInstructions);
+        return new ClassLevelWrapper(weaveFieldInstructions, Map.of());
+    }
+
+    /**
+     * {@return a visitor wrapper as {@link #visitor(boolean)}, which also substitutes a store the
+     * class's own bytes show was not built from an atomic read (#1187)}
+     *
+     * @param weaveFieldInstructions whether {@code GETFIELD} and {@code PUTFIELD} are observed too
+     * @param storeVerdicts          per method ({@code name + descriptor}), whether each atomic store
+     *                               in instruction order was derived from a read; from
+     *                               {@link AtomicStoreTaintAnalysis#derivedByMethod}
+     */
+    static AsmVisitorWrapper visitor(boolean weaveFieldInstructions,
+                                     Map<String, List<Boolean>> storeVerdicts) {
+        return new ClassLevelWrapper(weaveFieldInstructions, storeVerdicts);
     }
 
     /**
@@ -301,7 +315,8 @@ final class FieldAccessWeaver {
      * <p>The initializer is visited and never woven: class initialisation already runs under the
      * JVM's own lock, so recording accesses there buys nothing.
      */
-    private record ClassLevelWrapper(boolean weaveFieldInstructions) implements AsmVisitorWrapper {
+    private record ClassLevelWrapper(boolean weaveFieldInstructions,
+                                     Map<String, List<Boolean>> storeVerdicts) implements AsmVisitorWrapper {
 
         @Override
         public int mergeWriter(int flags) {
@@ -350,7 +365,8 @@ final class FieldAccessWeaver {
                             "<init>".equals(name),
                             (access & Opcodes.ACC_SYNCHRONIZED) != 0,
                             (access & Opcodes.ACC_STATIC) != 0,
-                            internalName, classConstantsUsable);
+                            internalName, classConstantsUsable,
+                            storeVerdicts.getOrDefault(name + descriptor, List.of()));
                 }
             };
         }
@@ -423,6 +439,15 @@ final class FieldAccessWeaver {
     private static final class FieldAccessMethodVisitor extends MethodVisitor {
 
         private final boolean weaveFieldInstructions;
+
+        /**
+         * Whether each atomic store of this method, in order, was derived from an atomic read (#1187).
+         * Empty when the class's bytes were not read, which leaves every store on the old hook.
+         */
+        private final List<Boolean> storeVerdicts;
+
+        /** How many atomic stores this method has visited so far: the ordinal of the next one. */
+        private int atomicStores;
 
         private final TypePool typePool;
 
@@ -505,8 +530,10 @@ final class FieldAccessWeaver {
         FieldAccessMethodVisitor(MethodVisitor delegate, boolean weaveFieldInstructions,
                                  TypePool typePool, boolean constructor,
                                  boolean methodSynchronized, boolean methodStatic,
-                                 String classInternalName, boolean classConstantsUsable) {
+                                 String classInternalName, boolean classConstantsUsable,
+                                 List<Boolean> storeVerdicts) {
             super(Opcodes.ASM9, delegate);
+            this.storeVerdicts = storeVerdicts;
             this.weaveFieldInstructions = weaveFieldInstructions;
             this.typePool = typePool;
             this.thisIsUninitialised = constructor;
@@ -750,6 +777,18 @@ final class FieldAccessWeaver {
             String boundField = noteAtomicBinding(name);
             String hook = weaveFieldInstructions ? spinLockHook(opcode, owner, name, descriptor)
                     : null;
+            if (AtomicStoreTaintAnalysis.isAtomicStore(owner, name, descriptor)) {
+                boolean derived = atomicStores >= storeVerdicts.size()
+                        || storeVerdicts.get(atomicStores);
+                atomicStores++;
+                // A store whose value was never built from a read cannot lose an update that read
+                // would have guarded, so it takes the twin hook that reports it as an update with no
+                // read before it instead (#1187). Each store form has a twin named by appending
+                // "Unrelated" to its hook; TelemetryRegistry defines one for every form listed here.
+                if (!derived && hook != null) {
+                    hook = hook + "Unrelated";
+                }
+            }
             String slotHook = weaveFieldInstructions && hook == null
                     ? referenceSlotHook(opcode, owner, name, descriptor) : null;
             boolean messagePassingOffer = weaveFieldInstructions
