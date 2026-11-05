@@ -111,12 +111,11 @@ final class AtomicStoreTaintAnalysis {
      * @param descriptor the method descriptor
      */
     static boolean isAtomicStore(String owner, String name, String descriptor) {
-        String value = switch (owner) {
-            case ATOMIC_INTEGER -> "(I)V";
-            case ATOMIC_LONG -> "(J)V";
-            default -> null;
-        };
-        return value != null && descriptor.equals(value) && switch (name) {
+        if (!isAtomicLongOrInt(owner)) {
+            return false;
+        }
+        String expected = ATOMIC_LONG.equals(owner) ? "(J)V" : "(I)V";
+        return expected.equals(descriptor) && switch (name) {
             case "set", "lazySet", "setPlain", "setOpaque", "setRelease" -> true;
             default -> false;
         };
