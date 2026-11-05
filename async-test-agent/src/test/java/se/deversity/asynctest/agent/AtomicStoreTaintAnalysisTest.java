@@ -1,6 +1,9 @@
 package se.deversity.asynctest.agent;
 
 import org.junit.jupiter.api.Test;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -38,10 +41,14 @@ class AtomicStoreTaintAnalysisTest {
         var verdicts = AtomicStoreTaintAnalysis.analyze(
                 classBytes("com/example/agentfixture/ReadThenUnrelatedStoreBean"));
 
-        var store = onlyStoreIn(verdicts, "sample");
-        assertEquals("java/util/concurrent/atomic/AtomicInteger", store.owner());
-        assertFalse(store.derived(),
-                "gauge.set(queue.size()) builds nothing from the gauge's read, so no update is lost");
+        // Both stores in sample: set (#1187) and lazySet, each after a read whose value it ignores.
+        var stores = verdicts.stream().filter(v -> v.method().startsWith("sample(")).toList();
+        assertEquals(2, stores.size(), "one set and one lazySet in sample: " + verdicts);
+        for (var store : stores) {
+            assertEquals("java/util/concurrent/atomic/AtomicInteger", store.owner());
+            assertFalse(store.derived(),
+                    "gauge.set(queue.size()) builds nothing from the gauge's read, so no update is lost");
+        }
     }
 
     @Test
@@ -88,5 +95,42 @@ class AtomicStoreTaintAnalysisTest {
 
         assertTrue(onlyStoreIn(verdicts, "readOfOneAtomicStoredInAnother").derived(),
                 "a read of any atomic taints a store into any other: the analysis does not track which atomic");
+    }
+
+    /**
+     * The weaver matches each store to its verdict by ordinal within the method, so a store the
+     * analysis cannot reach must still get a verdict. javac never emits dead code, so this class is
+     * built with ASM: a reachable set, then a second set after a {@code return}.
+     */
+    @Test
+    void aStoreInUnreachableCodeKeepsItsVerdictSoOrdinalsStayAligned() {
+        byte[] bytes = classWithDeadStoreAfterReturn();
+
+        var byMethod = AtomicStoreTaintAnalysis.derivedByMethod(bytes);
+
+        assertEquals(List.of(false, true),
+                byMethod.get("m(Ljava/util/concurrent/atomic/AtomicInteger;)V"),
+                "the reachable constant store is not derived; the dead store gets the conservative verdict");
+    }
+
+    private static byte[] classWithDeadStoreAfterReturn() {
+        String atomicInteger = "java/util/concurrent/atomic/AtomicInteger";
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V1_5, Opcodes.ACC_PUBLIC, "Unreachable", null, "java/lang/Object", null);
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "m",
+                "(Ljava/util/concurrent/atomic/AtomicInteger;)V", null, null);
+        mv.visitCode();
+        mv.visitVarInsn(Opcodes.ALOAD, 0);
+        mv.visitInsn(Opcodes.ICONST_1);
+        mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, atomicInteger, "set", "(I)V", false);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitVarInsn(Opcodes.ALOAD, 0);
+        mv.visitInsn(Opcodes.ICONST_2);
+        mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, atomicInteger, "set", "(I)V", false);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(2, 1);
+        mv.visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
     }
 }

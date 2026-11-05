@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `AtomicNonAtomicUpdate` no longer reports a plain store whose value was never built from the
+  atomic read it followed. `gauge.get()` used for a log line, then `gauge.set(queue.size())`, lost no
+  update, and was reported as one (#1187). The agent now reads each class's bytes, decides per store
+  whether the stored value was derived from a read in the same method, and weaves a store that was not
+  through a hook that reports it as an update with no read before it. Covers `set`, `lazySet`,
+  `setPlain`, `setOpaque` and `setRelease` on `AtomicInteger`, and `set`, `lazySet` and `setRelease` on
+  `AtomicLong`. A store the analysis cannot read keeps the old finding. Applies with `fields=true`.
+  Known limit: the analysis is per method, so a value passed through another method counts as derived.
+
 ## [1.14.1] - 2026-11-04
 
 ### Upgrading

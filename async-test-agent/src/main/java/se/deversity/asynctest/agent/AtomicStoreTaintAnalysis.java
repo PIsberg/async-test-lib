@@ -17,7 +17,9 @@ import org.objectweb.asm.tree.analysis.Value;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Decides, for each atomic store in a class's own bytes, whether the stored value was built from an
@@ -78,7 +80,7 @@ final class AtomicStoreTaintAnalysis {
             // Unanalysable: keep the verdict the rule gave before this analysis existed.
             for (int i = 0; i < m.instructions.size(); i++) {
                 AbstractInsnNode insn = m.instructions.get(i);
-                if (insn instanceof MethodInsnNode call && isAtomicStore(call)) {
+                if (insn instanceof MethodInsnNode call && isAtomicStore(call.owner, call.name, call.desc)) {
                     out.add(new StoreVerdict(m.name + m.desc, i, call.owner, true));
                 }
             }
@@ -86,21 +88,55 @@ final class AtomicStoreTaintAnalysis {
         }
         for (int i = 0; i < m.instructions.size(); i++) {
             AbstractInsnNode insn = m.instructions.get(i);
-            if (!(insn instanceof MethodInsnNode call) || !isAtomicStore(call) || frames[i] == null) {
+            if (!(insn instanceof MethodInsnNode call) || !isAtomicStore(call.owner, call.name, call.desc)) {
                 continue;
             }
+            // A store the analysis never reaches (dead code) gets the conservative verdict, not no
+            // verdict: the weaver matches stores to verdicts by ordinal, so a missing one would
+            // hand every later store in the method the wrong verdict.
             Frame<Taint> before = frames[i];
-            Taint stored = before.getStack(before.getStackSize() - 1);
-            out.add(new StoreVerdict(m.name + m.desc, i, call.owner, stored != null && stored.derived()));
+            Taint stored = before == null ? null : before.getStack(before.getStackSize() - 1);
+            out.add(new StoreVerdict(m.name + m.desc, i, call.owner, stored == null || stored.derived()));
         }
     }
 
-    /** A {@code set}-family call on an atomic int or long: the stored value is its one argument. */
-    private static boolean isAtomicStore(MethodInsnNode call) {
-        return isAtomicLongOrInt(call.owner) && switch (call.name) {
-            case "set", "lazySet", "setRelease", "setOpaque" -> true;
+    /**
+     * {@return whether the call is a plain store to an {@code AtomicInteger} or {@code AtomicLong}}
+     *
+     * <p>This is the one predicate both the analysis and the weaver count stores with, so the
+     * ordinal of a store within its method means the same thing to each.
+     *
+     * @param owner      the call's owner, in internal form
+     * @param name       the method name
+     * @param descriptor the method descriptor
+     */
+    static boolean isAtomicStore(String owner, String name, String descriptor) {
+        String value = switch (owner) {
+            case ATOMIC_INTEGER -> "(I)V";
+            case ATOMIC_LONG -> "(J)V";
+            default -> null;
+        };
+        return value != null && descriptor.equals(value) && switch (name) {
+            case "set", "lazySet", "setPlain", "setOpaque", "setRelease" -> true;
             default -> false;
         };
+    }
+
+    /**
+     * {@return, for each method of the class that stores to an atomic, the verdict of each such store
+     * in instruction order, keyed by {@code name + descriptor}}
+     *
+     * <p>The weaver matches a store to its verdict by the store's ordinal within its method, so a
+     * method missing from this map, or a list shorter than the method's stores, means "derived".
+     *
+     * @param classBytes the class file's bytes, as the class loader supplied them
+     */
+    static Map<String, List<Boolean>> derivedByMethod(byte[] classBytes) {
+        Map<String, List<Boolean>> byMethod = new HashMap<>();
+        for (StoreVerdict v : analyze(classBytes)) {
+            byMethod.computeIfAbsent(v.method(), k -> new ArrayList<>()).add(v.derived());
+        }
+        return byMethod;
     }
 
     /** A read of an atomic int or long: a {@code get} variant, whose result a store may build on. */

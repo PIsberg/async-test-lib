@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ReadThenUnrelatedStoreBean {
 
     private final AtomicInteger gauge = new AtomicInteger();
+    private final AtomicInteger lazyGauge = new AtomicInteger();
     private final ConcurrentLinkedQueue<Integer> queue = new ConcurrentLinkedQueue<>();
     private volatile int logged;
 
@@ -18,5 +19,9 @@ public class ReadThenUnrelatedStoreBean {
         int seen = gauge.get();
         logged = seen;
         gauge.set(queue.size());
+        // The same shape through lazySet, which has its own weaver twin (#1187).
+        int lazySeen = lazyGauge.get();
+        logged = lazySeen;
+        lazyGauge.lazySet(queue.size());
     }
 }

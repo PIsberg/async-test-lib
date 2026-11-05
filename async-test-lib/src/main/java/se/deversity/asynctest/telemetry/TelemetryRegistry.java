@@ -875,6 +875,73 @@ public final class TelemetryRegistry {
         count.set(value);
     }
 
+    /**
+     * Weaves {@code AtomicLong.set} whose value was not built from an atomic read (#1187), as
+     * {@link #setAtomicIntegerUnrelated}.
+     *
+     * @param count the atomic the call site wrote
+     * @param value the value it stored
+     */
+    public static void setAtomicLongUnrelated(AtomicLong count, long value) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        ControlledSchedule.point();
+        count.set(value);
+    }
+
+    /** Weaves {@code AtomicLong.lazySet} whose value was not built from a read (#1187). */
+    public static void lazySetAtomicLongUnrelated(AtomicLong count, long value) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        count.lazySet(value);
+    }
+
+    /** Weaves {@code AtomicLong.setRelease} whose value was not built from a read (#1187). */
+    public static void setReleaseAtomicLongUnrelated(AtomicLong count, long value) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        count.setRelease(value);
+    }
+
+    /** Weaves {@code AtomicInteger.lazySet} whose value was not built from a read (#1187); 0 releases. */
+    public static void lazySetAtomicIntegerUnrelated(AtomicInteger count, int value) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        ControlledSchedule.point();
+        if (value == 0) {
+            SpinLocks.release(count);
+        }
+        count.lazySet(value);
+    }
+
+    /** Weaves {@code AtomicInteger.setPlain} whose value was not built from a read (#1187); 0 releases. */
+    public static void setPlainAtomicIntegerUnrelated(AtomicInteger count, int value) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        ControlledSchedule.point();
+        if (value == 0) {
+            SpinLocks.release(count);
+        }
+        count.setPlain(value);
+    }
+
+    /** Weaves {@code AtomicInteger.setOpaque} whose value was not built from a read (#1187); 0 releases. */
+    public static void setOpaqueAtomicIntegerUnrelated(AtomicInteger count, int value) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        ControlledSchedule.point();
+        if (value == 0) {
+            SpinLocks.release(count);
+        }
+        count.setOpaque(value);
+    }
+
+    /** Weaves {@code AtomicInteger.setRelease} whose value was not built from a read (#1187); 0 releases. */
+    public static void setReleaseAtomicIntegerUnrelated(AtomicInteger count, int value) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        ControlledSchedule.point();
+        if (value == 0) {
+            SpinLocks.release(count);
+        }
+        count.setRelease(value);
+    }
+
     /** Weaves {@code AtomicLong.lazySet}. @param count the atomic @param value the value @since 1.14.1 */
     public static void lazySetAtomicLong(AtomicLong count, long value) {
         ControlledSchedule.point();
@@ -922,6 +989,23 @@ public final class TelemetryRegistry {
     /** Weaves {@code AtomicInteger.set}; storing 0 releases. @param count the atomic @param value the value @since 1.12.1 */
     public static void setAtomicInteger(AtomicInteger count, int value) {
         AgentConcurrencyUtilHooks.atomicStored(count);
+        ControlledSchedule.point();
+        if (value == 0) {
+            SpinLocks.release(count);
+        }
+        count.set(value);
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.set} whose value was not built from an atomic read (#1187): the
+     * store cannot lose an update a read guarded, so it is an update with no read before it, which
+     * is {@link #compareAndSetAtomicInteger}'s shape, not a plain store. Still a release on 0.
+     *
+     * @param count the atomic the call site wrote
+     * @param value the value it stored
+     */
+    public static void setAtomicIntegerUnrelated(AtomicInteger count, int value) {
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         if (value == 0) {
             SpinLocks.release(count);
