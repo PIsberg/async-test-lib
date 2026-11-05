@@ -1,6 +1,7 @@
 // Optional Byte Buddy field-access agent. The only module allowed to touch net.bytebuddy.
 val junitVersion = rootProject.extra["junitVersion"] as String
 val byteBuddyVersion = rootProject.extra["byteBuddyVersion"] as String
+val asmVersion = rootProject.extra["asmVersion"] as String
 val ecjVersion = rootProject.extra["ecjVersion"] as String
 val jakartaPersistenceVersion = rootProject.extra["jakartaPersistenceVersion"] as String
 val logbackVersion = rootProject.extra["logbackVersion"] as String
@@ -11,6 +12,11 @@ dependencies {
     implementation("net.bytebuddy:byte-buddy:$byteBuddyVersion")
     // Byte Buddy Agent: runtime self-attach (AsyncTestAgent.selfAttach)
     implementation("net.bytebuddy:byte-buddy-agent:$byteBuddyVersion")
+    // Unshaded ASM for the side analysis of each class's atomic stores (AtomicStoreTaintAnalysis,
+    // #1187). Byte Buddy's shaded ASM has no tree or analysis package. Maven declares the same three.
+    implementation("org.ow2.asm:asm:$asmVersion")
+    implementation("org.ow2.asm:asm-tree:$asmVersion")
+    implementation("org.ow2.asm:asm-analysis:$asmVersion")
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
@@ -50,8 +56,13 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
     dependencies {
         include(dependency("net.bytebuddy:byte-buddy"))
         include(dependency("net.bytebuddy:byte-buddy-agent"))
+        include(dependency("org.ow2.asm:asm"))
+        include(dependency("org.ow2.asm:asm-tree"))
+        include(dependency("org.ow2.asm:asm-analysis"))
     }
     relocate("net.bytebuddy", "se.deversity.asynctest.agent.shaded.bytebuddy")
+    // Unshaded ASM would clash with an application's own copy, as in the Maven shade (#1187).
+    relocate("org.objectweb.asm", "se.deversity.asynctest.agent.shaded.asm")
     // The shaded jar stays a classpath artifact; a relocated module descriptor would be a lie
     // in two ways.
     exclude("module-info.class")
