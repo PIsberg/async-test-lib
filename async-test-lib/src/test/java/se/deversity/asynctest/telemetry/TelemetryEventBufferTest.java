@@ -97,8 +97,8 @@ class TelemetryEventBufferTest {
 
     @Test
     void testMpscConcurrencyWithAStarvedConsumer() throws Exception {
-        // The drain thread starts after the publish give-up bound (1 s), which is what a
-        // full-suite run does to a scheduled drainer now and then (#987).
+        // The drain thread starts only after the publish give-up bound (1 s) has dropped an
+        // event, which is what a full-suite run does to a scheduled drainer now and then (#987).
         runMpsc(1_300);
     }
 
@@ -111,13 +111,6 @@ class TelemetryEventBufferTest {
 
         List<String> drainedEvents = Collections.synchronizedList(new ArrayList<>());
         ScheduledExecutorService drainExecutor = Executors.newSingleThreadScheduledExecutor();
-
-        // Run consumer in background to drain buffer constantly.
-        drainExecutor.scheduleAtFixedRate(() -> {
-            buffer.drain((tid, field, write) -> {
-                drainedEvents.add(tid + ":" + field);
-            });
-        }, drainDelayMillis, 10, TimeUnit.MILLISECONDS);
 
         CountDownLatch latch = new CountDownLatch(producerThreadsCount);
         for (int p = 0; p < producerThreadsCount; p++) {
@@ -132,6 +125,26 @@ class TelemetryEventBufferTest {
                 }
             });
         }
+
+        if (drainDelayMillis > 0) {
+            // A starved consumer: the drainer arrives only after the producers have filled the
+            // buffer and the publish give-up has dropped an event. Waiting on that state, not on
+            // a wall-clock delay, keeps the test from depending on how fast the pool starts (#1152).
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (buffer.droppedCount() == 0) {
+                if (System.nanoTime() > deadline) {
+                    fail("No event was dropped within 10 s of a full buffer with no consumer");
+                }
+                Thread.sleep(10);
+            }
+        }
+
+        // Run consumer in background to drain buffer constantly.
+        drainExecutor.scheduleAtFixedRate(() -> {
+            buffer.drain((tid, field, write) -> {
+                drainedEvents.add(tid + ":" + field);
+            });
+        }, 0, 10, TimeUnit.MILLISECONDS);
 
         assertTrue(latch.await(5, TimeUnit.SECONDS), "Producers did not finish publishing in time");
 
