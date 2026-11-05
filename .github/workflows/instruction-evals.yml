@@ -105,6 +105,7 @@ jobs:
             results-receiver.actions.githubusercontent.com:443
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Install the Copilot CLI
         # Pinned by tools/copilot-cli/package-lock.json and checked against its integrity
         # hashes: the CLI runs next with COPILOT_GITHUB_TOKEN in its environment (#959).

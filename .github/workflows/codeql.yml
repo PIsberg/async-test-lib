@@ -86,6 +86,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Initializes the CodeQL tools for scanning.
       # build-mode: none scans Java from source without building. The repo has
       # BOTH Maven and Gradle builds, and autobuild's build-system heuristics
       # picked Gradle — whose wrapper then had its distribution download blocked
