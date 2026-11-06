@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   settings and JUnit skips it with only a warning, so the build passed with nothing run (#1149). A
   template that is only meta-annotated `@TestTemplate`, such as `@ParameterizedTest`, belongs to
   another extension and keeps JUnit's warning.
+- `LivelockDetector` no longer reports a thread as a livelock candidate from five state changes in
+  ten `captureSnapshot()` samples. A correct `SynchronousQueue` hand-off between two workers, sampled
+  by a watcher, swings each between RUNNABLE and WAITING the same way and was reported at `CRITICAL`
+  in 12 of 50 runs (#1180). A livelock that never finishes is still reported when its round times
+  out, and the snapshot starvation and no-progress rules are unchanged.
 
 ## [1.14.1] - 2026-11-04
 

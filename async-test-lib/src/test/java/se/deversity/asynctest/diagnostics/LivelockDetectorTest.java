@@ -2,6 +2,11 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.locks.LockSupport;
+import java.util.concurrent.atomic.AtomicReference;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -127,6 +132,130 @@ public class LivelockDetectorTest {
                         + "starvation and rapid state cycling, not a busy spin, and a finding here "
                         + "would be a false positive on a thread that was doing work the whole "
                         + "time. Report: " + report);
+    }
+
+    /**
+     * Two threads handing a value back and forth through {@link SynchronousQueue}s, each sampling
+     * after its own step, is correct code that finishes: every hand-off is progress. By the rule
+     * alone each thread alternates between RUNNABLE, when it samples, and WAITING, when its peer does,
+     * which is exactly the "rapid state cycling" a livelock was read from (#1180).
+     */
+    @Test
+    void aCorrectPingPongSampledByItsOwnThreadsIsNotALivelock() throws Exception {
+        LivelockDetector detector = new LivelockDetector();
+        SynchronousQueue<Integer> ping = new SynchronousQueue<>();
+        SynchronousQueue<Integer> pong = new SynchronousQueue<>();
+        int rounds = 40;
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+
+        Thread server = new Thread(() -> {
+            try {
+                for (int i = 0; i < rounds; i++) {
+                    int v = ping.take();
+                    detector.captureSnapshot();
+                    pong.put(v + 1);
+                }
+            } catch (Throwable t) {
+                failure.set(t);
+            }
+        }, "pong-server");
+        Thread client = new Thread(() -> {
+            try {
+                for (int i = 0; i < rounds; i++) {
+                    ping.put(i);
+                    detector.captureSnapshot();
+                    if (pong.take() != i + 1) {
+                        throw new AssertionError("hand-off " + i + " returned the wrong value");
+                    }
+                }
+            } catch (Throwable t) {
+                failure.set(t);
+            }
+        }, "ping-client");
+        server.start();
+        client.start();
+        client.join(30_000);
+        server.join(30_000);
+        assertNull(failure.get(), "the ping-pong itself failed: " + failure.get());
+        assertFalse(client.isAlive() || server.isAlive(), "the ping-pong did not finish");
+
+        LivelockDetector.LivelockReport report = detector.analyzeLivelocks();
+        assertTrue(report.livelockCandidates.isEmpty(),
+                "forty completed hand-offs between two threads are progress, not a livelock. Report: "
+                        + report);
+    }
+
+    /**
+     * The same correct hand-off, sampled the way the javadoc offers {@code captureSnapshot()}: by a
+     * thread watching its peers. Each worker does a little work per step and waits for the other in
+     * between, so a sampler sees each one swing between RUNNABLE and WAITING while every step
+     * completes (#1180).
+     */
+    @Test
+    void aCorrectPingPongSampledByAWatcherIsNotALivelock() throws Exception {
+        // The cycling rule this pins as gone fired in 12 of 50 single runs, so one run would let it
+        // back in three times out of four. Ten independent trials miss it about once in sixteen.
+        for (int trial = 0; trial < 10; trial++) {
+            pingPongSampledByAWatcher(trial);
+        }
+    }
+
+    private static void pingPongSampledByAWatcher(int trial) throws Exception {
+        LivelockDetector detector = new LivelockDetector();
+        SynchronousQueue<Integer> ping = new SynchronousQueue<>();
+        SynchronousQueue<Integer> pong = new SynchronousQueue<>();
+        int rounds = 200;
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        CountDownLatch registered = new CountDownLatch(2);
+
+        Thread server = new Thread(() -> {
+            try {
+                detector.captureSnapshot();
+                registered.countDown();
+                for (int i = 0; i < rounds; i++) {
+                    int v = ping.take();
+                    pong.put(v + busyWork());
+                }
+            } catch (Throwable t) {
+                failure.set(t);
+            }
+        }, "pong-server");
+        Thread client = new Thread(() -> {
+            try {
+                detector.captureSnapshot();
+                registered.countDown();
+                registered.await();
+                for (int i = 0; i < rounds; i++) {
+                    ping.put(i + busyWork());
+                    pong.take();
+                }
+            } catch (Throwable t) {
+                failure.set(t);
+            }
+        }, "ping-client");
+        server.start();
+        client.start();
+        registered.await();
+        while (client.isAlive()) {
+            detector.captureSnapshot();
+            LockSupport.parkNanos(500_000);
+        }
+        client.join(30_000);
+        server.join(30_000);
+        assertNull(failure.get(), "the ping-pong itself failed: " + failure.get());
+
+        LivelockDetector.LivelockReport report = detector.analyzeLivelocks();
+        assertTrue(report.livelockCandidates.isEmpty(),
+                "trial " + trial + ": two hundred completed hand-offs are progress, not a livelock. Report: " + report);
+    }
+
+    /** {@return zero, after some CPU work the JIT cannot drop} */
+    private static int busyWork() {
+        long sink = 0;
+        for (int j = 0; j < 20_000; j++) {
+            sink += j ^ (sink >>> 3);
+        }
+        return sink == Long.MIN_VALUE ? 1 : 0;
     }
 
     @Test
