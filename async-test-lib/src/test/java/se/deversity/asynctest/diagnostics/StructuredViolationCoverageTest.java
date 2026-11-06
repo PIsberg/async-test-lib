@@ -1363,38 +1363,24 @@ class StructuredViolationCoverageTest {
                     System.clearProperty(FalseSharingDetector.EXPERIMENTAL_PROPERTY);
                 }
             }),
-            new Path("LivelockDetector", "a thread changing state every snapshot", () -> {
+            new Path("LivelockDetector", "a worker parked when its round timed out", () -> {
                 var d = new LivelockDetector();
-                // A worker that steps between WAITING and TIMED_WAITING once per snapshot: ten
-                // snapshots, a state change between each pair, and no RUNNABLE among them.
-                var step = new java.util.concurrent.atomic.AtomicInteger();
-                Thread worker = new Thread(() -> {
-                    d.captureSnapshot();
-                    for (int i = 0; i < 10; i++) {
-                        while (step.get() == i) {
-                            if (i % 2 == 0) {
-                                java.util.concurrent.locks.LockSupport.park();
-                            } else {
-                                java.util.concurrent.locks.LockSupport.parkNanos(60_000_000_000L);
-                            }
-                        }
-                    }
-                }, "livelock-worker");
+                // The state-cycling rule this path used is gone (#1180). A worker still in its body,
+                // WAITING in every sample the timed-out round takes, is starvation, at the same
+                // severity.
+                Thread worker = new Thread(java.util.concurrent.locks.LockSupport::park, "livelock-worker");
                 worker.setDaemon(true);
                 worker.start();
-                for (int i = 0; i < 10; i++) {
-                    Thread.State expected = i % 2 == 0 ? Thread.State.WAITING : Thread.State.TIMED_WAITING;
-                    long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
-                    while (worker.getState() != expected) {
-                        if (System.nanoTime() > deadline) {
-                            throw new AssertionError("the worker never reached " + expected + " at step " + i);
-                        }
-                        Thread.onSpinWait();
+                long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(10);
+                while (worker.getState() != Thread.State.WAITING) {
+                    if (System.nanoTime() > deadline) {
+                        throw new AssertionError("the worker never parked");
                     }
-                    d.captureSnapshot();
-                    step.incrementAndGet();
-                    java.util.concurrent.locks.LockSupport.unpark(worker);
+                    Thread.onSpinWait();
                 }
+                d.workerEnteredBody(worker);
+                d.roundTimedOut();
+                java.util.concurrent.locks.LockSupport.unpark(worker);
                 worker.join(10_000);
                 return d.analyze();
             }),

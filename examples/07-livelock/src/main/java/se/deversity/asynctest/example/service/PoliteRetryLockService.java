@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * CPU without making any forward progress.
  *
  * LivelockDetector does NOT report this. Its rules are starvation (a thread that stays
- * BLOCKED or WAITING with flat CPU time) and rapid state cycling; a thread spinning in this
+ * BLOCKED or WAITING with flat CPU time) and no progress; a thread spinning in this
  * retry loop is RUNNABLE, and the detector treats RUNNABLE as progress on purpose, because a
  * busy thread's CPU time can look flat across snapshots taken inside one clock tick. It also
  * reads {@code ThreadMXBean.dumpAllThreads}, which does not report virtual threads, and the

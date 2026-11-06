@@ -36,8 +36,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * increments a counter.
  *
  * <p><strong>A body's own snapshots.</strong> {@link #captureSnapshot()} is still public for a body
- * that samples its peers. Those rules are thresholds: starvation is every recent snapshot BLOCKED or
- * WAITING with flat CPU time, and rapid state cycling is five state changes in ten snapshots. It takes
+ * that samples its peers. Its rules are thresholds: starvation is every recent snapshot BLOCKED or
+ * WAITING with flat CPU time, and no progress is flat CPU time with the same state first and last.
+ * There is no state-cycling rule any more (#1180): a correct {@code SynchronousQueue} hand-off
+ * sampled by a watcher swings each worker between RUNNABLE and WAITING exactly as a livelock does,
+ * and read as one at CRITICAL in 12 of 50 runs ({@code LivelockDetectorTest}). Nothing in a snapshot
+ * tells the two apart, and a livelock that matters does not finish, which the timed-out round above
+ * reports without a threshold. It takes
  * {@code ThreadMXBean.dumpAllThreads} and keeps only the threads that have called it, and a virtual
  * thread is not in that dump. {@code madeProgress} returns true for any RUNNABLE thread, deliberately,
  * because a busy worker's measured CPU time can look flat when several snapshots land inside one clock
@@ -45,11 +50,11 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class LivelockDetector {
 
-    /** State changes within the last {@value #RECENT_SNAPSHOTS} snapshots that read as rapid cycling (#756). */
-    private static final int STATE_CHANGE_THRESHOLD = 5;
-
-    /** How many of the latest snapshots the state changes are counted over. */
-    private static final int RECENT_SNAPSHOTS = 10;
+    /**
+     * The latest body snapshots that must all be BLOCKED or WAITING, with flat CPU time, for a thread
+     * to read as starved. The finding turns on this number; it is the one snapshot rule left (#1180).
+     */
+    private static final int STARVATION_SNAPSHOT_THRESHOLD = 5;
 
     /** How many times a worker still in its body is sampled when its round times out. */
     private static final int TIMEOUT_SAMPLES = 5;
@@ -206,11 +211,6 @@ public class LivelockDetector {
                 report.starvedThreads.add(threadName);
             }
             
-            // Check for rapid state changes (livelock indicator)
-            if (isRapidStateChanger(snapshots)) {
-                report.livelockCandidates.add(threadName);
-            }
-            
             // Check if thread made no progress (CPU time didn't increase)
             if (!madeProgress(snapshots)) {
                 report.noProgressThreads.add(threadName);
@@ -238,7 +238,7 @@ public class LivelockDetector {
         if (snapshots.size() < 3) return false;
         
         // If all recent snapshots show BLOCKED or WAITING
-        int recent = Math.min(5, snapshots.size());
+        int recent = Math.min(STARVATION_SNAPSHOT_THRESHOLD, snapshots.size());
         for (int i = snapshots.size() - recent; i < snapshots.size(); i++) {
             Thread.State state = snapshots.get(i).state;
             if (state != Thread.State.BLOCKED && state != Thread.State.WAITING) {
@@ -250,22 +250,6 @@ public class LivelockDetector {
         ThreadSnapshot first = snapshots.get(0);
         ThreadSnapshot last = snapshots.get(snapshots.size() - 1);
         return last.cpuTime == first.cpuTime;
-    }
-    
-    private boolean isRapidStateChanger(List<ThreadSnapshot> snapshots) {
-        if (snapshots.size() < RECENT_SNAPSHOTS) return false;
-        
-        // Count state changes in recent snapshots
-        int recent = Math.min(RECENT_SNAPSHOTS, snapshots.size());
-        int stateChanges = 0;
-        
-        for (int i = snapshots.size() - recent; i < snapshots.size() - 1; i++) {
-            if (snapshots.get(i).state != snapshots.get(i + 1).state) {
-                stateChanges++;
-            }
-        }
-        
-        return stateChanges >= STATE_CHANGE_THRESHOLD;
     }
     
     private boolean madeProgress(List<ThreadSnapshot> snapshots) {
@@ -365,7 +349,7 @@ public class LivelockDetector {
             }
             
             if (!livelockCandidates.isEmpty()) {
-                sb.append("\nLivelock Candidates (still running when the round timed out, or rapid state changes):\n");
+                sb.append("\nLivelock Candidates (still running when the round timed out):\n");
                 for (String thread : livelockCandidates) {
                     sb.append("  - ").append(thread).append("\n");
                 }
