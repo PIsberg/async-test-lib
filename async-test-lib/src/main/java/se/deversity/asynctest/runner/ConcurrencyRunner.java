@@ -1493,7 +1493,9 @@ public class ConcurrencyRunner {
      * slowly after cancellation. A worker stuck in uninterruptible user code can outlive
      * any grace period — threads cannot be killed — in which case analysis proceeds
      * anyway (the detectors' own snapshotting plus {@code ifIssue} containment degrade
-     * that to a partial report rather than a crash), and the WARNs below say so, with
+     * that to a partial report rather than a crash; {@code DetectorAnalysisUnderConcurrentWritesTest}
+     * pins that no built detector's analysis throws while two threads still record into it,
+     * #1150), and the WARNs below say so, with
      * the surviving workers' stacks, instead of letting the report silently lie.
      *
      * <p>Such a worker stays inside its own run when it finally unwinds: {@link #execute} builds
