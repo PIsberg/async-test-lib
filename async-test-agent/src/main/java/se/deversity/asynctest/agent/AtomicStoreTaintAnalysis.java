@@ -16,6 +16,7 @@ import org.objectweb.asm.tree.analysis.Interpreter;
 import org.objectweb.asm.tree.analysis.Value;
 import org.jspecify.annotations.Nullable;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -41,8 +42,9 @@ import java.util.Map;
  * the least fixed point over the class, so recursion settles. Any other call passes the sources of
  * every argument to its result, as before.
  *
- * <p>It works on the bytes of the class alone, through unshaded ASM, so it can run on a class before
- * the weaver touches it. A method the analysis cannot process is reported as derived, which keeps the
+ * <p>It works on the bytes of the class alone, through unshaded ASM. The weaver hands it the bytes it
+ * was itself given, buffered whole before any method is woven, so its verdicts line up with the stores
+ * the weaver sees even after an earlier transformer has changed them (#1191). A method the analysis cannot process is reported as derived, which keeps the
  * finding the rule reported before this analysis existed, and a call into one is taken to return a
  * read built from every argument.
  */
@@ -50,6 +52,8 @@ final class AtomicStoreTaintAnalysis {
 
     private static final String ATOMIC_INTEGER = "java/util/concurrent/atomic/AtomicInteger";
     private static final String ATOMIC_LONG = "java/util/concurrent/atomic/AtomicLong";
+    private static final byte[] ATOMIC_INTEGER_BYTES = ATOMIC_INTEGER.getBytes(StandardCharsets.US_ASCII);
+    private static final byte[] ATOMIC_LONG_BYTES = ATOMIC_LONG.getBytes(StandardCharsets.US_ASCII);
 
     /** The source bit of an atomic read. Bit {@code 1 + i} is argument {@code i}, receiver first. */
     private static final long READ = 1L;
@@ -81,6 +85,9 @@ final class AtomicStoreTaintAnalysis {
      * @param classBytes the class file's bytes, as the class loader supplied them
      */
     static List<StoreVerdict> analyze(byte[] classBytes) {
+        if (!namesAnAtomic(classBytes)) {
+            return new ArrayList<>();
+        }
         ClassNode cn = new ClassNode();
         new ClassReader(classBytes).accept(cn, 0);
         List<StoreVerdict> verdicts = new ArrayList<>();
@@ -89,20 +96,51 @@ final class AtomicStoreTaintAnalysis {
         }
         Map<String, Long> summaries = summarize(cn);
         for (MethodNode m : cn.methods) {
-            if (m.instructions.size() == 0) {
-                continue;
+            if (hasAtomicStore(m)) {
+                analyzeMethod(cn, m, summaries, verdicts);
             }
-            analyzeMethod(cn, m, summaries, verdicts);
         }
         return verdicts;
     }
 
+    /**
+     * {@return whether the class file's bytes contain the internal name of {@code AtomicInteger} or
+     * {@code AtomicLong}}
+     *
+     * <p>A call to either names its owner in a constant-pool {@code CONSTANT_Utf8} entry, which holds
+     * these ASCII names byte for byte, so a class without them cannot store to one and is not parsed
+     * at all. Most woven classes are such a class (#1192).
+     */
+    static boolean namesAnAtomic(byte[] classBytes) {
+        return contains(classBytes, ATOMIC_INTEGER_BYTES) || contains(classBytes, ATOMIC_LONG_BYTES);
+    }
+
+    private static boolean contains(byte[] haystack, byte[] needle) {
+        outer:
+        for (int i = 0; i <= haystack.length - needle.length; i++) {
+            for (int j = 0; j < needle.length; j++) {
+                if (haystack[i + j] != needle[j]) {
+                    continue outer;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
     private static boolean hasAtomicStore(ClassNode cn) {
         for (MethodNode m : cn.methods) {
-            for (AbstractInsnNode insn : m.instructions) {
-                if (insn instanceof MethodInsnNode call && isAtomicStore(call.owner, call.name, call.desc)) {
-                    return true;
-                }
+            if (hasAtomicStore(m)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasAtomicStore(MethodNode m) {
+        for (AbstractInsnNode insn : m.instructions) {
+            if (insn instanceof MethodInsnNode call && isAtomicStore(call.owner, call.name, call.desc)) {
+                return true;
             }
         }
         return false;
@@ -112,16 +150,37 @@ final class AtomicStoreTaintAnalysis {
      * {@return for each method of the class a call can be followed into, the sources that reach its
      * return value, keyed by {@code name + descriptor}}
      *
-     * <p>Every summary starts empty and only gains bits, round by round, until a round changes none:
-     * the least fixed point, so a recursive helper that never returns its argument is not taken to.
+     * <p>Only methods a storing method can reach through such calls are summarised, since no other
+     * summary is ever consulted (#1192). Every summary starts empty and only gains bits, round by
+     * round, until a round changes none: the least fixed point, so a recursive helper that never
+     * returns its argument is not taken to.
      */
     private static Map<String, Long> summarize(ClassNode cn) {
-        List<MethodNode> followable = new ArrayList<>();
-        Map<String, Long> summaries = new HashMap<>();
+        Map<String, MethodNode> candidates = new HashMap<>();
         for (MethodNode m : cn.methods) {
             if (followable(cn, m) && Type.getReturnType(m.desc).getSort() != Type.VOID) {
-                followable.add(m);
-                summaries.put(m.name + m.desc, 0L);
+                candidates.put(m.name + m.desc, m);
+            }
+        }
+        List<MethodNode> followable = new ArrayList<>();
+        Map<String, Long> summaries = new HashMap<>();
+        List<MethodNode> work = new ArrayList<>();
+        for (MethodNode m : cn.methods) {
+            if (hasAtomicStore(m)) {
+                work.add(m);
+            }
+        }
+        while (!work.isEmpty()) {
+            MethodNode m = work.remove(work.size() - 1);
+            for (AbstractInsnNode insn : m.instructions) {
+                if (insn instanceof MethodInsnNode call && cn.name.equals(call.owner)) {
+                    MethodNode callee = candidates.remove(call.name + call.desc);
+                    if (callee != null) {
+                        followable.add(callee);
+                        summaries.put(callee.name + callee.desc, 0L);
+                        work.add(callee);
+                    }
+                }
             }
         }
         for (int round = 0; round < MAX_ROUNDS; round++) {
