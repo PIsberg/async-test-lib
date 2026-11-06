@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (1964 classes, 18 naming an atomic): the buffering adds 24.7 µs per class, about one more pass of
   the weave Byte Buddy already makes (23.3 µs), and the analysis 6.0 µs; the loader re-read it
   replaces cost 23.5 µs plus a 14.7 µs tree parse of every class (#1192). Applies with `fields=true`.
+- `ExplicitGcDetector` now hears `Runtime.getRuntime().gc()` with the agent attached
+  (`collections=true`), as it already heard `System.gc()`. Its javadoc and the catalog said it
+  detected both, but only the static call was woven, so the same full collection was reported or not
+  depending on how it was spelled (#1179).
 
 ## [1.14.1] - 2026-11-04
 
