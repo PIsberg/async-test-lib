@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestTemplate;
 import org.junit.platform.launcher.Launcher;
 import org.junit.platform.launcher.LauncherDiscoveryRequest;
 import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder;
@@ -9,6 +10,10 @@ import org.junit.platform.launcher.core.LauncherFactory;
 import org.junit.platform.launcher.listeners.SummaryGeneratingListener;
 import org.junit.platform.launcher.listeners.TestExecutionSummary;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -102,6 +107,53 @@ class InvalidAsyncTestFailsTest {
                 "the failure must name the method and say it is static: " + messages);
     }
 
+    @Test
+    @DisplayName("a private @TestTemplate under a class-level @AsyncTest fails the run (#1149)")
+    void privateTemplateUnderClassLevelAsyncTestFailsTheRun() {
+        RAN.set(0);
+        TestExecutionSummary summary = run(ClassLevelPrivateTemplate.class);
+
+        assertEquals(0, RAN.get(), "JUnit ran a private template after all; the premise changed");
+        String messages = failures(summary);
+        assertTrue(summary.getTotalFailureCount() >= 1,
+                "a private template taking the class's @AsyncTest ran nothing and the run passed: " + messages);
+        assertTrue(messages.contains("ClassLevelPrivateTemplate") && messages.contains("private"),
+                "the failure must name the method and say it is private: " + messages);
+    }
+
+    @Test
+    @DisplayName("a static or non-void @TestTemplate under a class-level @AsyncTest fails the run (#1149)")
+    void staticAndNonVoidTemplatesUnderClassLevelAsyncTestFailTheRun() {
+        RAN.set(0);
+        String statics = failures(run(ClassLevelStaticTemplate.class));
+        String nonVoid = failures(run(ClassLevelNonVoidTemplate.class));
+
+        assertEquals(0, RAN.get(), "JUnit ran a static or non-void template after all; the premise changed");
+        assertTrue(statics.contains("ClassLevelStaticTemplate") && statics.contains("static"),
+                "a static template taking the class's @AsyncTest must fail the run: " + statics);
+        assertTrue(nonVoid.contains("ClassLevelNonVoidTemplate") && nonVoid.contains("void"),
+                "a non-void template taking the class's @AsyncTest must fail the run: " + nonVoid);
+    }
+
+    @Test
+    @DisplayName("a private template only meta-annotated @TestTemplate, like @ParameterizedTest, is left to JUnit")
+    void privateComposedTemplateUnderClassLevelAsyncTestIsNotOurs() {
+        TestExecutionSummary summary = run(ClassLevelPrivateComposedTemplate.class);
+
+        assertEquals(0, summary.getTotalFailureCount(),
+                "a template another extension owns must keep JUnit's warning only: " + failures(summary));
+    }
+
+    @Test
+    @DisplayName("a void @TestTemplate under a class-level @AsyncTest still runs")
+    void voidTemplateUnderClassLevelAsyncTestStillRuns() {
+        RAN.set(0);
+        TestExecutionSummary summary = run(ClassLevelVoidTemplate.class);
+
+        assertEquals(0, summary.getTotalFailureCount(), failures(summary));
+        assertEquals(1, RAN.get(), "threads = 1, invocations = 1 runs the body once");
+    }
+
     private static TestExecutionSummary run(Class<?> fixture) {
         LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder.request()
                 .selectors(selectClass(fixture))
@@ -146,6 +198,55 @@ class InvalidAsyncTestFailsTest {
     static class StaticBody {
         @AsyncTest(threads = 1, invocations = 1)
         static void body() {
+            RAN.incrementAndGet();
+        }
+    }
+
+    @AsyncTest(threads = 1, invocations = 1)
+    static class ClassLevelPrivateTemplate {
+        @TestTemplate
+        @SuppressWarnings("unused") // never called: the point is that JUnit will not call it either
+        private void body() {
+            RAN.incrementAndGet();
+        }
+    }
+
+    @AsyncTest(threads = 1, invocations = 1)
+    static class ClassLevelStaticTemplate {
+        @TestTemplate
+        static void body() {
+            RAN.incrementAndGet();
+        }
+    }
+
+    @AsyncTest(threads = 1, invocations = 1)
+    static class ClassLevelNonVoidTemplate {
+        @TestTemplate
+        int body() {
+            return RAN.incrementAndGet();
+        }
+    }
+
+    @AsyncTest(threads = 1, invocations = 1)
+    static class ClassLevelVoidTemplate {
+        @TestTemplate
+        void body() {
+            RAN.incrementAndGet();
+        }
+    }
+
+    /** A template annotation of another extension's, shaped like {@code @ParameterizedTest}. */
+    @Target(ElementType.METHOD)
+    @Retention(RetentionPolicy.RUNTIME)
+    @TestTemplate
+    @interface OtherTemplate {
+    }
+
+    @AsyncTest(threads = 1, invocations = 1)
+    static class ClassLevelPrivateComposedTemplate {
+        @OtherTemplate
+        @SuppressWarnings("unused") // never called
+        private void body() {
             RAN.incrementAndGet();
         }
     }

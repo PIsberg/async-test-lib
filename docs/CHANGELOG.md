@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`collections=true`), as it already heard `System.gc()`. Its javadoc and the catalog said it
   detected both, but only the static call was woven, so the same full collection was reported or not
   depending on how it was spelled (#1179).
+- A `@TestTemplate` method in a class annotated `@AsyncTest` now fails discovery when it is
+  `private`, `static` or returns a value, as an `@AsyncTest` method already did. It takes the class's
+  settings and JUnit skips it with only a warning, so the build passed with nothing run (#1149). A
+  template that is only meta-annotated `@TestTemplate`, such as `@ParameterizedTest`, belongs to
+  another extension and keeps JUnit's warning.
 
 ## [1.14.1] - 2026-11-04
 
