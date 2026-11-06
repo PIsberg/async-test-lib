@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `AtomicNonAtomicUpdate` no longer reports a plain store whose value was never built from the
   atomic read it followed. `gauge.get()` used for a log line, then `gauge.set(queue.size())`, lost no
-  update, and was reported as one (#1187). The agent now reads each class's bytes, decides per store
+  update, and was reported as one (#1187). The agent now analyses each class's bytes, decides per store
   whether the stored value was derived from a read in the same method, and weaves a store that was not
   through a hook that reports it as an update with no read before it. Covers `set`, `lazySet`,
   `setPlain`, `setOpaque` and `setRelease` on `AtomicInteger`, and `set`, `lazySet` and `setRelease` on
@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `gauge.set(plusOne(gauge.get()))` still is, and so is `gauge.set(current() + 1)` with the read inside
   `current()`, which the per-method pass missed (#1190). A call into another class, or into a method a
   subclass may override, still counts its arguments as reaching its result.
+- The verdicts come from the bytes the weaver is handed, buffered whole before any method is woven,
+  not from a second copy of the class file read from its loader. When an earlier transformer had
+  added an atomic store to a method, the loader's copy matched its verdicts to the wrong stores by
+  ordinal, and a real `set(get() + 1)` could be woven as an unrelated store and go unreported (#1191).
+  The analysis also skips a class whose constant pool names neither `AtomicInteger` nor `AtomicLong`,
+  and summarises only the helpers a storing method can reach. Measured on JDK 26 over Guava 33.7.2
+  (1964 classes, 18 naming an atomic): the buffering adds 24.7 µs per class, about one more pass of
+  the weave Byte Buddy already makes (23.3 µs), and the analysis 6.0 µs; the loader re-read it
+  replaces cost 23.5 µs plus a 14.7 µs tree parse of every class (#1192). Applies with `fields=true`.
 
 ## [1.14.1] - 2026-11-04
 

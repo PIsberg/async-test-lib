@@ -7,6 +7,7 @@ import net.bytebuddy.description.method.MethodList;
 import net.bytebuddy.description.type.TypeDefinition;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.implementation.Implementation;
+import net.bytebuddy.jar.asm.ClassReader;
 import net.bytebuddy.jar.asm.ClassWriter;
 import net.bytebuddy.jar.asm.Handle;
 import net.bytebuddy.jar.asm.ClassVisitor;
@@ -287,21 +288,23 @@ final class FieldAccessWeaver {
      * @param weaveFieldInstructions whether {@code GETFIELD} and {@code PUTFIELD} are observed too
      */
     static AsmVisitorWrapper visitor(boolean weaveFieldInstructions) {
-        return new ClassLevelWrapper(weaveFieldInstructions, Map.of());
+        return new ClassLevelWrapper(weaveFieldInstructions, false);
     }
 
     /**
      * {@return a visitor wrapper as {@link #visitor(boolean)}, which also substitutes a store the
-     * class's own bytes show was not built from an atomic read (#1187)}
+     * class's bytes show was not built from an atomic read (#1187)}
+     *
+     * <p>The bytes analysed are the ones this wrapper is handed, buffered whole before any method is
+     * woven, not the class file the loader holds: an earlier transformer may have added or removed
+     * stores, and the weaver matches a store to its verdict by ordinal, so verdicts from any other
+     * copy would land on the wrong stores (#1191). A class the analysis fails on is woven as by
+     * {@link #visitor(boolean)}.
      *
      * @param weaveFieldInstructions whether {@code GETFIELD} and {@code PUTFIELD} are observed too
-     * @param storeVerdicts          per method ({@code name + descriptor}), whether each atomic store
-     *                               in instruction order was derived from a read; from
-     *                               {@link AtomicStoreTaintAnalysis#derivedByMethod}
      */
-    static AsmVisitorWrapper visitor(boolean weaveFieldInstructions,
-                                     Map<String, List<Boolean>> storeVerdicts) {
-        return new ClassLevelWrapper(weaveFieldInstructions, storeVerdicts);
+    static AsmVisitorWrapper visitorAnalysingStores(boolean weaveFieldInstructions) {
+        return new ClassLevelWrapper(weaveFieldInstructions, true);
     }
 
     /**
@@ -316,7 +319,7 @@ final class FieldAccessWeaver {
      * JVM's own lock, so recording accesses there buys nothing.
      */
     private record ClassLevelWrapper(boolean weaveFieldInstructions,
-                                     Map<String, List<Boolean>> storeVerdicts) implements AsmVisitorWrapper {
+                                     boolean analyseStores) implements AsmVisitorWrapper {
 
         @Override
         public int mergeWriter(int flags) {
@@ -337,6 +340,38 @@ final class FieldAccessWeaver {
                                  MethodList<?> methods,
                                  int writerFlags,
                                  int readerFlags) {
+            if (!analyseStores) {
+                return weaving(instrumentedType, classVisitor, typePool, Map.of());
+            }
+            // Buffer the class as handed to us, analyse exactly those bytes, then replay them into
+            // the weaving visitor with the reader flags the rest of the chain expects (#1191).
+            ClassWriter buffer = new ClassWriter(0);
+            return new ClassVisitor(Opcodes.ASM9, buffer) {
+                @Override
+                public void visitEnd() {
+                    super.visitEnd();
+                    byte[] bytes = buffer.toByteArray();
+                    new ClassReader(bytes).accept(
+                            weaving(instrumentedType, classVisitor, typePool, storeVerdicts(bytes)),
+                            readerFlags);
+                }
+            };
+        }
+
+        /**
+         * {@return per method, whether each atomic store was built from a read; empty when the
+         * analysis fails, which weaves every store as derived, the rule before #1187}
+         */
+        private static Map<String, List<Boolean>> storeVerdicts(byte[] bytes) {
+            try {
+                return AtomicStoreTaintAnalysis.derivedByMethod(bytes);
+            } catch (RuntimeException | LinkageError e) {
+                return Map.of();
+            }
+        }
+
+        private ClassVisitor weaving(TypeDescription instrumentedType, ClassVisitor classVisitor,
+                                     TypePool typePool, Map<String, List<Boolean>> storeVerdicts) {
             return new ClassVisitor(Opcodes.ASM9, classVisitor) {
 
                 /** The class being woven, and whether its version supports {@code ldc} of a class. */

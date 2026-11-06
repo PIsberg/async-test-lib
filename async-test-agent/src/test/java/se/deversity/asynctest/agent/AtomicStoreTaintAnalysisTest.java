@@ -144,6 +144,25 @@ class AtomicStoreTaintAnalysisTest {
                 "countDown returns 0 or itself, never its first argument; the summary must settle on that");
     }
 
+    @Test
+    void thePreScanKeepsEveryClassThatStoresAndDropsOneThatNamesNoAtomic() throws IOException {
+        for (String fixture : List.of("com/example/agentfixture/AtomicStoreShapesBean",
+                "com/example/agentfixture/ReadThenUnrelatedStoreBean",
+                "com/example/agentfixture/ReadThenDerivedStoreBean")) {
+            assertTrue(AtomicStoreTaintAnalysis.namesAnAtomic(classBytes(fixture)),
+                    fixture + " stores to an atomic, so the pre-scan must let it through (#1192)");
+        }
+        assertTrue(AtomicStoreTaintAnalysis.namesAnAtomic(classWithDeadStoreAfterReturn()));
+
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V1_5, Opcodes.ACC_PUBLIC, "NoAtomics", null, "java/lang/Object", null);
+        cw.visitEnd();
+        byte[] plain = cw.toByteArray();
+        assertFalse(AtomicStoreTaintAnalysis.namesAnAtomic(plain),
+                "a class whose constant pool names neither atomic cannot store to one and is not parsed");
+        assertEquals(List.of(), AtomicStoreTaintAnalysis.analyze(plain));
+    }
+
     /**
      * The weaver matches each store to its verdict by ordinal within the method, so a store the
      * analysis cannot reach must still get a verdict. javac never emits dead code, so this class is
