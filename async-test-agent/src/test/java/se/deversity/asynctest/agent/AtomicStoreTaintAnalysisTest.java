@@ -41,9 +41,10 @@ class AtomicStoreTaintAnalysisTest {
         var verdicts = AtomicStoreTaintAnalysis.analyze(
                 classBytes("com/example/agentfixture/ReadThenUnrelatedStoreBean"));
 
-        // Both stores in sample: set (#1187) and lazySet, each after a read whose value it ignores.
+        // The stores in sample: set (#1187), lazySet, and a set from a helper given the read (#1190),
+        // each after a read whose value it does not store.
         var stores = verdicts.stream().filter(v -> v.method().startsWith("sample(")).toList();
-        assertEquals(2, stores.size(), "one set and one lazySet in sample: " + verdicts);
+        assertEquals(3, stores.size(), "set, lazySet and the helper's set in sample: " + verdicts);
         for (var store : stores) {
             assertEquals("java/util/concurrent/atomic/AtomicInteger", store.owner());
             assertFalse(store.derived(),
@@ -95,6 +96,52 @@ class AtomicStoreTaintAnalysisTest {
 
         assertTrue(onlyStoreIn(verdicts, "readOfOneAtomicStoredInAnother").derived(),
                 "a read of any atomic taints a store into any other: the analysis does not track which atomic");
+    }
+
+    @Test
+    void aReadPassedToAHelperThatReturnsSomethingElseIsNotDerived() throws IOException {
+        var verdicts = AtomicStoreTaintAnalysis.analyze(
+                classBytes("com/example/agentfixture/AtomicStoreShapesBean"));
+
+        assertFalse(onlyStoreIn(verdicts, "readPassedToAHelperThatIgnoresIt").derived(),
+                "gauge.set(sizeAfterNoting(gauge.get())): the helper returns queue.size(), not the read (#1190)");
+    }
+
+    @Test
+    void aReadPassedToAHelperThatBuildsOnItIsDerived() throws IOException {
+        var verdicts = AtomicStoreTaintAnalysis.analyze(
+                classBytes("com/example/agentfixture/AtomicStoreShapesBean"));
+
+        assertTrue(onlyStoreIn(verdicts, "readPassedToAHelperThatBuildsOnIt").derived(),
+                "gauge.set(plusOne(gauge.get())) stores read + 1: the lost update, through a helper");
+    }
+
+    @Test
+    void aReadInsideAHelperWhoseResultIsStoredIsDerived() throws IOException {
+        var verdicts = AtomicStoreTaintAnalysis.analyze(
+                classBytes("com/example/agentfixture/AtomicStoreShapesBean"));
+
+        assertTrue(onlyStoreIn(verdicts, "readInsideAHelper").derived(),
+                "gauge.set(current() + 1) where current() returns gauge.get() builds on the read");
+    }
+
+    @Test
+    void aReadPassedToAnOverridableMethodStaysDerived() throws IOException {
+        var verdicts = AtomicStoreTaintAnalysis.analyze(
+                classBytes("com/example/agentfixture/AtomicStoreShapesBean"));
+
+        assertTrue(onlyStoreIn(verdicts, "readPassedToAnOverridableMethod").derived(),
+                "a subclass may override the callee and return its argument, so this class's bytes "
+                        + "cannot clear the store");
+    }
+
+    @Test
+    void aReadPassedToARecursiveHelperThatNeverReturnsItIsNotDerived() throws IOException {
+        var verdicts = AtomicStoreTaintAnalysis.analyze(
+                classBytes("com/example/agentfixture/AtomicStoreShapesBean"));
+
+        assertFalse(onlyStoreIn(verdicts, "readPassedToARecursiveHelper").derived(),
+                "countDown returns 0 or itself, never its first argument; the summary must settle on that");
     }
 
     /**

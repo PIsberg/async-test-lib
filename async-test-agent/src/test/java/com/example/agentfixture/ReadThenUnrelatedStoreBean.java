@@ -12,6 +12,7 @@ public class ReadThenUnrelatedStoreBean {
 
     private final AtomicInteger gauge = new AtomicInteger();
     private final AtomicInteger lazyGauge = new AtomicInteger();
+    private final AtomicInteger helperGauge = new AtomicInteger();
     private final ConcurrentLinkedQueue<Integer> queue = new ConcurrentLinkedQueue<>();
     private volatile int logged;
 
@@ -23,5 +24,12 @@ public class ReadThenUnrelatedStoreBean {
         int lazySeen = lazyGauge.get();
         logged = lazySeen;
         lazyGauge.lazySet(queue.size());
+        // The read passed to a helper that notes it and returns the size (#1190).
+        helperGauge.set(sizeAfterNoting(helperGauge.get()));
+    }
+
+    private int sizeAfterNoting(int seen) {
+        logged = seen;
+        return queue.size();
     }
 }

@@ -20,7 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through a hook that reports it as an update with no read before it. Covers `set`, `lazySet`,
   `setPlain`, `setOpaque` and `setRelease` on `AtomicInteger`, and `set`, `lazySet` and `setRelease` on
   `AtomicLong`. A store the analysis cannot read keeps the old finding. Applies with `fields=true`.
-  Known limit: the analysis is per method, so a value passed through another method counts as derived.
+- The same analysis follows a call into a helper of the same class that no subclass can replace
+  (static, private, final, or in a final class): `gauge.set(sizeAfterNoting(gauge.get()))`, where the
+  helper logs its argument and returns `queue.size()`, is no longer reported, while
+  `gauge.set(plusOne(gauge.get()))` still is, and so is `gauge.set(current() + 1)` with the read inside
+  `current()`, which the per-method pass missed (#1190). A call into another class, or into a method a
+  subclass may override, still counts its arguments as reaching its result.
 
 ## [1.14.1] - 2026-11-04
 
