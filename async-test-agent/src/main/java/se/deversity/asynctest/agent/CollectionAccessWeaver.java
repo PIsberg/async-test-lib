@@ -998,12 +998,13 @@ final class CollectionAccessWeaver {
      * built it rather than special-casing one call: one more table entry, no more mechanism. It
      * takes no arguments and returns nothing, which makes it the simplest substitution here.
      *
-     * <p>{@code Runtime.getRuntime().gc()} is deliberately absent. It is an {@code invokevirtual}
-     * on a receiver, so it belongs in a receiver table rather than this one, and listing it here
-     * would claim a coverage the static path does not have.
+     * <p>{@code Runtime.getRuntime().gc()} is the same request spelled as an {@code invokevirtual}
+     * on a receiver, so it is a receiver entry whose hook takes the {@code Runtime} first (#1179).
+     * Without it the same collection was reported or not depending on how it was written.
      */
     private static final List<Entry> GC_ENTRIES = List.of(
-            Entry.staticCall(System.class, "gc", "gc"));
+            Entry.staticCall(System.class, "gc", "gc"),
+            Entry.call(Runtime.class, "gc", "runtimeGc"));
 
     /**
      * The thread table: {@link Thread#start()}, {@link Thread#join()}, {@link Thread#isAlive()}

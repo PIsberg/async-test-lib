@@ -40,6 +40,38 @@ class AgentGcHooksTest {
     }
 
     @Test
+    @DisplayName("Runtime.gc() through its hook is reported against its caller, as System.gc() is")
+    void runtimeCollectionIsReportedAgainstItsCaller() {
+        AsyncTestContext.install(new AsyncTestContext(AsyncTestConfig.builder().detectAll(true).build()));
+        try {
+            GcCaller.collectThroughRuntime();
+
+            ExplicitGcDetector.ExplicitGcReport report = AsyncTestContext.explicitGcDetector().analyze();
+            assertTrue(report.hasIssues(),
+                    "Runtime.gc() through runtimeGc must reach ExplicitGcDetector (#1179); report: " + report);
+            assertTrue(report.toString().contains("GcCaller.collectThroughRuntime"),
+                    "the finding must name the caller, not the hook; got: " + report);
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("the Runtime.gc() hook really collects")
+    void theRuntimeHookPerformsTheCollection() {
+        Object garbage = new byte[1024];
+        WeakReference<Object> reference = new WeakReference<>(garbage);
+        garbage = null; // NOPMD - dropping the only strong reference is the point
+
+        boolean collected = false;
+        for (int attempt = 0; attempt < 5 && !collected; attempt++) {
+            GcCaller.collectThroughRuntime();
+            collected = reference.get() == null;
+        }
+        assertTrue(collected, "a runtimeGc that dropped the receiver's gc() leaves the array alive");
+    }
+
+    @Test
     @DisplayName("with no context installed the hook still collects and records nothing")
     void hookDelegatesOutsideAnAsyncTest() {
         GcCaller.collect();

@@ -1,10 +1,12 @@
 package se.deversity.asynctest;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import se.deversity.asynctest.diagnostics.ExplicitGcDetector;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
- * Hooks for {@code System.gc()}, the second user of the agent's static substitution path.
+ * Hooks for {@code System.gc()}, the second user of the agent's static substitution path, and for
+ * {@code Runtime.getRuntime().gc()}, the same request through a receiver (#1179).
  *
  * <h2>Why this one needs no guard</h2>
  *
@@ -24,7 +26,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.10.0
  */
-@AIContract(reason = "Called from bytecode the agent rewrites, through the static substitution path: the method name and erased signature here are matched by CollectionAccessWeaver.GC_ENTRIES and cannot change independently of it. Record before collecting, not after: the finding is that the call was made, and a hook that recorded afterwards would lose the event if the collection never returned. The hook must perform the original System.gc() so that weaving does not change what the program does - a substitution that silently dropped the collection would alter behaviour the test may depend on, which is the one thing no weave may do. Unlike AgentSleepHooks there is deliberately no HeldLocks guard: an explicit collection is the bug whether or not a lock is held, and adding a guard would silence the common case. The stack walk must skip se.deversity.asynctest frames, or every finding would name this class instead of the caller.")
+@AIContract(reason = "Called from bytecode the agent rewrites: the method names and erased signatures here (gc() for System.gc, runtimeGc(Runtime) for Runtime.gc) are matched by CollectionAccessWeaver.GC_ENTRIES and cannot change independently of it. Record before collecting, not after: the finding is that the call was made, and a hook that recorded afterwards would lose the event if the collection never returned. Each hook must perform the original call, System.gc() or the receiver's gc(), so that weaving does not change what the program does - a substitution that silently dropped the collection would alter behaviour the test may depend on, which is the one thing no weave may do. Unlike AgentSleepHooks there is deliberately no HeldLocks guard: an explicit collection is the bug whether or not a lock is held, and adding a guard would silence the common case. The stack walk must skip se.deversity.asynctest frames, or every finding would name this class instead of the caller.")
 public final class AgentGcHooks {
 
     private AgentGcHooks() {
@@ -46,6 +48,25 @@ public final class AgentGcHooks {
             detector.recordGcInvocation(Thread.currentThread(), callSite());
         }
         System.gc();
+    }
+
+    /**
+     * Weaves {@code Runtime.gc()}, which the call site reaches through {@code Runtime.getRuntime()}
+     * (#1179). The receiver is the one the program asked, and the collection it requests is the same
+     * one {@link #gc()} reports, so the finding is the same; the suppression is there for the same
+     * reason.
+     *
+     * @param runtime the receiver of the replaced call
+     */
+    @SuppressWarnings("PMD.DoNotCallGarbageCollectionExplicitly")
+    @SuppressFBWarnings("DM_GC")
+    // The woven program asked for this collection; the hook only reports it and then makes it.
+    public static void runtimeGc(Runtime runtime) {
+        ExplicitGcDetector detector = AsyncTestContext.currentExplicitGcDetector();
+        if (detector != null) {
+            detector.recordGcInvocation(Thread.currentThread(), callSite());
+        }
+        runtime.gc();
     }
 
     /**

@@ -18,4 +18,9 @@ public final class GcCaller {
     public static void collect() {
         AgentGcHooks.gc();
     }
+
+    /** Requests a collection as woven {@code Runtime.getRuntime().gc()} does (#1179). */
+    public static void collectThroughRuntime() {
+        AgentGcHooks.runtimeGc(Runtime.getRuntime());
+    }
 }
