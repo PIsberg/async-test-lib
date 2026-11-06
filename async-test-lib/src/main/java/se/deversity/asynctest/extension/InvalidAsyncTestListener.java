@@ -3,6 +3,7 @@ package se.deversity.asynctest.extension;
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.TestTemplate;
 import org.junit.platform.commons.JUnitException;
 import org.junit.platform.commons.support.AnnotationSupport;
 import org.junit.platform.engine.DiscoveryIssue;
@@ -19,7 +20,8 @@ import java.lang.reflect.Modifier;
 /**
  * Fails discovery when JUnit would skip an {@link AsyncTest} method with only a warning: one that
  * returns a value (#1119), is a Kotlin {@code suspend fun}, or is {@code private} or
- * {@code static} (#1146).
+ * {@code static} (#1146), including a {@code @TestTemplate} that takes its settings from a
+ * class-level {@code @AsyncTest} (#1149).
  *
  * <p>JUnit runs no such {@code @TestTemplate}. It reports, for example,
  * {@code must not be private. It will not be executed} as a discovery warning, and the build goes
@@ -82,7 +84,7 @@ public final class InvalidAsyncTestListener implements LauncherDiscoveryListener
             } catch (RuntimeException unresolvable) {
                 return;
             }
-            if (!AnnotationSupport.isAnnotated(method, AsyncTest.class)) {
+            if (!isOurs(method)) {
                 return;
             }
             String problem = problem(method);
@@ -91,6 +93,20 @@ public final class InvalidAsyncTestListener implements LauncherDiscoveryListener
                         + "#" + method.getName() + " " + problem);
             }
         }
+    }
+
+    /**
+     * {@return whether the method is an {@link AsyncTest} the runner would drive}
+     *
+     * <p>Either it carries {@code @AsyncTest} itself, or it is annotated {@code @TestTemplate}
+     * directly in a class that carries {@code @AsyncTest}, which then supplies its settings (#1149).
+     * A template only meta-annotated {@code @TestTemplate}, such as {@code @ParameterizedTest}, belongs
+     * to another extension even in such a class, so JUnit's own warning is left to stand for it.
+     */
+    private static boolean isOurs(Method method) {
+        return AnnotationSupport.isAnnotated(method, AsyncTest.class)
+                || method.isAnnotationPresent(TestTemplate.class)
+                        && AnnotationSupport.isAnnotated(method.getDeclaringClass(), AsyncTest.class);
     }
 
     /**

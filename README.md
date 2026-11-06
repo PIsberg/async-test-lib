@@ -599,7 +599,9 @@ Declare the body `void` and await inside it. JUnit runs no template method that 
 so `CompletableFuture<Void> hammer_pipeline()` would never run; since 1.15.0 such an `@AsyncTest`
 fails discovery with a message naming the method, instead of passing with nothing tested (#1119).
 The same goes for a `private` or `static` `@AsyncTest`, which JUnit also skips with only a warning,
-and for a Kotlin `suspend fun`, which the runner cannot call (#1146).
+and for a Kotlin `suspend fun`, which the runner cannot call (#1146). A method annotated
+`@TestTemplate` in a class annotated `@AsyncTest` takes the class's settings, so it is checked the
+same way; a `@ParameterizedTest` or other composed template in that class is left to JUnit (#1149).
 
 ### Make the workers meet mid-body, and count what they did
 
