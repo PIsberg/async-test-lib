@@ -13,6 +13,18 @@ class CompletableFutureObtrudeDetectorTest {
     }
 
     @Test
+    void anObtrudeStillBeingRecordedDoesNotBreakAnalysis() {
+        // The state exists but its thread is not set yet: another thread is between the two
+        // statements of recordObtrude. analyze() put the null into Map.of and threw, and the
+        // run lost every report (seen by DetectorAnalysisUnderConcurrentWritesTest on JDK 21).
+        var d = new CompletableFutureObtrudeDetector();
+        d.stateFor(new CompletableFuture<String>(), "half-recorded", "CompletableFuture");
+
+        var report = assertDoesNotThrow(d::analyze);
+        assertFalse(report.hasIssues(), "the obtrude is reported once its record is complete");
+    }
+
+    @Test
     void recordObtrudeIsFlagged() {
         var d = new CompletableFutureObtrudeDetector();
         var future = new CompletableFuture<String>();

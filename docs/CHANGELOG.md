@@ -65,6 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `collect` as a race (the corpus row `idiom_parallelCollect_containerPerSubtask`, on JDK 25 and
   26), and could report the read of a parallel `forEach`'s result the same way. Dropping an entry
   still only ever loses an edge.
+- `CompletableFutureObtrudeDetector.analyze()` no longer throws when it runs while another thread is
+  still recording an obtrude. The future's state existed before its thread was set, and the null
+  thread made the report's `Map.of` throw a `NullPointerException`, which dropped the run's whole
+  report. A record still being written is now skipped, and the analysis at the end of the run
+  reports it.
 
 ## [1.14.1] - 2026-11-04
 

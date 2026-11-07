@@ -61,9 +61,15 @@ public final class CompletableFutureObtrudeDetector extends AbstractInstanceDete
     public Report analyze() {
         Report r = new Report();
         for (State s : states()) {
+            String lastBy = s.lastObtrudedByThread;
+            if (lastBy == null) {
+                // An obtrude still being recorded: its state exists, its thread is not set yet,
+                // and Map.of below threw on the null. The analysis at the end of the run sees it.
+                continue;
+            }
             String msg = String.format(
                 "CompletableFuture '%s' obtruded %d times (last by thread '%s') — obtruding values or exceptions forces downstream pipelines to execute with outdated/inconsistent states, introducing publication races.",
-                s.label, s.obtrudeCount.get(), s.lastObtrudedByThread
+                s.label, s.obtrudeCount.get(), lastBy
             );
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
@@ -74,7 +80,7 @@ public final class CompletableFutureObtrudeDetector extends AbstractInstanceDete
                 Map.of(
                     "label", s.label,
                     "obtrudeCount", s.obtrudeCount,
-                    "lastObtrudedByThread", s.lastObtrudedByThread
+                    "lastObtrudedByThread", lastBy
                 ),
                 Instant.now()
             ));
