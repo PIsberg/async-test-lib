@@ -110,8 +110,11 @@ import org.jspecify.annotations.Nullable;
  *       refused one. One into a queue that implements it itself, a {@code LinkedBlockingDeque} or
  *       a {@code ConcurrentLinkedQueue}, releases the batch first and, when it throws part way,
  *       withdraws every element the queue does not hold afterwards, judged by identity (#806).
- *   <li>A clock keeps at most 4,096 threads (#840). Past that the entries of the lowest
- *       thread ids go, which loses edges and never adds one; a thread never loses its own.
+ *   <li>A clock keeps at most 4,096 threads (#840). Past that the entries of threads that have
+ *       ended go first, lowest ids first, and only then the lowest ids of running ones (#1172),
+ *       which loses edges and never adds one; a thread never loses its own. A long run starts
+ *       thousands of workers after the common pool's threads, so by id alone the pool threads,
+ *       still working, went before every ended worker.
  *   <li>A submitted task's end is found by the future its submitter was handed, among the last
  *       16 that thread submitted and has not got yet; a get on another thread, or of an older
  *       future, receives nothing. An object handed through an {@code Exchanger} is released by
@@ -162,6 +165,15 @@ public final class HappensBefore {
     /** Every thread's clock, so {@link #join} can read a finished thread's final one. */
     private static final Map<Thread, ThreadClock> THREADS =
             Collections.synchronizedMap(new WeakHashMap<>());
+
+    /**
+     * The threads that have a clock, by id, so that a clock past the cap drops an ended thread's
+     * entry before a running one's ({@link Stamp#join}, #1172).
+     */
+    private static final Map<Long, ThreadRef> RUNNING = new ConcurrentHashMap<>();
+
+    /** Where {@link #RUNNING}'s references arrive once their thread is collected. */
+    private static final ReferenceQueue<Thread> ENDED = new ReferenceQueue<>();
 
     /** Clocks forked to threads that have not taken them up yet. */
     private static final Map<Thread, Stamp> FORKS =
@@ -971,7 +983,32 @@ public final class HappensBefore {
         }
         ThreadClock clock = new ThreadClock(id, stamp);
         THREADS.put(me, clock);
+        for (Reference<?> gone = ENDED.poll(); gone != null; gone = ENDED.poll()) {
+            RUNNING.remove(((ThreadRef) gone).id, gone);
+        }
+        RUNNING.put(id, new ThreadRef(me));
         return clock;
+    }
+
+    /**
+     * {@return whether the thread with id {@code thread} has a clock and is still running}; a
+     * thread that never had one is not in any clock but a test's synthetic one.
+     */
+    private static boolean running(long thread) {
+        ThreadRef ref = RUNNING.get(thread);
+        Thread running = ref == null ? null : ref.get();
+        return running != null && running.isAlive();
+    }
+
+    /** A thread with a clock, by id, held weakly so that an ended thread can be collected. */
+    private static final class ThreadRef extends WeakReference<Thread> {
+
+        final long id;
+
+        ThreadRef(Thread thread) {
+            super(thread, ENDED);
+            this.id = thread.threadId();
+        }
     }
 
     /** One thread's clock. Only its own thread writes it; {@link #join} reads it from another. */
@@ -1028,6 +1065,9 @@ public final class HappensBefore {
      */
     @API(status = Status.INTERNAL)
     public static final class Stamp {
+
+        /** Marks an entry {@link #drop} dropped; every count kept is at least 1. */
+        private static final int DROPPED = -1;
 
         /** Thread ids, ascending. Never mutated once the stamp exists. */
         private final long[] threads;
@@ -1108,7 +1148,8 @@ public final class HappensBefore {
          *
          * <p>Returns this stamp itself when it already covers {@code other}, which is what keeps a
          * repeated acquire of the same clock allocation-free. Past {@link #MAX_ENTRIES} threads
-         * the lowest ids are dropped, except {@code keep}.
+         * the entries of threads that have ended are dropped first, then the lowest ids, never
+         * {@code keep}'s (#1172).
          *
          * @param other the clock to merge in
          * @param keep  the thread whose entry must survive the cap, {@code Long.MIN_VALUE} for none
@@ -1147,27 +1188,46 @@ public final class HappensBefore {
                 mergedCounts[size] = count;
                 size++;
             }
-            int from = Math.max(0, size - MAX_ENTRIES);
-            int keepAt = -1;
-            if (from > 0 && keep != NO_OWNER) {
-                int at = Arrays.binarySearch(mergedThreads, 0, size, keep);
-                if (at >= 0 && at < from) {
-                    keepAt = at;
-                    from++;
+            int excess = size - MAX_ENTRIES;
+            if (excess <= 0) {
+                return new Stamp(Arrays.copyOf(mergedThreads, size), Arrays.copyOf(mergedCounts, size));
+            }
+            // Past the cap, threads that have ended go first, then the lowest ids. A pool thread
+            // is started early and keeps working, so its id is lower than every worker a long run
+            // started since; dropped by id alone, a combine on one pool thread forgot the pool
+            // thread that filled what it merges (#1172). A dropped entry is marked with count -1,
+            // which no kept entry has.
+            excess = drop(mergedThreads, mergedCounts, size, keep, excess, true);
+            drop(mergedThreads, mergedCounts, size, keep, excess, false);
+            long[] resultThreads = new long[MAX_ENTRIES];
+            int[] resultCounts = new int[MAX_ENTRIES];
+            int out = 0;
+            for (int i = 0; i < size; i++) {
+                if (mergedCounts[i] != DROPPED) {
+                    resultThreads[out] = mergedThreads[i];
+                    resultCounts[out] = mergedCounts[i];
+                    out++;
                 }
             }
-            int length = size - from + (keepAt >= 0 ? 1 : 0);
-            long[] resultThreads = new long[length];
-            int[] resultCounts = new int[length];
-            int out = 0;
-            if (keepAt >= 0) {
-                resultThreads[out] = mergedThreads[keepAt];
-                resultCounts[out] = mergedCounts[keepAt];
-                out++;
-            }
-            System.arraycopy(mergedThreads, from, resultThreads, out, size - from);
-            System.arraycopy(mergedCounts, from, resultCounts, out, size - from);
             return new Stamp(resultThreads, resultCounts);
+        }
+
+        /**
+         * Marks up to {@code excess} entries dropped, lowest ids first, never {@code keep}'s, and
+         * with {@code endedOnly} only those of threads that are no longer running.
+         *
+         * @return how many entries are still to drop
+         */
+        private static int drop(long[] threads, int[] counts, int size, long keep, int excess,
+                                boolean endedOnly) {
+            int left = excess;
+            for (int i = 0; i < size && left > 0; i++) {
+                if (counts[i] != DROPPED && threads[i] != keep && (!endedOnly || !running(threads[i]))) {
+                    counts[i] = DROPPED;
+                    left--;
+                }
+            }
+            return left;
         }
 
         /** {@return the number of threads this stamp knows about} */

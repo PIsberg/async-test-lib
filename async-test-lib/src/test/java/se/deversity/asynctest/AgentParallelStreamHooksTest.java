@@ -3,6 +3,7 @@ package se.deversity.asynctest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.RaceConditionDetector;
 
 import java.util.ArrayList;
@@ -282,6 +283,61 @@ class AgentParallelStreamHooksTest {
         assertFalse(detector.analyzeRaceConditions().hasIssues(),
                 "a container is merged only after the subtask that filled it finished: "
                         + detector.analyzeRaceConditions());
+    }
+
+    @Test
+    @DisplayName("a combiner stays ordered once the caller's clock is past the cap")
+    @SuppressWarnings("unchecked")
+    void aCombinerStaysOrderedPastTheClockCap() {
+        // A long run starts thousands of workers, and the caller's clock fills with their ids,
+        // all newer than the common pool's threads. A clock past the cap dropped the lowest ids, so
+        // a combine on one pool thread lost the clock of the pool thread that filled what it
+        // merges, and the correct collect reported as a race (corpus, JDK 25 and 26).
+        numbers().forEach(value -> pause()); // the pool's threads exist before the crowd
+        installRun();
+        learnOfMoreThreadsThanAClockKeeps();
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Set<Thread> threads = ConcurrentHashMap.newKeySet();
+
+        AgentConcurrencyUtilHooks.streamCollect(numbers(), ArrayList::new, (list, value) -> {
+            pause();
+            threads.add(Thread.currentThread());
+            detector.recordFieldWrite(list, "size");
+            ((List<Object>) list).add(value);
+        }, (left, right) -> {
+            detector.recordFieldRead(right, "size");
+            detector.recordFieldWrite(left, "size");
+            ((List<Object>) left).addAll((List<?>) right);
+        });
+        if (!commonPoolCanHelp()) {
+            return;
+        }
+        assertTrue(threads.size() > 1, "the common pool should have helped");
+        assertFalse(detector.analyzeRaceConditions().hasIssues(),
+                "a container is merged only after the subtask that filled it finished, however many "
+                        + "threads the caller met before: " + detector.analyzeRaceConditions());
+    }
+
+    /** HappensBefore.MAX_ENTRIES, package-private there: the most threads one clock keeps. */
+    private static final int CLOCK_CAP = 4_096;
+
+    /** Starts more threads than a clock keeps, each releasing one object, and acquires it. */
+    private static void learnOfMoreThreadsThanAClockKeeps() {
+        Object crowd = new Object();
+        Thread[] threads = new Thread[CLOCK_CAP + 8];
+        for (int i = 0; i < threads.length; i++) {
+            threads[i] = new Thread(() -> HappensBefore.release(crowd), "crowd-" + i);
+            threads[i].start();
+        }
+        try {
+            for (Thread thread : threads) {
+                thread.join();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+        HappensBefore.acquire(crowd);
     }
 
     @Test

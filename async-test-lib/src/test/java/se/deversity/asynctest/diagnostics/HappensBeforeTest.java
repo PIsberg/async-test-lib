@@ -407,13 +407,58 @@ class HappensBeforeTest {
     @DisplayName("a clock past the cap drops other threads, never its own")
     void theCapKeepsTheOwnEntry() {
         long own = 5L;
+        // Ids no thread of this JVM has, so none of them counts as running (#1172).
+        long first = 1L << 40;
         HappensBefore.Stamp mine = HappensBefore.Stamp.of(own);
-        for (long other = 1_000L; other < 1_000L + HappensBefore.MAX_ENTRIES + 10; other++) {
+        for (long other = first; other < first + HappensBefore.MAX_ENTRIES + 10; other++) {
             mine = mine.join(HappensBefore.Stamp.of(other), own);
         }
         assertEquals(HappensBefore.MAX_ENTRIES, mine.size(), "the clock is bounded");
         assertEquals(1, mine.countOf(own), "the owner's entry survived although its id is the lowest");
-        assertEquals(0, mine.countOf(1_000L), "the lowest foreign id went first");
+        assertEquals(0, mine.countOf(first), "the lowest foreign id went first");
+    }
+
+    @Test
+    @DisplayName("a clock past the cap drops ended threads before a running one with a lower id (#1172)")
+    void theCapDropsEndedThreadsFirst() throws InterruptedException {
+        // A pool thread started early and still working, beside a run's workers started after it
+        // and ended: by id alone it went first, and a combine on another pool thread forgot it.
+        java.util.concurrent.CountDownLatch released = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        AtomicReference<HappensBefore.@Nullable Stamp> poolStamp = new AtomicReference<>();
+        Thread pool = new Thread(() -> {
+            poolStamp.set(HappensBefore.handOff());
+            released.countDown();
+            try {
+                done.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "pool");
+        pool.start();
+        try {
+            released.await();
+            Object crowd = new Object();
+            Thread[] workers = new Thread[HappensBefore.MAX_ENTRIES + 8];
+            for (int i = 0; i < workers.length; i++) {
+                workers[i] = new Thread(() -> HappensBefore.release(crowd), "worker-" + i);
+                workers[i].start();
+            }
+            for (Thread worker : workers) {
+                worker.join();
+            }
+            HappensBefore.receive(poolStamp.get());
+            HappensBefore.acquire(crowd);
+
+            HappensBefore.Stamp mine = HappensBefore.current();
+            assertEquals(HappensBefore.MAX_ENTRIES, mine.size(), "the clock is still bounded");
+            assertTrue(mine.countOf(pool.threadId()) > 0,
+                    "the running thread kept its entry although every ended worker's id is higher");
+            assertTrue(mine.countOf(Thread.currentThread().threadId()) > 0, "and so did this one");
+        } finally {
+            done.countDown();
+            pool.join();
+        }
     }
 
     @Test

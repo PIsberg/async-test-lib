@@ -58,6 +58,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the subtasks that built what it merges, so a correct three-argument `collect` stays silent. A
   primitive stream's `map` and `filter`, a stage behind `sorted`, `distinct`, `limit` or `mapToInt`, a
   pipeline ended by `iterator()` and a `Collector`'s own functions are still not followed.
+- A happens-before clock past its 4,096-thread cap now drops the entries of threads that have ended
+  before those of running ones (#1172). It dropped the lowest ids first, and a long run starts
+  thousands of workers after the common pool's threads, so the pool threads, still working, went
+  first. A suite that had started more than 4,096 threads then reported a correct parallel
+  `collect` as a race (the corpus row `idiom_parallelCollect_containerPerSubtask`, on JDK 25 and
+  26), and could report the read of a parallel `forEach`'s result the same way. Dropping an entry
+  still only ever loses an edge.
 
 ## [1.14.1] - 2026-11-04
 
