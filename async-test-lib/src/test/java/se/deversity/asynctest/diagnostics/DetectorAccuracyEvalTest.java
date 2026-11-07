@@ -1318,6 +1318,30 @@ class DetectorAccuracyEvalTest {
     }
 
     @Test
+    @DisplayName("atomicity: a one-shot object one thread writes twice does not settle on the run's clock (#1133)")
+    void atomicityOneShotObjectWrittenTwiceByOneThreadStillFires() {
+        AtomicityValidator validator = new AtomicityValidator();
+        // The corpus hand-off row: thread 1 increments a fresh object and offers it, thread 2
+        // takes it and increments it, and thread 1 increments it again. The object is never seen
+        // after its round, exactly as a one-shot view field is not.
+        validator.markInvocationStart();
+        agentAccess(validator, "handed.touched", false, 1, NO_LOCKS, 93);
+        agentAccess(validator, "handed.touched", true, 1, NO_LOCKS, 93);
+        agentAccess(validator, "handed.touched", false, 2, NO_LOCKS, 93);
+        agentAccess(validator, "handed.touched", false, 1, NO_LOCKS, 93);
+        agentAccess(validator, "handed.touched", true, 2, NO_LOCKS, 93);
+        agentAccess(validator, "handed.touched", true, 1, NO_LOCKS, 93);
+        for (int round = 0; round < 2; round++) {
+            validator.markInvocationStart();
+        }
+        assertTrue(validator.analyze().hasIssues(),
+                "A lazily created value is stored at most once per thread: after its own store a "
+                        + "thread reads its own value and never misses again. Thread 1 stored "
+                        + "twice, so this is a lost update on an object nobody looked at again, and "
+                        + "the run going on afterwards proves nothing about it");
+    }
+
+    @Test
     @DisplayName("atomicity: a blind store is initialization, not a single-check cache (#313)")
     void atomicityStillFiresWhenTheWarmRoundStoreWasBlind() {
         AtomicityValidator validator = new AtomicityValidator();
