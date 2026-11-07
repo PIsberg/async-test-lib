@@ -70,6 +70,15 @@ final class CorpusRecorder implements AsyncTestListener {
     /** Per subject: the most takes the run's AtomicityValidator had recorded when a body asked. */
     private static final Map<String, AtomicInteger> VALIDATOR_TAKES = new ConcurrentHashMap<>();
 
+    /**
+     * Per subject: the run's AtomicityValidator, kept so its verdicts can be read once the run
+     * analysed. Every run builds its own, and nothing resets it afterwards.
+     */
+    private static final Map<String, AtomicityValidator> HAND_OFF_VALIDATORS = new ConcurrentHashMap<>();
+
+    /** The field the hand-off rows write, as the end of its qualified name. */
+    private static final String HANDED_OVER_FIELD = "HandedOver.touched";
+
     private static volatile String currentSubject = "unattributed";
     private static volatile long subjectStartEvents;
 
@@ -141,6 +150,7 @@ final class CorpusRecorder implements AsyncTestListener {
         AtomicityValidator validator = AsyncTestContext.atomicityValidator();
         if (validator != null) {
             seen.accumulateAndGet(validator.ownershipTakes(), Math::max);
+            HAND_OFF_VALIDATORS.putIfAbsent(subject, validator);
         }
     }
 
@@ -166,8 +176,18 @@ final class CorpusRecorder implements AsyncTestListener {
         }
         AtomicInteger cross = CROSS_WORKER_TAKES.get(subject);
         AtomicInteger seen = VALIDATOR_TAKES.get(subject);
-        return cross == null || seen == null ? ""
-                : "crossWorkerTakes=" + cross.get() + " validatorTakesBeforeLastRound=" + seen.get();
+        if (cross == null || seen == null) {
+            return "";
+        }
+        // Which rule cleared each round (#1133), and how many findings landed outside any subject:
+        // between them they separate an excuse inside the validator from a finding that fired and
+        // was credited to nobody.
+        AtomicityValidator validator = HAND_OFF_VALIDATORS.get(subject);
+        long unattributed = FINDINGS.stream().filter(f -> "unattributed".equals(f.subject())).count();
+        return "crossWorkerTakes=" + cross.get() + " validatorTakesBeforeLastRound=" + seen.get()
+                + " verdicts=" + (validator == null ? "{}"
+                        : new java.util.TreeMap<>(validator.verdictCounts(HANDED_OVER_FIELD)))
+                + " unattributedFindings=" + unattributed;
     }
 
     /** {@return how many access events were published while {@code subject} ran} */
