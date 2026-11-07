@@ -32,7 +32,9 @@ The gates (`everySubjectIsExercised`, `everySilentRowReachesItsDetector`, `every
 source, and subject lists, with the existing no-arg variants delegating to the static corpus defaults.
 
 What the fixes under "The most common mistakes" in [corpus-eval.md](corpus-eval.md) still leave out is
-#1172 and #1173.
+#1173, and of #1172 the stream forms its fix does not reach: a primitive stream's intermediate
+operations, a stage behind an unwoven one, and a `Collector`'s own functions (see
+[the agent's limitations](../agent/limitations.md)).
 
 What follows is the remainder, in the order worth doing them.
 

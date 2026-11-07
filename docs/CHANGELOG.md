@@ -49,6 +49,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by a watcher, swings each between RUNNABLE and WAITING the same way and was reported at `CRITICAL`
   in 12 of 50 runs (#1180). A livelock that never finishes is still reported when its round times
   out, and the snapshot starvation and no-progress rules are unchanged.
+- With the agent attached, the lambdas of a parallel `Stream` are now observed on the common pool's
+  workers, not only `forEach`'s action (#1172). A lambda given to `map`, `filter` or `peek` runs for
+  the run while the terminal operation does, and so do the lambdas of `forEachOrdered`, `collect`,
+  `reduce`, `min`, `max` and the matches; `toList`, `toArray`, `count` and the finds end a pipeline
+  the same way. A plain counter or a shared `ArrayList` in a parallel `map` drew a finding only from
+  the caller's own elements before. A combiner, a `reduce` operator or a comparator is ordered after
+  the subtasks that built what it merges, so a correct three-argument `collect` stays silent. A
+  primitive stream's `map` and `filter`, a stage behind `sorted`, `distinct`, `limit` or `mapToInt`, a
+  pipeline ended by `iterator()` and a `Collector`'s own functions are still not followed.
 
 ## [1.14.1] - 2026-11-04
 

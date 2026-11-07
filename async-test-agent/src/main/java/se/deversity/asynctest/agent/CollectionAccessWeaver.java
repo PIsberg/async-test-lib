@@ -34,6 +34,10 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.IntFunction;
+import java.util.Comparator;
+import java.util.function.BinaryOperator;
+import java.util.stream.Collector;
 import java.util.function.BiFunction;
 import java.util.function.BiConsumer;
 import java.util.concurrent.CompletionStage;
@@ -857,6 +861,32 @@ final class CollectionAccessWeaver {
             Entry.call(IntStream.class, "forEach", "intStreamForEach", IntConsumer.class),
             Entry.call(LongStream.class, "forEach", "longStreamForEach", LongConsumer.class),
             Entry.call(DoubleStream.class, "forEach", "doubleStreamForEach", DoubleConsumer.class),
+            // The rest of a Stream pipeline (#1172): a lambda given to map, filter or peek waits in
+            // a slot the terminal operation lends the run to while it runs, and a terminal
+            // operation's own lambdas run like forEach's action. A terminal operation not listed
+            // here lends nothing, so its pipeline runs unattributed as before.
+            Entry.call(Stream.class, "map", "streamMap", Function.class),
+            Entry.call(Stream.class, "filter", "streamFilter", Predicate.class),
+            Entry.call(Stream.class, "peek", "streamPeek", Consumer.class),
+            Entry.call(Stream.class, "forEachOrdered", "streamForEachOrdered", Consumer.class),
+            Entry.call(Stream.class, "collect", "streamCollect", Collector.class),
+            Entry.call(Stream.class, "collect", "streamCollect", Supplier.class, BiConsumer.class,
+                    BiConsumer.class),
+            Entry.call(Stream.class, "reduce", "streamReduce", BinaryOperator.class),
+            Entry.call(Stream.class, "reduce", "streamReduce", Object.class, BinaryOperator.class),
+            Entry.call(Stream.class, "reduce", "streamReduce", Object.class, BiFunction.class,
+                    BinaryOperator.class),
+            Entry.call(Stream.class, "min", "streamMin", Comparator.class),
+            Entry.call(Stream.class, "max", "streamMax", Comparator.class),
+            Entry.call(Stream.class, "anyMatch", "streamAnyMatch", Predicate.class),
+            Entry.call(Stream.class, "allMatch", "streamAllMatch", Predicate.class),
+            Entry.call(Stream.class, "noneMatch", "streamNoneMatch", Predicate.class),
+            Entry.call(Stream.class, "toList", "streamToList"),
+            Entry.call(Stream.class, "toArray", "streamToArray"),
+            Entry.call(Stream.class, "toArray", "streamToArray", IntFunction.class),
+            Entry.call(Stream.class, "count", "streamCount"),
+            Entry.call(Stream.class, "findFirst", "streamFindFirst"),
+            Entry.call(Stream.class, "findAny", "streamFindAny"),
             // A submit whose future the caller pops can never be inspected, so the task's
             // exception reaches nobody; the POP becomes submitResultDiscarded, and a store, a
             // return or a get is left alone.
