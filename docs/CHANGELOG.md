@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `CompletableFutureObtrudeDetector` and `ThreadPoolDeadlockDetector` no longer fail analysis while
+  a worker is still recording, which dropped the run's whole report (#1212). The first put a future's
+  thread name into its violation before `recordObtrude` had set it, a `NullPointerException`; a future
+  registered but not yet counted is now left out. The second listed the pools, then read its risk total
+  afterwards, so a submission recorded in between reported an issue with no structured violation; the
+  total now comes from the pools the same pass lists.
 - `AtomicNonAtomicUpdate` no longer reports a plain store whose value was never built from the
   atomic read it followed. `gauge.get()` used for a log line, then `gauge.set(queue.size())`, lost no
   update, and was reported as one (#1187). The agent now analyses each class's bytes, decides per store
