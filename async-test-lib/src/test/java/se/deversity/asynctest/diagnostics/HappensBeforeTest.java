@@ -404,6 +404,43 @@ class HappensBeforeTest {
     }
 
     @Test
+    @DisplayName("a thread whose thread-locals are cleared keeps its clock")
+    void aClearedThreadLocalKeepsTheClock() throws Exception {
+        // What a common pool worker does from JDK 24 each time it goes idle and wakes up again, often
+        // partway through one parallel stream. A clock started over covered neither the thread's
+        // own accesses before the reset nor what it had acquired, so a combine that merged the
+        // container it filled reported a race.
+        AtomicReference<@Nullable Throwable> failure = new AtomicReference<>();
+        Thread worker = new Thread(() -> {
+            try {
+                long me = Thread.currentThread().threadId();
+                long other = 1L << 40;
+                HappensBefore.receive(HappensBefore.Stamp.of(other));
+                HappensBefore.handOff();
+                HappensBefore.Stamp access = HappensBefore.current();
+
+                java.lang.reflect.Field clocks = HappensBefore.class.getDeclaredField("CLOCKS");
+                clocks.setAccessible(true);
+                ((ThreadLocal<?>) clocks.get(null)).remove();
+
+                HappensBefore.Stamp published = HappensBefore.handOff();
+                assertTrue(published.covers(access),
+                        "what the thread publishes after the clear covers its access before it");
+                assertTrue(published.countOf(me) >= access.countOf(me), "its count did not start over");
+                assertEquals(1, published.countOf(other), "and it still knows what it acquired");
+            } catch (Throwable t) { // NOPMD AvoidCatchingThrowable - carried to the test thread
+                failure.set(t);
+            }
+        }, "innocuous");
+        worker.start();
+        worker.join();
+        Throwable thrown = failure.get();
+        if (thrown != null) {
+            throw new AssertionError(thrown);
+        }
+    }
+
+    @Test
     @DisplayName("a clock past the cap drops other threads, never its own")
     void theCapKeepsTheOwnEntry() {
         long own = 5L;

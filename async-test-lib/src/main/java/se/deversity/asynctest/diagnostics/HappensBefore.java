@@ -972,9 +972,22 @@ public final class HappensBefore {
         }
     }
 
-    /** Creates the calling thread's clock, taking up a clock forked to it if there is one. */
+    /**
+     * Creates the calling thread's clock, taking up a clock forked to it if there is one, or
+     * returns the clock the thread already had.
+     *
+     * <p>A thread can lose its thread-locals while it runs: from JDK 24 the common pool's workers
+     * are innocuous, and clear them every time they go idle and wake up again, often partway
+     * through one parallel stream. A fresh clock would start that thread's count over, so it would
+     * stop covering the thread's own accesses before the reset. It would also forget everything
+     * the thread had acquired. It is still the same thread, so it keeps the clock it had.
+     */
     private static ThreadClock start() {
         Thread me = Thread.currentThread();
+        ThreadClock had = THREADS.get(me);
+        if (had != null) {
+            return had;
+        }
         long id = me.threadId();
         Stamp stamp = Stamp.of(id);
         Stamp forked = FORKS.remove(me);
