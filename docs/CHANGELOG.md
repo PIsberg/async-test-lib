@@ -57,6 +57,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A custom `RejectedExecutionHandler` is no longer handed that wrapper in place of the task it
   rejected: a pool whose handler is not one of the JDK's four policies has its tasks left unwrapped,
   so a handler that re-queues or matches on its own task type gets it back (#1173).
+- `AtomicityValidator` no longer excuses a lost update on an object nobody touched after its round
+  as a settled single-check cache. The rule accepts the run going on as proof that a once-raced
+  field converged, which is right for a lazily created value such as Jackson's view field, where each
+  thread stores at most once. An object one thread incremented, handed to another that incremented
+  it, and incremented again was excused the same way unless the race landed in the last two rounds, so
+  the corpus row `agent_jctoolsHandOff_offererWritesAfterTheOffer` fired on about 10 of 240 rounds and
+  went silent when none of those raced (#1133). That clause now needs every writer to have stored
+  once; a field that keeps being read settles as before.
+
+### Added
+
+- **The silent hand-off corpus row now names the rule that cleared it (#1133).** Three CI
+  occurrences of `agent_jctoolsHandOff_offererWritesAfterTheOffer` going silent showed the takes
+  reaching `AtomicityValidator` and every round still clearing, with nothing saying which of its
+  rules did it. `AtomicityValidator.verdictCounts(fieldSuffix)` (internal API) counts, per field,
+  which rule decided each multi-thread group in the last analysis: `reported`, a lockset answer, a
+  per-instance excuse, a happens-before rule or the volatile single-writer rule. The analysis and
+  its findings are unchanged; it only names the branch it already took. The hand-off rows print the
+  counts, and how many findings landed with no subject, next to their existing evidence, so the
+  next occurrence separates an excuse inside the validator from a finding credited to nobody.
+  `AtomicityVerdictCountsTest` pins the counts.
 
 ## [1.14.1] - 2026-11-04
 

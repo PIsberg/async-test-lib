@@ -456,6 +456,41 @@ public class AtomicityValidator {
         return takes;
     }
 
+    /**
+     * What the last {@link #analyzeAtomicity()} decided about each multi-thread group, per field;
+     * replaced whole by each analysis, so a reader on another thread sees one analysis or the next.
+     */
+    private volatile Map<String, Map<String, Integer>> lastVerdicts = Map.of();
+
+    /**
+     * {@return how many groups of the fields ending in {@code fieldSuffix} the last analysis
+     * decided by each rule, keyed by the rule's name; empty before the first analysis}
+     *
+     * <p>Diagnostic, for a hand-off that should have fired and did not (#1133): with
+     * {@link #ownershipTakes()} showing the takes arrived, this names the rule that cleared the
+     * rounds. A group is one round's accesses to one object. The keys: {@code reported};
+     * {@code oneThread} and {@code noWrite}, groups no rule had to judge; {@code lockset},
+     * {@code lockCoveredTheRound}, {@code safePublication} and {@code oneConstant}, the lockset's
+     * own answers; {@code postShareLock}, {@code hintReadsConfirmed}, {@code settledCache} and
+     * {@code ownershipGenerationsAgree}, the per-instance excuses; {@code happensBefore} and
+     * {@code orderedOrLocked}, the ordering rules; and {@code volatileSingleWriter}. One key counts
+     * accesses rather than groups: {@code constructionDropped}, the accesses of an object built
+     * before a corroborated hand-off, which leave the analysis before grouping.
+     *
+     * @param fieldSuffix the end of the qualified field name, such as {@code Box.count}
+     * @since 1.14.2
+     */
+    @API(status = Status.INTERNAL)
+    public Map<String, Integer> verdictCounts(String fieldSuffix) {
+        Map<String, Integer> merged = new HashMap<>();
+        for (Map.Entry<String, Map<String, Integer>> field : lastVerdicts.entrySet()) {
+            if (field.getKey().endsWith(fieldSuffix)) {
+                field.getValue().forEach((rule, count) -> merged.merge(rule, count, Integer::sum));
+            }
+        }
+        return Map.copyOf(merged);
+    }
+
     private @Nullable Long takerOf(int identity, int generation) {
         Map<Integer, Long> takers = generationTakers.get(identity);
         return takers == null ? null : takers.get(generation);
@@ -1344,7 +1379,10 @@ public class AtomicityValidator {
             report.add(report.checkThenActViolations, "checkThenAct", violation);
         }
 
+        Map<String, Map<String, Integer>> verdicts = new HashMap<>();
         for (Map.Entry<String, List<FieldAccessRecord>> entry : fieldHistory.entrySet()) {
+            Map<String, Integer> fieldVerdicts =
+                    verdicts.computeIfAbsent(entry.getKey(), ignored -> new HashMap<>());
             // Copy under the list's lock, then analyze per invocation round: rounds are
             // ordered by the runner (worker latch, then the next round's submissions), so
             // only same-round accesses can lack a happens-before edge. Without round marks
@@ -1377,6 +1415,7 @@ public class AtomicityValidator {
             for (FieldAccessRecord access : copy) {
                 if (access.exclusivePhase
                         && Boolean.TRUE.equals(corroborated.get(access.instanceKey))) {
+                    fieldVerdicts.merge("constructionDropped", 1, Integer::sum);
                     continue;
                 }
                 byEpoch.computeIfAbsent(
@@ -1387,7 +1426,8 @@ public class AtomicityValidator {
             // Per-instance excuses (#311, #312, #313), computed at most once per instance and
             // only when the lockset alone would have reported. All need ordered history, which
             // the per-round groups no longer carry.
-            Map<Long, Boolean> excusedInstances = new HashMap<>();
+            // The value names the excuse that held, or is empty when none did.
+            Map<Long, String> excusedInstances = new HashMap<>();
 
             for (List<FieldAccessRecord> roundAccesses : byEpoch.values()) {
                 Set<Long> threads = new HashSet<>();
@@ -1415,11 +1455,21 @@ public class AtomicityValidator {
                 // purpose and the JMM makes that correct. Without this the idiom reports as a
                 // check-then-act violation on every correct implementation of it, which is what
                 // commons-lang's LazyInitializer and Guava's memoizing supplier both are.
-                boolean sawUnguarded = locks == null
-                        || (locks.sawUnguardedAccess()
-                            && noLockCoveredTheRound(roundAccesses)
-                            && !locks.isSafePublication(roundAccesses)
-                            && !locks.writesOnlyOneConstant());
+                // The same conditions in the same order as one conjunction, each named so that a
+                // silent round can say which one held (#1133).
+                String verdict = null;
+                if (locks != null) {
+                    if (!locks.sawUnguardedAccess()) {
+                        verdict = "lockset";
+                    } else if (!noLockCoveredTheRound(roundAccesses)) {
+                        verdict = "lockCoveredTheRound";
+                    } else if (locks.isSafePublication(roundAccesses)) {
+                        verdict = "safePublication";
+                    } else if (locks.writesOnlyOneConstant()) {
+                        verdict = "oneConstant";
+                    }
+                }
+                boolean sawUnguarded = verdict == null;
                 // The constant-write excuse answers atomicity only (#1053): a flag every write sets
                 // to one constant cannot lose an update, but a thread that only reads it, with no
                 // lock and no edge in between, may never see the write. Judged on a known receiver
@@ -1447,23 +1497,37 @@ public class AtomicityValidator {
                         && (groupIdentity != 0 || carriesPublishedValueEvidence(copy))) {
                     FieldGuard guard = locks;
                     boolean handOff = Boolean.TRUE.equals(corroborated.get(groupInstance));
-                    boolean excused = excusedInstances.computeIfAbsent(groupInstance,
-                            instance -> (handOff && postShareAccessesShareALock(copy, instance))
-                                    || hintReadsConfirmedUnderTheWriteLock(copy, instance, guard,
-                                            handOff)
-                                    || settledSingleCheckCache(copy, instance, guard, handOff)
-                                    || everyOwnershipGenerationAgreesOnALock(copy, instance));
-                    sawUnguarded = !excused;
+                    String excuse = excusedInstances.computeIfAbsent(groupInstance, instance -> {
+                        if (handOff && postShareAccessesShareALock(copy, instance)) {
+                            return "postShareLock";
+                        }
+                        if (hintReadsConfirmedUnderTheWriteLock(copy, instance, guard, handOff)) {
+                            return "hintReadsConfirmed";
+                        }
+                        if (settledSingleCheckCache(copy, instance, guard, handOff)) {
+                            return "settledCache";
+                        }
+                        return everyOwnershipGenerationAgreesOnALock(copy, instance)
+                                ? "ownershipGenerationsAgree" : "";
+                    });
+                    if (!excuse.isEmpty()) {
+                        sawUnguarded = false;
+                        verdict = excuse;
+                    }
                 }
                 // Ordered by the shared happens-before model: every conflicting pair in this group
                 // has an edge the lockset cannot see, a queue or map hand-off, a volatile
                 // publication, a start or a join. Like the lock rule this judges each pair, not
                 // the interleaving of a compound operation, and like every excuse here it only
                 // ever removes a finding: a group whose accesses carry no stamps is not ordered.
-                if (sawUnguarded && threads.size() > 1
-                        && (HappensBefore.everyConflictOrdered(roundAccesses, true)
-                            || everyConflictOrderedOrLocked(roundAccesses))) {
-                    sawUnguarded = false;
+                if (sawUnguarded && threads.size() > 1) {
+                    if (HappensBefore.everyConflictOrdered(roundAccesses, true)) {
+                        sawUnguarded = false;
+                        verdict = "happensBefore";
+                    } else if (everyConflictOrderedOrLocked(roundAccesses)) {
+                        sawUnguarded = false;
+                        verdict = "orderedOrLocked";
+                    }
                 }
                 // A volatile field written by one thread in the round: that thread's
                 // read-then-write cannot lose an update, and the other threads' reads of a
@@ -1473,7 +1537,13 @@ public class AtomicityValidator {
                 if (sawUnguarded && locks != null && locks.hasVolatileWrites()
                         && writerThreads(roundAccesses) == 1) {
                     sawUnguarded = false;
+                    verdict = "volatileSingleWriter";
                 }
+                String decided = threads.size() <= 1 ? "oneThread"
+                        : !hasWrite ? "noWrite"
+                        : sawUnguarded ? "reported"
+                        : verdict;
+                fieldVerdicts.merge(decided, 1, Integer::sum);
                 // Only claim to have looked at locks when an owner was actually supplied.
                 String note = anyOwnerKnown ? SelfGuard.REPORT_NOTE : "";
 
@@ -1507,6 +1577,7 @@ public class AtomicityValidator {
             }
         }
 
+        lastVerdicts = verdicts;
         return DetectorFailurePolicy.checkedReport(this, report);
     }
 
@@ -1974,6 +2045,7 @@ public class AtomicityValidator {
         long lastWriteEpoch = Long.MIN_VALUE;
         Set<Long> warmingRounds = new HashSet<>();
         Set<Long> writers = new HashSet<>();
+        boolean someWriterStoredTwice = false;
         for (FieldAccessRecord access : history) {
             if (access.instanceKey != instance
                     || (access.exclusivePhase && constructionExcused)) {
@@ -1984,7 +2056,7 @@ public class AtomicityValidator {
             }
             if (access.write) {
                 warmingRounds.add(access.epoch);
-                writers.add(access.threadId);
+                someWriterStoredTwice |= !writers.add(access.threadId);
                 if (access.epoch > lastWriteEpoch) {
                     lastWriteEpoch = access.epoch;
                 }
@@ -2041,8 +2113,14 @@ public class AtomicityValidator {
         // that kept executing for the required rounds after the field's last write, during which
         // the field was demonstrably never raced again, is the same convergence measured on the
         // only clock left. A race in the closing rounds earns nothing and keeps its finding.
+        // The run's clock stands in only for a value created once: after its own store a thread
+        // reads its own value and never misses again, so no writer of a lazily created value
+        // stores twice. A thread that did is updating the object, and an object nobody looked at
+        // after its round lost that update however long the run went on (#1133). A copy-on-write
+        // cache whose writer re-misses after a lost fill keeps being read, and settles above.
         boolean settled = fieldShowsSettledReads
-                || invocationEpoch.get() - lastWriteEpoch >= quietRoundsNeeded;
+                || (!someWriterStoredTwice
+                    && invocationEpoch.get() - lastWriteEpoch >= quietRoundsNeeded);
         // Convergence alone is not enough (#326): it is a property of the field, and a
         // double-submit's defect is a property of what was stored.
         return settled && everyPublishedValueWentQuiet(history, instance);
@@ -2141,6 +2219,7 @@ public class AtomicityValidator {
         offers.clear();
         lockedOffers.clear();
         instances.clear();
+        lastVerdicts = Map.of();
         roundTokens = new long[0];
         invocationEpoch.set(0);
     }
