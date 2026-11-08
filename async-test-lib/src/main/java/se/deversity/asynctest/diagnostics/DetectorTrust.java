@@ -356,7 +356,7 @@ public final class DetectorTrust {
             row(DetectorType.LAZY_COLLECTION_MISUSE, "LazyCollectionMisuseDetector", "LazyCollectionMisuse", TrustTier.PROMPT, Evidence.HEURISTIC),
             row(DetectorType.PROCESS_STREAM_STARVATION, "ProcessStreamStarvationDetector", "ProcessStreamStarvation", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD, "BlockingOnNonBlockingThreadDetector", "BlockingOnNonBlockingThread", TrustTier.PROMPT, Evidence.OBSERVED),
-            row(DetectorType.KOTLIN_MUTEX_REENTRANCY, "KotlinMutexReentrancyDetector", "KotlinMutexReentrancy", TrustTier.PROMPT, Evidence.OBSERVED)
+            row(DetectorType.KOTLIN_MUTEX_REENTRANCY, "KotlinMutexReentrancyDetector", "KotlinMutexReentrancy", TrustTier.VERDICT, Evidence.OBSERVED)
     );
 
     private static final List<Row> ROWS = List.copyOf(TABLE.stream().map(Classified::row).toList());

@@ -215,7 +215,7 @@
 
 ### se.deversity.asynctest.diagnostics.KotlinMutexReentrancyDetector
 - **Strategy**: OTHER
-- **Note**: Per-mutex state in the weakly keyed ConcurrentHashMap of AbstractInstanceDetector; the holder is a volatile weak reference, and a reentry writes its description before its count.
+- **Note**: Per-mutex state in the weakly keyed ConcurrentHashMap of AbstractInstanceDetector; the holdings are a ConcurrentLinkedDeque of weakly held Jobs, and a reentry writes its description before its count.
 
 ### se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector
 - **Strategy**: OTHER

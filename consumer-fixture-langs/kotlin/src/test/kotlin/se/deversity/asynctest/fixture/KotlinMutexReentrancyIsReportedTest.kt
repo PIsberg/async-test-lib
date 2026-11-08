@@ -50,6 +50,11 @@ class KotlinMutexReentrancyIsReportedTest {
                     "a bare lock() inside coroutineScope was not reported. Findings were: " +
                         findings.violations()
                 )
+                assertTrue(
+                    reports.any { it.contains("SupervisorCoroutine") },
+                    "a withLock inside supervisorScope, under a lock that had to wait, was not " +
+                        "reported (#1220). Findings were: " + findings.violations()
+                )
             } finally {
                 findings.close()
             }
@@ -92,5 +97,17 @@ class KotlinMutexReentrancyIsReportedTest {
     )
     fun bareLockInsideCoroutineScope() {
         assertFalse(bridges.reenterWithBareLock(), "the inner lock was taken: kotlinx Mutex was reentrant?")
+    }
+
+    @AsyncTest(
+        threads = 4,
+        invocations = 4,
+        failOn = FailOn.NONE,
+        licenseMockMode = true,
+        timeoutMs = 60_000,
+        includes = [DetectorType.KOTLIN_MUTEX_REENTRANCY]
+    )
+    fun withLockAfterWaitingForTheMutex() {
+        assertFalse(bridges.reenterAfterWaiting(), "the inner lock was taken: kotlinx Mutex was reentrant?")
     }
 }

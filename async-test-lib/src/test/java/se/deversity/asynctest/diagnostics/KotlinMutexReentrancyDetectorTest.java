@@ -4,7 +4,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import se.deversity.asynctest.report.Violation;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -154,5 +157,103 @@ class KotlinMutexReentrancyDetectorTest {
     void doesNotKeepARecordedSubjectAlive() throws InterruptedException {
         KotlinMutexReentrancyDetector d = new KotlinMutexReentrancyDetector();
         AbstractInstanceDetectorTest.assertNotRetained(Object::new, m -> d.recordAcquired(m, outer));
+    }
+
+    /** The detector releases a mutex whose locks it recorded with tokens, too. */
+    @Test
+    void doesNotKeepALockedSubjectAlive() throws InterruptedException {
+        KotlinMutexReentrancyDetector d = new KotlinMutexReentrancyDetector();
+        AbstractInstanceDetectorTest.assertNotRetained(Object::new, m -> d.recordLocked(m, outer, new Object(), true));
+    }
+
+    /**
+     * The woven path: a lock's token holds the mutex only while the mutex says so. Here a set of
+     * tokens stands in for {@code Mutex.holdsLock}.
+     */
+    @Test
+    @DisplayName("a locked token is the holder while the mutex says it holds")
+    void tokenHoldsWhileTheMutexSaysSo() {
+        KotlinMutexReentrancyDetector d = new KotlinMutexReentrancyDetector();
+        Set<Object> holding = new HashSet<>();
+        Object token = new Object();
+        d.recordLocked(mutex, outer, token, true);
+        holding.add(token);
+        assertEquals(1, d.holderAmong(mutex, List.of(scope, outer), holding::contains));
+        assertEquals(-1, d.holderAmong(mutex, List.of(scope, outer)), "a token is not a holder named by hand");
+        assertEquals(-1, d.holderAmong(mutex, List.of(scope, outer), null), "no answer from the mutex, no holder");
+    }
+
+    /** #1221: an unlock the agent never saw cannot leave a holder behind. */
+    @Test
+    @DisplayName("a token the mutex no longer holds is not the holder, and is dropped")
+    void tokenReleasedUnseenIsNotTheHolder() {
+        KotlinMutexReentrancyDetector d = new KotlinMutexReentrancyDetector();
+        Set<Object> holding = new HashSet<>();
+        Object token = new Object();
+        d.recordLocked(mutex, outer, token, true);
+        // Unlocked where the agent could not see it, then taken by another coroutine that holds no token.
+        assertEquals(-1, d.holderAmong(mutex, List.of(outer), holding::contains));
+        assertTrue(d.trackedState(mutex).holdings.isEmpty(), "a token that held and let go never holds again");
+    }
+
+    /** #1220: a lock that waited becomes the holder once the mutex is granted to it. */
+    @Test
+    @DisplayName("a lock that waited holds once granted, and is kept while it waits")
+    void waitedLockHoldsOnceGranted() {
+        KotlinMutexReentrancyDetector d = new KotlinMutexReentrancyDetector();
+        Set<Object> holding = new HashSet<>();
+        Object token = new Object();
+        d.recordLocked(mutex, outer, token, false);
+        assertEquals(-1, d.holderAmong(mutex, List.of(outer), holding::contains));
+        assertEquals(1, d.trackedState(mutex).holdings.size(), "still waiting: it may yet be granted");
+
+        holding.add(token);
+        assertEquals(0, d.holderAmong(mutex, List.of(outer), holding::contains));
+
+        holding.remove(token);
+        assertEquals(-1, d.holderAmong(mutex, List.of(outer), holding::contains));
+        assertTrue(d.trackedState(mutex).holdings.isEmpty(), "granted and released: dropped");
+    }
+
+    @Test
+    @DisplayName("an owner reused by its caller keeps only its newest lock, and the locks kept are capped")
+    void holdingsAreBounded() {
+        KotlinMutexReentrancyDetector d = new KotlinMutexReentrancyDetector();
+        Object reused = new Object();
+        d.recordLocked(mutex, outer, reused, false);
+        d.recordLocked(mutex, scope, reused, false);
+        assertEquals(1, d.trackedState(mutex).holdings.size());
+        assertEquals(-1, d.holderAmong(mutex, List.of(outer), t -> t == reused), "the older lock was replaced");
+        assertEquals(0, d.holderAmong(mutex, List.of(scope), t -> t == reused));
+
+        List<Object> jobs = new ArrayList<>();
+        for (int i = 0; i < KotlinMutexReentrancyDetector.MAX_HOLDINGS + 10; i++) {
+            Object job = new Object();
+            jobs.add(job);
+            d.recordLocked(mutex, job, new Object(), false);
+        }
+        assertEquals(KotlinMutexReentrancyDetector.MAX_HOLDINGS, d.trackedState(mutex).holdings.size());
+    }
+
+    @Test
+    @DisplayName("forgetting a holder named by hand leaves the locked tokens to the mutex")
+    void holderUnknownLeavesTokens() {
+        KotlinMutexReentrancyDetector d = new KotlinMutexReentrancyDetector();
+        Object token = new Object();
+        d.recordAcquired(mutex, scope);
+        d.recordLocked(mutex, outer, token, true);
+        d.recordHolderUnknown(mutex);
+        assertEquals(-1, d.holderAmong(mutex, List.of(scope)));
+        assertEquals(0, d.holderAmong(mutex, List.of(outer), t -> t == token));
+    }
+
+    @Test
+    @DisplayName("a lock with no mutex, Job or token records nothing")
+    void incompleteLocksAreIgnored() {
+        KotlinMutexReentrancyDetector d = new KotlinMutexReentrancyDetector();
+        d.recordLocked(null, outer, new Object(), true);
+        d.recordLocked(mutex, null, new Object(), true);
+        d.recordLocked(mutex, outer, null, true);
+        assertEquals(null, d.trackedState(mutex));
     }
 }

@@ -300,11 +300,13 @@ A Kotlin coroutine `Mutex` is watched by name and descriptor too (#1007). An inl
 `unlock`, and a bare `lock()`, `unlock()` or `tryLock()` to the interface's static `$default`
 bridge. `KotlinMutexWeaver` replaces each of the six with a static hook that takes the same stack,
 its Kotlin types written as `Object`, and makes the original call through a handle bound to the
-receiver's own kotlinx; a descriptor from some other kotlinx is left alone. The lock hook reads the
-calling coroutine's `Job` from the continuation, and `KotlinMutexReentrancyDetector` records it as
-the holder of a mutex it took without waiting and reports a lock that waits while the holder is
-the caller or a coroutine suspended for the caller's scope. The code that locks and the code that
-unlocks must both be in `includes=`: an unlock the agent does not see leaves the holder recorded
+receiver's own kotlinx; a descriptor from some other kotlinx is left alone. A lock called without
+an owner is made with a fresh owner token of the agent's, which kotlinx compares by identity and
+so treats exactly as no owner. The lock hook reads the calling coroutine's `Job` from the
+continuation, and `KotlinMutexReentrancyDetector` keeps it with the token. It reports a lock that
+waits while the mutex's own `holdsLock` says a token of the caller, or of a coroutine suspended for
+the caller's scope, holds it. The mutex answers, so an unlock outside `includes=` ends a hold like
+any other (#1221); a lock outside `includes=` holds no token, and a reentry under it is missed
 (`KotlinMutexReentrancyIsReportedTest` and its silent twin, with real kotlinx, in
 `consumer-fixture-langs/kotlin`).
 

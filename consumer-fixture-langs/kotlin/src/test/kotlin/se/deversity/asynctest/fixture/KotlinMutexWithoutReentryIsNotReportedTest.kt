@@ -13,8 +13,9 @@ import se.deversity.asynctest.FailOn
 /**
  * The silent twin of `KotlinMutexReentrancyIsReportedTest` (#1007): the same woven `Mutex` calls in
  * shapes that never wait for their own coroutine. A mutex locked twice in a row; a `launch` child
- * that waits its turn behind its parent; the run's workers contending for one mutex; and a
- * `tryLock` inside the lock, which backs off rather than waits.
+ * that waits its turn behind its parent; the run's workers contending for one mutex; a `tryLock`
+ * inside the lock, which backs off rather than waits; and a lock that waits for another coroutine
+ * after an unlock and a lock the agent never saw (#1221).
  */
 class KotlinMutexWithoutReentryIsNotReportedTest {
 
@@ -89,5 +90,17 @@ class KotlinMutexWithoutReentryIsNotReportedTest {
     )
     fun tryLockInsideTheLockBacksOff() {
         assertFalse(bridges.tryLockInsideTheLock(), "tryLock took a mutex its own coroutine holds")
+    }
+
+    @AsyncTest(
+        threads = 4,
+        invocations = 4,
+        failOn = FailOn.NONE,
+        licenseMockMode = true,
+        timeoutMs = 60_000,
+        includes = [DetectorType.KOTLIN_MUTEX_REENTRANCY]
+    )
+    fun lockAgainAfterAnUnseenHandOver() {
+        assertTrue(bridges.lockAgainAfterAnUnseenHandOver(), "the lock after the hand-over was never taken")
     }
 }

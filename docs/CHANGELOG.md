@@ -15,11 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that never comes, and the coroutine hangs. With the agent (`collections=true`), `KotlinMutexWeaver`
   substitutes each `lock`, `unlock` and `tryLock` call site, the ones an inlined `withLock` compiles
   to included, matched by owner, name and descriptor, since kotlinx may not be on the agent's class
-  path. The hook reads the calling coroutine's `Job` from the continuation; a lock taken without
-  waiting makes it the holder, and a later lock that waits while the holder is the caller or a
-  coroutine suspended for its scope is reported. It errs toward silence: a holder that waited, or
-  took the mutex with `tryLock`, is unknown, and a `launch` or `async` child is not part of its
-  parent. Proven against real kotlinx 1.11 in `consumer-fixture-langs/kotlin`, red with the weaver
+  path. A lock called without an owner is made with a fresh owner token of the agent's, which
+  kotlinx compares by identity and so treats exactly as no owner; the hook keeps it with the calling
+  coroutine's `Job`, read from the continuation. A lock that waits while the mutex's own `holdsLock`
+  says the caller's token, or that of a coroutine suspended for its scope, holds it is reported, so
+  an unlock the agent does not see cannot leave a stale holder (#1221), and a lock that had to wait
+  counts once it is granted (#1220). It errs toward silence: a coroutine that took the mutex with
+  `tryLock`, `select` or a lock outside `includes=` holds no token, and a `launch` or `async` child
+  is not part of its parent. `VERDICT`, backed by a corpus pair in both directions. Proven against real kotlinx 1.11 in `consumer-fixture-langs/kotlin`, red with the weaver
   off, with a silent twin.
 
 ### Changed

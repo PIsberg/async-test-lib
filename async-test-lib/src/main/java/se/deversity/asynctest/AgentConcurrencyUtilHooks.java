@@ -76,7 +76,6 @@ import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector;
-import se.deversity.asynctest.diagnostics.KotlinMutexReentrancyDetector;
 import se.deversity.asynctest.diagnostics.AtomicNonAtomicUpdateDetector;
 import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
 import se.deversity.asynctest.diagnostics.MdcContextLeakDetector;
@@ -3115,16 +3114,19 @@ public final class AgentConcurrencyUtilHooks {
 
     /**
      * Weaves {@code kotlinx.coroutines.sync.Mutex.lock(owner, continuation)}, the call
-     * {@code mutex.withLock(owner) { }} and {@code mutex.lock(owner)} compile to (#1007). The lock is
-     * made unchanged; around it, {@code KotlinMutexReentrancyDetector} learns who holds the mutex and
-     * hears a lock that waits for its own coroutine.
+     * {@code mutex.withLock(owner) { }} and {@code mutex.lock(owner)} compile to (#1007). Around the
+     * lock, {@code KotlinMutexReentrancyDetector} learns who holds the mutex and hears a lock that
+     * waits for its own coroutine.
      *
-     * <p>A call that takes the mutex without waiting makes the caller's {@code Job} its holder. A
-     * call that waits while the holder is the caller, or a coroutine suspended until the caller's
-     * {@code withContext}, {@code coroutineScope} or {@code withTimeout} block completes, is the
-     * finding: that wait ends only with an unlock the waiting coroutine itself has to make. The
-     * Kotlin types in the real descriptor are not on the library's class path, so the hook takes
-     * {@code Object}s and calls through a handle bound to the receiver's own kotlinx.
+     * <p>While a run hears it, a call with no owner is made with a fresh owner token instead, so the
+     * mutex itself can later say whether this lock still holds it (#1221). kotlinx compares owners
+     * by identity and the token matches nothing else, so the lock, an {@code unlock(null)} and a
+     * {@code tryLock} behave exactly as with no owner. The caller's {@code Job} is recorded with the
+     * owner, and a call that waits while the caller, or a coroutine suspended until the caller's
+     * {@code withContext}, {@code coroutineScope} or {@code withTimeout} block completes, holds the
+     * mutex is the finding: that wait ends only with an unlock the waiting coroutine itself has to
+     * make. The Kotlin types in the real descriptor are not on the library's class path, so the
+     * hook takes {@code Object}s and calls through a handle bound to the receiver's own kotlinx.
      *
      * @param mutex        the receiver
      * @param owner        the owner token, or {@code null}
@@ -3135,10 +3137,10 @@ public final class AgentConcurrencyUtilHooks {
     public static Object kotlinMutexLock(Object mutex, Object owner, Object continuation) {
         ControlledSchedule.point();
         KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
-        KotlinMutexes.LockWatch watch = KotlinMutexes.LockWatch.before(mutex, continuation, binding);
+        KotlinMutexes.LockWatch watch = KotlinMutexes.LockWatch.before(mutex, owner, continuation, binding);
         Object result;
         try {
-            result = binding.lock.invokeExact(mutex, owner, continuation);
+            result = binding.lock.invokeExact(mutex, watch == null ? owner : watch.owner, continuation);
         } catch (Throwable t) {
             KotlinMutexes.LockWatch.threw(watch);
             throw KotlinMutexes.rethrow(t);
@@ -3149,7 +3151,9 @@ public final class AgentConcurrencyUtilHooks {
 
     /**
      * Weaves {@code Mutex.lock$default}, the call a bare {@code mutex.lock()} compiles to, as
-     * {@link #kotlinMutexLock}.
+     * {@link #kotlinMutexLock}. The bridge only fills in the defaulted owner, {@code null}, and calls
+     * {@code lock}, so while a run hears the call it is made as {@code lock} directly, with the owner
+     * token; otherwise the bridge is called unchanged.
      *
      * @param mutex        the receiver
      * @param owner        the owner token as passed, ignored by kotlinx where {@code mask} omits it
@@ -3163,10 +3167,14 @@ public final class AgentConcurrencyUtilHooks {
                                                 Object marker) {
         ControlledSchedule.point();
         KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
-        KotlinMutexes.LockWatch watch = KotlinMutexes.LockWatch.before(mutex, continuation, binding);
+        // A non-null marker makes the bridge throw: that call goes through it untouched.
+        KotlinMutexes.LockWatch watch = marker != null ? null
+                : KotlinMutexes.LockWatch.before(mutex, (mask & 1) != 0 ? null : owner, continuation, binding);
         Object result;
         try {
-            result = binding.lockDefault.invokeExact(mutex, owner, continuation, mask, marker);
+            result = watch == null
+                    ? binding.lockDefault.invokeExact(mutex, owner, continuation, mask, marker)
+                    : binding.lock.invokeExact(mutex, watch.owner, continuation);
         } catch (Throwable t) {
             KotlinMutexes.LockWatch.threw(watch);
             throw KotlinMutexes.rethrow(t);
@@ -3176,8 +3184,9 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
-     * Weaves {@code Mutex.unlock(owner)}: the holder is forgotten first, so no lock is ever judged
-     * against a coroutine that has already let the mutex go, then the unlock is made unchanged.
+     * Weaves {@code Mutex.unlock(owner)}, a schedule point; the unlock is made unchanged. Nothing is
+     * recorded: whether a lock still holds the mutex is asked of the mutex itself, so an unlock the
+     * agent sees and one it does not end a hold alike (#1221).
      *
      * @param mutex the receiver
      * @param owner the owner token, or {@code null}
@@ -3186,7 +3195,6 @@ public final class AgentConcurrencyUtilHooks {
     public static void kotlinMutexUnlock(Object mutex, Object owner) {
         ControlledSchedule.point();
         KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
-        kotlinMutexHolderUnknown(mutex);
         try {
             binding.unlock.invokeExact(mutex, owner);
         } catch (Throwable t) {
@@ -3206,7 +3214,6 @@ public final class AgentConcurrencyUtilHooks {
     public static void kotlinMutexUnlockDefault(Object mutex, Object owner, int mask, Object marker) {
         ControlledSchedule.point();
         KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
-        kotlinMutexHolderUnknown(mutex);
         try {
             binding.unlockDefault.invokeExact(mutex, owner, mask, marker);
         } catch (Throwable t) {
@@ -3215,9 +3222,10 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
-     * Weaves {@code Mutex.tryLock(owner)}. A {@code tryLock} has no continuation, so the coroutine
-     * that took the mutex cannot be named: on success the holder becomes unknown, and no lock is
-     * judged against it.
+     * Weaves {@code Mutex.tryLock(owner)}, a schedule point; the call is made unchanged. A
+     * {@code tryLock} has no continuation, so the coroutine that took the mutex cannot be named and
+     * nothing is recorded; a lock taken here holds no token of the agent's, so no lock is judged
+     * against it.
      *
      * @param mutex the receiver
      * @param owner the owner token, or {@code null}
@@ -3227,16 +3235,11 @@ public final class AgentConcurrencyUtilHooks {
     public static boolean kotlinMutexTryLock(Object mutex, Object owner) {
         ControlledSchedule.point();
         KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
-        boolean taken;
         try {
-            taken = (boolean) binding.tryLock.invokeExact(mutex, owner);
+            return (boolean) binding.tryLock.invokeExact(mutex, owner);
         } catch (Throwable t) {
             throw KotlinMutexes.rethrow(t);
         }
-        if (taken) {
-            kotlinMutexHolderUnknown(mutex);
-        }
-        return taken;
     }
 
     /**
@@ -3252,22 +3255,10 @@ public final class AgentConcurrencyUtilHooks {
     public static boolean kotlinMutexTryLockDefault(Object mutex, Object owner, int mask, Object marker) {
         ControlledSchedule.point();
         KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
-        boolean taken;
         try {
-            taken = (boolean) binding.tryLockDefault.invokeExact(mutex, owner, mask, marker);
+            return (boolean) binding.tryLockDefault.invokeExact(mutex, owner, mask, marker);
         } catch (Throwable t) {
             throw KotlinMutexes.rethrow(t);
-        }
-        if (taken) {
-            kotlinMutexHolderUnknown(mutex);
-        }
-        return taken;
-    }
-
-    private static void kotlinMutexHolderUnknown(Object mutex) {
-        KotlinMutexReentrancyDetector detector = AsyncTestContext.currentKotlinMutexReentrancyDetector();
-        if (detector != null) {
-            detector.recordHolderUnknown(mutex);
         }
     }
 
