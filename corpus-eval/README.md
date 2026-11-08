@@ -7,7 +7,7 @@ with the numbers and what they do and do not support, is
 
 ## Why it is a standalone module
 
-The nine corpus libraries are *subjects*, not tools. Keeping the module out of the reactor keeps
+The ten corpus libraries are *subjects*, not tools. Keeping the module out of the reactor keeps
 them off every classpath that matters: nothing in `async-test-lib`, the published artifacts or the
 Gradle build resolves them, exactly as `consumer-fixture/` stays outside for its own reason.
 

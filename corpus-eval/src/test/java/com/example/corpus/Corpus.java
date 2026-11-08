@@ -29,6 +29,7 @@ final class Corpus {
     private static final String SPRING = "spring-core:7.0.9";
     private static final String HIKARI = "HikariCP:7.0.2";
     private static final String GROOVY = "groovy:5.1.2";
+    private static final String KOTLINX = "kotlinx-coroutines-core-jvm:1.11.0";
 
     /**
      * The platform itself, for subjects that ship with it.
@@ -1584,6 +1585,24 @@ final class Corpus {
                     "the same start and the same runBlocking on a FastThreadLocalThread built to "
                             + "permit blocking calls: bridging blocking code to suspending code is "
                             + "what runBlocking is for"),
+
+            new RecordingSubject("agent_kotlinMutex_lockedAgainByItsHolder", KOTLINX,
+                    "kotlinx.coroutines.sync.Mutex",
+                    DetectorType.KOTLIN_MUTEX_REENTRANCY, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "each worker's coroutine locks a fresh kotlinx Mutex and locks it again before "
+                            + "unlocking. Mutex is not reentrant, so the second lock suspends on "
+                            + "its own holder and would never return; the body then lets the outer "
+                            + "hold go so the round ends. The call sites are compiled against "
+                            + "kotlinx 1.11's real Mutex and woven by name (#1007)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_kotlinMutex_unlockedBetweenLocks", KOTLINX,
+                    "kotlinx.coroutines.sync.Mutex",
+                    DetectorType.KOTLIN_MUTEX_REENTRANCY, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same coroutine, the same fresh mutex and the same two locks, with an "
+                            + "unlock between them: the second lock finds the mutex free"),
 
             new RecordingSubject("agent_pipe_bothEndsOnOneThread", JDK,
                     "java.io.PipedInputStream",
@@ -5916,7 +5935,9 @@ final class Corpus {
             "agent_nettyThread_sleepsOnAnEventLoopThread",
             "agent_nettyThread_sleepsOnAnOrdinaryThread",
             "agent_nettyThread_runBlockingOnAnEventLoopThread",
-            "agent_nettyThread_runBlockingOnAnOrdinaryThread");
+            "agent_nettyThread_runBlockingOnAnOrdinaryThread",
+            "agent_kotlinMutex_lockedAgainByItsHolder",
+            "agent_kotlinMutex_unlockedBetweenLocks");
 
     /** {@return whether {@code subject}'s finding is claimed to come from a call woven inside its library} */
     static boolean wovenCallSiteIsInsideTheLibrary(RecordingSubject subject) {

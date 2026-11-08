@@ -1884,10 +1884,10 @@ silence, so a refusal cannot outlive a pair in that lane either.
 | | Detectors |
 |---|---|
 | Paired in the recording lane | 127 |
-| Paired in the agent-pair lane | 50 |
+| Paired in the agent-pair lane | 51 |
 | ...less those paired in both | -30 |
 | Paired by neither of those lanes | +1 |
-| **Total paired** | **148** |
+| **Total paired** | **149** |
 
 `CorpusClaimsInDocsTest` derives every paired row from the corpus and fails when one stops being
 true. The one detector neither pair lane names is `SHARED_COLLECTIONS`, which lane one and the idiom
@@ -2430,7 +2430,7 @@ the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
 added below, and the Guava service pair (#736), 19 of the 49 agent-fed detectors are measured in
-both directions on call sites inside a library. `LibraryReach` records why the other twenty-nine are not,
+both directions on call sites inside a library. `LibraryReach` records why the other thirty are not,
 and `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions:
 
 | Detector | Why no corpus library reaches it |
@@ -2451,6 +2451,7 @@ and `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both 
 | `SYNCHRONIZED_COLLECTION_ITERATION` | agent-fed since 2026-10-11, through the woven `iterator()`, `stream()` and map views. A firing library row needs a documented-unsafe library method that iterates a synchronized wrapper unguarded, and no corpus library ships that defect; `agent_synchronizedList_iteratedWithoutItsLock` and its guarded twin pair it in the test file |
 | `SYSTEM_PROPERTY_MUTATION` | agent-fed since 2026-10-11, through the woven `System.setProperty`, `clearProperty`, `Locale.setDefault` and `TimeZone.setDefault`. A firing library row needs a library method that writes a system property from several threads unguarded, and no corpus library ships that defect; `agent_systemProperty_setByEveryWorker` and its guarded twin pair it in the test file |
 | `PROCESS_STREAM_STARVATION` | agent-fed since 2026-10-11, through the woven `Process.waitFor` and the pipe getters. A firing library row needs a library method that starts a child and waits before draining it, and no corpus library starts processes; `agent_process_waitedForBeforeDraining` and its draining twin pair it in the test file |
+| `KOTLIN_MUTEX_REENTRANCY` | agent-fed since #1007, through the woven kotlinx `Mutex` `lock`, `tryLock` and `unlock`. kotlinx's own classes are never woven and no other corpus library calls a `Mutex`, so `agent_kotlinMutex_lockedAgainByItsHolder` and its unlocked twin lock one from the test body |
 
 **A library type reached from the test body (#692).** `agent_jctoolsHandOff_offererWritesAfterTheOffer`
 and its twin hand an object from one worker to another through the real JCTools `MpscArrayQueue`,

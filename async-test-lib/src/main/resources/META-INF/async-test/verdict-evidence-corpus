@@ -43,6 +43,13 @@
 #   half blocks in the test body rather than in a framework's own loop. PROMPT until a pair through
 #   a framework blocking on its own event loop exists.
 #
+# held: KOTLIN_MUTEX_REENTRANCY
+#   KOTLIN_MUTEX_REENTRANCY clears a mutex's holder only on a woven unlock, so an unlock in a class
+#   outside includes= leaves a stale holder, and a later lock from that coroutine that waits on
+#   another holder draws the same finding as a real reentry (#1221). Its pair (#1007) separates
+#   the halves by an unlock in woven code. PROMPT until the detector checks the recorded holder
+#   against the mutex's own state.
+#
 # FILE_CHANNEL_POSITION_RACE was held here from #755 until 2026-09-26, when #819 made the detector
 # judge the seek-then-I/O sequence rather than single accesses; it is registered below, and its
 # line says how.

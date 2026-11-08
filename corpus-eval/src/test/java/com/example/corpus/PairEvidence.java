@@ -123,6 +123,12 @@ final class PairEvidence {
                 + "Netty's thread for another reason draws the same finding as an event loop; the pair "
                 + "separates on permitBlockingCalls() of one Netty class and blocks in the test body, "
                 + "not in a framework's own loop");
+        // Read 2026-11-08, when #1007 added the detector with this pair.
+        HELD_ON_MODEL.put(DetectorType.KOTLIN_MUTEX_REENTRANCY, "the holder is cleared only by a "
+                + "woven unlock, so an unlock in a class outside includes= leaves a stale holder, and "
+                + "a later lock from that coroutine that waits on another holder draws the same "
+                + "finding as a real reentry (#1221); the pair separates on an unlock in woven code. "
+                + "PROMPT until the detector checks the recorded holder against the mutex itself");
         HELD_ON_MODEL.put(DetectorType.STREAM_CLOSING, "reports any stream still open when "
                 + "analysis runs and any close from a thread other than the opener, so a stream "
                 + "scoped to the class and closed in teardown, or handed to a consumer thread that "
