@@ -103,4 +103,16 @@ class KotlinMutexWithoutReentryIsNotReportedTest {
     fun lockAgainAfterAnUnseenHandOver() {
         assertTrue(bridges.lockAgainAfterAnUnseenHandOver(), "the lock after the hand-over was never taken")
     }
+
+    @AsyncTest(
+        threads = 4,
+        invocations = 4,
+        failOn = FailOn.NONE,
+        licenseMockMode = true,
+        timeoutMs = 60_000,
+        includes = [DetectorType.KOTLIN_MUTEX_REENTRANCY]
+    )
+    fun lockAfterTryLockIsReleased() {
+        assertTrue(bridges.lockAfterTryLockIsReleased(), "the lock after the released tryLock was never taken")
+    }
 }

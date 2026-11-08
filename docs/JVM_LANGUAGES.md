@@ -44,9 +44,11 @@ behind it (#1107). On an ordinary thread outside any coroutine, its intended use
 reported (#1007). The third is `KOTLIN_MUTEX_REENTRANCY`: a `Mutex` locked again by the coroutine
 that holds it, directly or from a `withContext`, `coroutineScope` or `withTimeout` block it is
 suspended for. kotlinx `Mutex` is not reentrant, so that lock waits forever. The woven `lock` reads
-the coroutine's `Job` from its continuation and records it as the holder when it takes the mutex
-without waiting; a holder that had to wait, or took it with `tryLock`, is not known, and a lock
-under it is not judged. Races across suspensions are still
+the coroutine's `Job` from its continuation and records it as the holder of the mutex, at once or
+once a lock that had to wait is granted. A `tryLock` takes no continuation, so the agent passes the
+one of the suspend function or lambda it is called in (#1220). A holder that took the mutex through
+`select`, or with a `tryLock` outside any suspend function, is not known, and a lock under it is not
+judged. Races across suspensions are still
 [#1007](https://github.com/PIsberg/async-test-lib/issues/1007).
 Fixture:
 [`consumer-fixture-langs/kotlin`](../consumer-fixture-langs/kotlin); a fuller example with a

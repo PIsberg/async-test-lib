@@ -303,7 +303,11 @@ its Kotlin types written as `Object`, and makes the original call through a hand
 receiver's own kotlinx; a descriptor from some other kotlinx is left alone. A lock called without
 an owner is made with a fresh owner token of the agent's, which kotlinx compares by identity and
 so treats exactly as no owner. The lock hook reads the calling coroutine's `Job` from the
-continuation, and `KotlinMutexReentrancyDetector` keeps it with the token. It reports a lock that
+continuation, and `KotlinMutexReentrancyDetector` keeps it with the token. A `tryLock` takes no
+continuation, so before its hook the weaver loads the one of the function the call is made in:
+`this` in a suspend lambda's `invokeSuspend`, the trailing `Continuation` parameter of a suspend
+function, or `null` elsewhere, and a mutex the `tryLock` takes is kept with that `Job` the same way
+(#1220). It reports a lock that
 waits while the mutex's own `holdsLock` says a token of the caller, or of a coroutine suspended for
 the caller's scope, holds it. The mutex answers, so an unlock outside `includes=` ends a hold like
 any other (#1221); a lock outside `includes=` holds no token, and a reentry under it is missed

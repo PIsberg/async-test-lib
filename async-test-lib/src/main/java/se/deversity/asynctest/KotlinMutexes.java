@@ -216,6 +216,52 @@ final class KotlinMutexes {
         }
     }
 
+    /**
+     * What a woven {@code tryLock} knew before the call (#1220): the calling coroutine's {@code Job},
+     * read from the continuation the agent found around the call site, and the owner the call is
+     * made with.
+     */
+    static final class TryLockWatch {
+        private final KotlinMutexReentrancyDetector detector;
+        private final Object mutex;
+        private final Object job;
+        /** The owner to make the call with: the caller's own, or a fresh {@link OwnerToken}. */
+        final Object owner;
+
+        private TryLockWatch(KotlinMutexReentrancyDetector detector, Object mutex, Object job, Object owner) {
+            this.detector = detector;
+            this.mutex = mutex;
+            this.job = job;
+            this.owner = owner;
+        }
+
+        /**
+         * {@return the watch for a {@code tryLock} about to be made with {@code owner}, or {@code null}
+         * when no run hears it, no continuation was found, it names no {@code Job}, or the mutex
+         * cannot say who holds it; the call is then made unchanged}
+         */
+        static @Nullable TryLockWatch before(@Nullable KotlinMutexReentrancyDetector detector, Object mutex,
+                                             @Nullable Object owner, @Nullable Object continuation,
+                                             Binding binding) {
+            JobReader jobs = binding.jobs;
+            if (detector == null || continuation == null || jobs == null || binding.holdsLock == null) {
+                return null;
+            }
+            List<Object> waiting = jobs.waiting(continuation);
+            if (waiting.isEmpty()) {
+                return null;
+            }
+            return new TryLockWatch(detector, mutex, waiting.get(0), owner != null ? owner : new OwnerToken());
+        }
+
+        /** The call returned: a mutex it took is held by the caller's {@code Job} under the owner. */
+        static void returned(@Nullable TryLockWatch watch, boolean taken) {
+            if (watch != null && taken) {
+                watch.detector.recordLocked(watch.mutex, watch.job, watch.owner, true);
+            }
+        }
+    }
+
     /** {@return the binding for {@code mutex}'s class} */
     static Binding of(Object mutex) {
         return BINDINGS.get(mutex.getClass());

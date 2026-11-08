@@ -3248,10 +3248,9 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
-     * Weaves {@code Mutex.tryLock(owner)}, a schedule point; the call is made unchanged. A
-     * {@code tryLock} has no continuation, so the coroutine that took the mutex cannot be named and
-     * nothing is recorded; a lock taken here holds no token of the agent's, so no lock is judged
-     * against it.
+     * Weaves {@code Mutex.tryLock(owner)} for an agent older than {@link #kotlinMutexTryLockIn},
+     * which passes no continuation: a schedule point, and the call is made unchanged. The coroutine
+     * that took the mutex cannot be named, so nothing is recorded and no lock is judged against it.
      *
      * @param mutex the receiver
      * @param owner the owner token, or {@code null}
@@ -3286,6 +3285,70 @@ public final class AgentConcurrencyUtilHooks {
         } catch (Throwable t) {
             throw KotlinMutexes.rethrow(t);
         }
+    }
+
+    /**
+     * Weaves {@code Mutex.tryLock(owner)} where the agent could name the calling coroutine (#1220):
+     * {@code continuation} is the one of the suspend function or lambda the call is made in, which
+     * the agent passes because {@code tryLock} itself takes none, or {@code null} where it found
+     * none. While a run hears the call and the continuation names a {@code Job}, a call with no
+     * owner is made with a fresh owner token, as {@link #kotlinMutexLock} does, and a mutex it takes
+     * is recorded as held by that {@code Job}, so a later {@code lock} by the same coroutine that
+     * waits for it is reported. A {@code tryLock} that finds the mutex taken records nothing and
+     * never waits, so it is never itself the finding.
+     *
+     * @param mutex        the receiver
+     * @param owner        the owner token, or {@code null}
+     * @param continuation the enclosing coroutine's continuation, or {@code null}
+     * @return whether the mutex was taken
+     * @since 1.14.2
+     */
+    public static boolean kotlinMutexTryLockIn(Object mutex, Object owner, @Nullable Object continuation) {
+        ControlledSchedule.point();
+        KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
+        KotlinMutexes.TryLockWatch watch = KotlinMutexes.TryLockWatch.before(
+                AsyncTestContext.currentKotlinMutexReentrancyDetector(), mutex, owner, continuation, binding);
+        boolean taken;
+        try {
+            taken = (boolean) binding.tryLock.invokeExact(mutex, watch == null ? owner : watch.owner);
+        } catch (Throwable t) {
+            throw KotlinMutexes.rethrow(t);
+        }
+        KotlinMutexes.TryLockWatch.returned(watch, taken);
+        return taken;
+    }
+
+    /**
+     * Weaves {@code Mutex.tryLock$default}, the call a bare {@code mutex.tryLock()} compiles to, as
+     * {@link #kotlinMutexTryLockIn}. While a run hears the call it is made as {@code tryLock}
+     * directly, with the owner token; otherwise the bridge is called unchanged.
+     *
+     * @param mutex        the receiver
+     * @param owner        the owner token as passed, ignored by kotlinx where {@code mask} omits it
+     * @param mask         which parameters the call site left to their defaults
+     * @param marker       always {@code null} from a compiled call site
+     * @param continuation the enclosing coroutine's continuation, or {@code null}
+     * @return whether the mutex was taken
+     * @since 1.14.2
+     */
+    public static boolean kotlinMutexTryLockDefaultIn(Object mutex, Object owner, int mask, Object marker,
+                                                      @Nullable Object continuation) {
+        ControlledSchedule.point();
+        KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
+        // A non-null marker makes the bridge throw: that call goes through it untouched.
+        KotlinMutexes.TryLockWatch watch = marker != null ? null
+                : KotlinMutexes.TryLockWatch.before(AsyncTestContext.currentKotlinMutexReentrancyDetector(),
+                        mutex, (mask & 1) != 0 ? null : owner, continuation, binding);
+        boolean taken;
+        try {
+            taken = watch == null
+                    ? (boolean) binding.tryLockDefault.invokeExact(mutex, owner, mask, marker)
+                    : (boolean) binding.tryLock.invokeExact(mutex, watch.owner);
+        } catch (Throwable t) {
+            throw KotlinMutexes.rethrow(t);
+        }
+        KotlinMutexes.TryLockWatch.returned(watch, taken);
+        return taken;
     }
 
     /** {@link #blocking} for a get of {@code future}, managed when it is a {@code CompletableFuture}. */
