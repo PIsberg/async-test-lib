@@ -61,7 +61,7 @@ import java.util.function.Predicate;
  * d.recordReentry(mutex, List.of("DispatchedCoroutine", "BlockingCoroutine"), held, Thread.currentThread());
  * }</pre>
  *
- * @since 1.14.1
+ * @since 1.14.2
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
     note = "Per-mutex state in the weakly keyed ConcurrentHashMap of AbstractInstanceDetector; the "

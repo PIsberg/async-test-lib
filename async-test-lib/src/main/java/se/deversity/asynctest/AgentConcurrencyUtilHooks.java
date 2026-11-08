@@ -3162,7 +3162,7 @@ public final class AgentConcurrencyUtilHooks {
      * @param owner        the owner token, or {@code null}
      * @param continuation the calling coroutine's continuation
      * @return what {@code lock} returned: {@code Unit}, or {@code COROUTINE_SUSPENDED}
-     * @since 1.14.1
+     * @since 1.14.2
      */
     public static Object kotlinMutexLock(Object mutex, Object owner, Object continuation) {
         ControlledSchedule.point();
@@ -3192,7 +3192,7 @@ public final class AgentConcurrencyUtilHooks {
      * @param mask         which parameters the call site left to their defaults
      * @param marker       always {@code null} from a compiled call site
      * @return what {@code lock} returned
-     * @since 1.14.1
+     * @since 1.14.2
      */
     public static Object kotlinMutexLockDefault(Object mutex, Object owner, Object continuation, int mask,
                                                 Object marker) {
@@ -3222,7 +3222,7 @@ public final class AgentConcurrencyUtilHooks {
      *
      * @param mutex the receiver
      * @param owner the owner token, or {@code null}
-     * @since 1.14.1
+     * @since 1.14.2
      */
     public static void kotlinMutexUnlock(Object mutex, Object owner) {
         ControlledSchedule.point();
@@ -3241,7 +3241,7 @@ public final class AgentConcurrencyUtilHooks {
      * @param owner  the owner token as passed
      * @param mask   which parameters the call site left to their defaults
      * @param marker always {@code null} from a compiled call site
-     * @since 1.14.1
+     * @since 1.14.2
      */
     public static void kotlinMutexUnlockDefault(Object mutex, Object owner, int mask, Object marker) {
         ControlledSchedule.point();
@@ -3261,7 +3261,7 @@ public final class AgentConcurrencyUtilHooks {
      * @param mutex the receiver
      * @param owner the owner token, or {@code null}
      * @return whether the mutex was taken
-     * @since 1.14.1
+     * @since 1.14.2
      */
     public static boolean kotlinMutexTryLock(Object mutex, Object owner) {
         ControlledSchedule.point();
@@ -3281,7 +3281,7 @@ public final class AgentConcurrencyUtilHooks {
      * @param mask   which parameters the call site left to their defaults
      * @param marker always {@code null} from a compiled call site
      * @return whether the mutex was taken
-     * @since 1.14.1
+     * @since 1.14.2
      */
     public static boolean kotlinMutexTryLockDefault(Object mutex, Object owner, int mask, Object marker) {
         ControlledSchedule.point();

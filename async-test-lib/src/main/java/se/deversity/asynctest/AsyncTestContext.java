@@ -3631,7 +3631,7 @@ public final class AsyncTestContext {
      * Returns the {@link KotlinMutexReentrancyDetector} for the current test.
      *
      * @throws IllegalStateException if not inside {@code @AsyncTest} or {@link DetectorType#KOTLIN_MUTEX_REENTRANCY} is not enabled
-     * @since 1.14.1
+     * @since 1.14.2
      *
      * @return the {@link KotlinMutexReentrancyDetector} for the active {@code @AsyncTest} context
      */

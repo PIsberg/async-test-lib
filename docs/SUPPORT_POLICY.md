@@ -37,6 +37,11 @@ detectors that now fire on cases they missed, and four behaviour changes that ca
 red, listed under Upgrading in [its changelog entry](CHANGELOG.md). The owner chose on 2026-11-04 to
 keep the patch number. japicmp sees neither kind of change, because the signatures stay compatible.
 
+**The 1.14.2 exception.** 1.14.2 is a patch release carrying minor content again: a new detector,
+`KOTLIN_MUTEX_REENTRANCY`, detectors that now fire on cases they missed, and a discovery check that can
+turn a green build red, listed under Upgrading in [its changelog entry](CHANGELOG.md). The owner chose
+on 2026-11-08 to keep the patch number.
+
 **What is not covered.** Anything in a package containing `internal`,
 the exact text of a report or an assertion message, and the `async-test-agent` and
 `async-test-analysis` artifacts' internals. The agent's `-javaagent` contract and the analysis

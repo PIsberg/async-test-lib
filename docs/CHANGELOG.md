@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.2] - 2026-11-08
+
+### Upgrading
+
+Like 1.14.1, this patch carries what [SUPPORT_POLICY.md](SUPPORT_POLICY.md) calls minor: a new
+detector, and detectors that now fire on cases they missed. The owner chose on 2026-11-08 to keep
+the patch number. Each change below can turn a green build red, on a real defect or on a test that
+never ran:
+
+- A `@TestTemplate` method in a class annotated `@AsyncTest` that is `private`, `static` or returns
+  a value now fails discovery (#1149). It never ran; declare it `void`, package-private or wider,
+  on an instance.
+- With the agent attached, more code is observed: the lambdas of a parallel `Stream`, `IntStream`,
+  `LongStream` or `DoubleStream` beyond `forEach` (#1172), tasks given to `execute` on a
+  `ThreadPoolExecutor` subclass that overrides none of the methods handed the run's wrapper (#1173),
+  and `Runtime.getRuntime().gc()` (#1179). A race or an explicit collection there is now reported.
+- `AtomicityValidator` no longer excuses a lost update on an object handed between threads as a
+  settled cache (#1133). It was excused unless the race landed in the last two rounds.
+- `KOTLIN_MUTEX_REENTRANCY` is new. A bare `@AsyncTest` runs `Preset.ESSENTIALS` and not this
+  detector; it runs under `detectAll = true` or `includes=`, and needs the agent with
+  `collections=true`.
+
+Two changes remove findings: the woven `log(gauge.get()); gauge.set(queue.size());` false positive
+1.14.1 shipped (#1187), so the `ATOMIC_NON_ATOMIC_UPDATE` exclusion its Upgrading note suggested can
+go, and the livelock snapshot rule that reported a correct `SynchronousQueue` hand-off (#1180).
+
+
 ### Added
 
 - `KOTLIN_MUTEX_REENTRANCY` (149th detector): a Kotlin coroutine `Mutex` locked again by the
@@ -27,6 +54,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `launch` or `async` child
   is not part of its parent. `VERDICT`, backed by a corpus pair in both directions. Proven against real kotlinx 1.11 in `consumer-fixture-langs/kotlin`, red with the weaver
   off, with a silent twin.
+
+- **The silent hand-off corpus row now names the rule that cleared it (#1133).** Three CI
+  occurrences of `agent_jctoolsHandOff_offererWritesAfterTheOffer` going silent showed the takes
+  reaching `AtomicityValidator` and every round still clearing, with nothing saying which of its
+  rules did it. `AtomicityValidator.verdictCounts(fieldSuffix)` (internal API) counts, per field,
+  which rule decided each multi-thread group in the last analysis: `reported`, a lockset answer, a
+  per-instance excuse, a happens-before rule or the volatile single-writer rule. The analysis and
+  its findings are unchanged; it only names the branch it already took. The hand-off rows print the
+  counts, and how many findings landed with no subject, next to their existing evidence, so the
+  next occurrence separates an excuse inside the validator from a finding credited to nobody.
+  `AtomicityVerdictCountsTest` pins the counts.
 
 ### Changed
 
@@ -124,18 +162,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   went silent when none of those raced (#1133). That clause now needs every writer to have stored
   once; a field that keeps being read settles as before.
 
-### Added
-
-- **The silent hand-off corpus row now names the rule that cleared it (#1133).** Three CI
-  occurrences of `agent_jctoolsHandOff_offererWritesAfterTheOffer` going silent showed the takes
-  reaching `AtomicityValidator` and every round still clearing, with nothing saying which of its
-  rules did it. `AtomicityValidator.verdictCounts(fieldSuffix)` (internal API) counts, per field,
-  which rule decided each multi-thread group in the last analysis: `reported`, a lockset answer, a
-  per-instance excuse, a happens-before rule or the volatile single-writer rule. The analysis and
-  its findings are unchanged; it only names the branch it already took. The hand-off rows print the
-  counts, and how many findings landed with no subject, next to their existing evidence, so the
-  next occurrence separates an excuse inside the validator from a finding credited to nobody.
-  `AtomicityVerdictCountsTest` pins the counts.
 
 ## [1.14.1] - 2026-11-04
 
