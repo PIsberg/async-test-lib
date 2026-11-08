@@ -25,6 +25,30 @@ import java.util.stream.DoubleStream;
 import java.util.stream.LongStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import java.util.stream.BaseStream;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
+import java.util.OptionalDouble;
+import java.util.IntSummaryStatistics;
+import java.util.LongSummaryStatistics;
+import java.util.DoubleSummaryStatistics;
+import java.util.function.IntUnaryOperator;
+import java.util.function.IntPredicate;
+import java.util.function.IntBinaryOperator;
+import java.util.function.ObjIntConsumer;
+import java.util.function.ToIntFunction;
+import java.util.function.LongUnaryOperator;
+import java.util.function.LongPredicate;
+import java.util.function.LongFunction;
+import java.util.function.LongBinaryOperator;
+import java.util.function.ObjLongConsumer;
+import java.util.function.ToLongFunction;
+import java.util.function.DoubleUnaryOperator;
+import java.util.function.DoublePredicate;
+import java.util.function.DoubleFunction;
+import java.util.function.DoubleBinaryOperator;
+import java.util.function.ObjDoubleConsumer;
+import java.util.function.ToDoubleFunction;
 import java.util.function.DoubleConsumer;
 import java.util.function.LongConsumer;
 import java.util.function.IntConsumer;
@@ -3843,7 +3867,7 @@ public final class AgentConcurrencyUtilHooks {
      * Weak in the stream, which an abandoned pipeline drops, and holding only the slots, which hold
      * nothing of the stream.
      */
-    private static final Map<Stream<?>, List<StageSlot>> PIPELINES =
+    private static final Map<BaseStream<?, ?>, List<StageSlot>> PIPELINES =
             Collections.synchronizedMap(new WeakHashMap<>());
 
     /**
@@ -3884,14 +3908,22 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
-     * Records that {@code result} is {@code receiver} with one more woven stage, {@code slot}.
-     * {@code receiver} is linked now and can no longer be operated on, so its entry goes.
+     * Records that {@code result} is {@code receiver} with one more woven stage, {@code slot}, or
+     * with none for a stage that runs no lambda, such as {@code boxed}. {@code receiver} is linked
+     * now and can no longer be operated on, so its entry goes. The two may be different kinds of
+     * stream: {@code mapToInt} turns a {@code Stream} into an {@code IntStream}, and the slots go
+     * along with it.
      */
-    private static Stream<Object> staged(Stream<Object> receiver, Stream<Object> result, StageSlot slot) {
+    private static <S extends BaseStream<?, ?>> S staged(BaseStream<?, ?> receiver, S result,
+                                                         @Nullable StageSlot slot) {
         List<StageSlot> behind = PIPELINES.remove(receiver);
         List<StageSlot> slots = new ArrayList<>(behind == null ? List.of() : behind);
-        slots.add(slot);
-        PIPELINES.put(result, slots);
+        if (slot != null) {
+            slots.add(slot);
+        }
+        if (!slots.isEmpty()) {
+            PIPELINES.put(result, slots);
+        }
         return result;
     }
 
@@ -3909,7 +3941,7 @@ public final class AgentConcurrencyUtilHooks {
      * @param <T>       what it returns
      * @return what it returned
      */
-    private static <T> T parallelTerminal(Stream<?> receiver,
+    private static <T> T parallelTerminal(BaseStream<?, ?> receiver,
                                           Function<@Nullable ParallelForEach, T> operation) {
         ControlledSchedule.point();
         List<StageSlot> stages = PIPELINES.remove(receiver);
@@ -4239,17 +4271,11 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static void intStreamForEach(IntStream receiver, IntConsumer action) {
-        ControlledSchedule.point();
-        if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
-            receiver.forEach(action);
-            return;
-        }
-        ParallelForEach forEach = new ParallelForEach();
-        try {
-            receiver.forEach(value -> forEach.element(() -> action.accept(value)));
-        } finally {
-            forEach.joined();
-        }
+        parallelTerminal(receiver, operation -> {
+            receiver.forEach(operation == null ? action
+                    : value -> operation.element(() -> action.accept(value)));
+            return null;
+        });
     }
 
     /**
@@ -4260,17 +4286,11 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static void longStreamForEach(LongStream receiver, LongConsumer action) {
-        ControlledSchedule.point();
-        if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
-            receiver.forEach(action);
-            return;
-        }
-        ParallelForEach forEach = new ParallelForEach();
-        try {
-            receiver.forEach(value -> forEach.element(() -> action.accept(value)));
-        } finally {
-            forEach.joined();
-        }
+        parallelTerminal(receiver, operation -> {
+            receiver.forEach(operation == null ? action
+                    : value -> operation.element(() -> action.accept(value)));
+            return null;
+        });
     }
 
     /**
@@ -4281,17 +4301,967 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static void doubleStreamForEach(DoubleStream receiver, DoubleConsumer action) {
+        parallelTerminal(receiver, operation -> {
+            receiver.forEach(operation == null ? action
+                    : value -> operation.element(() -> action.accept(value)));
+            return null;
+        });
+    }
+
+    // --- Primitive streams, and the bridges between them and a Stream (#1172) ------------------
+
+    /**
+     * Weaves {@code Stream.mapToInt}, as {@link #streamMap}; the stages behind it stay in the
+     * pipeline the returned {@code IntStream} ends.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given to each element
+     * @return the mapped stream
+     * @since 1.14.2
+     */
+    public static IntStream streamMapToInt(Stream<Object> receiver, ToIntFunction<Object> mapper) {
         ControlledSchedule.point();
-        if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
-            receiver.forEach(action);
-            return;
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapToInt(mapper);
         }
-        ParallelForEach forEach = new ParallelForEach();
-        try {
-            receiver.forEach(value -> forEach.element(() -> action.accept(value)));
-        } finally {
-            forEach.joined();
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapToInt(value -> slot.element(() -> mapper.applyAsInt(value))), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.mapToLong}, as {@link #streamMap}; the stages behind it stay in the
+     * pipeline the returned {@code LongStream} ends.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given to each element
+     * @return the mapped stream
+     * @since 1.14.2
+     */
+    public static LongStream streamMapToLong(Stream<Object> receiver, ToLongFunction<Object> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapToLong(mapper);
         }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapToLong(value -> slot.element(() -> mapper.applyAsLong(value))), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.mapToDouble}, as {@link #streamMap}; the stages behind it stay in the
+     * pipeline the returned {@code DoubleStream} ends.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given to each element
+     * @return the mapped stream
+     * @since 1.14.2
+     */
+    public static DoubleStream streamMapToDouble(Stream<Object> receiver, ToDoubleFunction<Object> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapToDouble(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapToDouble(value -> slot.element(() -> mapper.applyAsDouble(value))), slot);
+    }
+
+    /**
+     * Weaves {@code IntStream.map}, as {@link #streamMap}: the operator waits in a slot the
+     * terminal operation lends the run to.
+     *
+     * @param receiver the stream
+     * @param mapper   the operator given to each element
+     * @return the mapped stream
+     * @since 1.14.2
+     */
+    public static IntStream intStreamMap(IntStream receiver, IntUnaryOperator mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.map(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.map(value -> slot.element(() -> mapper.applyAsInt(value))), slot);
+    }
+
+    /**
+     * Weaves {@code IntStream.filter}, as {@link #streamFilter}.
+     *
+     * @param receiver  the stream
+     * @param predicate what keeps an element
+     * @return the filtered stream
+     * @since 1.14.2
+     */
+    public static IntStream intStreamFilter(IntStream receiver, IntPredicate predicate) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.filter(predicate);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.filter(value -> slot.element(() -> predicate.test(value))), slot);
+    }
+
+    /**
+     * Weaves {@code IntStream.peek}, as {@link #streamPeek}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element as it passes
+     * @return the peeked stream
+     * @since 1.14.2
+     */
+    public static IntStream intStreamPeek(IntStream receiver, IntConsumer action) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.peek(action);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.peek(value -> slot.element(() -> {
+            action.accept(value);
+            return null;
+        })), slot);
+    }
+
+    /**
+     * Weaves {@code IntStream.mapToObj}, as {@link #streamMap}; the stages behind it stay in the
+     * pipeline the returned {@code Stream} ends.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given to each element
+     * @return the mapped stream
+     * @since 1.14.2
+     */
+    public static Stream<Object> intStreamMapToObj(IntStream receiver, IntFunction<Object> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapToObj(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapToObj(value -> slot.element(() -> mapper.apply(value))), slot);
+    }
+
+    /**
+     * Weaves {@code IntStream.boxed}: it adds no lambda of its own, and carries the stages behind it to
+     * the {@code Stream} it returns, so a woven {@code Stream} terminal operation still lends them
+     * the run.
+     *
+     * @param receiver the stream
+     * @return the elements as {@code Integer}
+     * @since 1.14.2
+     */
+    @SuppressWarnings("unchecked")
+    public static Stream<Object> intStreamBoxed(IntStream receiver) {
+        ControlledSchedule.point();
+        Stream<Object> boxed = (Stream<Object>) (Stream<?>) receiver.boxed();
+        return AsyncTestContext.agentContext() == null ? boxed : staged(receiver, boxed, null);
+    }
+
+    /**
+     * Weaves {@code IntStream.forEachOrdered}, as {@link #streamForEachOrdered}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element, in encounter order
+     * @since 1.14.2
+     */
+    public static void intStreamForEachOrdered(IntStream receiver, IntConsumer action) {
+        parallelTerminal(receiver, operation -> {
+            receiver.forEachOrdered(operation == null ? action
+                    : value -> operation.element(() -> action.accept(value)));
+            return null;
+        });
+    }
+
+    /**
+     * Weaves {@code IntStream.reduce(int, IntBinaryOperator)}: the operator runs as a combine, since it
+     * also merges partial results other subtasks built ({@link ParallelForEach#combined}).
+     *
+     * @param receiver the stream
+     * @param identity the identity value
+     * @param operator combines two values
+     * @return the reduction
+     * @since 1.14.2
+     */
+    public static int intStreamReduce(IntStream receiver, int identity, IntBinaryOperator operator) {
+        return parallelTerminal(receiver, operation -> receiver.reduce(identity, intStreamCombined(operation, operator)));
+    }
+
+    /**
+     * Weaves {@code IntStream.reduce(IntBinaryOperator)}, as the reduce with an identity.
+     *
+     * @param receiver the stream
+     * @param operator combines two values
+     * @return the reduction, if any element
+     * @since 1.14.2
+     */
+    public static OptionalInt intStreamReduce(IntStream receiver, IntBinaryOperator operator) {
+        return parallelTerminal(receiver, operation -> receiver.reduce(intStreamCombined(operation, operator)));
+    }
+
+    private static IntBinaryOperator intStreamCombined(@Nullable ParallelForEach operation, IntBinaryOperator operator) {
+        return operation == null ? operator
+                : (left, right) -> inCombine(operation, () -> operator.applyAsInt(left, right));
+    }
+
+    /**
+     * Weaves {@code IntStream.collect}: supplier and accumulator run as elements, and the combiner,
+     * which merges containers other subtasks filled, as a combine.
+     *
+     * @param receiver    the stream
+     * @param supplier    makes a container
+     * @param accumulator adds an element to one
+     * @param combiner    merges two
+     * @return the container
+     * @since 1.14.2
+     */
+    public static Object intStreamCollect(IntStream receiver, Supplier<Object> supplier,
+                                       ObjIntConsumer<Object> accumulator,
+                                       BiConsumer<Object, Object> combiner) {
+        return parallelTerminal(receiver, operation -> operation == null
+                ? receiver.collect(supplier, accumulator, combiner)
+                : receiver.collect(() -> inElement(operation, supplier),
+                        (container, value) -> inElement(operation, () -> {
+                            accumulator.accept(container, value);
+                            return null;
+                        }),
+                        (left, right) -> inCombine(operation, () -> {
+                            combiner.accept(left, right);
+                            return null;
+                        })));
+    }
+
+    /**
+     * Weaves {@code IntStream.anyMatch}: the predicate runs as an element.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether any element passed
+     * @since 1.14.2
+     */
+    public static boolean intStreamAnyMatch(IntStream receiver, IntPredicate predicate) {
+        return parallelTerminal(receiver, operation -> receiver.anyMatch(operation == null ? predicate
+                : value -> inElement(operation, () -> predicate.test(value))));
+    }
+
+    /**
+     * Weaves {@code IntStream.allMatch}: the predicate runs as an element.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether every element passed
+     * @since 1.14.2
+     */
+    public static boolean intStreamAllMatch(IntStream receiver, IntPredicate predicate) {
+        return parallelTerminal(receiver, operation -> receiver.allMatch(operation == null ? predicate
+                : value -> inElement(operation, () -> predicate.test(value))));
+    }
+
+    /**
+     * Weaves {@code IntStream.noneMatch}: the predicate runs as an element.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether no element passed
+     * @since 1.14.2
+     */
+    public static boolean intStreamNoneMatch(IntStream receiver, IntPredicate predicate) {
+        return parallelTerminal(receiver, operation -> receiver.noneMatch(operation == null ? predicate
+                : value -> inElement(operation, () -> predicate.test(value))));
+    }
+
+    /**
+     * Weaves {@code IntStream.sum()}: the pipeline's woven stages run as its elements, and the caller is ordered after them once it returns.
+     *
+     * @param receiver the stream
+     * @return the sum of the elements
+     * @since 1.14.2
+     */
+    public static int intStreamSum(IntStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.sum());
+    }
+
+    /**
+     * Weaves {@code IntStream.count()}, as {@link #intStreamSum}.
+     *
+     * @param receiver the stream
+     * @return how many elements
+     * @since 1.14.2
+     */
+    public static long intStreamCount(IntStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.count());
+    }
+
+    /**
+     * Weaves {@code IntStream.average()}, as {@link #intStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the mean, if any element
+     * @since 1.14.2
+     */
+    public static OptionalDouble intStreamAverage(IntStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.average());
+    }
+
+    /**
+     * Weaves {@code IntStream.min()}, as {@link #intStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the least, if any element
+     * @since 1.14.2
+     */
+    public static OptionalInt intStreamMin(IntStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.min());
+    }
+
+    /**
+     * Weaves {@code IntStream.max()}, as {@link #intStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the greatest, if any element
+     * @since 1.14.2
+     */
+    public static OptionalInt intStreamMax(IntStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.max());
+    }
+
+    /**
+     * Weaves {@code IntStream.summaryStatistics()}, as {@link #intStreamSum}.
+     *
+     * @param receiver the stream
+     * @return count, sum, least, greatest and mean
+     * @since 1.14.2
+     */
+    public static IntSummaryStatistics intStreamSummaryStatistics(IntStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.summaryStatistics());
+    }
+
+    /**
+     * Weaves {@code IntStream.toArray()}, as {@link #intStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the elements
+     * @since 1.14.2
+     */
+    public static int[] intStreamToArray(IntStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.toArray());
+    }
+
+    /**
+     * Weaves {@code IntStream.findFirst()}, as {@link #intStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the first element, if any
+     * @since 1.14.2
+     */
+    public static OptionalInt intStreamFindFirst(IntStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.findFirst());
+    }
+
+    /**
+     * Weaves {@code IntStream.findAny()}, as {@link #intStreamSum}.
+     *
+     * @param receiver the stream
+     * @return some element, if any
+     * @since 1.14.2
+     */
+    public static OptionalInt intStreamFindAny(IntStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.findAny());
+    }
+
+    /**
+     * Weaves {@code LongStream.map}, as {@link #intStreamMap}: the operator waits in a slot the
+     * terminal operation lends the run to.
+     *
+     * @param receiver the stream
+     * @param mapper   the operator given to each element
+     * @return the mapped stream
+     * @since 1.14.2
+     */
+    public static LongStream longStreamMap(LongStream receiver, LongUnaryOperator mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.map(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.map(value -> slot.element(() -> mapper.applyAsLong(value))), slot);
+    }
+
+    /**
+     * Weaves {@code LongStream.filter}, as {@link #intStreamFilter}.
+     *
+     * @param receiver  the stream
+     * @param predicate what keeps an element
+     * @return the filtered stream
+     * @since 1.14.2
+     */
+    public static LongStream longStreamFilter(LongStream receiver, LongPredicate predicate) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.filter(predicate);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.filter(value -> slot.element(() -> predicate.test(value))), slot);
+    }
+
+    /**
+     * Weaves {@code LongStream.peek}, as {@link #intStreamPeek}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element as it passes
+     * @return the peeked stream
+     * @since 1.14.2
+     */
+    public static LongStream longStreamPeek(LongStream receiver, LongConsumer action) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.peek(action);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.peek(value -> slot.element(() -> {
+            action.accept(value);
+            return null;
+        })), slot);
+    }
+
+    /**
+     * Weaves {@code LongStream.mapToObj}, as {@link #intStreamMapToObj}; the stages behind it stay in the
+     * pipeline the returned {@code Stream} ends.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given to each element
+     * @return the mapped stream
+     * @since 1.14.2
+     */
+    public static Stream<Object> longStreamMapToObj(LongStream receiver, LongFunction<Object> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapToObj(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapToObj(value -> slot.element(() -> mapper.apply(value))), slot);
+    }
+
+    /**
+     * Weaves {@code LongStream.boxed}: it adds no lambda of its own, and carries the stages behind it to
+     * the {@code Stream} it returns, so a woven {@code Stream} terminal operation still lends them
+     * the run.
+     *
+     * @param receiver the stream
+     * @return the elements as {@code Long}
+     * @since 1.14.2
+     */
+    @SuppressWarnings("unchecked")
+    public static Stream<Object> longStreamBoxed(LongStream receiver) {
+        ControlledSchedule.point();
+        Stream<Object> boxed = (Stream<Object>) (Stream<?>) receiver.boxed();
+        return AsyncTestContext.agentContext() == null ? boxed : staged(receiver, boxed, null);
+    }
+
+    /**
+     * Weaves {@code LongStream.forEachOrdered}, as {@link #intStreamForEachOrdered}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element, in encounter order
+     * @since 1.14.2
+     */
+    public static void longStreamForEachOrdered(LongStream receiver, LongConsumer action) {
+        parallelTerminal(receiver, operation -> {
+            receiver.forEachOrdered(operation == null ? action
+                    : value -> operation.element(() -> action.accept(value)));
+            return null;
+        });
+    }
+
+    /**
+     * Weaves {@code LongStream.reduce(long, LongBinaryOperator)}: the operator runs as a combine, since it
+     * also merges partial results other subtasks built ({@link ParallelForEach#combined}).
+     *
+     * @param receiver the stream
+     * @param identity the identity value
+     * @param operator combines two values
+     * @return the reduction
+     * @since 1.14.2
+     */
+    public static long longStreamReduce(LongStream receiver, long identity, LongBinaryOperator operator) {
+        return parallelTerminal(receiver, operation -> receiver.reduce(identity, longStreamCombined(operation, operator)));
+    }
+
+    /**
+     * Weaves {@code LongStream.reduce(LongBinaryOperator)}, as the reduce with an identity.
+     *
+     * @param receiver the stream
+     * @param operator combines two values
+     * @return the reduction, if any element
+     * @since 1.14.2
+     */
+    public static OptionalLong longStreamReduce(LongStream receiver, LongBinaryOperator operator) {
+        return parallelTerminal(receiver, operation -> receiver.reduce(longStreamCombined(operation, operator)));
+    }
+
+    private static LongBinaryOperator longStreamCombined(@Nullable ParallelForEach operation, LongBinaryOperator operator) {
+        return operation == null ? operator
+                : (left, right) -> inCombine(operation, () -> operator.applyAsLong(left, right));
+    }
+
+    /**
+     * Weaves {@code LongStream.collect}: supplier and accumulator run as elements, and the combiner,
+     * which merges containers other subtasks filled, as a combine.
+     *
+     * @param receiver    the stream
+     * @param supplier    makes a container
+     * @param accumulator adds an element to one
+     * @param combiner    merges two
+     * @return the container
+     * @since 1.14.2
+     */
+    public static Object longStreamCollect(LongStream receiver, Supplier<Object> supplier,
+                                       ObjLongConsumer<Object> accumulator,
+                                       BiConsumer<Object, Object> combiner) {
+        return parallelTerminal(receiver, operation -> operation == null
+                ? receiver.collect(supplier, accumulator, combiner)
+                : receiver.collect(() -> inElement(operation, supplier),
+                        (container, value) -> inElement(operation, () -> {
+                            accumulator.accept(container, value);
+                            return null;
+                        }),
+                        (left, right) -> inCombine(operation, () -> {
+                            combiner.accept(left, right);
+                            return null;
+                        })));
+    }
+
+    /**
+     * Weaves {@code LongStream.anyMatch}: the predicate runs as an element.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether any element passed
+     * @since 1.14.2
+     */
+    public static boolean longStreamAnyMatch(LongStream receiver, LongPredicate predicate) {
+        return parallelTerminal(receiver, operation -> receiver.anyMatch(operation == null ? predicate
+                : value -> inElement(operation, () -> predicate.test(value))));
+    }
+
+    /**
+     * Weaves {@code LongStream.allMatch}: the predicate runs as an element.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether every element passed
+     * @since 1.14.2
+     */
+    public static boolean longStreamAllMatch(LongStream receiver, LongPredicate predicate) {
+        return parallelTerminal(receiver, operation -> receiver.allMatch(operation == null ? predicate
+                : value -> inElement(operation, () -> predicate.test(value))));
+    }
+
+    /**
+     * Weaves {@code LongStream.noneMatch}: the predicate runs as an element.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether no element passed
+     * @since 1.14.2
+     */
+    public static boolean longStreamNoneMatch(LongStream receiver, LongPredicate predicate) {
+        return parallelTerminal(receiver, operation -> receiver.noneMatch(operation == null ? predicate
+                : value -> inElement(operation, () -> predicate.test(value))));
+    }
+
+    /**
+     * Weaves {@code LongStream.sum()}: the pipeline's woven stages run as its elements, and the caller is ordered after them once it returns.
+     *
+     * @param receiver the stream
+     * @return the sum of the elements
+     * @since 1.14.2
+     */
+    public static long longStreamSum(LongStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.sum());
+    }
+
+    /**
+     * Weaves {@code LongStream.count()}, as {@link #longStreamSum}.
+     *
+     * @param receiver the stream
+     * @return how many elements
+     * @since 1.14.2
+     */
+    public static long longStreamCount(LongStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.count());
+    }
+
+    /**
+     * Weaves {@code LongStream.average()}, as {@link #longStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the mean, if any element
+     * @since 1.14.2
+     */
+    public static OptionalDouble longStreamAverage(LongStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.average());
+    }
+
+    /**
+     * Weaves {@code LongStream.min()}, as {@link #longStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the least, if any element
+     * @since 1.14.2
+     */
+    public static OptionalLong longStreamMin(LongStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.min());
+    }
+
+    /**
+     * Weaves {@code LongStream.max()}, as {@link #longStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the greatest, if any element
+     * @since 1.14.2
+     */
+    public static OptionalLong longStreamMax(LongStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.max());
+    }
+
+    /**
+     * Weaves {@code LongStream.summaryStatistics()}, as {@link #longStreamSum}.
+     *
+     * @param receiver the stream
+     * @return count, sum, least, greatest and mean
+     * @since 1.14.2
+     */
+    public static LongSummaryStatistics longStreamSummaryStatistics(LongStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.summaryStatistics());
+    }
+
+    /**
+     * Weaves {@code LongStream.toArray()}, as {@link #longStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the elements
+     * @since 1.14.2
+     */
+    public static long[] longStreamToArray(LongStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.toArray());
+    }
+
+    /**
+     * Weaves {@code LongStream.findFirst()}, as {@link #longStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the first element, if any
+     * @since 1.14.2
+     */
+    public static OptionalLong longStreamFindFirst(LongStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.findFirst());
+    }
+
+    /**
+     * Weaves {@code LongStream.findAny()}, as {@link #longStreamSum}.
+     *
+     * @param receiver the stream
+     * @return some element, if any
+     * @since 1.14.2
+     */
+    public static OptionalLong longStreamFindAny(LongStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.findAny());
+    }
+
+    /**
+     * Weaves {@code DoubleStream.map}, as {@link #intStreamMap}: the operator waits in a slot the
+     * terminal operation lends the run to.
+     *
+     * @param receiver the stream
+     * @param mapper   the operator given to each element
+     * @return the mapped stream
+     * @since 1.14.2
+     */
+    public static DoubleStream doubleStreamMap(DoubleStream receiver, DoubleUnaryOperator mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.map(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.map(value -> slot.element(() -> mapper.applyAsDouble(value))), slot);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.filter}, as {@link #intStreamFilter}.
+     *
+     * @param receiver  the stream
+     * @param predicate what keeps an element
+     * @return the filtered stream
+     * @since 1.14.2
+     */
+    public static DoubleStream doubleStreamFilter(DoubleStream receiver, DoublePredicate predicate) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.filter(predicate);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.filter(value -> slot.element(() -> predicate.test(value))), slot);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.peek}, as {@link #intStreamPeek}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element as it passes
+     * @return the peeked stream
+     * @since 1.14.2
+     */
+    public static DoubleStream doubleStreamPeek(DoubleStream receiver, DoubleConsumer action) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.peek(action);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.peek(value -> slot.element(() -> {
+            action.accept(value);
+            return null;
+        })), slot);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.mapToObj}, as {@link #intStreamMapToObj}; the stages behind it stay in the
+     * pipeline the returned {@code Stream} ends.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given to each element
+     * @return the mapped stream
+     * @since 1.14.2
+     */
+    public static Stream<Object> doubleStreamMapToObj(DoubleStream receiver, DoubleFunction<Object> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapToObj(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapToObj(value -> slot.element(() -> mapper.apply(value))), slot);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.boxed}: it adds no lambda of its own, and carries the stages behind it to
+     * the {@code Stream} it returns, so a woven {@code Stream} terminal operation still lends them
+     * the run.
+     *
+     * @param receiver the stream
+     * @return the elements as {@code Double}
+     * @since 1.14.2
+     */
+    @SuppressWarnings("unchecked")
+    public static Stream<Object> doubleStreamBoxed(DoubleStream receiver) {
+        ControlledSchedule.point();
+        Stream<Object> boxed = (Stream<Object>) (Stream<?>) receiver.boxed();
+        return AsyncTestContext.agentContext() == null ? boxed : staged(receiver, boxed, null);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.forEachOrdered}, as {@link #intStreamForEachOrdered}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element, in encounter order
+     * @since 1.14.2
+     */
+    public static void doubleStreamForEachOrdered(DoubleStream receiver, DoubleConsumer action) {
+        parallelTerminal(receiver, operation -> {
+            receiver.forEachOrdered(operation == null ? action
+                    : value -> operation.element(() -> action.accept(value)));
+            return null;
+        });
+    }
+
+    /**
+     * Weaves {@code DoubleStream.reduce(double, DoubleBinaryOperator)}: the operator runs as a combine, since it
+     * also merges partial results other subtasks built ({@link ParallelForEach#combined}).
+     *
+     * @param receiver the stream
+     * @param identity the identity value
+     * @param operator combines two values
+     * @return the reduction
+     * @since 1.14.2
+     */
+    public static double doubleStreamReduce(DoubleStream receiver, double identity, DoubleBinaryOperator operator) {
+        return parallelTerminal(receiver, operation -> receiver.reduce(identity, doubleStreamCombined(operation, operator)));
+    }
+
+    /**
+     * Weaves {@code DoubleStream.reduce(DoubleBinaryOperator)}, as the reduce with an identity.
+     *
+     * @param receiver the stream
+     * @param operator combines two values
+     * @return the reduction, if any element
+     * @since 1.14.2
+     */
+    public static OptionalDouble doubleStreamReduce(DoubleStream receiver, DoubleBinaryOperator operator) {
+        return parallelTerminal(receiver, operation -> receiver.reduce(doubleStreamCombined(operation, operator)));
+    }
+
+    private static DoubleBinaryOperator doubleStreamCombined(@Nullable ParallelForEach operation, DoubleBinaryOperator operator) {
+        return operation == null ? operator
+                : (left, right) -> inCombine(operation, () -> operator.applyAsDouble(left, right));
+    }
+
+    /**
+     * Weaves {@code DoubleStream.collect}: supplier and accumulator run as elements, and the combiner,
+     * which merges containers other subtasks filled, as a combine.
+     *
+     * @param receiver    the stream
+     * @param supplier    makes a container
+     * @param accumulator adds an element to one
+     * @param combiner    merges two
+     * @return the container
+     * @since 1.14.2
+     */
+    public static Object doubleStreamCollect(DoubleStream receiver, Supplier<Object> supplier,
+                                       ObjDoubleConsumer<Object> accumulator,
+                                       BiConsumer<Object, Object> combiner) {
+        return parallelTerminal(receiver, operation -> operation == null
+                ? receiver.collect(supplier, accumulator, combiner)
+                : receiver.collect(() -> inElement(operation, supplier),
+                        (container, value) -> inElement(operation, () -> {
+                            accumulator.accept(container, value);
+                            return null;
+                        }),
+                        (left, right) -> inCombine(operation, () -> {
+                            combiner.accept(left, right);
+                            return null;
+                        })));
+    }
+
+    /**
+     * Weaves {@code DoubleStream.anyMatch}: the predicate runs as an element.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether any element passed
+     * @since 1.14.2
+     */
+    public static boolean doubleStreamAnyMatch(DoubleStream receiver, DoublePredicate predicate) {
+        return parallelTerminal(receiver, operation -> receiver.anyMatch(operation == null ? predicate
+                : value -> inElement(operation, () -> predicate.test(value))));
+    }
+
+    /**
+     * Weaves {@code DoubleStream.allMatch}: the predicate runs as an element.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether every element passed
+     * @since 1.14.2
+     */
+    public static boolean doubleStreamAllMatch(DoubleStream receiver, DoublePredicate predicate) {
+        return parallelTerminal(receiver, operation -> receiver.allMatch(operation == null ? predicate
+                : value -> inElement(operation, () -> predicate.test(value))));
+    }
+
+    /**
+     * Weaves {@code DoubleStream.noneMatch}: the predicate runs as an element.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether no element passed
+     * @since 1.14.2
+     */
+    public static boolean doubleStreamNoneMatch(DoubleStream receiver, DoublePredicate predicate) {
+        return parallelTerminal(receiver, operation -> receiver.noneMatch(operation == null ? predicate
+                : value -> inElement(operation, () -> predicate.test(value))));
+    }
+
+    /**
+     * Weaves {@code DoubleStream.sum()}: the pipeline's woven stages run as its elements, and the caller is ordered after them once it returns.
+     *
+     * @param receiver the stream
+     * @return the sum of the elements
+     * @since 1.14.2
+     */
+    public static double doubleStreamSum(DoubleStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.sum());
+    }
+
+    /**
+     * Weaves {@code DoubleStream.count()}, as {@link #doubleStreamSum}.
+     *
+     * @param receiver the stream
+     * @return how many elements
+     * @since 1.14.2
+     */
+    public static long doubleStreamCount(DoubleStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.count());
+    }
+
+    /**
+     * Weaves {@code DoubleStream.average()}, as {@link #doubleStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the mean, if any element
+     * @since 1.14.2
+     */
+    public static OptionalDouble doubleStreamAverage(DoubleStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.average());
+    }
+
+    /**
+     * Weaves {@code DoubleStream.min()}, as {@link #doubleStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the least, if any element
+     * @since 1.14.2
+     */
+    public static OptionalDouble doubleStreamMin(DoubleStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.min());
+    }
+
+    /**
+     * Weaves {@code DoubleStream.max()}, as {@link #doubleStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the greatest, if any element
+     * @since 1.14.2
+     */
+    public static OptionalDouble doubleStreamMax(DoubleStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.max());
+    }
+
+    /**
+     * Weaves {@code DoubleStream.summaryStatistics()}, as {@link #doubleStreamSum}.
+     *
+     * @param receiver the stream
+     * @return count, sum, least, greatest and mean
+     * @since 1.14.2
+     */
+    public static DoubleSummaryStatistics doubleStreamSummaryStatistics(DoubleStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.summaryStatistics());
+    }
+
+    /**
+     * Weaves {@code DoubleStream.toArray()}, as {@link #doubleStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the elements
+     * @since 1.14.2
+     */
+    public static double[] doubleStreamToArray(DoubleStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.toArray());
+    }
+
+    /**
+     * Weaves {@code DoubleStream.findFirst()}, as {@link #doubleStreamSum}.
+     *
+     * @param receiver the stream
+     * @return the first element, if any
+     * @since 1.14.2
+     */
+    public static OptionalDouble doubleStreamFindFirst(DoubleStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.findFirst());
+    }
+
+    /**
+     * Weaves {@code DoubleStream.findAny()}, as {@link #doubleStreamSum}.
+     *
+     * @param receiver the stream
+     * @return some element, if any
+     * @since 1.14.2
+     */
+    public static OptionalDouble doubleStreamFindAny(DoubleStream receiver) {
+        return parallelTerminal(receiver, operation -> receiver.findAny());
     }
 
     /**

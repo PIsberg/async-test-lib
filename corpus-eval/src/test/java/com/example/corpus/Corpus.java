@@ -5788,6 +5788,36 @@ final class Corpus {
                             + "from the array copy (#1172)",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_parallelIntMap_countsUnderALock", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a parallel IntStream map whose operator increments under one lock, ended by "
+                            + "sum: the workers run the operator for the run and the caller reads after the join"),
+
+            new RecordingSubject("idiom_parallelIntMap_plainCounter", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same IntStream map with no lock. A primitive stream's map raced on the "
+                            + "caller's elements alone before #1172",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_parallelMapToInt_countsUnderALock", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a parallel Stream's mapToInt counting under one lock, ended by an IntStream "
+                            + "sum (#1172)"),
+
+            new RecordingSubject("idiom_parallelMapToInt_plainCounter", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same mapToInt with no lock: the lambda was given to a Stream and the "
+                            + "terminal operation is an IntStream's, so it ran unattributed before #1172",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_spinLockFlag_contendedInsideCaffeine", CAFFEINE,
                     "com.github.benmanes.caffeine.cache.Interner",
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,

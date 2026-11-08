@@ -1588,6 +1588,62 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    /** A parallel IntStream map whose operator counts under one lock, ended by sum (#1172). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelIntMap_countsUnderALock() {
+        correct(() -> {
+            Ledger ledger = new Ledger();
+            int sum = IntStream.range(0, PARALLEL_ELEMENTS).parallel().map(i -> {
+                synchronized (ledger.lock) {
+                    ledger.balance++;
+                }
+                return i;
+            }).sum();
+            use(sum + ledger.balance);
+        });
+    }
+
+    /** The same IntStream map with no lock. A primitive stream's map ran unattributed (#1172). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelIntMap_plainCounter() {
+        broken(() -> {
+            Ledger ledger = new Ledger();
+            int sum = IntStream.range(0, PARALLEL_ELEMENTS).parallel().map(i -> {
+                ledger.balance++;
+                return i;
+            }).sum();
+            use(sum + ledger.balance);
+        });
+    }
+
+    /** A parallel Stream's mapToInt counting under one lock, ended by an IntStream sum (#1172). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelMapToInt_countsUnderALock() {
+        correct(() -> {
+            Ledger ledger = new Ledger();
+            int sum = IntStream.range(0, PARALLEL_ELEMENTS).boxed().parallel().mapToInt(i -> {
+                synchronized (ledger.lock) {
+                    ledger.balance++;
+                }
+                return i;
+            }).sum();
+            use(sum + ledger.balance);
+        });
+    }
+
+    /** The same mapToInt with no lock: the lambda sits on a Stream, the terminal on an IntStream. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelMapToInt_plainCounter() {
+        broken(() -> {
+            Ledger ledger = new Ledger();
+            int sum = IntStream.range(0, PARALLEL_ELEMENTS).boxed().parallel().mapToInt(i -> {
+                ledger.balance++;
+                return i;
+            }).sum();
+            use(sum + ledger.balance);
+        });
+    }
+
     /** Long enough per body that Caffeine's striped buffer resizes under contention (#1171). */
     private static final int INTERNS_PER_BODY = 200;
 
