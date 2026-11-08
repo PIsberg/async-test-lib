@@ -820,7 +820,38 @@ class AgentHappensBeforeFeedTest {
          */
         UNCONFIGURABLE_SCHEDULED_POOL,
         /** A ThreadPoolExecutor behind the same wrapper, which the hook looks through as well. */
-        UNCONFIGURABLE_THREAD_POOL
+        UNCONFIGURABLE_THREAD_POOL,
+        /**
+         * A ThreadPoolExecutor subclass that overrides none of the methods a task reaches, only
+         * {@code terminated}, so the wrapper is as invisible to it as to the pool itself (#1173).
+         */
+        QUIET_SUBCLASS,
+        /** A ThreadPoolExecutor subclass whose {@code beforeExecute} would see the wrapper. */
+        HOOKED_SUBCLASS
+    }
+
+    /** {@link Execution#QUIET_SUBCLASS}: overrides only what no task reaches. */
+    private static final class QuietPool extends java.util.concurrent.ThreadPoolExecutor {
+        QuietPool() {
+            super(1, 1, 0, java.util.concurrent.TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+        }
+
+        @Override
+        protected void terminated() {
+            super.terminated();
+        }
+    }
+
+    /** {@link Execution#HOOKED_SUBCLASS}: its beforeExecute is handed each task. */
+    private static final class HookedPool extends java.util.concurrent.ThreadPoolExecutor {
+        HookedPool() {
+            super(1, 1, 0, java.util.concurrent.TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+        }
+
+        @Override
+        protected void beforeExecute(Thread worker, Runnable task) {
+            super.beforeExecute(worker, task);
+        }
     }
 
     /**
@@ -841,6 +872,8 @@ class AgentHappensBeforeFeedTest {
             case UNCONFIGURABLE_THREAD_POOL -> AgentConcurrencyUtilHooks.unconfigurableExecutorService(
                     new java.util.concurrent.ThreadPoolExecutor(1, 1, 0,
                             java.util.concurrent.TimeUnit.SECONDS, new LinkedBlockingQueue<>()));
+            case QUIET_SUBCLASS -> new QuietPool();
+            case HOOKED_SUBCLASS -> new HookedPool();
             default -> new java.util.concurrent.ForkJoinPool(1);
         };
         try {
@@ -899,6 +932,17 @@ class AgentHappensBeforeFeedTest {
                 "the same through a ThreadPoolExecutor, the pool most code has (#1155)");
         assertTrue(executionReported(Execution.THREAD_POOL_EXECUTOR),
                 "outside a run nothing is watching, so that pool's task is left unwrapped");
+    }
+
+    @Test
+    @DisplayName("a woven execute wraps a ThreadPoolExecutor subclass only where no override would see it (#1173)")
+    void executionOnAThreadPoolSubclass() throws Exception {
+        assertFalse(executionReportedInARun(Execution.QUIET_SUBCLASS),
+                "the subclass overrides only terminated, which no task reaches, so its task is"
+                        + " wrapped like the pool's own and the caller is ordered before it");
+        assertTrue(executionReportedInARun(Execution.HOOKED_SUBCLASS),
+                "an overriding beforeExecute would be handed the wrapper, so the task is left"
+                        + " alone and nothing orders the caller before it");
     }
 
     @Test

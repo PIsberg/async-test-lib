@@ -50,8 +50,10 @@ public final class CompletableFutureObtrudeDetector extends AbstractInstanceDete
     public void recordObtrude(CompletableFuture<?> future, String label, Thread thread) {
         if (future == null || thread == null) return;
         State s = stateFor(future, label, "CompletableFuture");
-        s.obtrudeCount.incrementAndGet();
+        // The thread first, then the count: stateFor publishes the state before either is set, and
+        // analyze reads the count first, so a count it sees above zero has a thread name behind it.
         s.lastObtrudedByThread = thread.getName();
+        s.obtrudeCount.incrementAndGet();
     }
     /**
      * Analyses what has been recorded about the observation and builds the report for it.
@@ -61,9 +63,16 @@ public final class CompletableFutureObtrudeDetector extends AbstractInstanceDete
     public Report analyze() {
         Report r = new Report();
         for (State s : states()) {
+            // One read of each field, count first (see recordObtrude). A state registered by a
+            // recordObtrude still under way has no count yet and nothing to report.
+            int count = s.obtrudeCount.get();
+            String lastThread = s.lastObtrudedByThread;
+            if (count == 0 || lastThread == null) {
+                continue;
+            }
             String msg = String.format(
                 "CompletableFuture '%s' obtruded %d times (last by thread '%s') — obtruding values or exceptions forces downstream pipelines to execute with outdated/inconsistent states, introducing publication races.",
-                s.label, s.obtrudeCount.get(), s.lastObtrudedByThread
+                s.label, count, lastThread
             );
             r.violations.add(msg);
             r.structuredViolations.add(new Violation(
@@ -73,8 +82,8 @@ public final class CompletableFutureObtrudeDetector extends AbstractInstanceDete
                 List.of(),
                 Map.of(
                     "label", s.label,
-                    "obtrudeCount", s.obtrudeCount,
-                    "lastObtrudedByThread", s.lastObtrudedByThread
+                    "obtrudeCount", count,
+                    "lastObtrudedByThread", lastThread
                 ),
                 Instant.now()
             ));

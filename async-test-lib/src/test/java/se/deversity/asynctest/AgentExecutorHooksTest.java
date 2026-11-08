@@ -12,7 +12,11 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -23,6 +27,8 @@ import java.util.concurrent.TimeoutException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -272,6 +278,94 @@ class AgentExecutorHooksTest {
                     "no run is watching, so nothing here should change what the pool holds");
         } finally {
             release.countDown();
+        }
+    }
+
+    // --- What a pool's own code is handed (#1173) ---------------------------------------------
+
+    /** A one-thread pool with no queue, so a second task is rejected while the first is held. */
+    private ThreadPoolExecutor saturated(CountDownLatch release, RejectedExecutionHandler handler) {
+        ThreadPoolExecutor pool = kept(new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
+                new SynchronousQueue<>(), handler));
+        pool.execute(() -> {
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        return pool;
+    }
+
+    @Test
+    @DisplayName("a custom rejection handler is handed the caller's own task, not a wrapper")
+    void customRejectionHandlerSeesTheTaskItself() {
+        installed();
+        CountDownLatch release = new CountDownLatch(1);
+        List<Runnable> rejected = new CopyOnWriteArrayList<>();
+        try {
+            ThreadPoolExecutor pool = saturated(release, (task, executor) -> rejected.add(task));
+            Runnable mine = () -> { };
+            AgentConcurrencyUtilHooks.execute(pool, mine);
+
+            assertEquals(1, rejected.size(), "premise: the pool had no room, so it rejected");
+            assertSame(mine, rejected.get(0),
+                    "a handler that re-queues, logs or matches on its own task type must get it");
+        } finally {
+            release.countDown();
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("AbortPolicy's rejection names the caller's task, not the wrapper around it")
+    void abortPolicyNamesTheTaskItself() {
+        installed();
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            ThreadPoolExecutor pool = saturated(release, new ThreadPoolExecutor.AbortPolicy());
+            Runnable mine = new Runnable() {
+                @Override
+                public void run() {
+                }
+
+                @Override
+                public String toString() {
+                    return "the-callers-task";
+                }
+            };
+            RejectedExecutionException thrown = assertThrows(RejectedExecutionException.class,
+                    () -> AgentConcurrencyUtilHooks.execute(pool, mine));
+
+            assertTrue(thrown.getMessage().contains("the-callers-task"),
+                    "the message is the only place a rejected task is named: " + thrown.getMessage());
+        } finally {
+            release.countDown();
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("a subclass's beforeExecute is handed the caller's own task, not a wrapper")
+    void subclassBeforeExecuteSeesTheTaskItself() throws InterruptedException {
+        installed();
+        List<Runnable> seen = new CopyOnWriteArrayList<>();
+        CountDownLatch ran = new CountDownLatch(1);
+        try {
+            ThreadPoolExecutor pool = kept(new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
+                    new LinkedBlockingQueue<>()) {
+                @Override
+                protected void beforeExecute(Thread worker, Runnable task) {
+                    seen.add(task);
+                }
+            });
+            Runnable mine = ran::countDown;
+            AgentConcurrencyUtilHooks.execute(pool, mine);
+
+            assertTrue(ran.await(10, TimeUnit.SECONDS), "the task never ran");
+            assertSame(mine, seen.get(0), "an overriding beforeExecute sees what it was given");
+        } finally {
+            AsyncTestContext.uninstall();
         }
     }
 

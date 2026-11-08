@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `CompletableFutureObtrudeDetector` and `ThreadPoolDeadlockDetector` no longer fail analysis while
+  a worker is still recording, which dropped the run's whole report (#1212). The first put a future's
+  thread name into its violation before `recordObtrude` had set it, a `NullPointerException`; a future
+  registered but not yet counted is now left out. The second listed the pools, then read its risk total
+  afterwards, so a submission recorded in between reported an issue with no structured violation; the
+  total now comes from the pools the same pass lists.
 - `AtomicNonAtomicUpdate` no longer reports a plain store whose value was never built from the
   atomic read it followed. `gauge.get()` used for a log line, then `gauge.set(queue.size())`, lost no
   update, and was reported as one (#1187). The agent now analyses each class's bytes, decides per store
@@ -64,6 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by a watcher, swings each between RUNNABLE and WAITING the same way and was reported at `CRITICAL`
   in 12 of 50 runs (#1180). A livelock that never finishes is still reported when its round times
   out, and the snapshot starvation and no-progress rules are unchanged.
+- With the agent attached, a task given to `execute` on a `ThreadPoolExecutor` subclass is now
+  observed when the subclass overrides none of `beforeExecute`, `afterExecute`, `execute`, `remove`
+  and `shutdownNow`, the methods that would be handed the wrapper the run queues. A pool that only
+  names its threads or overrides `terminated` drew nothing before (#1173). A subclass that does
+  override one is still left alone.
+- A custom `RejectedExecutionHandler` is no longer handed that wrapper in place of the task it
+  rejected: a pool whose handler is not one of the JDK's four policies has its tasks left unwrapped,
+  so a handler that re-queues or matches on its own task type gets it back (#1173).
 - `AtomicityValidator` no longer excuses a lost update on an object nobody touched after its round
   as a settled single-check cache. The rule accepts the run going on as proof that a once-raced
   field converged, which is right for a lazily created value such as Jackson's view field, where each

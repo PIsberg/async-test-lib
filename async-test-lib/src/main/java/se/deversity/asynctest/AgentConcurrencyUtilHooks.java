@@ -3698,9 +3698,10 @@ public final class AgentConcurrencyUtilHooks {
      * thread-per-task executor behind {@code Executors.newVirtualThreadPerTaskExecutor()} qualify,
      * by exact class: the first runs it inside its own adapter and returns no queued task from
      * {@code shutdownNow}, the second queues its own futures, and the third queues nothing. A
-     * {@code ThreadPoolExecutor} qualifies too, inside a run (#1155); see
-     * {@link #executesInvisibly}. A subclass's tasks are left alone, since its {@code beforeExecute}
-     * would see the wrapper, as are those of any executor outside the JDK's.
+     * {@code ThreadPoolExecutor} qualifies too, inside a run (#1155), and so does a subclass that
+     * overrides none of the methods a task reaches (#1173); see {@link #executesInvisibly}. Any
+     * other subclass's tasks are left alone, since its {@code beforeExecute} would see the wrapper,
+     * as are those of any executor outside the JDK's.
      *
      * @param receiver the executor the call site invoked
      * @param command  what to run; the executor rejects {@code null}
@@ -4102,12 +4103,61 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * The methods of a {@code ThreadPoolExecutor} that are handed a task the pool was given, or a
+     * list of them: an override of any would see the wrapper {@link #execute} queues (#1173).
+     */
+    private static final List<Map.Entry<String, Class<?>[]>> TASK_METHODS = List.of(
+            Map.entry("execute", new Class<?>[] {Runnable.class}),
+            Map.entry("beforeExecute", new Class<?>[] {Thread.class, Runnable.class}),
+            Map.entry("afterExecute", new Class<?>[] {Runnable.class, Throwable.class}),
+            Map.entry("remove", new Class<?>[] {Runnable.class}),
+            Map.entry("shutdownNow", new Class<?>[0]));
+
+    /**
+     * Per {@code ThreadPoolExecutor} subclass: whether no class between it and the pool declares
+     * one of {@link #TASK_METHODS}. A class reflection cannot read counts as overriding.
+     */
+    private static final ClassValue<Boolean> NO_TASK_OVERRIDES = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> type) {
+            try {
+                for (Class<?> c = type; c != ThreadPoolExecutor.class; c = c.getSuperclass()) {
+                    for (java.lang.reflect.Method declared : c.getDeclaredMethods()) {
+                        for (Map.Entry<String, Class<?>[]> method : TASK_METHODS) {
+                            if (declared.getName().equals(method.getKey())
+                                    && Arrays.equals(declared.getParameterTypes(), method.getValue())) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                return true;
+            } catch (RuntimeException | LinkageError unreadable) { // NOPMD - unreadable means "may override"
+                return false;
+            }
+        }
+    };
+
+    /**
+     * The JDK's own rejection policies, by exact class. They run, drop or name a rejected task and
+     * never look at what it is; a handler of the caller's own may, so its pool is not wrapped for
+     * (#1173).
+     */
+    private static final Set<Class<?>> JDK_REJECTION_POLICIES = Set.of(
+            ThreadPoolExecutor.AbortPolicy.class, ThreadPoolExecutor.CallerRunsPolicy.class,
+            ThreadPoolExecutor.DiscardPolicy.class, ThreadPoolExecutor.DiscardOldestPolicy.class);
+
+    /**
      * {@return whether {@code execute} wraps its task for {@code executor}}
      *
-     * <p>A {@code ThreadPoolExecutor} qualifies inside a run (#1155), and by exact class, so no
-     * {@code beforeExecute} override can see the wrapper. {@link #shutdownNow} and
-     * {@link #removeFromPool} keep it from showing there. {@code getQueue} still shows it, to code
-     * that looks at the elements rather than the size; outside a run nothing is wrapped.
+     * <p>A {@code ThreadPoolExecutor} qualifies inside a run (#1155), as does a subclass that
+     * overrides none of the methods a task reaches (#1173): a {@code beforeExecute},
+     * {@code afterExecute}, {@code execute}, {@code remove} or {@code shutdownNow} of its own would
+     * be handed the wrapper. Either needs one of the JDK's rejection policies, since a handler of
+     * the caller's own is handed the rejected task. {@link #shutdownNow} and
+     * {@link #removeFromPool} keep the wrapper from showing to the caller. {@code getQueue} still
+     * shows it, to code that looks at the elements rather than the size; outside a run nothing is
+     * wrapped.
      *
      * <p>An {@code Executors.unconfigurable*} wrapper hands back only what the executor behind it
      * hands back, so it is judged by that executor, when a woven call made it (#1107). The map is
@@ -4119,8 +4169,11 @@ public final class AgentConcurrencyUtilHooks {
                 || "java.util.concurrent.ThreadPerTaskExecutor".equals(type.getName())) {
             return true;
         }
-        if (type == ThreadPoolExecutor.class) {
-            return AsyncTestContext.agentContext() != null;
+        if (type == ThreadPoolExecutor.class
+                || (ThreadPoolExecutor.class.isAssignableFrom(type) && NO_TASK_OVERRIDES.get(type))) {
+            return AsyncTestContext.agentContext() != null
+                    && JDK_REJECTION_POLICIES.contains(
+                            ((ThreadPoolExecutor) executor).getRejectedExecutionHandler().getClass());
         }
         if (!type.getName().startsWith("java.util.concurrent.Executors$")) {
             return false;
