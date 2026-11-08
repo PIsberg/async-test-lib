@@ -17,7 +17,7 @@ concurrency stress tool, is the closer Java-side comparison and is included belo
 | Forces simultaneous thread collisions | yes (barrier release) | no | usually | yes | yes | no (observes, does not force) |
 | Happens-before data-race detection | partial: with the agent attached, conflicting field accesses that neither a common lock nor the happens-before model orders are reported, on the executions the run observed (since 1.12.3) | no | no | no | no (detects incorrect outcomes, not races) | yes |
 | Zero-config deadlock detection | yes (live circular wait via ThreadMXBean) | no | no | no | in the tested operations via model checking, not live ThreadMXBean detection | lock-order inversion reports |
-| Linearizability checking | experimental: `OperationHistory` checks the results workers saw against a sequential model, with drawn scenarios but no systematic scenario search (since 1.13.1) | no | no | no | yes (the reference tool on the JVM) | no |
+| Linearizability checking | experimental: `OperationHistory` checks the results workers saw against a sequential model (since 1.13.1); since 1.14.0 it also enumerates every small scenario under a controlled schedule and shrinks a failing drawn one by re-running it | no | no | no | yes (the reference tool on the JVM) | no |
 | Memory-model conformance probes | limited | no | no | yes (the reference tool) | limited | yes |
 | Reproduction handle for a failing run | replay seed: the library RNG by default; with `controlledSchedule = true` also the interleaving, at woven field accesses, substituted collection and atomic calls and explicit `schedulePoint()`s, exact when no worker blocked outside a point | no | no | seeds per config | yes in model-checking mode (deterministic interleaving replay) | no |
 | Applies to JVM code | yes | yes | yes | yes | yes | no |
@@ -41,9 +41,15 @@ What that means in practice:
   stress or model-checking mode, controls the thread schedule in model-checking mode, and
   reports a minimized failing scenario as a step-by-step interleaving trace. async-test's
   `OperationHistory` asks the same question inside a plain `@AsyncTest` and reports the shortest
-  impossible prefix of what it observed, but draws one scenario per round instead of searching
-  them and does not shrink a scenario by re-running it
-  ([#1025](https://github.com/PIsberg/async-test-lib/issues/1025)). Lincheck has no detector,
+  impossible prefix of what it observed. Since 1.14.0 it covers the other two halves as well:
+  `assertLinearizableForAllScenarios` enumerates every scenario up to a small bound
+  ([#1082](https://github.com/PIsberg/async-test-lib/issues/1082)), and a failing drawn round is
+  shrunk to the smallest scenario that still fails by re-running it
+  ([#1025](https://github.com/PIsberg/async-test-lib/issues/1025)), both under a controlled
+  schedule. The difference that remains is how interleavings are covered: async-test tries each
+  scenario under 32 schedule seeds (64 when shrinking), a sample, where Lincheck's model-checking
+  mode explores them systematically and prints the failing interleaving step by step
+  ([linearizability-checking.md](linearizability-checking.md)). Lincheck has no detector,
   report, severity-gate or baseline pipeline. The two compose rather than compete: Lincheck
   verifies the data structure you own, async-test stresses the code that uses it.
 - ThreadSanitizer is the stronger tool for actual race proof, where the code under test
