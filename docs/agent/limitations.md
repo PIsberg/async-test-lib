@@ -45,13 +45,14 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   `ThreadPoolExecutor` (#1155), `ForkJoinPool`, `ScheduledThreadPoolExecutor` or virtual-thread-per-task
   executor (#741), or an `Executors.unconfigurable*` wrapper around one that a woven call made (#1107),
   or helping a parallel stream the run started: the `map`, `filter`, `peek` and `mapToObj` lambdas of a
-  `Stream`, `IntStream`, `LongStream` or `DoubleStream`, and the lambdas of its woven terminal
-  operations (`forEach`, `forEachOrdered`, `collect`, `reduce`, `min`, `max`, the matches; #1156,
-  #1172). A pipeline stays followed across `mapToInt`, `mapToLong`, `mapToDouble`, `mapToObj` and
-  `boxed`. A lambda reaches the workers only through a chain of woven calls: one given to a stage
-  behind an unwoven one such as `sorted`, `distinct`, `limit`, `skip`, `flatMap` or a primitive
-  stream's `mapToLong`, or to a pipeline ended by `iterator()` or in unwoven code runs unattributed,
-  and a `Collector`'s own functions are not lent the run.
+  `Stream`, `IntStream`, `LongStream` or `DoubleStream`, its `flatMap`, `takeWhile`, `dropWhile` and
+  `sorted` comparator, and the lambdas of its woven terminal operations (`forEach`, `forEachOrdered`,
+  `collect`, `reduce`, `min`, `max`, the matches; #1156, #1172). A pipeline stays followed across
+  every `mapTo*`, `mapToObj`, `boxed`, `as*Stream`, `sorted`, `distinct`, `limit`, `skip`,
+  `parallel()` and `sequential()`, and a `Stream`'s `unordered()`. A lambda reaches the workers only
+  through a chain of woven calls: one given to `mapMulti`, to a stage behind a primitive stream's
+  `unordered()` or `onClose`, or to a pipeline ended by `iterator()` or in unwoven code runs
+  unattributed, and a `Collector`'s own functions are not lent the run.
   Accesses on other application threads during the round, a thread started in unwoven code or a task
   given to `execute` on a `ThreadPoolExecutor` subclass that overrides `beforeExecute`, `afterExecute`,
   `execute`, `remove` or `shutdownNow` included, are treated as noise and dropped; so are the tasks of a

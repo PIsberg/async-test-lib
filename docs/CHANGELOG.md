@@ -95,9 +95,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mapToObj`, and the terminal operations `forEachOrdered`, `reduce`, `collect`, the matches, `sum`,
   `count`, `average`, `min`, `max`, `summaryStatistics`, `toArray` and the finds. A pipeline stays
   followed across `Stream.mapToInt`, `mapToLong` and `mapToDouble`, a primitive stream's `mapToObj`
-  and `boxed`, so `list.parallelStream().mapToInt(...).sum()` reaches the workers. A stage behind
-  `sorted`, `distinct`, `limit` or `skip`, a pipeline ended by `iterator()` and a `Collector`'s own
-  functions are still not followed.
+  and `boxed`, so `list.parallelStream().mapToInt(...).sum()` reaches the workers. A pipeline stays
+  followed through `sorted`, `distinct`, `limit`, `skip`, `parallel()`, `sequential()`,
+  `unordered()`, `asLongStream` and `asDoubleStream`, so `list.stream().map(...).parallel().sorted()`
+  is followed too, and the lambdas of `flatMap`, `takeWhile`, `dropWhile` and the remaining
+  primitive-to-primitive maps run for the run. A `sorted` comparator is ordered like a combiner. A
+  `mapMulti` lambda, a pipeline ended by `iterator()` and a `Collector`'s own functions are still not
+  followed.
 - A happens-before clock past its 4,096-thread cap now drops the entries of threads that have ended
   before those of running ones (#1172). It dropped the lowest ids first, and a long run starts
   thousands of workers after the common pool's threads, so the pool threads, still working, went

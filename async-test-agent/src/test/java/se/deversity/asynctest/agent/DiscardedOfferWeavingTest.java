@@ -774,6 +774,194 @@ class DiscardedOfferWeavingTest {
             return receiver.findAny();
         }
 
+        public static java.util.stream.Stream<Object> streamSorted(java.util.stream.Stream<Object> receiver) {
+            return receiver.sorted();
+        }
+
+        public static java.util.stream.Stream<Object> streamDistinct(java.util.stream.Stream<Object> receiver) {
+            return receiver.distinct();
+        }
+
+        public static java.util.stream.Stream<Object> streamLimit(java.util.stream.Stream<Object> receiver, long maxSize) {
+            return receiver.limit(maxSize);
+        }
+
+        public static java.util.stream.Stream<Object> streamSkip(java.util.stream.Stream<Object> receiver, long n) {
+            return receiver.skip(n);
+        }
+
+        public static java.util.stream.BaseStream<?, ?> streamParallel(java.util.stream.Stream<Object> receiver) {
+            return receiver.parallel();
+        }
+
+        public static java.util.stream.BaseStream<?, ?> streamSequential(java.util.stream.Stream<Object> receiver) {
+            return receiver.sequential();
+        }
+
+        public static java.util.stream.BaseStream<?, ?> streamUnordered(java.util.stream.Stream<Object> receiver) {
+            return receiver.unordered();
+        }
+
+        public static java.util.stream.Stream<Object> streamSorted(java.util.stream.Stream<Object> receiver, java.util.Comparator<Object> comparator) {
+            return receiver.sorted(comparator);
+        }
+
+        public static java.util.stream.Stream<Object> streamFlatMap(java.util.stream.Stream<Object> receiver, java.util.function.Function<Object, java.util.stream.Stream<Object>> mapper) {
+            return receiver.flatMap(mapper);
+        }
+
+        public static java.util.stream.Stream<Object> streamTakeWhile(java.util.stream.Stream<Object> receiver, java.util.function.Predicate<Object> predicate) {
+            return receiver.takeWhile(predicate);
+        }
+
+        public static java.util.stream.Stream<Object> streamDropWhile(java.util.stream.Stream<Object> receiver, java.util.function.Predicate<Object> predicate) {
+            return receiver.dropWhile(predicate);
+        }
+
+        public static java.util.stream.IntStream intStreamSorted(java.util.stream.IntStream receiver) {
+            return receiver.sorted();
+        }
+
+        public static java.util.stream.IntStream intStreamDistinct(java.util.stream.IntStream receiver) {
+            return receiver.distinct();
+        }
+
+        public static java.util.stream.IntStream intStreamLimit(java.util.stream.IntStream receiver, long maxSize) {
+            return receiver.limit(maxSize);
+        }
+
+        public static java.util.stream.IntStream intStreamSkip(java.util.stream.IntStream receiver, long n) {
+            return receiver.skip(n);
+        }
+
+        public static java.util.stream.IntStream intStreamParallel(java.util.stream.IntStream receiver) {
+            return receiver.parallel();
+        }
+
+        public static java.util.stream.IntStream intStreamSequential(java.util.stream.IntStream receiver) {
+            return receiver.sequential();
+        }
+
+        public static java.util.stream.IntStream intStreamFlatMap(java.util.stream.IntStream receiver, java.util.function.IntFunction<java.util.stream.IntStream> mapper) {
+            return receiver.flatMap(mapper);
+        }
+
+        public static java.util.stream.IntStream intStreamTakeWhile(java.util.stream.IntStream receiver, java.util.function.IntPredicate predicate) {
+            return receiver.takeWhile(predicate);
+        }
+
+        public static java.util.stream.IntStream intStreamDropWhile(java.util.stream.IntStream receiver, java.util.function.IntPredicate predicate) {
+            return receiver.dropWhile(predicate);
+        }
+
+        public static java.util.stream.LongStream intStreamMapToLong(java.util.stream.IntStream receiver, java.util.function.IntToLongFunction mapper) {
+            return receiver.mapToLong(mapper);
+        }
+
+        public static java.util.stream.DoubleStream intStreamMapToDouble(java.util.stream.IntStream receiver, java.util.function.IntToDoubleFunction mapper) {
+            return receiver.mapToDouble(mapper);
+        }
+
+        public static java.util.stream.LongStream intStreamAsLongStream(java.util.stream.IntStream receiver) {
+            return receiver.asLongStream();
+        }
+
+        public static java.util.stream.DoubleStream intStreamAsDoubleStream(java.util.stream.IntStream receiver) {
+            return receiver.asDoubleStream();
+        }
+
+        public static java.util.stream.LongStream longStreamSorted(java.util.stream.LongStream receiver) {
+            return receiver.sorted();
+        }
+
+        public static java.util.stream.LongStream longStreamDistinct(java.util.stream.LongStream receiver) {
+            return receiver.distinct();
+        }
+
+        public static java.util.stream.LongStream longStreamLimit(java.util.stream.LongStream receiver, long maxSize) {
+            return receiver.limit(maxSize);
+        }
+
+        public static java.util.stream.LongStream longStreamSkip(java.util.stream.LongStream receiver, long n) {
+            return receiver.skip(n);
+        }
+
+        public static java.util.stream.LongStream longStreamParallel(java.util.stream.LongStream receiver) {
+            return receiver.parallel();
+        }
+
+        public static java.util.stream.LongStream longStreamSequential(java.util.stream.LongStream receiver) {
+            return receiver.sequential();
+        }
+
+        public static java.util.stream.LongStream longStreamFlatMap(java.util.stream.LongStream receiver, java.util.function.LongFunction<java.util.stream.LongStream> mapper) {
+            return receiver.flatMap(mapper);
+        }
+
+        public static java.util.stream.LongStream longStreamTakeWhile(java.util.stream.LongStream receiver, java.util.function.LongPredicate predicate) {
+            return receiver.takeWhile(predicate);
+        }
+
+        public static java.util.stream.LongStream longStreamDropWhile(java.util.stream.LongStream receiver, java.util.function.LongPredicate predicate) {
+            return receiver.dropWhile(predicate);
+        }
+
+        public static java.util.stream.IntStream longStreamMapToInt(java.util.stream.LongStream receiver, java.util.function.LongToIntFunction mapper) {
+            return receiver.mapToInt(mapper);
+        }
+
+        public static java.util.stream.DoubleStream longStreamMapToDouble(java.util.stream.LongStream receiver, java.util.function.LongToDoubleFunction mapper) {
+            return receiver.mapToDouble(mapper);
+        }
+
+        public static java.util.stream.DoubleStream longStreamAsDoubleStream(java.util.stream.LongStream receiver) {
+            return receiver.asDoubleStream();
+        }
+
+        public static java.util.stream.DoubleStream doubleStreamSorted(java.util.stream.DoubleStream receiver) {
+            return receiver.sorted();
+        }
+
+        public static java.util.stream.DoubleStream doubleStreamDistinct(java.util.stream.DoubleStream receiver) {
+            return receiver.distinct();
+        }
+
+        public static java.util.stream.DoubleStream doubleStreamLimit(java.util.stream.DoubleStream receiver, long maxSize) {
+            return receiver.limit(maxSize);
+        }
+
+        public static java.util.stream.DoubleStream doubleStreamSkip(java.util.stream.DoubleStream receiver, long n) {
+            return receiver.skip(n);
+        }
+
+        public static java.util.stream.DoubleStream doubleStreamParallel(java.util.stream.DoubleStream receiver) {
+            return receiver.parallel();
+        }
+
+        public static java.util.stream.DoubleStream doubleStreamSequential(java.util.stream.DoubleStream receiver) {
+            return receiver.sequential();
+        }
+
+        public static java.util.stream.DoubleStream doubleStreamFlatMap(java.util.stream.DoubleStream receiver, java.util.function.DoubleFunction<java.util.stream.DoubleStream> mapper) {
+            return receiver.flatMap(mapper);
+        }
+
+        public static java.util.stream.DoubleStream doubleStreamTakeWhile(java.util.stream.DoubleStream receiver, java.util.function.DoublePredicate predicate) {
+            return receiver.takeWhile(predicate);
+        }
+
+        public static java.util.stream.DoubleStream doubleStreamDropWhile(java.util.stream.DoubleStream receiver, java.util.function.DoublePredicate predicate) {
+            return receiver.dropWhile(predicate);
+        }
+
+        public static java.util.stream.IntStream doubleStreamMapToInt(java.util.stream.DoubleStream receiver, java.util.function.DoubleToIntFunction mapper) {
+            return receiver.mapToInt(mapper);
+        }
+
+        public static java.util.stream.LongStream doubleStreamMapToLong(java.util.stream.DoubleStream receiver, java.util.function.DoubleToLongFunction mapper) {
+            return receiver.mapToLong(mapper);
+        }
+
         public static java.util.stream.IntStream streamMapToInt(java.util.stream.Stream<Object> receiver, java.util.function.ToIntFunction<Object> mapper) {
             return receiver.mapToInt(mapper);
         }

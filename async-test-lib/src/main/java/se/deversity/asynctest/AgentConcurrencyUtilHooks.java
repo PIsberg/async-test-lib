@@ -25,6 +25,12 @@ import java.util.stream.DoubleStream;
 import java.util.stream.LongStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import java.util.function.IntToLongFunction;
+import java.util.function.IntToDoubleFunction;
+import java.util.function.LongToIntFunction;
+import java.util.function.LongToDoubleFunction;
+import java.util.function.DoubleToIntFunction;
+import java.util.function.DoubleToLongFunction;
 import java.util.stream.BaseStream;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
@@ -3923,6 +3929,11 @@ public final class AgentConcurrencyUtilHooks {
         <T> T element(Supplier<T> body) {
             return inElement(operation, body);
         }
+
+        /** Runs a {@code sorted} comparator, which compares what other subtasks produced, as a combine. */
+        <T> T combine(Supplier<T> body) {
+            return inCombine(operation, body);
+        }
     }
 
     /**
@@ -4369,6 +4380,731 @@ public final class AgentConcurrencyUtilHooks {
                     : value -> operation.element(() -> action.accept(value)));
             return null;
         });
+    }
+
+    // --- Stages that run no lambda, and the remaining lambda stages (#1172) ---------------------
+
+    /**
+     * Weaves {@code Stream.sorted}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamSorted(Stream<Object> receiver) {
+        ControlledSchedule.point();
+        Stream<Object> result = receiver.sorted();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code Stream.distinct}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamDistinct(Stream<Object> receiver) {
+        ControlledSchedule.point();
+        Stream<Object> result = receiver.distinct();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code Stream.limit}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @param maxSize how many to keep
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamLimit(Stream<Object> receiver, long maxSize) {
+        ControlledSchedule.point();
+        Stream<Object> result = receiver.limit(maxSize);
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code Stream.skip}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @param n how many to drop
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamSkip(Stream<Object> receiver, long n) {
+        ControlledSchedule.point();
+        Stream<Object> result = receiver.skip(n);
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code Stream.parallel}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream; declared by {@code BaseStream}, so the call site expects one
+     * @since 1.14.2
+     */
+    public static BaseStream<?, ?> streamParallel(Stream<Object> receiver) {
+        ControlledSchedule.point();
+        BaseStream<?, ?> result = receiver.parallel();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code Stream.sequential}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream; declared by {@code BaseStream}, so the call site expects one
+     * @since 1.14.2
+     */
+    public static BaseStream<?, ?> streamSequential(Stream<Object> receiver) {
+        ControlledSchedule.point();
+        BaseStream<?, ?> result = receiver.sequential();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code Stream.unordered}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream; declared by {@code BaseStream}, so the call site expects one
+     * @since 1.14.2
+     */
+    public static BaseStream<?, ?> streamUnordered(Stream<Object> receiver) {
+        ControlledSchedule.point();
+        BaseStream<?, ?> result = receiver.unordered();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code Stream.sorted}: the comparator runs as a combine, since a parallel sort compares elements other subtasks produced.
+     *
+     * @param receiver the stream
+     * @param comparator orders two elements; the sort calls it on pool workers
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamSorted(Stream<Object> receiver, Comparator<Object> comparator) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.sorted(comparator);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.sorted((value, other) -> slot.combine(() -> comparator.compare(value, other))), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.flatMap}: the mapper runs as an element; the stream it returns is consumed inside that element.
+     *
+     * @param receiver the stream
+     * @param mapper the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamFlatMap(Stream<Object> receiver, Function<Object, Stream<Object>> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.flatMap(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.flatMap(value -> slot.element(() -> mapper.apply(value))), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.takeWhile}: the predicate runs as an element.
+     *
+     * @param receiver the stream
+     * @param predicate the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamTakeWhile(Stream<Object> receiver, Predicate<Object> predicate) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.takeWhile(predicate);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.takeWhile(value -> slot.element(() -> predicate.test(value))), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.dropWhile}: the predicate runs as an element.
+     *
+     * @param receiver the stream
+     * @param predicate the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamDropWhile(Stream<Object> receiver, Predicate<Object> predicate) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.dropWhile(predicate);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.dropWhile(value -> slot.element(() -> predicate.test(value))), slot);
+    }
+
+    /**
+     * Weaves {@code IntStream.sorted}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static IntStream intStreamSorted(IntStream receiver) {
+        ControlledSchedule.point();
+        IntStream result = receiver.sorted();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code IntStream.distinct}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static IntStream intStreamDistinct(IntStream receiver) {
+        ControlledSchedule.point();
+        IntStream result = receiver.distinct();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code IntStream.limit}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @param maxSize how many to keep
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static IntStream intStreamLimit(IntStream receiver, long maxSize) {
+        ControlledSchedule.point();
+        IntStream result = receiver.limit(maxSize);
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code IntStream.skip}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @param n how many to drop
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static IntStream intStreamSkip(IntStream receiver, long n) {
+        ControlledSchedule.point();
+        IntStream result = receiver.skip(n);
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code IntStream.parallel}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static IntStream intStreamParallel(IntStream receiver) {
+        ControlledSchedule.point();
+        IntStream result = receiver.parallel();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code IntStream.sequential}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static IntStream intStreamSequential(IntStream receiver) {
+        ControlledSchedule.point();
+        IntStream result = receiver.sequential();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code IntStream.flatMap}: the mapper runs as an element; the stream it returns is consumed inside that element.
+     *
+     * @param receiver the stream
+     * @param mapper the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static IntStream intStreamFlatMap(IntStream receiver, IntFunction<IntStream> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.flatMap(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.flatMap(value -> slot.element(() -> mapper.apply(value))), slot);
+    }
+
+    /**
+     * Weaves {@code IntStream.takeWhile}: the predicate runs as an element.
+     *
+     * @param receiver the stream
+     * @param predicate the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static IntStream intStreamTakeWhile(IntStream receiver, IntPredicate predicate) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.takeWhile(predicate);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.takeWhile(value -> slot.element(() -> predicate.test(value))), slot);
+    }
+
+    /**
+     * Weaves {@code IntStream.dropWhile}: the predicate runs as an element.
+     *
+     * @param receiver the stream
+     * @param predicate the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static IntStream intStreamDropWhile(IntStream receiver, IntPredicate predicate) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.dropWhile(predicate);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.dropWhile(value -> slot.element(() -> predicate.test(value))), slot);
+    }
+
+    /**
+     * Weaves {@code IntStream.mapToLong}: the mapper runs as an element, and the stages behind it stay in the pipeline the returned {@code LongStream} ends.
+     *
+     * @param receiver the stream
+     * @param mapper the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static LongStream intStreamMapToLong(IntStream receiver, IntToLongFunction mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapToLong(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapToLong(value -> slot.element(() -> mapper.applyAsLong(value))), slot);
+    }
+
+    /**
+     * Weaves {@code IntStream.mapToDouble}: the mapper runs as an element, and the stages behind it stay in the pipeline the returned {@code DoubleStream} ends.
+     *
+     * @param receiver the stream
+     * @param mapper the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static DoubleStream intStreamMapToDouble(IntStream receiver, IntToDoubleFunction mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapToDouble(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapToDouble(value -> slot.element(() -> mapper.applyAsDouble(value))), slot);
+    }
+
+    /**
+     * Weaves {@code IntStream.asLongStream}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static LongStream intStreamAsLongStream(IntStream receiver) {
+        ControlledSchedule.point();
+        LongStream result = receiver.asLongStream();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code IntStream.asDoubleStream}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static DoubleStream intStreamAsDoubleStream(IntStream receiver) {
+        ControlledSchedule.point();
+        DoubleStream result = receiver.asDoubleStream();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code LongStream.sorted}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static LongStream longStreamSorted(LongStream receiver) {
+        ControlledSchedule.point();
+        LongStream result = receiver.sorted();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code LongStream.distinct}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static LongStream longStreamDistinct(LongStream receiver) {
+        ControlledSchedule.point();
+        LongStream result = receiver.distinct();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code LongStream.limit}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @param maxSize how many to keep
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static LongStream longStreamLimit(LongStream receiver, long maxSize) {
+        ControlledSchedule.point();
+        LongStream result = receiver.limit(maxSize);
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code LongStream.skip}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @param n how many to drop
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static LongStream longStreamSkip(LongStream receiver, long n) {
+        ControlledSchedule.point();
+        LongStream result = receiver.skip(n);
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code LongStream.parallel}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static LongStream longStreamParallel(LongStream receiver) {
+        ControlledSchedule.point();
+        LongStream result = receiver.parallel();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code LongStream.sequential}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static LongStream longStreamSequential(LongStream receiver) {
+        ControlledSchedule.point();
+        LongStream result = receiver.sequential();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code LongStream.flatMap}: the mapper runs as an element; the stream it returns is consumed inside that element.
+     *
+     * @param receiver the stream
+     * @param mapper the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static LongStream longStreamFlatMap(LongStream receiver, LongFunction<LongStream> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.flatMap(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.flatMap(value -> slot.element(() -> mapper.apply(value))), slot);
+    }
+
+    /**
+     * Weaves {@code LongStream.takeWhile}: the predicate runs as an element.
+     *
+     * @param receiver the stream
+     * @param predicate the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static LongStream longStreamTakeWhile(LongStream receiver, LongPredicate predicate) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.takeWhile(predicate);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.takeWhile(value -> slot.element(() -> predicate.test(value))), slot);
+    }
+
+    /**
+     * Weaves {@code LongStream.dropWhile}: the predicate runs as an element.
+     *
+     * @param receiver the stream
+     * @param predicate the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static LongStream longStreamDropWhile(LongStream receiver, LongPredicate predicate) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.dropWhile(predicate);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.dropWhile(value -> slot.element(() -> predicate.test(value))), slot);
+    }
+
+    /**
+     * Weaves {@code LongStream.mapToInt}: the mapper runs as an element, and the stages behind it stay in the pipeline the returned {@code IntStream} ends.
+     *
+     * @param receiver the stream
+     * @param mapper the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static IntStream longStreamMapToInt(LongStream receiver, LongToIntFunction mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapToInt(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapToInt(value -> slot.element(() -> mapper.applyAsInt(value))), slot);
+    }
+
+    /**
+     * Weaves {@code LongStream.mapToDouble}: the mapper runs as an element, and the stages behind it stay in the pipeline the returned {@code DoubleStream} ends.
+     *
+     * @param receiver the stream
+     * @param mapper the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static DoubleStream longStreamMapToDouble(LongStream receiver, LongToDoubleFunction mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapToDouble(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapToDouble(value -> slot.element(() -> mapper.applyAsDouble(value))), slot);
+    }
+
+    /**
+     * Weaves {@code LongStream.asDoubleStream}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static DoubleStream longStreamAsDoubleStream(LongStream receiver) {
+        ControlledSchedule.point();
+        DoubleStream result = receiver.asDoubleStream();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.sorted}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static DoubleStream doubleStreamSorted(DoubleStream receiver) {
+        ControlledSchedule.point();
+        DoubleStream result = receiver.sorted();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.distinct}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static DoubleStream doubleStreamDistinct(DoubleStream receiver) {
+        ControlledSchedule.point();
+        DoubleStream result = receiver.distinct();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.limit}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @param maxSize how many to keep
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static DoubleStream doubleStreamLimit(DoubleStream receiver, long maxSize) {
+        ControlledSchedule.point();
+        DoubleStream result = receiver.limit(maxSize);
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.skip}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @param n how many to drop
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static DoubleStream doubleStreamSkip(DoubleStream receiver, long n) {
+        ControlledSchedule.point();
+        DoubleStream result = receiver.skip(n);
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.parallel}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static DoubleStream doubleStreamParallel(DoubleStream receiver) {
+        ControlledSchedule.point();
+        DoubleStream result = receiver.parallel();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.sequential}: it runs no lambda of its own and carries the woven stages behind
+     * it to the stream it returns, so the terminal operation still lends them the run.
+     *
+     * @param receiver the stream
+     * @return the stream
+     * @since 1.14.2
+     */
+    public static DoubleStream doubleStreamSequential(DoubleStream receiver) {
+        ControlledSchedule.point();
+        DoubleStream result = receiver.sequential();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.flatMap}: the mapper runs as an element; the stream it returns is consumed inside that element.
+     *
+     * @param receiver the stream
+     * @param mapper the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static DoubleStream doubleStreamFlatMap(DoubleStream receiver, DoubleFunction<DoubleStream> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.flatMap(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.flatMap(value -> slot.element(() -> mapper.apply(value))), slot);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.takeWhile}: the predicate runs as an element.
+     *
+     * @param receiver the stream
+     * @param predicate the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static DoubleStream doubleStreamTakeWhile(DoubleStream receiver, DoublePredicate predicate) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.takeWhile(predicate);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.takeWhile(value -> slot.element(() -> predicate.test(value))), slot);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.dropWhile}: the predicate runs as an element.
+     *
+     * @param receiver the stream
+     * @param predicate the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static DoubleStream doubleStreamDropWhile(DoubleStream receiver, DoublePredicate predicate) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.dropWhile(predicate);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.dropWhile(value -> slot.element(() -> predicate.test(value))), slot);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.mapToInt}: the mapper runs as an element, and the stages behind it stay in the pipeline the returned {@code IntStream} ends.
+     *
+     * @param receiver the stream
+     * @param mapper the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static IntStream doubleStreamMapToInt(DoubleStream receiver, DoubleToIntFunction mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapToInt(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapToInt(value -> slot.element(() -> mapper.applyAsInt(value))), slot);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.mapToLong}: the mapper runs as an element, and the stages behind it stay in the pipeline the returned {@code LongStream} ends.
+     *
+     * @param receiver the stream
+     * @param mapper the lambda given to each element
+     * @return the stream it returns
+     * @since 1.14.2
+     */
+    public static LongStream doubleStreamMapToLong(DoubleStream receiver, DoubleToLongFunction mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapToLong(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapToLong(value -> slot.element(() -> mapper.applyAsLong(value))), slot);
     }
 
     // --- Primitive streams, and the bridges between them and a Stream (#1172) ------------------
