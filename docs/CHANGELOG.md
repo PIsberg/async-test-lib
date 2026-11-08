@@ -63,6 +63,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A custom `RejectedExecutionHandler` is no longer handed that wrapper in place of the task it
   rejected: a pool whose handler is not one of the JDK's four policies has its tasks left unwrapped,
   so a handler that re-queues or matches on its own task type gets it back (#1173).
+- With the agent attached, the lambdas of a parallel `Stream` are now observed on the common pool's
+  workers, not only `forEach`'s action (#1172). A lambda given to `map`, `filter` or `peek` runs for
+  the run while the terminal operation does, and so do the lambdas of `forEachOrdered`, `collect`,
+  `reduce`, `min`, `max` and the matches; `toList`, `toArray`, `count` and the finds end a pipeline
+  the same way. A plain counter or a shared `ArrayList` in a parallel `map` drew a finding only from
+  the caller's own elements before. A combiner, a `reduce` operator or a comparator is ordered after
+  the subtasks that built what it merges, so a correct three-argument `collect` stays silent. A
+  primitive stream's `map` and `filter`, a stage behind `sorted`, `distinct`, `limit` or `mapToInt`, a
+  pipeline ended by `iterator()` and a `Collector`'s own functions are still not followed.
+- A happens-before clock past its 4,096-thread cap now drops the entries of threads that have ended
+  before those of running ones (#1172). It dropped the lowest ids first, and a long run starts
+  thousands of workers after the common pool's threads, so the pool threads, still working, went
+  first. A suite that had started more than 4,096 threads then reported a correct parallel
+  `collect` as a race (the corpus row `idiom_parallelCollect_containerPerSubtask`, on JDK 25 and
+  26), and could report the read of a parallel `forEach`'s result the same way. Dropping an entry
+  still only ever loses an edge.
+- A thread whose thread-locals are cleared now keeps its happens-before clock (#1172). From JDK 24
+  the common pool's workers clear their thread-locals every time they go idle and wake up again,
+  often partway through one parallel stream, and the clock lived in one. The worker then started a
+  fresh clock that no longer covered its own earlier accesses or what it had acquired, so a combine
+  that merged a container the same worker had filled read as a race. This is what kept the corpus
+  row `idiom_parallelCollect_containerPerSubtask` red on JDK 25 and 26 after the cap fix above.
 - `AtomicityValidator` no longer excuses a lost update on an object nobody touched after its round
   as a settled single-check cache. The rule accepts the run going on as proof that a once-raced
   field converged, which is right for a lazily created value such as Jackson's view field, where each

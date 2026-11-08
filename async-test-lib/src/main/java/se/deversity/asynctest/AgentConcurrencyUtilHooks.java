@@ -14,6 +14,12 @@ import java.util.Collections;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collector;
+import java.util.function.Predicate;
+import java.util.function.IntFunction;
+import java.util.function.BinaryOperator;
+import java.util.Optional;
+import java.util.Comparator;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.DoubleStream;
 import java.util.stream.LongStream;
@@ -3596,6 +3602,8 @@ public final class AgentConcurrencyUtilHooks {
             Thread thread = Thread.currentThread();
             if (thread == caller) { // NOPMD CompareObjectsWithEquals - the same thread
                 body.run();
+                // For a combine on a helper, which may merge what this element built (#1172).
+                helpers.put(thread.threadId(), HappensBefore.handOff());
                 return;
             }
             HappensBefore.receive(started);
@@ -3610,6 +3618,21 @@ public final class AgentConcurrencyUtilHooks {
                 leaveTask(taskBefore);
                 AsyncTestContext.restoreLent(lentBefore);
             }
+        }
+
+        /**
+         * Runs {@code body}, a combiner, a reduce operator or a comparator, as an element ordered
+         * after every element that finished before it (#1172).
+         *
+         * <p>Each of these merges what other subtasks built, and the operation runs it only once
+         * those subtasks are done; the fork and join that order them are JDK code the agent does
+         * not see. Every element publishes its thread's clock when it ends, so receiving all of
+         * them covers the subtasks being merged. It may also cover a subtask that finished but is
+         * not merged here, which the read of the map that carries the clocks does order.
+         */
+        void combined(Runnable body) {
+            helpers.values().forEach(HappensBefore::receive);
+            element(body);
         }
 
         /** Orders the caller after every helper; the operation has returned. */
@@ -3627,17 +3650,427 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static void streamForEach(Stream<Object> receiver, Consumer<Object> action) {
+        parallelTerminal(receiver, operation -> {
+            receiver.forEach(operation == null ? action
+                    : value -> operation.element(() -> action.accept(value)));
+            return null;
+        });
+    }
+
+    // --- The rest of a parallel Stream pipeline (#1172) ----------------------------------------
+
+    /**
+     * A lambda the run gave to {@code map}, {@code filter} or {@code peek}, waiting for the
+     * terminal operation that runs it (#1172).
+     *
+     * <p>An intermediate operation only builds: whether the stream runs in parallel, and when the
+     * caller's writes are ordered before its elements, is settled by the terminal operation. So
+     * the woven terminal operation lends its {@link ParallelForEach} to every slot of its pipeline
+     * for as long as it runs. A slot nothing lends to runs its lambda as it was: a pipeline whose
+     * terminal operation is not woven, such as {@code iterator()}, would have no join to order the
+     * caller after its helpers, and lending them the run without one would report the read of a
+     * result as a race.
+     */
+    static final class StageSlot {
+
+        private volatile @Nullable ParallelForEach operation;
+
+        <T> T element(Supplier<T> body) {
+            return inElement(operation, body);
+        }
+    }
+
+    /**
+     * Per stream a woven intermediate operation returned: the slots of every woven stage behind it.
+     * Weak in the stream, which an abandoned pipeline drops, and holding only the slots, which hold
+     * nothing of the stream.
+     */
+    private static final Map<Stream<?>, List<StageSlot>> PIPELINES =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    /**
+     * Runs {@code body} as an element of {@code operation}, or as it was when there is none.
+     *
+     * @param operation the parallel operation running it, or null
+     * @param body      the lambda's own work
+     * @param <T>       what it returns
+     * @return what {@code body} returned
+     */
+    @SuppressWarnings("unchecked")
+    private static <T> T inElement(@Nullable ParallelForEach operation, Supplier<T> body) {
+        if (operation == null) {
+            return body.get();
+        }
+        Object[] result = new Object[1];
+        operation.element(() -> result[0] = body.get());
+        return (T) result[0];
+    }
+
+    /**
+     * Runs {@code body} as a combine of {@code operation} ({@link ParallelForEach#combined}), or as
+     * it was when there is none.
+     *
+     * @param operation the parallel operation running it, or null
+     * @param body      the combine's own work
+     * @param <T>       what it returns
+     * @return what {@code body} returned
+     */
+    @SuppressWarnings("unchecked")
+    private static <T> T inCombine(@Nullable ParallelForEach operation, Supplier<T> body) {
+        if (operation == null) {
+            return body.get();
+        }
+        Object[] result = new Object[1];
+        operation.combined(() -> result[0] = body.get());
+        return (T) result[0];
+    }
+
+    /**
+     * Records that {@code result} is {@code receiver} with one more woven stage, {@code slot}.
+     * {@code receiver} is linked now and can no longer be operated on, so its entry goes.
+     */
+    private static Stream<Object> staged(Stream<Object> receiver, Stream<Object> result, StageSlot slot) {
+        List<StageSlot> behind = PIPELINES.remove(receiver);
+        List<StageSlot> slots = new ArrayList<>(behind == null ? List.of() : behind);
+        slots.add(slot);
+        PIPELINES.put(result, slots);
+        return result;
+    }
+
+    /**
+     * Runs one terminal operation on {@code receiver}: with a fresh {@link ParallelForEach} lent to
+     * every woven stage of its pipeline when the stream is parallel and a run is in progress, and
+     * with null and no slot touched otherwise, which is the call as it was.
+     *
+     * <p>Every terminal operation of a stream waits for the tasks it forked, short-circuiting ones
+     * included, so when it returns no helper is still running a lambda of it: the slots are
+     * cleared and the caller receives every helper's clock, as after {@code forEach} (#1156).
+     *
+     * @param receiver  the stream
+     * @param operation the terminal operation, given the parallel operation or null
+     * @param <T>       what it returns
+     * @return what it returned
+     */
+    private static <T> T parallelTerminal(Stream<?> receiver,
+                                          Function<@Nullable ParallelForEach, T> operation) {
         ControlledSchedule.point();
+        List<StageSlot> stages = PIPELINES.remove(receiver);
         if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
-            receiver.forEach(action);
-            return;
+            return operation.apply(null);
         }
-        ParallelForEach forEach = new ParallelForEach();
+        ParallelForEach parallel = new ParallelForEach();
+        if (stages != null) {
+            stages.forEach(slot -> slot.operation = parallel);
+        }
         try {
-            receiver.forEach(value -> forEach.element(() -> action.accept(value)));
+            return operation.apply(parallel);
         } finally {
-            forEach.joined();
+            if (stages != null) {
+                stages.forEach(slot -> slot.operation = null);
+            }
+            parallel.joined();
         }
+    }
+
+    /**
+     * Weaves {@code Stream.map}: see {@link StageSlot}. Outside a run the call is as it was.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given to each element
+     * @return the mapped stream
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamMap(Stream<Object> receiver, Function<Object, Object> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.map(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.map(value -> slot.element(() -> mapper.apply(value))), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.filter}, as {@link #streamMap}.
+     *
+     * @param receiver  the stream
+     * @param predicate what keeps an element
+     * @return the filtered stream
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamFilter(Stream<Object> receiver, Predicate<Object> predicate) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.filter(predicate);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver,
+                receiver.filter(value -> slot.element(() -> predicate.test(value))), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.peek}, as {@link #streamMap}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element as it passes
+     * @return the peeked stream
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamPeek(Stream<Object> receiver, Consumer<Object> action) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.peek(action);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.peek(value -> slot.element(() -> {
+            action.accept(value);
+            return null;
+        })), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.forEachOrdered}, as {@link #streamForEach}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element, in encounter order
+     * @since 1.14.2
+     */
+    public static void streamForEachOrdered(Stream<Object> receiver, Consumer<Object> action) {
+        parallelTerminal(receiver, operation -> {
+            receiver.forEachOrdered(operation == null ? action
+                    : value -> operation.element(() -> action.accept(value)));
+            return null;
+        });
+    }
+
+    /**
+     * Weaves {@code Stream.collect(Collector)}: the pipeline's woven stages run as its elements.
+     * The collector's own functions are left as they are; the JDK's run no woven code.
+     *
+     * @param receiver  the stream
+     * @param collector what accumulates the elements, run as it is
+     * @return what the collector produced
+     * @since 1.14.2
+     */
+    public static Object streamCollect(Stream<Object> receiver, Collector<? super Object, ?, ?> collector) {
+        return parallelTerminal(receiver, operation -> receiver.collect(collector));
+    }
+
+    /**
+     * Weaves {@code Stream.collect(Supplier, BiConsumer, BiConsumer)}: supplier and accumulator run
+     * as elements, and the combiner, which merges containers other subtasks filled, as a combine.
+     *
+     * @param receiver    the stream
+     * @param supplier    makes a container
+     * @param accumulator adds an element to one
+     * @param combiner    merges two
+     * @return the container
+     * @since 1.14.2
+     */
+    public static Object streamCollect(Stream<Object> receiver, Supplier<Object> supplier,
+                                       BiConsumer<Object, Object> accumulator,
+                                       BiConsumer<Object, Object> combiner) {
+        return parallelTerminal(receiver, operation -> operation == null
+                ? receiver.collect(supplier, accumulator, combiner)
+                : receiver.collect(() -> inElement(operation, supplier),
+                        (container, value) -> inElement(operation, () -> {
+                            accumulator.accept(container, value);
+                            return null;
+                        }),
+                        (left, right) -> inCombine(operation, () -> {
+                            combiner.accept(left, right);
+                            return null;
+                        })));
+    }
+
+    /**
+     * Weaves {@code Stream.reduce(BinaryOperator)}: the accumulator runs as a combine, since it
+     * also merges partial results other subtasks built ({@link ParallelForEach#combined}).
+     *
+     * @param receiver    the stream
+     * @param accumulator combines two values
+     * @return the reduction, if any element
+     * @since 1.14.2
+     */
+    public static Optional<Object> streamReduce(Stream<Object> receiver, BinaryOperator<Object> accumulator) {
+        return parallelTerminal(receiver, operation -> receiver.reduce(operation == null ? accumulator
+                : (left, right) -> inCombine(operation, () -> accumulator.apply(left, right))));
+    }
+
+    /**
+     * Weaves {@code Stream.reduce(Object, BinaryOperator)}, as {@link #streamReduce(Stream, BinaryOperator)}.
+     *
+     * @param receiver    the stream
+     * @param identity    the identity value
+     * @param accumulator combines two values
+     * @return the reduction
+     * @since 1.14.2
+     */
+    public static Object streamReduce(Stream<Object> receiver, Object identity,
+                                      BinaryOperator<Object> accumulator) {
+        return parallelTerminal(receiver, operation -> receiver.reduce(identity, operation == null
+                ? accumulator
+                : (left, right) -> inCombine(operation, () -> accumulator.apply(left, right))));
+    }
+
+    /**
+     * Weaves {@code Stream.reduce(Object, BiFunction, BinaryOperator)}: the accumulator runs as an
+     * element and the combiner as a combine.
+     *
+     * @param receiver    the stream
+     * @param identity    the identity value
+     * @param accumulator folds an element into a partial result
+     * @param combiner    merges two partial results
+     * @return the reduction
+     * @since 1.14.2
+     */
+    public static Object streamReduce(Stream<Object> receiver, Object identity,
+                                      BiFunction<Object, Object, Object> accumulator,
+                                      BinaryOperator<Object> combiner) {
+        return parallelTerminal(receiver, operation -> operation == null
+                ? receiver.reduce(identity, accumulator, combiner)
+                : receiver.reduce(identity,
+                        (partial, value) -> inElement(operation, () -> accumulator.apply(partial, value)),
+                        (left, right) -> inCombine(operation, () -> combiner.apply(left, right))));
+    }
+
+    /**
+     * Weaves {@code Stream.min(Comparator)}: the comparator runs as a combine, since it compares
+     * elements other subtasks produced.
+     *
+     * @param receiver   the stream
+     * @param comparator orders two values
+     * @return the least, if any element
+     * @since 1.14.2
+     */
+    public static Optional<Object> streamMin(Stream<Object> receiver, Comparator<Object> comparator) {
+        return parallelTerminal(receiver, operation -> receiver.min(compared(operation, comparator)));
+    }
+
+    /**
+     * Weaves {@code Stream.max(Comparator)}, as {@link #streamMin}.
+     *
+     * @param receiver   the stream
+     * @param comparator orders two values
+     * @return the greatest, if any element
+     * @since 1.14.2
+     */
+    public static Optional<Object> streamMax(Stream<Object> receiver, Comparator<Object> comparator) {
+        return parallelTerminal(receiver, operation -> receiver.max(compared(operation, comparator)));
+    }
+
+    private static Comparator<Object> compared(@Nullable ParallelForEach operation,
+                                               Comparator<Object> comparator) {
+        return operation == null ? comparator
+                : (left, right) -> inCombine(operation, () -> comparator.compare(left, right));
+    }
+
+    /**
+     * Weaves {@code Stream.anyMatch}: the predicate runs as an element.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether any element passed
+     * @since 1.14.2
+     */
+    public static boolean streamAnyMatch(Stream<Object> receiver, Predicate<Object> predicate) {
+        return parallelTerminal(receiver, operation -> receiver.anyMatch(tested(operation, predicate)));
+    }
+
+    /**
+     * Weaves {@code Stream.allMatch}, as {@link #streamAnyMatch}.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether every element passed
+     * @since 1.14.2
+     */
+    public static boolean streamAllMatch(Stream<Object> receiver, Predicate<Object> predicate) {
+        return parallelTerminal(receiver, operation -> receiver.allMatch(tested(operation, predicate)));
+    }
+
+    /**
+     * Weaves {@code Stream.noneMatch}, as {@link #streamAnyMatch}.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether no element passed
+     * @since 1.14.2
+     */
+    public static boolean streamNoneMatch(Stream<Object> receiver, Predicate<Object> predicate) {
+        return parallelTerminal(receiver, operation -> receiver.noneMatch(tested(operation, predicate)));
+    }
+
+    private static Predicate<Object> tested(@Nullable ParallelForEach operation, Predicate<Object> predicate) {
+        return operation == null ? predicate
+                : value -> inElement(operation, () -> predicate.test(value));
+    }
+
+    /**
+     * Weaves {@code Stream.toList()}: the pipeline's woven stages run as its elements.
+     *
+     * @param receiver the stream
+     * @return the elements
+     * @since 1.14.2
+     */
+    public static List<Object> streamToList(Stream<Object> receiver) {
+        return parallelTerminal(receiver, operation -> receiver.toList());
+    }
+
+    /**
+     * Weaves {@code Stream.toArray()}, as {@link #streamToList}.
+     *
+     * @param receiver the stream
+     * @return the elements
+     * @since 1.14.2
+     */
+    public static Object[] streamToArray(Stream<Object> receiver) {
+        return parallelTerminal(receiver, operation -> receiver.toArray());
+    }
+
+    /**
+     * Weaves {@code Stream.toArray(IntFunction)}, as {@link #streamToList}; the generator is the
+     * array constructor nearly always and is left as it is.
+     *
+     * @param receiver  the stream
+     * @param generator makes the array
+     * @return the elements
+     * @since 1.14.2
+     */
+    public static Object[] streamToArray(Stream<Object> receiver, IntFunction<Object[]> generator) {
+        return parallelTerminal(receiver, operation -> receiver.toArray(generator));
+    }
+
+    /**
+     * Weaves {@code Stream.count()}, as {@link #streamToList}.
+     *
+     * @param receiver the stream
+     * @return how many elements
+     * @since 1.14.2
+     */
+    public static long streamCount(Stream<Object> receiver) {
+        return parallelTerminal(receiver, operation -> receiver.count());
+    }
+
+    /**
+     * Weaves {@code Stream.findFirst()}, as {@link #streamToList}.
+     *
+     * @param receiver the stream
+     * @return the first element, if any
+     * @since 1.14.2
+     */
+    public static Optional<Object> streamFindFirst(Stream<Object> receiver) {
+        return parallelTerminal(receiver, operation -> receiver.findFirst());
+    }
+
+    /**
+     * Weaves {@code Stream.findAny()}, as {@link #streamToList}.
+     *
+     * @param receiver the stream
+     * @return some element, if any
+     * @since 1.14.2
+     */
+    public static Optional<Object> streamFindAny(Stream<Object> receiver) {
+        return parallelTerminal(receiver, operation -> receiver.findAny());
     }
 
     /**

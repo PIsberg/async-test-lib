@@ -685,6 +685,95 @@ class DiscardedOfferWeavingTest {
             receiver.forEach(action);
         }
 
+        public static java.util.stream.Stream<Object> streamMap(java.util.stream.Stream<Object> receiver, java.util.function.Function<Object, Object> mapper) {
+            return receiver.map(mapper);
+        }
+
+        public static java.util.stream.Stream<Object> streamFilter(java.util.stream.Stream<Object> receiver, java.util.function.Predicate<Object> predicate) {
+            return receiver.filter(predicate);
+        }
+
+        public static java.util.stream.Stream<Object> streamPeek(java.util.stream.Stream<Object> receiver, java.util.function.Consumer<Object> action) {
+            return receiver.peek(action);
+        }
+
+        public static void streamForEachOrdered(java.util.stream.Stream<Object> receiver, java.util.function.Consumer<Object> action) {
+            receiver.forEachOrdered(action);
+        }
+
+        public static Object streamCollect(java.util.stream.Stream<Object> receiver,
+                                           java.util.stream.Collector<? super Object, ?, ?> collector) {
+            return receiver.collect(collector);
+        }
+
+        public static Object streamCollect(java.util.stream.Stream<Object> receiver, java.util.function.Supplier<Object> supplier,
+                                           java.util.function.BiConsumer<Object, Object> accumulator,
+                                           java.util.function.BiConsumer<Object, Object> combiner) {
+            return receiver.collect(supplier, accumulator, combiner);
+        }
+
+        public static java.util.Optional<Object> streamReduce(java.util.stream.Stream<Object> receiver,
+                                                              java.util.function.BinaryOperator<Object> accumulator) {
+            return receiver.reduce(accumulator);
+        }
+
+        public static Object streamReduce(java.util.stream.Stream<Object> receiver, Object identity,
+                                          java.util.function.BinaryOperator<Object> accumulator) {
+            return receiver.reduce(identity, accumulator);
+        }
+
+        public static Object streamReduce(java.util.stream.Stream<Object> receiver, Object identity,
+                                          java.util.function.BiFunction<Object, Object, Object> accumulator,
+                                          java.util.function.BinaryOperator<Object> combiner) {
+            return receiver.reduce(identity, accumulator, combiner);
+        }
+
+        public static java.util.Optional<Object> streamMin(java.util.stream.Stream<Object> receiver,
+                                                           java.util.Comparator<Object> comparator) {
+            return receiver.min(comparator);
+        }
+
+        public static java.util.Optional<Object> streamMax(java.util.stream.Stream<Object> receiver,
+                                                           java.util.Comparator<Object> comparator) {
+            return receiver.max(comparator);
+        }
+
+        public static boolean streamAnyMatch(java.util.stream.Stream<Object> receiver, java.util.function.Predicate<Object> predicate) {
+            return receiver.anyMatch(predicate);
+        }
+
+        public static boolean streamAllMatch(java.util.stream.Stream<Object> receiver, java.util.function.Predicate<Object> predicate) {
+            return receiver.allMatch(predicate);
+        }
+
+        public static boolean streamNoneMatch(java.util.stream.Stream<Object> receiver, java.util.function.Predicate<Object> predicate) {
+            return receiver.noneMatch(predicate);
+        }
+
+        public static java.util.List<Object> streamToList(java.util.stream.Stream<Object> receiver) {
+            return receiver.toList();
+        }
+
+        public static Object[] streamToArray(java.util.stream.Stream<Object> receiver) {
+            return receiver.toArray();
+        }
+
+        public static Object[] streamToArray(java.util.stream.Stream<Object> receiver, java.util.function.IntFunction<Object[]> generator) {
+            return receiver.toArray(generator);
+        }
+
+        public static long streamCount(java.util.stream.Stream<Object> receiver) {
+            return receiver.count();
+        }
+
+        public static java.util.Optional<Object> streamFindFirst(java.util.stream.Stream<Object> receiver) {
+            return receiver.findFirst();
+        }
+
+        public static java.util.Optional<Object> streamFindAny(java.util.stream.Stream<Object> receiver) {
+            return receiver.findAny();
+        }
+
         public static java.util.concurrent.CompletableFuture<Void> runAsync(Runnable r) {
             return java.util.concurrent.CompletableFuture.runAsync(r);
         }

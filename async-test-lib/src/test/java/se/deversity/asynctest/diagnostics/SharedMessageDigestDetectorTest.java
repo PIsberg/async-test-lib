@@ -1185,10 +1185,11 @@ public class SharedMessageDigestDetectorTest {
 
     // ---- An owner whose clock dropped the hand-off before it (#821) ----------------------------
     //
-    // A clock keeps at most HappensBefore.MAX_ENTRIES threads and drops the lowest ids first. B
-    // takes the digest over from A's unlocked set-up, then learns of more threads than that, all
-    // started after A, so its clock no longer knows A. B's next use is still ordered after the
-    // hand-off, by program order after the use that took over. Checked against B's clock instead,
+    // A clock keeps at most HappensBefore.MAX_ENTRIES threads and drops ended threads first, lowest
+    // ids first (#1172), and A has ended by then. B takes the digest over from A's unlocked
+    // set-up, then learns of more threads than that, all started after A, so its clock no longer
+    // knows A. B's next use is still ordered after the hand-off, by program order after the use
+    // that took over. Checked against B's clock instead,
     // it fell back to the whole window while the digest was unshared, and a guarded use by C,
     // ordered after A's hand-off but not after B, then reported A's set-up.
 
