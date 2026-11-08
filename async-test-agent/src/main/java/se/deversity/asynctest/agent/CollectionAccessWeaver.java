@@ -53,6 +53,12 @@ import java.util.stream.DoubleStream;
 import java.util.stream.LongStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import java.util.function.IntToLongFunction;
+import java.util.function.IntToDoubleFunction;
+import java.util.function.LongToIntFunction;
+import java.util.function.LongToDoubleFunction;
+import java.util.function.DoubleToIntFunction;
+import java.util.function.DoubleToLongFunction;
 import java.util.function.IntUnaryOperator;
 import java.util.function.IntPredicate;
 import java.util.function.IntBinaryOperator;
@@ -904,6 +910,55 @@ final class CollectionAccessWeaver {
             Entry.call(Stream.class, "count", "streamCount"),
             Entry.call(Stream.class, "findFirst", "streamFindFirst"),
             Entry.call(Stream.class, "findAny", "streamFindAny"),
+            // Stages that run no lambda carry the woven stages behind them, and the remaining
+            // lambda stages wait in slots as map does (#1172).
+            Entry.call(Stream.class, "sorted", "streamSorted"),
+            Entry.call(Stream.class, "distinct", "streamDistinct"),
+            Entry.call(Stream.class, "limit", "streamLimit", long.class),
+            Entry.call(Stream.class, "skip", "streamSkip", long.class),
+            Entry.call(Stream.class, "parallel", "streamParallel"),
+            Entry.call(Stream.class, "sequential", "streamSequential"),
+            Entry.call(Stream.class, "unordered", "streamUnordered"),
+            Entry.call(Stream.class, "sorted", "streamSorted", Comparator.class),
+            Entry.call(Stream.class, "flatMap", "streamFlatMap", Function.class),
+            Entry.call(Stream.class, "takeWhile", "streamTakeWhile", Predicate.class),
+            Entry.call(Stream.class, "dropWhile", "streamDropWhile", Predicate.class),
+            Entry.call(IntStream.class, "sorted", "intStreamSorted"),
+            Entry.call(IntStream.class, "distinct", "intStreamDistinct"),
+            Entry.call(IntStream.class, "limit", "intStreamLimit", long.class),
+            Entry.call(IntStream.class, "skip", "intStreamSkip", long.class),
+            Entry.call(IntStream.class, "parallel", "intStreamParallel"),
+            Entry.call(IntStream.class, "sequential", "intStreamSequential"),
+            Entry.call(IntStream.class, "flatMap", "intStreamFlatMap", IntFunction.class),
+            Entry.call(IntStream.class, "takeWhile", "intStreamTakeWhile", IntPredicate.class),
+            Entry.call(IntStream.class, "dropWhile", "intStreamDropWhile", IntPredicate.class),
+            Entry.call(IntStream.class, "mapToLong", "intStreamMapToLong", IntToLongFunction.class),
+            Entry.call(IntStream.class, "mapToDouble", "intStreamMapToDouble", IntToDoubleFunction.class),
+            Entry.call(IntStream.class, "asLongStream", "intStreamAsLongStream"),
+            Entry.call(IntStream.class, "asDoubleStream", "intStreamAsDoubleStream"),
+            Entry.call(LongStream.class, "sorted", "longStreamSorted"),
+            Entry.call(LongStream.class, "distinct", "longStreamDistinct"),
+            Entry.call(LongStream.class, "limit", "longStreamLimit", long.class),
+            Entry.call(LongStream.class, "skip", "longStreamSkip", long.class),
+            Entry.call(LongStream.class, "parallel", "longStreamParallel"),
+            Entry.call(LongStream.class, "sequential", "longStreamSequential"),
+            Entry.call(LongStream.class, "flatMap", "longStreamFlatMap", LongFunction.class),
+            Entry.call(LongStream.class, "takeWhile", "longStreamTakeWhile", LongPredicate.class),
+            Entry.call(LongStream.class, "dropWhile", "longStreamDropWhile", LongPredicate.class),
+            Entry.call(LongStream.class, "mapToInt", "longStreamMapToInt", LongToIntFunction.class),
+            Entry.call(LongStream.class, "mapToDouble", "longStreamMapToDouble", LongToDoubleFunction.class),
+            Entry.call(LongStream.class, "asDoubleStream", "longStreamAsDoubleStream"),
+            Entry.call(DoubleStream.class, "sorted", "doubleStreamSorted"),
+            Entry.call(DoubleStream.class, "distinct", "doubleStreamDistinct"),
+            Entry.call(DoubleStream.class, "limit", "doubleStreamLimit", long.class),
+            Entry.call(DoubleStream.class, "skip", "doubleStreamSkip", long.class),
+            Entry.call(DoubleStream.class, "parallel", "doubleStreamParallel"),
+            Entry.call(DoubleStream.class, "sequential", "doubleStreamSequential"),
+            Entry.call(DoubleStream.class, "flatMap", "doubleStreamFlatMap", DoubleFunction.class),
+            Entry.call(DoubleStream.class, "takeWhile", "doubleStreamTakeWhile", DoublePredicate.class),
+            Entry.call(DoubleStream.class, "dropWhile", "doubleStreamDropWhile", DoublePredicate.class),
+            Entry.call(DoubleStream.class, "mapToInt", "doubleStreamMapToInt", DoubleToIntFunction.class),
+            Entry.call(DoubleStream.class, "mapToLong", "doubleStreamMapToLong", DoubleToLongFunction.class),
             // The same for IntStream, LongStream and DoubleStream, and across the bridges
             // between a Stream and them: mapToInt, mapToLong, mapToDouble, mapToObj and boxed
             // keep the stages behind them in the pipeline they return (#1172).

@@ -5818,6 +5818,20 @@ final class Corpus {
                             + "terminal operation is an IntStream's, so it ran unattributed before #1172",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_parallelMapThenSorted_countsUnderALock", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a parallel map counting under one lock, then sorted and collected by toList (#1172)"),
+
+            new RecordingSubject("idiom_parallelMapThenSorted_plainCounter", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same map with no lock, behind sorted: a lambda behind a stage no hook "
+                            + "carried ran unattributed before #1172",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_spinLockFlag_contendedInsideCaffeine", CAFFEINE,
                     "com.github.benmanes.caffeine.cache.Interner",
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,

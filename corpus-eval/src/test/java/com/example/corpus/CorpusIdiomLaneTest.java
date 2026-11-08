@@ -1644,6 +1644,34 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    /** A parallel map counting under one lock, then sorted, collected by toList (#1172). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelMapThenSorted_countsUnderALock() {
+        correct(() -> {
+            Ledger ledger = new Ledger();
+            List<Integer> sorted = IntStream.range(0, PARALLEL_ELEMENTS).boxed().parallel().map(i -> {
+                synchronized (ledger.lock) {
+                    ledger.balance++;
+                }
+                return i;
+            }).sorted().toList();
+            use(sorted.size() + ledger.balance);
+        });
+    }
+
+    /** The same with no lock: the lambda sits behind sorted, which no hook carried before (#1172). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelMapThenSorted_plainCounter() {
+        broken(() -> {
+            Ledger ledger = new Ledger();
+            List<Integer> sorted = IntStream.range(0, PARALLEL_ELEMENTS).boxed().parallel().map(i -> {
+                ledger.balance++;
+                return i;
+            }).sorted().toList();
+            use(sorted.size() + ledger.balance);
+        });
+    }
+
     /** Long enough per body that Caffeine's striped buffer resizes under contention (#1171). */
     private static final int INTERNS_PER_BODY = 200;
 

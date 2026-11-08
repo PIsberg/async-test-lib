@@ -699,4 +699,186 @@ class AgentParallelStreamHooksTest {
         AgentConcurrencyUtilHooks.doubleStreamForEachOrdered(doubles(), orderedDoubles::add);
         assertEquals(ELEMENTS, orderedDoubles.size());
     }
+
+    // --- Stages that run no lambda of their own, and the rest of the lambda stages (#1172) -------
+
+    @Test
+    @DisplayName("a map lambda behind sorted, distinct, limit, skip or parallel() stays lent")
+    void aLambdaStaysLentBehindTheCarryingStages() {
+        installRun();
+        Thread caller = Thread.currentThread();
+        Set<Thread> helpers = ConcurrentHashMap.newKeySet();
+        AtomicBoolean outside = new AtomicBoolean();
+
+        // A sequential source made parallel after the lambda, the shape list.stream().map(...).parallel().
+        @SuppressWarnings("unchecked")
+        Stream<Object> sequential = (Stream<Object>) (Stream<?>) IntStream.range(0, ELEMENTS).boxed();
+        Stream<Object> mapped = AgentConcurrencyUtilHooks.streamMap(sequential, value -> {
+            checkLent(caller, helpers, outside);
+            return value;
+        });
+        @SuppressWarnings("unchecked")
+        Stream<Object> parallel = (Stream<Object>) AgentConcurrencyUtilHooks.streamParallel(mapped);
+        Stream<Object> carried = AgentConcurrencyUtilHooks.streamSkip(AgentConcurrencyUtilHooks.streamLimit(
+                AgentConcurrencyUtilHooks.streamDistinct(AgentConcurrencyUtilHooks.streamSorted(parallel)),
+                ELEMENTS), 1);
+        assertEquals(ELEMENTS - 1, AgentConcurrencyUtilHooks.streamCount(carried));
+
+        IntStream ints = AgentConcurrencyUtilHooks.intStreamMap(IntStream.range(0, ELEMENTS), i -> {
+            checkLent(caller, helpers, outside);
+            return i;
+        });
+        IntStream carriedInts = AgentConcurrencyUtilHooks.intStreamSkip(AgentConcurrencyUtilHooks.intStreamLimit(
+                AgentConcurrencyUtilHooks.intStreamDistinct(AgentConcurrencyUtilHooks.intStreamSorted(
+                        AgentConcurrencyUtilHooks.intStreamParallel(ints))), ELEMENTS), 1);
+        assertEquals((long) ELEMENTS * (ELEMENTS - 1) / 2,
+                AgentConcurrencyUtilHooks.doubleStreamSum(AgentConcurrencyUtilHooks.longStreamAsDoubleStream(
+                        AgentConcurrencyUtilHooks.intStreamAsLongStream(carriedInts))));
+
+        assertFalse(outside.get(), "a helper ran a lambda behind a carrying stage with no run lent to it");
+        assertEquals(commonPoolCanHelp(), !helpers.isEmpty(),
+                "the common pool should have helped, or this test observed nothing");
+    }
+
+    @Test
+    @DisplayName("a helper works for the run while it runs a flatMap, takeWhile, dropWhile or cross-primitive map lambda")
+    void theRemainingLambdaStagesWorkForTheRun() {
+        installRun();
+        Thread caller = Thread.currentThread();
+        Set<Thread> helpers = ConcurrentHashMap.newKeySet();
+        AtomicBoolean outside = new AtomicBoolean();
+
+        Stream<Object> flat = AgentConcurrencyUtilHooks.streamFlatMap(numbers(), value -> {
+            checkLent(caller, helpers, outside);
+            return Stream.of(value);
+        });
+        Stream<Object> taken = AgentConcurrencyUtilHooks.streamTakeWhile(flat, value -> {
+            checkLent(caller, helpers, outside);
+            return true;
+        });
+        Stream<Object> dropped = AgentConcurrencyUtilHooks.streamDropWhile(taken, value -> {
+            checkLent(caller, helpers, outside);
+            return false;
+        });
+        assertEquals(ELEMENTS, AgentConcurrencyUtilHooks.streamCount(dropped));
+
+        LongStream longs = AgentConcurrencyUtilHooks.intStreamMapToLong(
+                AgentConcurrencyUtilHooks.intStreamFlatMap(ints(), i -> {
+                    checkLent(caller, helpers, outside);
+                    return IntStream.of(i);
+                }), i -> {
+                    checkLent(caller, helpers, outside);
+                    return i;
+                });
+        DoubleStream doubles = AgentConcurrencyUtilHooks.longStreamMapToDouble(
+                AgentConcurrencyUtilHooks.longStreamTakeWhile(longs, i -> {
+                    checkLent(caller, helpers, outside);
+                    return true;
+                }), i -> {
+                    checkLent(caller, helpers, outside);
+                    return i;
+                });
+        IntStream back = AgentConcurrencyUtilHooks.doubleStreamMapToInt(
+                AgentConcurrencyUtilHooks.doubleStreamDropWhile(doubles, d -> {
+                    checkLent(caller, helpers, outside);
+                    return false;
+                }), d -> {
+                    checkLent(caller, helpers, outside);
+                    return (int) d;
+                });
+        assertEquals(ELEMENTS * (ELEMENTS - 1) / 2, AgentConcurrencyUtilHooks.intStreamSum(back));
+
+        assertFalse(outside.get(), "a helper ran a stage lambda with no run lent to it");
+        assertEquals(commonPoolCanHelp(), !helpers.isEmpty(),
+                "the common pool should have helped, or this test observed nothing");
+    }
+
+    @Test
+    @DisplayName("a sorted comparator is ordered after the elements that built what it compares")
+    void aSortedComparatorIsOrderedAfterTheElementsItCompares() {
+        installRun();
+        RaceConditionDetector detector = new RaceConditionDetector();
+
+        // Each element is a fresh box written where it was made and read where it is compared.
+        Stream<Object> boxes = AgentConcurrencyUtilHooks.streamMap(numbers(), value -> {
+            pause();
+            int[] box = {(Integer) value};
+            detector.recordFieldWrite(box, "value");
+            return box;
+        });
+        Stream<Object> sorted = AgentConcurrencyUtilHooks.streamSorted(boxes, (left, right) -> {
+            detector.recordFieldRead(left, "value");
+            detector.recordFieldRead(right, "value");
+            return Integer.compare(((int[]) right)[0], ((int[]) left)[0]);
+        });
+        List<Object> descending = AgentConcurrencyUtilHooks.streamToList(sorted);
+        assertEquals(ELEMENTS - 1, ((int[]) descending.get(0))[0]);
+        if (!commonPoolCanHelp()) {
+            return;
+        }
+        assertFalse(detector.analyzeRaceConditions().hasIssues(),
+                "a parallel sort compares elements only after the subtasks that made them finished: "
+                        + detector.analyzeRaceConditions());
+    }
+
+    @Test
+    @DisplayName("every carrying and remaining lambda stage returns what the stream itself returns")
+    void everyStageReturnsTheStreamsOwnAnswer() {
+        installRun();
+        java.util.Comparator<Object> byValue = (a, b) -> Integer.compare((Integer) a, (Integer) b);
+        List<Object> expected = IntStream.range(0, ELEMENTS).boxed().collect(Collectors.toList());
+
+        assertEquals(expected, AgentConcurrencyUtilHooks.streamToList(AgentConcurrencyUtilHooks.streamSorted(
+                castObjects((Stream<?>) AgentConcurrencyUtilHooks.streamUnordered(numbers())), byValue)));
+        assertEquals(expected.subList(0, 10), AgentConcurrencyUtilHooks.streamToList(
+                AgentConcurrencyUtilHooks.streamLimit(numbers(), 10)));
+        assertEquals(expected.subList(10, ELEMENTS), AgentConcurrencyUtilHooks.streamToList(
+                AgentConcurrencyUtilHooks.streamSkip(numbers(), 10)));
+        assertEquals(List.of(0, 1), AgentConcurrencyUtilHooks.streamToList(
+                AgentConcurrencyUtilHooks.streamDistinct(castObjects(Stream.of(0, 1, 1, 0).parallel()))));
+        assertEquals(expected.subList(0, 5), AgentConcurrencyUtilHooks.streamToList(
+                AgentConcurrencyUtilHooks.streamTakeWhile(numbers(), v -> (Integer) v < 5)));
+        assertEquals(expected.subList(5, ELEMENTS), AgentConcurrencyUtilHooks.streamToList(
+                AgentConcurrencyUtilHooks.streamDropWhile(numbers(), v -> (Integer) v < 5)));
+        assertEquals(2 * ELEMENTS, AgentConcurrencyUtilHooks.streamCount(
+                AgentConcurrencyUtilHooks.streamFlatMap(numbers(), v -> Stream.of(v, v))));
+        assertFalse(AgentConcurrencyUtilHooks.streamSequential(numbers()).isParallel());
+
+        assertEquals(java.util.OptionalInt.of(0), AgentConcurrencyUtilHooks.intStreamFindFirst(
+                AgentConcurrencyUtilHooks.intStreamSorted(IntStream.of(3, 0, 2).parallel())));
+        assertEquals(2, AgentConcurrencyUtilHooks.intStreamCount(
+                AgentConcurrencyUtilHooks.intStreamDistinct(IntStream.of(1, 1, 2).parallel())));
+        assertEquals(3, AgentConcurrencyUtilHooks.longStreamCount(AgentConcurrencyUtilHooks.longStreamLimit(
+                AgentConcurrencyUtilHooks.longStreamSorted(AgentConcurrencyUtilHooks.longStreamDistinct(longs())), 3)));
+        assertEquals(ELEMENTS - 3, AgentConcurrencyUtilHooks.doubleStreamCount(AgentConcurrencyUtilHooks.doubleStreamSkip(
+                AgentConcurrencyUtilHooks.doubleStreamSorted(AgentConcurrencyUtilHooks.doubleStreamDistinct(doubles())), 3)));
+        assertEquals(ELEMENTS - 3, AgentConcurrencyUtilHooks.intStreamCount(AgentConcurrencyUtilHooks.intStreamSkip(
+                AgentConcurrencyUtilHooks.intStreamLimit(ints(), ELEMENTS), 3)));
+        assertEquals(1, AgentConcurrencyUtilHooks.longStreamCount(AgentConcurrencyUtilHooks.longStreamSkip(
+                AgentConcurrencyUtilHooks.longStreamLimit(longs(), 2), 1)));
+        assertEquals(1, AgentConcurrencyUtilHooks.doubleStreamCount(AgentConcurrencyUtilHooks.doubleStreamLimit(doubles(), 1)));
+        assertTrue(AgentConcurrencyUtilHooks.longStreamParallel(LongStream.range(0, 3)).isParallel());
+        assertTrue(AgentConcurrencyUtilHooks.doubleStreamParallel(DoubleStream.of(1)).isParallel());
+        assertFalse(AgentConcurrencyUtilHooks.intStreamSequential(ints()).isParallel());
+        assertFalse(AgentConcurrencyUtilHooks.longStreamSequential(longs()).isParallel());
+        assertFalse(AgentConcurrencyUtilHooks.doubleStreamSequential(doubles()).isParallel());
+        assertEquals(2 * ELEMENTS, AgentConcurrencyUtilHooks.longStreamCount(
+                AgentConcurrencyUtilHooks.longStreamFlatMap(longs(), i -> LongStream.of(i, i))));
+        assertEquals(2 * ELEMENTS, AgentConcurrencyUtilHooks.doubleStreamCount(
+                AgentConcurrencyUtilHooks.doubleStreamFlatMap(doubles(), d -> DoubleStream.of(d, d))));
+        assertEquals(5, AgentConcurrencyUtilHooks.intStreamCount(AgentConcurrencyUtilHooks.intStreamTakeWhile(ints(), i -> i < 5)));
+        assertEquals(ELEMENTS - 5, AgentConcurrencyUtilHooks.intStreamCount(AgentConcurrencyUtilHooks.intStreamDropWhile(ints(), i -> i < 5)));
+        assertEquals(ELEMENTS - 5, AgentConcurrencyUtilHooks.longStreamCount(AgentConcurrencyUtilHooks.longStreamDropWhile(longs(), i -> i < 5)));
+        assertEquals(5, AgentConcurrencyUtilHooks.doubleStreamCount(AgentConcurrencyUtilHooks.doubleStreamTakeWhile(doubles(), d -> d < 5)));
+        int total = ELEMENTS * (ELEMENTS - 1) / 2;
+        assertEquals(total, AgentConcurrencyUtilHooks.doubleStreamSum(AgentConcurrencyUtilHooks.intStreamMapToDouble(ints(), i -> i)));
+        assertEquals(total, AgentConcurrencyUtilHooks.doubleStreamSum(AgentConcurrencyUtilHooks.intStreamAsDoubleStream(ints())));
+        assertEquals(total, AgentConcurrencyUtilHooks.intStreamSum(AgentConcurrencyUtilHooks.longStreamMapToInt(longs(), i -> (int) i)));
+        assertEquals(total, AgentConcurrencyUtilHooks.longStreamSum(AgentConcurrencyUtilHooks.doubleStreamMapToLong(doubles(), d -> (long) d)));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Stream<Object> castObjects(Stream<?> stream) {
+        return (Stream<Object>) stream;
+    }
 }
