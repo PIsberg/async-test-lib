@@ -3137,7 +3137,8 @@ public final class AgentConcurrencyUtilHooks {
     public static Object kotlinMutexLock(Object mutex, Object owner, Object continuation) {
         ControlledSchedule.point();
         KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
-        KotlinMutexes.LockWatch watch = KotlinMutexes.LockWatch.before(mutex, owner, continuation, binding);
+        KotlinMutexes.LockWatch watch = KotlinMutexes.LockWatch.before(
+                AsyncTestContext.currentKotlinMutexReentrancyDetector(), mutex, owner, continuation, binding);
         Object result;
         try {
             result = binding.lock.invokeExact(mutex, watch == null ? owner : watch.owner, continuation);
@@ -3169,7 +3170,8 @@ public final class AgentConcurrencyUtilHooks {
         KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
         // A non-null marker makes the bridge throw: that call goes through it untouched.
         KotlinMutexes.LockWatch watch = marker != null ? null
-                : KotlinMutexes.LockWatch.before(mutex, (mask & 1) != 0 ? null : owner, continuation, binding);
+                : KotlinMutexes.LockWatch.before(AsyncTestContext.currentKotlinMutexReentrancyDetector(),
+                        mutex, (mask & 1) != 0 ? null : owner, continuation, binding);
         Object result;
         try {
             result = watch == null

@@ -171,10 +171,11 @@ final class KotlinMutexes {
         /**
          * {@return the watch for a lock about to be made with {@code owner}, or {@code null} when no
          * run hears it or the mutex cannot say who holds it, and the call is then made unchanged}
+         * The hook passes the run's detector in, so the accessor call stays in the hook source,
+         * where {@code DetectorFeedCoverageTest} looks for it.
          */
-        static @Nullable LockWatch before(Object mutex, @Nullable Object owner, Object continuation,
-                                          Binding binding) {
-            KotlinMutexReentrancyDetector detector = AsyncTestContext.currentKotlinMutexReentrancyDetector();
+        static @Nullable LockWatch before(@Nullable KotlinMutexReentrancyDetector detector, Object mutex,
+                                          @Nullable Object owner, Object continuation, Binding binding) {
             JobReader jobs = binding.jobs;
             if (detector == null || jobs == null || binding.holdsLock == null) {
                 return null;
