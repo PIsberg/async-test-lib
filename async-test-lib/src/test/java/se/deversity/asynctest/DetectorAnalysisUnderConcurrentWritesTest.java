@@ -245,8 +245,8 @@ class DetectorAnalysisUnderConcurrentWritesTest {
         Set<String> factoryMissed = new TreeSet<>(factoryOnly);
         factoryMissed.removeAll(reached);
         // 18 detectors register only through a factory, and all 18 are reached (2026-11-08); the
-        // floor keeps the test from going quietly vacuous if the hook or the drivers stop reaching them.
-        assertTrue(factoryReached.size() >= 15,
+        // floor keeps the test from quietly dropping one if the hook or the drivers stop reaching it.
+        assertTrue(factoryReached.size() >= 18,
                 "only " + factoryReached.size() + " of the " + factoryOnly.size() + " detectors that "
                         + "register through a factory were analysed mid-registration, so this test no "
                         + "longer covers most of them; not reached: " + factoryMissed);
