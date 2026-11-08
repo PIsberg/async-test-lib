@@ -186,13 +186,13 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    <dependency>
        <groupId>se.deversity.async-test-lib</groupId>
        <artifactId>async-test-lib</artifactId>
-       <version>1.14.1</version>
+       <version>1.14.2</version>
        <scope>test</scope>
    </dependency>
    <dependency>
        <groupId>se.deversity.async-test-lib</groupId>
        <artifactId>async-test-agent</artifactId>
-       <version>1.14.1</version>
+       <version>1.14.2</version>
        <scope>test</scope>
    </dependency>
    ```
@@ -291,8 +291,8 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    }
 
    dependencies {
-       testImplementation("se.deversity.async-test-lib:async-test-lib:1.14.1")
-       asyncTestAgent("se.deversity.async-test-lib:async-test-agent:1.14.1")
+       testImplementation("se.deversity.async-test-lib:async-test-lib:1.14.2")
+       asyncTestAgent("se.deversity.async-test-lib:async-test-agent:1.14.2")
    }
 
    tasks.test {
