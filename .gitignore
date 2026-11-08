@@ -18,6 +18,10 @@ build/
 # VibeTags generated artifacts
 vibetags.log
 .vibetags-cache
+# Empty files the processor takes an exclusive FileLock on (GenerationLock, #908 in vibetags),
+# so parallel module rounds do not interleave their root-file merges. Never read, only locked.
+.vibetags-generate.lock
+.vibetags-baseline.lock
 
 # .vibetags-mod-* is deliberately NOT ignored. Each file is one module's guardrail block,
 # and the root aggregate in CLAUDE.md / GEMINI.md is assembled from whichever ones are on
