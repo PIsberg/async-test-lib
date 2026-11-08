@@ -52,10 +52,12 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   `mapToInt`, or to a pipeline ended by `iterator()` or in unwoven code runs unattributed, and a
   `Collector`'s own functions are not lent the run.
   Accesses on other application threads during the round, a thread started in unwoven code or a task
-  given to `execute` on a `ThreadPoolExecutor` subclass included, are treated as noise and dropped. To
-  observe a `ThreadPoolExecutor`'s task, the run's `execute` queues a wrapper around it: the woven
-  `shutdownNow` and `remove` give back and find your own task, but `getQueue()` shows the wrapper to code
-  that looks at the elements rather than the size. The
+  given to `execute` on a `ThreadPoolExecutor` subclass that overrides `beforeExecute`, `afterExecute`,
+  `execute`, `remove` or `shutdownNow` included, are treated as noise and dropped; so are the tasks of a
+  pool whose `RejectedExecutionHandler` is not one of the JDK's four policies (#1173). To observe a
+  `ThreadPoolExecutor`'s task, the run's `execute` queues a wrapper around it: the woven `shutdownNow`
+  and `remove` give back and find your own task, but `getQueue()` shows the wrapper to code that looks at
+  the elements rather than the size. The
   shared-instance hooks (a `MessageDigest`, a `Calendar`, a `SimpleDateFormat` and the rest) reach
   the same threads: a thread started through a woven start works for the run of the thread that
   started it until that run is analysed, and a pool thread for the run that handed it a task or
