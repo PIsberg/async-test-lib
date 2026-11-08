@@ -10,15 +10,18 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -30,6 +33,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -55,7 +59,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * it, because that window is a few instructions: {@code CompletableFutureObtrudeDetector} passed
  * every leg of the PR that added this test and failed on main days later (#1212). The second test
  * opens that window on purpose: it registers a state the way a record path's first step does, and
- * analyses before anything is written to it.
+ * analyses before anything is written to it. That reaches only detectors whose state
+ * {@code newState} can build; the third test reaches the ones that build it in a factory lambda
+ * at the record site, by running each record path with a test-only hook that analyses the moment
+ * the state is published (#1215).
  */
 class DetectorAnalysisUnderConcurrentWritesTest {
 
@@ -154,6 +161,154 @@ class DetectorAnalysisUnderConcurrentWritesTest {
         assertTrue(reached.size() >= 50,
                 "only " + reached.size() + " detectors registered a fresh state, so this test no longer "
                         + "covers most of them: " + reached);
+    }
+
+    @Test
+    @DisplayName("no detector's analyze() throws between a record path's registration and its first write")
+    void analysisSurvivesARecordPathBetweenRegistrationAndItsFirstWrite() throws Exception {
+        // The test above builds a fresh state through newState, but a detector that registers
+        // through stateFor's factory overload builds its state in a lambda at the record site, so
+        // only the record path can make one (#1215). Instead, a test-only hook in register() runs
+        // analyze() on the registering thread right after the state is published, which is the
+        // point another thread's analysis can see it while the record path has written nothing.
+        Class<?> base = Class.forName("se.deversity.asynctest.diagnostics.AbstractInstanceDetector");
+        Method setHook = base.getDeclaredMethod("setTestHookAfterRegister", Consumer.class);
+        setHook.setAccessible(true);
+
+        AsyncTestConfig config = AsyncTestConfig.builder().detectAll(true).build();
+        DetectorRegistry registry = new DetectorRegistry(config);
+        List<Object> detectors = new ArrayList<>(registry.instances().values());
+        // Not wired into the registry (#374), but public, and it registers only through a factory.
+        detectors.add(new se.deversity.asynctest.diagnostics.NotifyAllValidator());
+        Map<Object, Method> analysers = new IdentityHashMap<>();
+        for (Object detector : detectors) {
+            Method analyze = analyzeMethod(detector.getClass());
+            if (base.isInstance(detector) && analyze != null) {
+                analysers.put(detector, analyze);
+            }
+        }
+
+        Map<String, String> failures = Collections.synchronizedMap(new TreeMap<>());
+        Set<String> reached = Collections.synchronizedSet(new TreeSet<>());
+        AtomicReference<String> driving = new AtomicReference<>("");
+        AtomicBoolean analysing = new AtomicBoolean();
+        Consumer<Object> hook = detector -> {
+            Method analyze = analysers.get(detector);
+            // Other tests' detectors are not ours, and an analyze() that registers must not recurse.
+            if (analyze == null || !analysing.compareAndSet(false, true)) {
+                return;
+            }
+            String name = detector.getClass().getSimpleName();
+            try {
+                reached.add(name);
+                analyze.invoke(detector);
+            } catch (InvocationTargetException e) {
+                failures.putIfAbsent(name, "inside " + driving.get() + ": " + e.getCause());
+            } catch (IllegalAccessException e) {
+                failures.putIfAbsent(name, e.toString());
+            } finally {
+                analysing.set(false);
+            }
+        };
+
+        Map<Class<?>, Object> shared = new HashMap<>();
+        List<Object> owned = new ArrayList<>();
+        setHook.invoke(null, hook);
+        try {
+            for (Map.Entry<Object, Method> entry : analysers.entrySet()) {
+                driveEveryRecordPath(entry.getKey(), shared, owned, driving);
+                driveByHand(entry.getKey(), owned, driving);
+            }
+        } finally {
+            setHook.invoke(null, (Object) null);
+            shutDown(shared);
+            for (Object made : owned) {
+                shutDown(Map.of(Object.class, made));
+            }
+        }
+
+        assertTrue(failures.isEmpty(),
+                "analyze() threw when it ran between a record path's stateFor and that path's first "
+                        + "write, which another thread's analysis can do in a real run. Read each field "
+                        + "once, write the one analysis checks first last, and skip a state that is not "
+                        + "filled in yet:\n  "
+                        + String.join("\n  ", failures.entrySet().stream()
+                                .map(e -> e.getKey() + ": " + e.getValue()).toList()));
+        Set<String> factoryOnly = new TreeSet<>();
+        for (Object detector : analysers.keySet()) {
+            if (registersOnlyThroughAFactory(detector.getClass(), base)) {
+                factoryOnly.add(detector.getClass().getSimpleName());
+            }
+        }
+        Set<String> factoryReached = new TreeSet<>(factoryOnly);
+        factoryReached.retainAll(reached);
+        Set<String> factoryMissed = new TreeSet<>(factoryOnly);
+        factoryMissed.removeAll(reached);
+        // 18 detectors register only through a factory, and all 18 are reached (2026-11-08); the
+        // floor keeps the test from quietly dropping one if the hook or the drivers stop reaching it.
+        assertTrue(factoryReached.size() >= 18,
+                "only " + factoryReached.size() + " of the " + factoryOnly.size() + " detectors that "
+                        + "register through a factory were analysed mid-registration, so this test no "
+                        + "longer covers most of them; not reached: " + factoryMissed);
+    }
+
+    /**
+     * Calls each recording method of {@code detector} once, with a fresh instance as its first
+     * argument where the type allows, so each call that registers is a first sighting and opens
+     * its own window for the hook.
+     */
+    private static void driveEveryRecordPath(Object detector, Map<Class<?>, Object> shared, List<Object> owned,
+                                             AtomicReference<String> driving) {
+        for (Method m : recordingMethods(detector.getClass())) {
+            // i = 3 makes the first argument a fresh instance of a shareable type (see argument()).
+            Object[] args = arguments(m, 3, shared);
+            if (args == null) {
+                continue;
+            }
+            Class<?> first = m.getParameterTypes()[0];
+            if (OWNS_A_THREAD.contains(first)) {
+                // argument() shares these, so a second record path would find the state registered.
+                args[0] = SHAREABLE.get(first).get();
+                owned.add(args[0]);
+            }
+            driving.set(m.getName());
+            try {
+                m.invoke(detector, args);
+            } catch (InvocationTargetException | IllegalAccessException | IllegalArgumentException rejected) {
+                // A record path the generated arguments upset; only analysis is under test.
+            }
+        }
+    }
+
+    /**
+     * Drives the record paths whose registration needs context generated arguments cannot give:
+     * a result handle registers only against a scope opened first, and a pool is inspected only
+     * when it is a {@code ThreadPoolExecutor}, which {@code newSingleThreadExecutor} hides.
+     */
+    private static void driveByHand(Object detector, List<Object> owned, AtomicReference<String> driving) {
+        if (detector instanceof se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector scopes) {
+            driving.set("recordResultHandle");
+            scopes.recordScopeOpened("fresh-scope", Thread.currentThread());
+            scopes.recordResultHandle(new ArrayList<>(), "fresh-results", "fresh-scope");
+        } else if (detector instanceof se.deversity.asynctest.diagnostics.VirtualThreadPoolingDetector pooling) {
+            driving.set("registerExecutor");
+            java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(1);
+            owned.add(pool);
+            pooling.registerExecutor(pool, "fresh-pool");
+        }
+    }
+
+    /** {@return whether nothing between {@code type} and {@code base} overrides newState} */
+    private static boolean registersOnlyThroughAFactory(Class<?> type, Class<?> base) {
+        for (Class<?> c = type; c != null && c != base; c = c.getSuperclass()) {
+            try {
+                c.getDeclaredMethod("newState", Object.class, String.class);
+                return false;
+            } catch (NoSuchMethodException absent) {
+                // look further up
+            }
+        }
+        return true;
     }
 
     /**

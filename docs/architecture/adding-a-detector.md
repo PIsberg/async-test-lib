@@ -41,6 +41,10 @@ label -> new State(label, capacity))`, which belongs on a path called once per o
 lambda is allocated per call; `reset()` calls `clearStates()`. Keep a state free of the object
 itself unless analysis has to read it back: the weak key releases the object only if nothing
 else holds it, and the detector's test should call `AbstractInstanceDetectorTest.assertNotRetained`.
+`analyze()` can run while another thread's record path is between `stateFor` and its first write,
+so read each field of a state once and skip one that is not filled in yet;
+`DetectorAnalysisUnderConcurrentWritesTest` analyses per-instance detectors at that point, a
+factory-built state through a test-only hook in `register` (#1215).
 Otherwise: per-key state in a
 `ConcurrentHashMap` with a **get-then-`computeIfAbsent`** hot path, thread-id/name sets as
 `ConcurrentHashMap.newKeySet()`, counters as `LongAdder`. Violation lists are `CopyOnWrite` or
