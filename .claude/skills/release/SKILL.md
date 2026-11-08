@@ -63,7 +63,7 @@ The script rewrites the exact current version string where it is a pin, in an al
 `docs/QUICK_REFERENCE.md`, `docs/DISTRIBUTION.md`, `.claude/SKILL.md`.
 
 `versions/pom.xml`'s `<async-test.version>` is the one pin every build outside the reactor
-resolves: the 150 examples, both consumer fixtures and the corpus inherit it, and their Gradle
+resolves: the 151 examples, both consumer fixtures and the corpus inherit it, and their Gradle
 builds read it. It must move with the release. Those builds resolve `mavenLocal()` before
 `mavenCentral()`, and CI publishes the working tree there before building them, so a pin left on
 an older version silently resolves that **old release from Central** and passes while proving

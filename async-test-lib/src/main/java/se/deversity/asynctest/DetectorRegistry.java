@@ -149,6 +149,7 @@ import se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector;
 import se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector;
 import se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector;
 import se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector;
+import se.deversity.asynctest.diagnostics.KotlinMutexReentrancyDetector;
 import se.deversity.vibetags.annotations.AIContext;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 
@@ -372,6 +373,7 @@ final class DetectorRegistry {
     final @Nullable LazyCollectionMisuseDetector lazyCollectionMisuseDetector;
     final @Nullable ProcessStreamStarvationDetector processStreamStarvationDetector;
     final @Nullable BlockingOnNonBlockingThreadDetector blockingOnNonBlockingThreadDetector;
+    final @Nullable KotlinMutexReentrancyDetector kotlinMutexReentrancyDetector;
 
     /** The run's selection, read by {@link #create} while the constructor runs. */
     private final Set<DetectorType> enabled;
@@ -603,6 +605,7 @@ final class DetectorRegistry {
         lazyCollectionMisuseDetector = create(DetectorType.LAZY_COLLECTION_MISUSE, LazyCollectionMisuseDetector::new);
         processStreamStarvationDetector = create(DetectorType.PROCESS_STREAM_STARVATION, ProcessStreamStarvationDetector::new);
         blockingOnNonBlockingThreadDetector = create(DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD, BlockingOnNonBlockingThreadDetector::new);
+        kotlinMutexReentrancyDetector = create(DetectorType.KOTLIN_MUTEX_REENTRANCY, KotlinMutexReentrancyDetector::new);
     }
 
     /**
@@ -1168,6 +1171,9 @@ final class DetectorRegistry {
         ifIssue(blockingOnNonBlockingThreadDetector,
                 BlockingOnNonBlockingThreadDetector::analyze,
                 BlockingOnNonBlockingThreadDetector.Report::hasIssues, out);
+        ifIssue(kotlinMutexReentrancyDetector,
+                KotlinMutexReentrancyDetector::analyze,
+                KotlinMutexReentrancyDetector.Report::hasIssues, out);
 
         lastGrades = out.grades();
         lastSeverities = out.severities();

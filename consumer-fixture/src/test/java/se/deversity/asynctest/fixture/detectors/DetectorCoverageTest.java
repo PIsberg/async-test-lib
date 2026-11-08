@@ -63,7 +63,8 @@ class DetectorCoverageTest {
         Phase23VirtualThreadScaleDetectorsFixtureTest.class,
         Phase24Jdk26StructuredConcurrencyFixtureTest.class,
         Phase25ProcessStreamFixtureTest.class,
-        Phase26NonBlockingThreadFixtureTest.class);
+        Phase26NonBlockingThreadFixtureTest.class,
+        Phase26KotlinMutexFixtureTest.class);
 
     /** detector -> the fixture methods that enable it, as {@code Class#method}. */
     private static Map<DetectorType, List<String>> collectCoverage() {

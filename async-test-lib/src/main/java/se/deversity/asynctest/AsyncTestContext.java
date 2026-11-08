@@ -155,6 +155,7 @@ import se.deversity.asynctest.diagnostics.ScopeResultEscapeDetector;
 import se.deversity.asynctest.diagnostics.LazyCollectionMisuseDetector;
 import se.deversity.asynctest.diagnostics.ProcessStreamStarvationDetector;
 import se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector;
+import se.deversity.asynctest.diagnostics.KotlinMutexReentrancyDetector;
 import se.deversity.vibetags.annotations.AIAudit;
 import se.deversity.vibetags.annotations.AICallersOnly;
 import se.deversity.vibetags.annotations.AICore;
@@ -436,6 +437,7 @@ public final class AsyncTestContext {
     final @Nullable LazyCollectionMisuseDetector lazyCollectionMisuseDetector;
     final @Nullable ProcessStreamStarvationDetector processStreamStarvationDetector;
     final @Nullable BlockingOnNonBlockingThreadDetector blockingOnNonBlockingThreadDetector;
+    final @Nullable KotlinMutexReentrancyDetector kotlinMutexReentrancyDetector;
 
     // ---- Agent-telemetry bridge target (1.7.0+) ----
     // Exposed via atomicityValidator() so se.deversity.asynctest.telemetry.TelemetryBridge
@@ -599,6 +601,7 @@ public final class AsyncTestContext {
         lazyCollectionMisuseDetector = registry.lazyCollectionMisuseDetector;
         processStreamStarvationDetector = registry.processStreamStarvationDetector;
         blockingOnNonBlockingThreadDetector = registry.blockingOnNonBlockingThreadDetector;
+        kotlinMutexReentrancyDetector = registry.kotlinMutexReentrancyDetector;
         // Agent-telemetry bridge target
         atomicityValidator                     = registry.atomicityValidator;
 
@@ -2205,6 +2208,15 @@ public final class AsyncTestContext {
     }
 
     /**
+     * {@return the {@link KotlinMutexReentrancyDetector} for the run the calling thread works for,
+     * or {@code null}}: every woven {@code Mutex} lock, unlock and tryLock records here (#1007).
+     */
+    static @Nullable KotlinMutexReentrancyDetector currentKotlinMutexReentrancyDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.kotlinMutexReentrancyDetector;
+    }
+
+    /**
      * {@return the {@link SynchronizedCollectionIterationDetector} for the run the calling thread
      * works for, or {@code null}}: a woven {@code iterator()} or {@code stream()} on a synchronized
      * wrapper, and a woven view of a synchronized map, are handed to it.
@@ -3613,6 +3625,18 @@ public final class AsyncTestContext {
      */
     public static BlockingOnNonBlockingThreadDetector blockingOnNonBlockingThreadDetector() {
         return require(DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD, c -> c.blockingOnNonBlockingThreadDetector);
+    }
+
+    /**
+     * Returns the {@link KotlinMutexReentrancyDetector} for the current test.
+     *
+     * @throws IllegalStateException if not inside {@code @AsyncTest} or {@link DetectorType#KOTLIN_MUTEX_REENTRANCY} is not enabled
+     * @since 1.14.1
+     *
+     * @return the {@link KotlinMutexReentrancyDetector} for the active {@code @AsyncTest} context
+     */
+    public static KotlinMutexReentrancyDetector kotlinMutexReentrancyDetector() {
+        return require(DetectorType.KOTLIN_MUTEX_REENTRANCY, c -> c.kotlinMutexReentrancyDetector);
     }
 
     // ---- Phase 1 / Phase 3 detector accessors ----

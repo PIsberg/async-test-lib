@@ -154,6 +154,10 @@ final class LibraryReach {
         unreached(DetectorType.SHARED_SPLITTABLE_RANDOM,
                 "agent-fed through the woven SplittableRandom calls; no corpus library shares a "
                         + "SplittableRandom across threads, so its recording-lane pair stands");
+        unreached(DetectorType.KOTLIN_MUTEX_REENTRANCY,
+                "agent-fed since #1007 through the woven kotlinx Mutex lock, tryLock and unlock; "
+                        + "kotlinx's own classes are never woven, and no other corpus library "
+                        + "calls a Mutex, so its pair locks one from the test body");
     }
 
     private static void unreached(DetectorType type, String reason) {

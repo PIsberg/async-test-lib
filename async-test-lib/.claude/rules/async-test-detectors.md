@@ -4,7 +4,7 @@ paths: ["**/diagnostics/**"]
 
 ## Conventions for every detector in this package
 
-These hold for all 148 detectors and are therefore stated once here rather than restated as a
+These hold for all 149 detectors and are therefore stated once here rather than restated as a
 per-class `@AITestDriven` annotation — one annotation per detector cost one `<element>` line each
 in the always-loaded `<scoped_rules>` index of `CLAUDE.md`.
 
@@ -74,6 +74,9 @@ a performance budget) are annotated individually and appear below.
 
 ### se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/JdbcConnectionSharedDetectorTest.java
+
+### se.deversity.asynctest.diagnostics.KotlinMutexReentrancyDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/KotlinMutexReentrancyDetectorTest.java
 
 ### se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/LambdaLostUpdateDetectorTest.java
@@ -233,6 +236,10 @@ a performance budget) are annotated individually and appear below.
 ### se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector
 - **Strategy**: OTHER
 - **Note**: ConcurrentHashMap-backed JDBC-resource tracking; per-resource State holds ConcurrentHashMap.newKeySet() for accessing threads.
+
+### se.deversity.asynctest.diagnostics.KotlinMutexReentrancyDetector
+- **Strategy**: OTHER
+- **Note**: Per-mutex state in the weakly keyed ConcurrentHashMap of AbstractInstanceDetector; the holder is a volatile weak reference, and a reentry writes its description before its count.
 
 ### se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector
 - **Strategy**: OTHER

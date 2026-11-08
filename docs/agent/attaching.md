@@ -295,6 +295,19 @@ the woven `execute` makes it on a bare JDK pool and through the
 dispatcher worker is attributed to the run (`RunBlockingWeavingTest`, `RunBlockingSparesTheCallerTest`,
 and with real kotlinx `consumer-fixture-langs/kotlin`).
 
+A Kotlin coroutine `Mutex` is watched by name and descriptor too (#1007). An inlined
+`withLock(owner) { }` compiles to `INVOKEINTERFACE kotlinx/coroutines/sync/Mutex.lock` and
+`unlock`, and a bare `lock()`, `unlock()` or `tryLock()` to the interface's static `$default`
+bridge. `KotlinMutexWeaver` replaces each of the six with a static hook that takes the same stack,
+its Kotlin types written as `Object`, and makes the original call through a handle bound to the
+receiver's own kotlinx; a descriptor from some other kotlinx is left alone. The lock hook reads the
+calling coroutine's `Job` from the continuation, and `KotlinMutexReentrancyDetector` records it as
+the holder of a mutex it took without waiting and reports a lock that waits while the holder is
+the caller or a coroutine suspended for the caller's scope. The code that locks and the code that
+unlocks must both be in `includes=`: an unlock the agent does not see leaves the holder recorded
+(`KotlinMutexReentrancyIsReportedTest` and its silent twin, with real kotlinx, in
+`consumer-fixture-langs/kotlin`).
+
 Executors are watched the same way. The fourteen `Executors` factories are woven, and an executor a
 run thread creates through one of them is declared to `ExecutorShutdownDetector` as the run's own,
 which is the detector's whole rule: an executor handed in from outside the run, or built in a

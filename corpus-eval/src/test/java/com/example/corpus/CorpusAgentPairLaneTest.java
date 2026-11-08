@@ -1559,6 +1559,49 @@ class CorpusAgentPairLaneTest {
         thread.join();
     }
 
+    /** Every worker's coroutine locks a fresh kotlinx Mutex it already holds (#1007). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_kotlinMutex_lockedAgainByItsHolder() {
+        counted(() -> lockAFreshMutexTwice(false));
+    }
+
+    /** The same two locks with an unlock between them. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_kotlinMutex_unlockedBetweenLocks() {
+        counted(() -> lockAFreshMutexTwice(true));
+    }
+
+    /**
+     * Inside runBlocking, locks a fresh kotlinx Mutex and locks it again, unlocking in between or
+     * not. Called from Java, the block receives its own continuation, so each lock and unlock is
+     * the INVOKEINTERFACE a Kotlin call compiles to, and the woven call site is the real one.
+     *
+     * <p>Without the unlock the second lock suspends on the coroutine that holds the mutex, which
+     * in Kotlin never returns. Here the block then releases the outer hold itself, which hands
+     * the mutex to the waiting lock and resumes the block, so the round ends instead of timing
+     * out; the finding is made when the second lock suspends, before that release.
+     */
+    private static void lockAFreshMutexTwice(boolean unlockBetween) {
+        Object suspended = kotlin.coroutines.intrinsics.IntrinsicsKt.getCOROUTINE_SUSPENDED();
+        kotlinx.coroutines.BuildersKt.<kotlin.Unit>runBlockingK(
+                kotlin.coroutines.EmptyCoroutineContext.INSTANCE, (scope, continuation) -> {
+                    kotlinx.coroutines.sync.Mutex mutex = kotlinx.coroutines.sync.MutexKt.Mutex(false);
+                    if (mutex.lock(null, continuation) == suspended) {
+                        throw new AssertionError("a fresh mutex was not free");
+                    }
+                    if (unlockBetween) {
+                        mutex.unlock(null);
+                    }
+                    Object again = mutex.lock(null, continuation);
+                    if (unlockBetween != (again != suspended)) {
+                        throw new AssertionError("the second lock "
+                                + (again == suspended ? "waited" : "did not wait"));
+                    }
+                    mutex.unlock(null);
+                    return unlockBetween ? kotlin.Unit.INSTANCE : again;
+                });
+    }
+
     /** Every worker writes one byte into a fresh pipe and reads it back on the same thread. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_pipe_bothEndsOnOneThread() {

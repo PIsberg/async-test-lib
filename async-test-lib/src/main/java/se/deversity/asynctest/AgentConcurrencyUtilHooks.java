@@ -76,6 +76,7 @@ import se.deversity.asynctest.diagnostics.FutureIgnoredDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.LatchMisuseDetector;
 import se.deversity.asynctest.diagnostics.BlockingOnNonBlockingThreadDetector;
+import se.deversity.asynctest.diagnostics.KotlinMutexReentrancyDetector;
 import se.deversity.asynctest.diagnostics.AtomicNonAtomicUpdateDetector;
 import se.deversity.asynctest.diagnostics.ExecutorDeadlockDetector;
 import se.deversity.asynctest.diagnostics.MdcContextLeakDetector;
@@ -3109,6 +3110,164 @@ public final class AgentConcurrencyUtilHooks {
                 AsyncTestContext.currentBlockingOnNonBlockingThreadDetector();
         if (nonBlocking != null) {
             nonBlocking.recordRunBlocking(Thread.currentThread());
+        }
+    }
+
+    /**
+     * Weaves {@code kotlinx.coroutines.sync.Mutex.lock(owner, continuation)}, the call
+     * {@code mutex.withLock(owner) { }} and {@code mutex.lock(owner)} compile to (#1007). The lock is
+     * made unchanged; around it, {@code KotlinMutexReentrancyDetector} learns who holds the mutex and
+     * hears a lock that waits for its own coroutine.
+     *
+     * <p>A call that takes the mutex without waiting makes the caller's {@code Job} its holder. A
+     * call that waits while the holder is the caller, or a coroutine suspended until the caller's
+     * {@code withContext}, {@code coroutineScope} or {@code withTimeout} block completes, is the
+     * finding: that wait ends only with an unlock the waiting coroutine itself has to make. The
+     * Kotlin types in the real descriptor are not on the library's class path, so the hook takes
+     * {@code Object}s and calls through a handle bound to the receiver's own kotlinx.
+     *
+     * @param mutex        the receiver
+     * @param owner        the owner token, or {@code null}
+     * @param continuation the calling coroutine's continuation
+     * @return what {@code lock} returned: {@code Unit}, or {@code COROUTINE_SUSPENDED}
+     * @since 1.14.1
+     */
+    public static Object kotlinMutexLock(Object mutex, Object owner, Object continuation) {
+        ControlledSchedule.point();
+        KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
+        KotlinMutexes.LockWatch watch = KotlinMutexes.LockWatch.before(mutex, continuation, binding);
+        Object result;
+        try {
+            result = binding.lock.invokeExact(mutex, owner, continuation);
+        } catch (Throwable t) {
+            KotlinMutexes.LockWatch.threw(watch);
+            throw KotlinMutexes.rethrow(t);
+        }
+        KotlinMutexes.LockWatch.returned(watch, result);
+        return result;
+    }
+
+    /**
+     * Weaves {@code Mutex.lock$default}, the call a bare {@code mutex.lock()} compiles to, as
+     * {@link #kotlinMutexLock}.
+     *
+     * @param mutex        the receiver
+     * @param owner        the owner token as passed, ignored by kotlinx where {@code mask} omits it
+     * @param continuation the calling coroutine's continuation
+     * @param mask         which parameters the call site left to their defaults
+     * @param marker       always {@code null} from a compiled call site
+     * @return what {@code lock} returned
+     * @since 1.14.1
+     */
+    public static Object kotlinMutexLockDefault(Object mutex, Object owner, Object continuation, int mask,
+                                                Object marker) {
+        ControlledSchedule.point();
+        KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
+        KotlinMutexes.LockWatch watch = KotlinMutexes.LockWatch.before(mutex, continuation, binding);
+        Object result;
+        try {
+            result = binding.lockDefault.invokeExact(mutex, owner, continuation, mask, marker);
+        } catch (Throwable t) {
+            KotlinMutexes.LockWatch.threw(watch);
+            throw KotlinMutexes.rethrow(t);
+        }
+        KotlinMutexes.LockWatch.returned(watch, result);
+        return result;
+    }
+
+    /**
+     * Weaves {@code Mutex.unlock(owner)}: the holder is forgotten first, so no lock is ever judged
+     * against a coroutine that has already let the mutex go, then the unlock is made unchanged.
+     *
+     * @param mutex the receiver
+     * @param owner the owner token, or {@code null}
+     * @since 1.14.1
+     */
+    public static void kotlinMutexUnlock(Object mutex, Object owner) {
+        ControlledSchedule.point();
+        KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
+        kotlinMutexHolderUnknown(mutex);
+        try {
+            binding.unlock.invokeExact(mutex, owner);
+        } catch (Throwable t) {
+            throw KotlinMutexes.rethrow(t);
+        }
+    }
+
+    /**
+     * Weaves {@code Mutex.unlock$default}, as {@link #kotlinMutexUnlock}.
+     *
+     * @param mutex  the receiver
+     * @param owner  the owner token as passed
+     * @param mask   which parameters the call site left to their defaults
+     * @param marker always {@code null} from a compiled call site
+     * @since 1.14.1
+     */
+    public static void kotlinMutexUnlockDefault(Object mutex, Object owner, int mask, Object marker) {
+        ControlledSchedule.point();
+        KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
+        kotlinMutexHolderUnknown(mutex);
+        try {
+            binding.unlockDefault.invokeExact(mutex, owner, mask, marker);
+        } catch (Throwable t) {
+            throw KotlinMutexes.rethrow(t);
+        }
+    }
+
+    /**
+     * Weaves {@code Mutex.tryLock(owner)}. A {@code tryLock} has no continuation, so the coroutine
+     * that took the mutex cannot be named: on success the holder becomes unknown, and no lock is
+     * judged against it.
+     *
+     * @param mutex the receiver
+     * @param owner the owner token, or {@code null}
+     * @return whether the mutex was taken
+     * @since 1.14.1
+     */
+    public static boolean kotlinMutexTryLock(Object mutex, Object owner) {
+        ControlledSchedule.point();
+        KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
+        boolean taken;
+        try {
+            taken = (boolean) binding.tryLock.invokeExact(mutex, owner);
+        } catch (Throwable t) {
+            throw KotlinMutexes.rethrow(t);
+        }
+        if (taken) {
+            kotlinMutexHolderUnknown(mutex);
+        }
+        return taken;
+    }
+
+    /**
+     * Weaves {@code Mutex.tryLock$default}, as {@link #kotlinMutexTryLock}.
+     *
+     * @param mutex  the receiver
+     * @param owner  the owner token as passed
+     * @param mask   which parameters the call site left to their defaults
+     * @param marker always {@code null} from a compiled call site
+     * @return whether the mutex was taken
+     * @since 1.14.1
+     */
+    public static boolean kotlinMutexTryLockDefault(Object mutex, Object owner, int mask, Object marker) {
+        ControlledSchedule.point();
+        KotlinMutexes.Binding binding = KotlinMutexes.of(mutex);
+        boolean taken;
+        try {
+            taken = (boolean) binding.tryLockDefault.invokeExact(mutex, owner, mask, marker);
+        } catch (Throwable t) {
+            throw KotlinMutexes.rethrow(t);
+        }
+        if (taken) {
+            kotlinMutexHolderUnknown(mutex);
+        }
+        return taken;
+    }
+
+    private static void kotlinMutexHolderUnknown(Object mutex) {
+        KotlinMutexReentrancyDetector detector = AsyncTestContext.currentKotlinMutexReentrancyDetector();
+        if (detector != null) {
+            detector.recordHolderUnknown(mutex);
         }
     }
 
