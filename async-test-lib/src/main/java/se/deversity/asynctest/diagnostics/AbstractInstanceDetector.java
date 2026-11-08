@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -33,6 +34,17 @@ import java.util.function.Function;
  * @param <S> the state kept per tracked instance
  */
 abstract class AbstractInstanceDetector<S> {
+
+    /**
+     * Test-only seam: runs on the registering thread right after a first sighting has published
+     * its state, before the record path that registered it writes anything more (#1215).
+     *
+     * <p>A state built by a factory lambda at the record site cannot be made without running that
+     * record path, so a test analyses from here instead, inside the window another thread's
+     * analysis can hit. Unset, it costs one volatile read per registration and nothing on the
+     * {@code get} path of {@code stateFor}.
+     */
+    private static volatile @Nullable Consumer<AbstractInstanceDetector<?>> testHookAfterRegister;
 
     /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
     private final UnnamedLabels unnamedLabels = new UnnamedLabels();
@@ -101,10 +113,26 @@ abstract class AbstractInstanceDetector<S> {
     private S register(Object instance, @Nullable String name, @Nullable String kind,
             @Nullable Function<String, ? extends S> factory) {
         // The label, and the weak key, are built only when the instance is first seen.
-        return states.computeIfAbsent(new IdentityKey.Weak(instance, null), key -> {
+        S state = states.computeIfAbsent(new IdentityKey.Weak(instance, null), key -> {
             String label = label(instance, name, kind);
             return factory != null ? factory.apply(label) : newState(instance, label);
         });
+        Consumer<AbstractInstanceDetector<?>> hook = testHookAfterRegister;
+        if (hook != null) {
+            hook.accept(this);
+        }
+        return state;
+    }
+
+    /**
+     * Test-only: installs, or with {@code null} removes, the hook {@link #register} calls after
+     * publishing a state. Package-private and not API; a test outside the package sets it
+     * reflectively and must remove it in a {@code finally}.
+     *
+     * @param hook called with the detector that registered a state, or {@code null}
+     */
+    static void setTestHookAfterRegister(@Nullable Consumer<AbstractInstanceDetector<?>> hook) {
+        testHookAfterRegister = hook;
     }
 
     /**

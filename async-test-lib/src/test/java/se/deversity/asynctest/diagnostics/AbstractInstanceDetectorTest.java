@@ -126,6 +126,32 @@ class AbstractInstanceDetectorTest {
     }
 
     @Test
+    void theTestHookRunsOnceAFirstSightingIsPublished_andNotOnALookup() {
+        Probe probe = new Probe();
+        Object subject = new Object();
+        int[] calls = new int[1];
+        boolean[] publishedWhenCalled = new boolean[1];
+        AbstractInstanceDetector.setTestHookAfterRegister(detector -> {
+            if (detector == probe) {
+                calls[0]++;
+                publishedWhenCalled[0] = probe.trackedState(subject) != null;
+            }
+        });
+        try {
+            probe.register(subject, "q", "queue", "/cap=4");
+            probe.record(subject, "q");
+            probe.register(subject, "q", "queue", "/cap=8");
+        } finally {
+            AbstractInstanceDetector.setTestHookAfterRegister(null);
+        }
+
+        assertEquals(1, calls[0], "only the first sighting registers, so only it runs the hook");
+        assertTrue(publishedWhenCalled[0], "the hook sees the state already published, as another thread would");
+        probe.record(new Object(), "after");
+        assertEquals(1, calls[0], "a removed hook is not called");
+    }
+
+    @Test
     void concurrentFirstSightingsRegisterOneState() throws Exception {
         Probe probe = new Probe();
         Object subject = new Object();
