@@ -18,8 +18,8 @@ import java.util.List;
  * <p>Every type is resolved by name through the class loader of the {@code Mutex} interface the
  * receiver implements, found on the receiver's own class, so it is the kotlinx the call site
  * linked against. The weaver substitutes a call only where the call site's descriptor is the one
- * bound here, so the call-through handles always resolve; the {@code Job} handles are best effort,
- * and without them a call is made and nothing is recorded.
+ * bound here, so the call-through handles always resolve; the {@code Job} and {@code holdsLock}
+ * handles are best effort, and without them a call is made unchanged and nothing is recorded.
  */
 final class KotlinMutexes {
 
@@ -59,19 +59,49 @@ final class KotlinMutexes {
         final MethodHandle tryLock;
         /** {@code Mutex.tryLock$default}, as {@code (Object, Object, int, Object)boolean}. */
         final MethodHandle tryLockDefault;
+        /** {@code Mutex.holdsLock(Object)}, as {@code (Object, Object)boolean}; {@code null} where absent. */
+        final @Nullable MethodHandle holdsLock;
         /** Reads a continuation's {@code Job}, or {@code null} where kotlinx could not be read. */
         final @Nullable JobReader jobs;
 
         Binding(MethodHandle lock, MethodHandle lockDefault, MethodHandle unlock,
                 MethodHandle unlockDefault, MethodHandle tryLock, MethodHandle tryLockDefault,
-                @Nullable JobReader jobs) {
+                @Nullable MethodHandle holdsLock, @Nullable JobReader jobs) {
             this.lock = lock;
             this.lockDefault = lockDefault;
             this.unlock = unlock;
             this.unlockDefault = unlockDefault;
             this.tryLock = tryLock;
             this.tryLockDefault = tryLockDefault;
+            this.holdsLock = holdsLock;
             this.jobs = jobs;
+        }
+
+        /** {@return whether {@code token} holds {@code mutex}; false when the mutex cannot say} */
+        boolean holds(Object mutex, Object token) {
+            MethodHandle handle = holdsLock;
+            if (handle == null) {
+                return false;
+            }
+            try {
+                return (boolean) handle.invokeExact(mutex, token);
+            } catch (Throwable unreadable) { // NOPMD - a mutex that cannot answer holds nothing for us
+                return false;
+            }
+        }
+    }
+
+    /**
+     * The owner a woven {@code lock} passes when its caller passed none (#1221). kotlinx compares
+     * owners by identity, and a fresh one per call never matches another, so the lock behaves as
+     * with no owner: {@code unlock(null)} still releases it, and only {@code holdsLock} on this very
+     * object says {@code true}. It prints as {@code null}, as the absent owner it stands for does in
+     * the mutex's own {@code toString}.
+     */
+    static final class OwnerToken {
+        @Override
+        public String toString() {
+            return "null";
         }
     }
 
@@ -118,47 +148,58 @@ final class KotlinMutexes {
 
     /**
      * What a woven {@code lock} knew before the call, for the detector once it returns: who holds
-     * the mutex, and whether that is the caller or a coroutine waiting for it.
+     * the mutex, whether that is the caller or a coroutine waiting for it, and the owner the call
+     * is made with.
      */
     static final class LockWatch {
         private final KotlinMutexReentrancyDetector detector;
         private final Object mutex;
         private final List<Object> waiting;
         private final int held;
+        /** The owner to make the lock with: the caller's own, or a fresh {@link OwnerToken}. */
+        final Object owner;
 
-        private LockWatch(KotlinMutexReentrancyDetector detector, Object mutex, List<Object> waiting, int held) {
+        private LockWatch(KotlinMutexReentrancyDetector detector, Object mutex, List<Object> waiting, int held,
+                          Object owner) {
             this.detector = detector;
             this.mutex = mutex;
             this.waiting = waiting;
             this.held = held;
-        }
-
-        /** {@return the watch for a lock about to be made, or {@code null} when no run hears it} */
-        static @Nullable LockWatch before(Object mutex, Object continuation, Binding binding) {
-            KotlinMutexReentrancyDetector detector = AsyncTestContext.currentKotlinMutexReentrancyDetector();
-            JobReader jobs = binding.jobs;
-            if (detector == null || jobs == null) {
-                return null;
-            }
-            List<Object> waiting = jobs.waiting(continuation);
-            return new LockWatch(detector, mutex, waiting, detector.holderAmong(mutex, waiting));
+            this.owner = owner;
         }
 
         /**
-         * The lock returned. Taken without waiting, the caller now holds it. Waiting while it or a
-         * coroutine suspended for it holds the mutex is the finding; otherwise whoever ends up
-         * holding it is resumed later, unseen, and the holder stays unknown, as the unlock that
-         * freed it left it.
+         * {@return the watch for a lock about to be made with {@code owner}, or {@code null} when no
+         * run hears it or the mutex cannot say who holds it, and the call is then made unchanged}
+         * The hook passes the run's detector in, so the accessor call stays in the hook source,
+         * where {@code DetectorFeedCoverageTest} looks for it.
+         */
+        static @Nullable LockWatch before(@Nullable KotlinMutexReentrancyDetector detector, Object mutex,
+                                          @Nullable Object owner, Object continuation, Binding binding) {
+            JobReader jobs = binding.jobs;
+            if (detector == null || jobs == null || binding.holdsLock == null) {
+                return null;
+            }
+            List<Object> waiting = jobs.waiting(continuation);
+            int held = detector.holderAmong(mutex, waiting, token -> binding.holds(mutex, token));
+            return new LockWatch(detector, mutex, waiting, held, owner != null ? owner : new OwnerToken());
+        }
+
+        /**
+         * The lock returned. Either way the caller's {@code Job} is recorded with the owner it
+         * locked with: it holds the mutex now, or once its wait ends. Waiting while the caller or a
+         * coroutine suspended for it holds the mutex is the finding.
          */
         static void returned(@Nullable LockWatch watch, @Nullable Object result) {
             if (watch == null) {
                 return;
             }
-            if (suspended(result)) {
+            boolean waited = suspended(result);
+            if (waited) {
                 watch.reentryIfHeld();
-            } else {
-                watch.detector.recordAcquired(watch.mutex, watch.waiting.isEmpty() ? null : watch.waiting.get(0));
             }
+            watch.detector.recordLocked(watch.mutex, watch.waiting.isEmpty() ? null : watch.waiting.get(0),
+                    watch.owner, !waited);
         }
 
         /** The lock threw: an owner token the holder already used makes kotlinx throw instead of wait. */
@@ -226,6 +267,7 @@ final class KotlinMutexes {
                     MethodType.methodType(boolean.class, Object.class));
             MethodHandle tryLockDefault = lookup.findStatic(mutex, "tryLock$default",
                     MethodType.methodType(boolean.class, mutex, Object.class, int.class, Object.class));
+            MethodHandle holdsLock = holdsLockOf(lookup, mutex);
             return new Binding(
                     lock.asType(MethodType.genericMethodType(3)),
                     lockDefault.asType(MethodType.methodType(Object.class,
@@ -236,6 +278,7 @@ final class KotlinMutexes {
                     tryLock.asType(MethodType.methodType(boolean.class, Object.class, Object.class)),
                     tryLockDefault.asType(MethodType.methodType(boolean.class,
                             Object.class, Object.class, int.class, Object.class)),
+                    holdsLock,
                     jobReader(loader, continuation));
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("cannot bind " + MUTEX + " on " + type.getName(), e);
@@ -258,6 +301,17 @@ final class KotlinMutexes {
             Object jobKey = job.getField("Key").get(null);
             return new JobReader(getContext, get, jobKey, parent, scope);
         } catch (ReflectiveOperationException | LinkageError | RuntimeException e) { // NOPMD - unreadable records nothing
+            return null;
+        }
+    }
+
+    /** {@return {@code Mutex.holdsLock(Object)}, or {@code null} on a kotlinx without it: nothing is then recorded} */
+    private static @Nullable MethodHandle holdsLockOf(MethodHandles.Lookup lookup, Class<?> mutex)
+            throws IllegalAccessException {
+        try {
+            return lookup.findVirtual(mutex, "holdsLock", MethodType.methodType(boolean.class, Object.class))
+                    .asType(MethodType.methodType(boolean.class, Object.class, Object.class));
+        } catch (NoSuchMethodException olderKotlinx) {
             return null;
         }
     }

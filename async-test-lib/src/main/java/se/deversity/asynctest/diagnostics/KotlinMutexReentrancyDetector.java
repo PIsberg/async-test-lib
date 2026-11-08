@@ -9,9 +9,13 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
 import java.lang.ref.WeakReference;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 
 /**
  * Detects a Kotlin coroutine {@code Mutex} locked again by the coroutine that holds it (#1007).
@@ -27,20 +31,24 @@ import java.util.concurrent.atomic.AtomicInteger;
  * that says nothing about the mutex.
  *
  * <p>kotlinx records no holder unless the caller passes an {@code owner}, so the agent's
- * {@code KotlinMutexWeaver} records one: each woven {@code lock} names the coroutine's {@code Job},
- * read from the call's continuation, and a {@code lock} that takes the mutex without waiting makes
- * that {@code Job} the holder ({@link #recordAcquired}). A woven {@code unlock}, and a
- * {@code tryLock} or a waited-for {@code lock} that takes it for a coroutine the call cannot
- * name, clear the holder ({@link #recordHolderUnknown}). A later woven {@code lock} that waits, from
- * the holder itself or from a scope the holder is suspended in ({@link #holderAmong}), is the
- * finding ({@link #recordReentry}).
+ * {@code KotlinMutexWeaver} passes one: a woven {@code lock} called without an owner is made with a
+ * fresh token of the agent's own, and {@link #recordLocked} keeps it with the calling coroutine's
+ * {@code Job}, read from the call's continuation, whether the lock took the mutex at once or waits
+ * for it. Before a later woven {@code lock}, {@link #holderAmong(Object, List, Predicate)} asks the
+ * mutex, through {@code holdsLock}, whether one of those tokens holds it right now for the caller or
+ * a scope the caller's parent is suspended in. If one does and the lock waits, that is the finding
+ * ({@link #recordReentry}). The mutex itself answers, so an {@code unlock} the agent never saw
+ * cannot leave a holder behind (#1221), and a lock that waited holds its token once it is granted
+ * (#1220).
  *
- * <p>It errs toward silence. A holder that waited for the mutex, or took it through
- * {@code tryLock} or {@code select}, is not known, so a reentrant lock under it is missed. A
- * {@code launch} or {@code async} child is not counted as part of its parent: the parent may unlock
- * without waiting for it, and the child then simply waits its turn. An {@code unlock} in a class the
- * agent does not weave leaves the holder recorded; a later {@code lock} from that coroutine that
- * waits for another holder is then reported, and adding that class to {@code includes=} clears it.
+ * <p>It errs toward silence. A coroutine that took the mutex through {@code tryLock} or
+ * {@code select}, or in a class the agent does not weave, holds no token of the agent's, so a
+ * reentrant lock under it is missed. A {@code launch} or {@code async} child is not counted as part
+ * of its parent: the parent may unlock without waiting for it, and the child then simply waits its
+ * turn.
+ *
+ * <p>The holder can also be recorded by hand, without kotlinx: {@link #recordAcquired} names it,
+ * {@link #recordHolderUnknown} forgets it, and {@link #holderAmong(Object, List)} finds it.
  *
  * <p>Usage inside {@code @AsyncTest(includes = DetectorType.KOTLIN_MUTEX_REENTRANCY)}:
  * <pre>{@code
@@ -54,7 +62,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER,
     note = "Per-mutex state in the weakly keyed ConcurrentHashMap of AbstractInstanceDetector; the "
-        + "holder is a volatile weak reference, and a reentry writes its description before its count.")
+        + "holdings are a ConcurrentLinkedDeque of weakly held Jobs, and a reentry writes its "
+        + "description before its count.")
 @AITestDriven(
     framework = {AITestDriven.Framework.JUNIT_5},
     coverageGoal = 80,
@@ -67,10 +76,17 @@ public final class KotlinMutexReentrancyDetector
             + "its own withLock, including through withContext, coroutineScope or withTimeout. Pass "
             + "what the inner code needs in, or split out a function that assumes the lock is held.";
 
+    /**
+     * Locks kept per mutex before the oldest is dropped. A token is dropped on its own once the
+     * mutex is seen to have let it go; this bounds the ones that never held it, the locks still
+     * waiting or cancelled while they waited. Dropping one only ever misses a finding.
+     */
+    static final int MAX_HOLDINGS = 64;
+
     static final class MutexState {
         final String label;
-        /** The Job that took the mutex without waiting, while it holds it; null when not known. */
-        volatile @Nullable WeakReference<Object> holder;
+        /** The locks that may hold the mutex, oldest first; at most one token holds it at a time. */
+        final Deque<Holding> holdings = new ConcurrentLinkedDeque<>();
         final AtomicInteger reentries = new AtomicInteger();
         volatile @Nullable String lastPath;
         volatile @Nullable String lastThread;
@@ -80,14 +96,58 @@ public final class KotlinMutexReentrancyDetector
         }
     }
 
+    /** One coroutine's lock on a mutex. */
+    static final class Holding {
+        final WeakReference<Object> job;
+        /**
+         * The owner the lock was made with, which the mutex can be asked about; {@code null} for a
+         * holder recorded by hand, which holds until {@link #recordHolderUnknown}.
+         */
+        final @Nullable Object token;
+        /** Seen holding the mutex: once it no longer does, it never will again. */
+        volatile boolean seenHolding;
+
+        Holding(Object job, @Nullable Object token, boolean seenHolding) {
+            this.job = new WeakReference<>(job);
+            this.token = token;
+            this.seenHolding = seenHolding;
+        }
+    }
+
     @Override
     MutexState newState(Object instance, String label) {
         return new MutexState(label);
     }
 
     /**
-     * Records that coroutine {@code job} took {@code mutex} without waiting, so it holds it until
-     * the next {@link #recordHolderUnknown}.
+     * Records that coroutine {@code job} called {@code lock(token)} on {@code mutex}: it holds the
+     * mutex while {@code mutex.holdsLock(token)} says so, now if the lock took it at once, or once
+     * the wait ends if it suspended.
+     *
+     * @param mutex the kotlinx {@code Mutex}, by identity; {@code null} records nothing
+     * @param job   the {@code Job} of the coroutine that called it; {@code null} records nothing
+     * @param token the owner the lock was made with; {@code null} records nothing
+     * @param taken whether the lock took the mutex without waiting
+     * @since 1.14.2
+     */
+    @SuppressWarnings("ReferenceEquality") // a token is one lock call; identity, never equals
+    public void recordLocked(Object mutex, @Nullable Object job, @Nullable Object token, boolean taken) {
+        if (mutex == null || job == null || token == null) {
+            return;
+        }
+        MutexState state = stateFor(mutex, null, "Mutex");
+        // An owner the caller passes may be reused: the newest lock made with it is the one to ask about.
+        state.holdings.removeIf(h -> h.token == token); // NOPMD CompareObjectsWithEquals - by identity
+        state.holdings.addLast(new Holding(job, token, taken));
+        while (state.holdings.size() > MAX_HOLDINGS) {
+            state.holdings.pollFirst();
+        }
+    }
+
+    /**
+     * Records that coroutine {@code job} holds {@code mutex}, until the next
+     * {@link #recordHolderUnknown}. For recording by hand; the agent records through
+     * {@link #recordLocked}, which the mutex itself confirms.
      *
      * @param mutex the mutex, tracked by identity
      * @param job   the {@code Job} of the coroutine that took it, or {@code null} when it has none
@@ -100,14 +160,16 @@ public final class KotlinMutexReentrancyDetector
             recordHolderUnknown(mutex);
             return;
         }
-        stateFor(mutex, null, "Mutex").holder = new WeakReference<>(job);
+        MutexState state = stateFor(mutex, null, "Mutex");
+        state.holdings.removeIf(h -> h.token == null);
+        state.holdings.addLast(new Holding(job, null, true));
     }
 
     /**
-     * Records that {@code mutex} was unlocked, or taken by a coroutine the call could not name, so
-     * its holder is no longer known.
+     * Forgets the holder {@link #recordAcquired} named for {@code mutex}. Locks recorded through
+     * {@link #recordLocked} are unaffected: the mutex says whether they still hold it.
      *
-     * @param mutex the kotlinx {@code Mutex}, by identity; {@code null} is ignored
+     * @param mutex the mutex, by identity; {@code null} is ignored
      */
     public void recordHolderUnknown(Object mutex) {
         if (mutex == null) {
@@ -115,34 +177,76 @@ public final class KotlinMutexReentrancyDetector
         }
         MutexState state = trackedState(mutex);
         if (state != null) {
-            state.holder = null;
+            state.holdings.removeIf(h -> h.token == null);
         }
     }
 
     /**
-     * {@return the index in {@code waiting} of the coroutine holding {@code mutex}, or -1}
+     * {@return the index in {@code waiting} of the coroutine {@link #recordAcquired} named as holding
+     * {@code mutex}, or -1}
      *
      * @param mutex   the mutex a {@code lock()} is about to wait for
      * @param waiting the calling coroutine's {@code Job} first, then each scope it runs in that its
      *                parent is suspended for, outward
      */
-    @SuppressWarnings("ReferenceEquality") // a Job is one coroutine; identity, never equals
     public int holderAmong(Object mutex, List<?> waiting) {
+        return holderAmong(mutex, waiting, null);
+    }
+
+    /**
+     * {@return the index in {@code waiting} of the coroutine holding {@code mutex}, or -1}
+     *
+     * <p>A lock recorded through {@link #recordLocked} counts while {@code holds} says its token
+     * holds the mutex; one that held it and no longer does is dropped. A holder named through
+     * {@link #recordAcquired} counts until {@link #recordHolderUnknown}.
+     *
+     * @param mutex   the mutex a {@code lock()} is about to wait for
+     * @param waiting the calling coroutine's {@code Job} first, then each scope it runs in that its
+     *                parent is suspended for, outward
+     * @param holds   asks the mutex whether a token holds it, as {@code Mutex.holdsLock}; {@code null}
+     *                leaves every token out
+     * @since 1.14.2
+     */
+    @SuppressWarnings("ReferenceEquality") // a Job is one coroutine; identity, never equals
+    public int holderAmong(Object mutex, List<?> waiting, @Nullable Predicate<Object> holds) {
         if (mutex == null || waiting == null || waiting.isEmpty()) {
             return -1;
         }
         MutexState state = trackedState(mutex);
-        WeakReference<Object> ref = state == null ? null : state.holder;
-        Object holder = ref == null ? null : ref.get();
-        if (holder == null) {
+        if (state == null) {
             return -1;
         }
-        for (int i = 0; i < waiting.size(); i++) {
-            if (waiting.get(i) == holder) { // NOPMD CompareObjectsWithEquals - a Job is one coroutine, by identity
-                return i;
+        int found = -1;
+        for (Iterator<Holding> it = state.holdings.iterator(); it.hasNext(); ) {
+            Holding h = it.next();
+            Object job = h.job.get();
+            if (job == null) {
+                it.remove();
+                continue;
+            }
+            boolean holding;
+            if (h.token == null) {
+                holding = true;
+            } else if (holds == null) {
+                continue;
+            } else {
+                holding = holds.test(h.token);
+                if (holding) {
+                    h.seenHolding = true;
+                } else if (h.seenHolding) {
+                    it.remove();
+                    continue;
+                }
+            }
+            if (holding) {
+                for (int i = 0; i < waiting.size() && (found < 0 || i < found); i++) {
+                    if (waiting.get(i) == job) { // NOPMD CompareObjectsWithEquals - a Job is one coroutine, by identity
+                        found = i;
+                    }
+                }
             }
         }
-        return -1;
+        return found;
     }
 
     /**

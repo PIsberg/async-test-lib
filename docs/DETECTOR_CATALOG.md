@@ -319,7 +319,7 @@ not brings back the accesses since the latest earlier hand-off it is ordered aft
 access when there is none.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 37 VERDICT, 76 PROMPT, 29 FACT and 7
+tier is one a reader has to rank alone. The split is 38 VERDICT, 75 PROMPT, 29 FACT and 7
 ADVISORY. PROMPT is the honest default: it says nobody has measured that detector's
 silent-on-correct-code direction, or that what it decides from is a thread count or a threshold,
 not that the detector is wrong. FACT and ADVISORY are statements about the kind of claim a finding
