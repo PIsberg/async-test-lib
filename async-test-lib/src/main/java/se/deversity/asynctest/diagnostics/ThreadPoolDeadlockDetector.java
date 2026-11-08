@@ -70,6 +70,8 @@ public class ThreadPoolDeadlockDetector extends AbstractInstanceDetector<ThreadP
         final int poolSize;
         final AtomicInteger activeTaskCount = new AtomicInteger(0);
         final AtomicInteger nestedSubmissionCount = new AtomicInteger(0);
+        /** This pool's share of the detector-wide deadlockRiskCount, so analyze can total what it lists. */
+        final AtomicInteger deadlockRisks = new AtomicInteger(0);
         final List<NestedSubmissionEvent> nestedSubmissions = Collections.synchronizedList(new ArrayList<>());
 
         PoolState(String name, int poolSize) {
@@ -133,6 +135,7 @@ public class ThreadPoolDeadlockDetector extends AbstractInstanceDetector<ThreadP
 
             // Check for deadlock risk: active tasks >= pool size
             if (activeTasks >= state.poolSize) {
+                state.deadlockRisks.incrementAndGet();
                 deadlockRiskCount.incrementAndGet();
             }
         }
@@ -166,20 +169,28 @@ public class ThreadPoolDeadlockDetector extends AbstractInstanceDetector<ThreadP
             return DetectorFailurePolicy.checkedReport(this, report801);
         }
 
+        // The total comes from the pools this pass lists, not from deadlockRiskCount read after the
+        // loop: a submission recorded between the two made the report claim an issue it listed no
+        // pool for. Risks are read before the nested count, which recordNestedSubmission raises
+        // first, so a pool with a risk always makes the list.
         List<PoolDeadlockRisk> risks = new ArrayList<>();
+        int totalRisks = 0;
         for (PoolState state : states()) {
-            if (state.nestedSubmissionCount.get() > 0) {
+            int poolRisks = state.deadlockRisks.get();
+            int nested = state.nestedSubmissionCount.get();
+            if (nested > 0) {
+                totalRisks += poolRisks;
                 risks.add(new PoolDeadlockRisk(
                     state.name,
                     state.poolSize,
-                    state.nestedSubmissionCount.get(),
+                    nested,
                     state.activeTaskCount.get(),
                     new ArrayList<>(state.nestedSubmissions)
                 ));
             }
         }
 
-        ThreadPoolDeadlockReport report801 = new ThreadPoolDeadlockReport(risks, deadlockRiskCount.get());
+        ThreadPoolDeadlockReport report801 = new ThreadPoolDeadlockReport(risks, totalRisks);
         report801.fillStructuredViolations();
         return DetectorFailurePolicy.checkedReport(this, report801);
     }
