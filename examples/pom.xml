@@ -166,5 +166,6 @@
         <module>149-lazy-collection-misuse</module>
         <module>150-process-stream-starvation</module>
         <module>151-blocking-on-non-blocking-thread</module>
+        <module>152-kotlin-mutex-reentrancy</module>
     </modules>
 </project>

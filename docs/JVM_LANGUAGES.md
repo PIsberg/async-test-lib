@@ -30,9 +30,9 @@ Nothing to configure. Attributes are named arguments. `@BeforeAll` / `@AfterAll`
 [agent](AGENT.md)'s default accessor weaving sees them. A `suspend fun` is not JUnit-invokable:
 wrap a coroutine body in `runBlocking`. An `@AsyncTest suspend fun` fails the run with a message
 that says so, whether or not `kotlin-reflect` is on the test classpath (#1146). `by lazy` is `SYNCHRONIZED` by default, so it is not a
-lazy-init race subject unless you choose `LazyThreadSafetyMode.NONE`. Coroutine misuse has two rules
-so far, both reported by `BLOCKING_ON_NON_BLOCKING_THREAD` when the agent is attached with
-`kotlinx.coroutines` and your own package in its `includes=`. A blocking call on a
+lazy-init race subject unless you choose `LazyThreadSafetyMode.NONE`. Coroutine misuse has three
+rules so far, each reported when the agent is attached with `kotlinx.coroutines` and your own
+package in its `includes=`. The first two are `BLOCKING_ON_NON_BLOCKING_THREAD`'s. A blocking call on a
 `Dispatchers.Default` worker is reported; the same worker running `Dispatchers.IO` work is not
 (#993). A `runBlocking` entered on any dispatcher worker, `Dispatchers.Default` or `Dispatchers.IO`,
 is reported, because the caller is itself a coroutine, and so is one entered by a coroutine on any
@@ -41,8 +41,12 @@ in another `runBlocking`, or on an executor dispatcher whose threads are plain `
 `asCoroutineDispatcher` over a JDK `ScheduledThreadPoolExecutor`, or `newSingleThreadContext`, whose
 `Executors.unconfigurableExecutorService` wrapper the woven `execute` looks through to the pool
 behind it (#1107). On an ordinary thread outside any coroutine, its intended use, nothing is
-reported (#1007). A `Mutex` treated as reentrant
-and races across suspensions need a coroutine owner model and are still
+reported (#1007). The third is `KOTLIN_MUTEX_REENTRANCY`: a `Mutex` locked again by the coroutine
+that holds it, directly or from a `withContext`, `coroutineScope` or `withTimeout` block it is
+suspended for. kotlinx `Mutex` is not reentrant, so that lock waits forever. The woven `lock` reads
+the coroutine's `Job` from its continuation and records it as the holder when it takes the mutex
+without waiting; a holder that had to wait, or took it with `tryLock`, is not known, and a lock
+under it is not judged. Races across suspensions are still
 [#1007](https://github.com/PIsberg/async-test-lib/issues/1007).
 Fixture:
 [`consumer-fixture-langs/kotlin`](../consumer-fixture-langs/kotlin); a fuller example with a

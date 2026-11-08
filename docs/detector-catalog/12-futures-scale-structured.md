@@ -330,3 +330,33 @@ against, so a detector for it would be a guess dressed as a measurement.
   var d = AsyncTestContext.blockingOnNonBlockingThreadDetector();
   d.recordBlockingCall("JDBC query", Thread.currentThread());   // inside the event-loop task
   ```
+
+### 149. Kotlin Mutex Reentrancy
+* **Severity**: `HIGH`
+* **Trust tier**: **prompt** — the holder and every lock are the woven kotlinx calls themselves, so the evidence class is `OBSERVED`; it stays a prompt until a corpus case backs it in both directions.
+* **Description**: Detects a Kotlin coroutine `Mutex` locked again by the coroutine that holds it. `kotlinx.coroutines.sync.Mutex` is not reentrant, so a `lock()` by its holder waits for an unlock only the holder can make, and the coroutine hangs. The usual shape hides the second lock behind a scope: the block of `withContext`, `coroutineScope`, `supervisorScope` or `withTimeout` runs as a child coroutine its caller is suspended for, so a `withLock` inside it waits for the outer `withLock` to end, and that waits for the block. kotlinx records no holder unless the caller passes an owner token, so the agent records one (#1007): with `collections=true`, each `lock`, `unlock` and `tryLock` call site, the ones an inlined `withLock` compiles to included, is woven by owner, name and descriptor, and the hook reads the calling coroutine's `Job` from the call's continuation. A `lock` that takes the mutex without waiting makes that `Job` the holder; a `lock` that then waits while the holder is the caller, or a coroutine suspended until the caller's scope completes, is the finding. It errs toward silence: a holder that waited for the mutex, or took it through `tryLock` or `select`, is unknown, so a reentrant lock under it is missed, and a `launch` or `async` child is not counted as part of its parent, which may unlock without waiting for it. The locking code must be in the agent's `includes=`, and so must the code that unlocks: an unlock the agent does not see leaves the holder recorded.
+* **Buggy Code**:
+  ```kotlin
+  suspend fun refresh() = mutex.withLock {
+      val fresh = withContext(Dispatchers.IO) { load() }
+      update(fresh)
+  }
+
+  suspend fun update(value: Data) = mutex.withLock { cache = value }   // waits for refresh's lock, forever
+  ```
+* **Fixed Code**:
+  ```kotlin
+  suspend fun refresh() {
+      val fresh = withContext(Dispatchers.IO) { load() }   // nothing locked while loading
+      mutex.withLock { updateLocked(fresh) }
+  }
+
+  private fun updateLocked(value: Data) { cache = value }      // assumes the caller holds the lock
+  ```
+* **Detect**:
+  ```java
+  var d = AsyncTestContext.kotlinMutexReentrancyDetector();
+  d.recordAcquired(mutex, outerJob);                                  // took it without waiting
+  int held = d.holderAmong(mutex, List.of(innerJob, outerJob));      // 1: the outer job holds it
+  d.recordReentry(mutex, List.of("DispatchedCoroutine", "BlockingCoroutine"), held, Thread.currentThread());
+  ```

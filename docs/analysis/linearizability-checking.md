@@ -5,7 +5,7 @@ failures reported as their shortest impossible prefix since 2026-10-17.
 
 ## The gap
 
-The 148 detectors recognise known race shapes: a shared `SimpleDateFormat`, a check-then-act on a
+The 149 detectors recognise known race shapes: a shared `SimpleDateFormat`, a check-then-act on a
 `ConcurrentMap`, a lock taken in two orders. A data structure that returns a wrong answer without
 matching any of those shapes passes. A concurrent counter whose increment is a read followed by a
 write can hand two threads the same value, and unless the test author asserts on that exact

@@ -423,6 +423,8 @@ public final class AsyncTestConfig {
     public final boolean detectProcessStreamStarvation;
     /** Whether {@link DetectorType#BLOCKING_ON_NON_BLOCKING_THREAD} is enabled for this run. */
     public final boolean detectBlockingOnNonBlockingThread;
+    /** Whether {@link DetectorType#KOTLIN_MUTEX_REENTRANCY} is enabled for this run. */
+    public final boolean detectKotlinMutexReentrancy;
 
     // ---- Benchmarking ----
     /** Resolved value of {@link AsyncTest#enableBenchmarking()} for this run. */
@@ -615,6 +617,7 @@ public final class AsyncTestConfig {
         detectLazyCollectionMisuse = enabled.contains(DetectorType.LAZY_COLLECTION_MISUSE);
         detectProcessStreamStarvation = enabled.contains(DetectorType.PROCESS_STREAM_STARVATION);
         detectBlockingOnNonBlockingThread = enabled.contains(DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD);
+        detectKotlinMutexReentrancy = enabled.contains(DetectorType.KOTLIN_MUTEX_REENTRANCY);
         enableBenchmarking             = b.enableBenchmarking;
         benchmarkRegressionThreshold   = b.benchmarkRegressionThreshold;
         failOnBenchmarkRegression      = b.failOnBenchmarkRegression;
@@ -1771,6 +1774,12 @@ public final class AsyncTestConfig {
          * @return this builder
          */
         public Builder detectBlockingOnNonBlockingThread(boolean v) { return flag(DetectorType.BLOCKING_ON_NON_BLOCKING_THREAD, v); }
+        /**
+         * Sets {@link AsyncTestConfig#detectKotlinMutexReentrancy}.
+         * @param v the value to use
+         * @return this builder
+         */
+        public Builder detectKotlinMutexReentrancy(boolean v) { return flag(DetectorType.KOTLIN_MUTEX_REENTRANCY, v); }
         /**
          * Sets {@link AsyncTestConfig#enableBenchmarking}.
          * @param v the value to use

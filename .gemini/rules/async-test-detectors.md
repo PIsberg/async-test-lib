@@ -51,6 +51,9 @@
 ### se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/JdbcConnectionSharedDetectorTest.java
 
+### se.deversity.asynctest.diagnostics.KotlinMutexReentrancyDetector
+- **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/KotlinMutexReentrancyDetectorTest.java
+
 ### se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector
 - **Test Location**: src/test/java/se/deversity/asynctest/diagnostics/LambdaLostUpdateDetectorTest.java
 
@@ -209,6 +212,10 @@
 ### se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector
 - **Strategy**: OTHER
 - **Note**: ConcurrentHashMap-backed JDBC-resource tracking; per-resource State holds ConcurrentHashMap.newKeySet() for accessing threads.
+
+### se.deversity.asynctest.diagnostics.KotlinMutexReentrancyDetector
+- **Strategy**: OTHER
+- **Note**: Per-mutex state in the weakly keyed ConcurrentHashMap of AbstractInstanceDetector; the holder is a volatile weak reference, and a reentry writes its description before its count.
 
 ### se.deversity.asynctest.diagnostics.LambdaLostUpdateDetector
 - **Strategy**: OTHER

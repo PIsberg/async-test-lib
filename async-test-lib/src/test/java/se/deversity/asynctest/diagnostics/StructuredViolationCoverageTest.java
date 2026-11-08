@@ -319,6 +319,15 @@ class StructuredViolationCoverageTest {
                         new BlockingOnNonBlockingThreadDetectorTest.ReactorThread(() -> { }));
                 return d.analyze();
             }),
+            new Path("KotlinMutexReentrancyDetector", "Mutex locked again by its holder's scope", () -> {
+                var d = new KotlinMutexReentrancyDetector();
+                Object mutex = new Object();
+                Object holder = new Object();
+                d.recordAcquired(mutex, holder);
+                d.recordReentry(mutex, List.of("DispatchedCoroutine", "BlockingCoroutine"),
+                        d.holderAmong(mutex, List.of(new Object(), holder)), Thread.currentThread());
+                return d.analyze();
+            }),
             new Path("LockUpgradeDeadlockDetector", "write lock attempted under the read lock", () -> {
                 var d = new LockUpgradeDeadlockDetector();
                 var lock = new ReentrantReadWriteLock();

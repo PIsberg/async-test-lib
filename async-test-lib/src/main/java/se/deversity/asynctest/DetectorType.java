@@ -376,5 +376,7 @@ public enum DetectorType {
     /** Detects Process.waitFor() on a child whose stdout or stderr is a pipe no other thread drains - the child blocks once the pipe fills, and the wait never returns. */
     PROCESS_STREAM_STARVATION,
     /** Detects a blocking call (a sleep, a join or get of a pending future, a latch await, a take) on a thread that must not block: a Reactor non-blocking scheduler thread, a Netty or Vert.x event loop, or a Kotlin Dispatchers.Default worker. */
-    BLOCKING_ON_NON_BLOCKING_THREAD
+    BLOCKING_ON_NON_BLOCKING_THREAD,
+    /** Detects a Kotlin coroutine Mutex locked again by the coroutine that holds it, directly or from a withContext, coroutineScope or withTimeout block it waits for - kotlinx Mutex is not reentrant, so the coroutine hangs. */
+    KOTLIN_MUTEX_REENTRANCY
 }
