@@ -20,8 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   coroutine's `Job`, read from the continuation. A lock that waits while the mutex's own `holdsLock`
   says the caller's token, or that of a coroutine suspended for its scope, holds it is reported, so
   an unlock the agent does not see cannot leave a stale holder (#1221), and a lock that had to wait
-  counts once it is granted (#1220). It errs toward silence: a coroutine that took the mutex with
-  `tryLock`, `select` or a lock outside `includes=` holds no token, and a `launch` or `async` child
+  counts once it is granted (#1220). A `tryLock` takes no continuation, so the agent passes the one
+  of the suspend function or lambda it is called in, and a mutex it takes holds the caller's token
+  too (#1220). It errs toward silence: a coroutine that took the mutex with `select`, with a
+  `tryLock` outside any suspend function, or with a lock outside `includes=` holds no token, and a
+  `launch` or `async` child
   is not part of its parent. `VERDICT`, backed by a corpus pair in both directions. Proven against real kotlinx 1.11 in `consumer-fixture-langs/kotlin`, red with the weaver
   off, with a silent twin.
 

@@ -27,7 +27,14 @@ import java.util.List;
  * {@code INVOKESTATIC} of a hook that takes the same stack, the Kotlin types written as
  * {@code Object}, and returns the same result: the receiver and owner, the continuation for a lock,
  * and for a bridge its mask and marker. The hook makes the original call through a handle, so no
- * frame or stack depth changes. Neither {@code Mutex} nor the Kotlin types in its descriptors are on
+ * frame changes.
+ *
+ * <p>A {@code tryLock} takes no continuation, so the coroutine making it could not be named (#1220).
+ * Before its hook the weaver loads the continuation of the function the call is made in: {@code this}
+ * in a suspend lambda's {@code invokeSuspend(Object)}, the trailing {@code Continuation} parameter of
+ * a suspend function, or {@code null} anywhere else; the hook takes it as one more argument, so the
+ * stack only grows by one. A slot the method stores a non-reference into before the call is not
+ * loaded, since the verifier would refuse it; javac and kotlinc never do that to a parameter. Neither {@code Mutex} nor the Kotlin types in its descriptors are on
  * the agent's class path, so, as with {@link RunBlockingWeaver}, a call is matched by the owner,
  * name and descriptor written at the call site; a descriptor from some other kotlinx is left alone
  * rather than substituted by a hook that could not make it.
@@ -45,9 +52,17 @@ final class KotlinMutexWeaver implements AsmVisitorWrapper {
     private static final String MUTEX = "L" + OWNER + ";";
     private static final String CONTINUATION = "Lkotlin/coroutines/Continuation;";
 
-    /** One substituted call: what the call site says, and the hook it becomes. */
+    /**
+     * One substituted call: what the call site says, the hook it becomes, and whether the enclosing
+     * coroutine's continuation is loaded as the hook's last argument.
+     */
     record Row(int opcode, String name, String descriptor, String hook, String hookDescriptor,
-               List<Class<?>> hookParameters) {
+               List<Class<?>> hookParameters, boolean passesCaller) {
+
+        Row(int opcode, String name, String descriptor, String hook, String hookDescriptor,
+            List<Class<?>> hookParameters) {
+            this(opcode, name, descriptor, hook, hookDescriptor, hookParameters, false);
+        }
     }
 
     /** The six call shapes, as kotlinx 1.11 compiles them. */
@@ -65,11 +80,40 @@ final class KotlinMutexWeaver implements AsmVisitorWrapper {
                     "kotlinMutexUnlockDefault", "(" + OBJ + OBJ + "I" + OBJ + ")V",
                     List.of(Object.class, Object.class, int.class, Object.class)),
             new Row(Opcodes.INVOKEINTERFACE, "tryLock", "(" + OBJ + ")Z",
-                    "kotlinMutexTryLock", "(" + OBJ + OBJ + ")Z",
-                    List.of(Object.class, Object.class)),
+                    "kotlinMutexTryLockIn", "(" + OBJ + OBJ + OBJ + ")Z",
+                    List.of(Object.class, Object.class, Object.class), true),
             new Row(Opcodes.INVOKESTATIC, "tryLock$default", "(" + MUTEX + OBJ + "I" + OBJ + ")Z",
-                    "kotlinMutexTryLockDefault", "(" + OBJ + OBJ + "I" + OBJ + ")Z",
-                    List.of(Object.class, Object.class, int.class, Object.class)));
+                    "kotlinMutexTryLockDefaultIn", "(" + OBJ + OBJ + "I" + OBJ + OBJ + ")Z",
+                    List.of(Object.class, Object.class, int.class, Object.class, Object.class), true));
+
+    /** A suspend lambda's body: {@code this} is the coroutine's continuation. */
+    private static final String INVOKE_SUSPEND = "invokeSuspend";
+    private static final String INVOKE_SUSPEND_DESCRIPTOR = "(" + OBJ + ")" + OBJ;
+
+    /**
+     * {@return the local holding the continuation of the coroutine a method runs in, or -1 for none}
+     * {@code this} in an instance {@code invokeSuspend(Object)}, the body of a suspend lambda; the
+     * last parameter of a method whose last parameter is a {@code Continuation}, a suspend function.
+     *
+     * @param access     the method's access flags
+     * @param name       its name
+     * @param descriptor its descriptor
+     */
+    static int continuationSlot(int access, String name, String descriptor) {
+        boolean isStatic = (access & Opcodes.ACC_STATIC) != 0;
+        if (!isStatic && INVOKE_SUSPEND.equals(name) && INVOKE_SUSPEND_DESCRIPTOR.equals(descriptor)) {
+            return 0;
+        }
+        Type[] arguments = Type.getArgumentTypes(descriptor);
+        if (arguments.length == 0 || !CONTINUATION.equals(arguments[arguments.length - 1].getDescriptor())) {
+            return -1;
+        }
+        int slot = isStatic ? 0 : 1;
+        for (int i = 0; i < arguments.length - 1; i++) {
+            slot += arguments[i].getSize();
+        }
+        return slot;
+    }
 
     private final String hookOwner;
 
@@ -137,11 +181,39 @@ final class KotlinMutexWeaver implements AsmVisitorWrapper {
                                              String signature, String[] exceptions) {
                 MethodVisitor delegate = super.visitMethod(access, name, descriptor, signature, exceptions);
                 return new MethodVisitor(Opcodes.ASM9, delegate) {
+                    /** The continuation's local, until a non-reference store makes it unloadable. */
+                    private int caller = continuationSlot(access, name, descriptor);
+
+                    @Override
+                    public void visitVarInsn(int opcode, int slot) {
+                        boolean wide = opcode == Opcodes.LSTORE || opcode == Opcodes.DSTORE;
+                        if (opcode >= Opcodes.ISTORE && opcode < Opcodes.ASTORE
+                                && (slot == caller || (wide && slot + 1 == caller))) {
+                            caller = -1;
+                        }
+                        super.visitVarInsn(opcode, slot);
+                    }
+
+                    @Override
+                    public void visitIincInsn(int slot, int increment) {
+                        if (slot == caller) {
+                            caller = -1;
+                        }
+                        super.visitIincInsn(slot, increment);
+                    }
+
                     @Override
                     public void visitMethodInsn(int opcode, String owner, String method, String desc,
                                                 boolean isInterface) {
                         Row row = match(opcode, owner, method, desc);
                         if (row != null) {
+                            if (row.passesCaller()) {
+                                if (caller >= 0) {
+                                    super.visitVarInsn(Opcodes.ALOAD, caller);
+                                } else {
+                                    super.visitInsn(Opcodes.ACONST_NULL);
+                                }
+                            }
                             super.visitMethodInsn(Opcodes.INVOKESTATIC, hookOwner, row.hook(),
                                     row.hookDescriptor(), false);
                         } else {

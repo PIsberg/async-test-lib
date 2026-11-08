@@ -103,6 +103,48 @@ class MutexBridges {
     }
 
     /**
+     * The misuse after a `tryLock` (#1220): the coroutine takes the mutex without waiting through
+     * `tryLock`, in the `runBlocking` lambda itself, and its `coroutineScope` block locks it again.
+     */
+    fun reenterAfterTryLock(): Boolean = runBlocking {
+        val mutex = Mutex()
+        check(mutex.tryLock()) { "a fresh mutex refused tryLock" }
+        try {
+            withTimeoutOrNull(TIMEOUT_MS) {
+                coroutineScope {
+                    mutex.lock()
+                    mutex.unlock()
+                    true
+                }
+            } ?: false
+        } finally {
+            mutex.unlock()
+        }
+    }
+
+    /** The same after a `tryLock` in a named suspend function, whose `supervisorScope` relocks (#1220). */
+    fun reenterAfterTryLockInASuspendFunction(): Boolean = runBlocking { tryLockThenReenter(Mutex()) }
+
+    private suspend fun tryLockThenReenter(mutex: Mutex): Boolean {
+        check(mutex.tryLock()) { "a fresh mutex refused tryLock" }
+        try {
+            return withTimeoutOrNull(TIMEOUT_MS) {
+                supervisorScope { mutex.withLock { true } }
+            } ?: false
+        } finally {
+            mutex.unlock()
+        }
+    }
+
+    /** Silent: a `tryLock`, an unlock, then a lock by the same coroutine, which is free by then. */
+    fun lockAfterTryLockIsReleased(): Boolean = runBlocking {
+        val mutex = Mutex()
+        check(mutex.tryLock()) { "a fresh mutex refused tryLock" }
+        mutex.unlock()
+        coroutineScope { mutex.withLock { true } }
+    }
+
+    /**
      * Silent (#1221): the mutex is unlocked, then taken by another coroutine, both through
      * [UnwovenMutex], and the first coroutine's next woven lock waits for that other holder, which
      * lets go. Returns whether that lock was taken.

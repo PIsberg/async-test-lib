@@ -41,9 +41,12 @@ import java.util.function.Predicate;
  * cannot leave a holder behind (#1221), and a lock that waited holds its token once it is granted
  * (#1220).
  *
- * <p>It errs toward silence. A coroutine that took the mutex through {@code tryLock} or
- * {@code select}, or in a class the agent does not weave, holds no token of the agent's, so a
- * reentrant lock under it is missed. A {@code launch} or {@code async} child is not counted as part
+ * <p>A {@code tryLock} takes no continuation, so the agent passes the one of the suspend function or
+ * lambda it is called in, and a mutex it takes is kept with that {@code Job} too (#1220).
+ *
+ * <p>It errs toward silence. A coroutine that took the mutex through {@code select}, through a
+ * {@code tryLock} outside any suspend function, or in a class the agent does not weave, holds no
+ * token of the agent's, so a reentrant lock under it is missed. A {@code launch} or {@code async} child is not counted as part
  * of its parent: the parent may unlock without waiting for it, and the child then simply waits its
  * turn.
  *
