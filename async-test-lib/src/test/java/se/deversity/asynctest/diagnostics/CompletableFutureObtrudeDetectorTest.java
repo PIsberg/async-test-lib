@@ -78,4 +78,21 @@ class CompletableFutureObtrudeDetectorTest {
         CompletableFutureObtrudeDetector d = new CompletableFutureObtrudeDetector();
         AbstractInstanceDetectorTest.assertNotRetained(CompletableFuture<Void>::new, f -> d.recordObtrude(f, null, Thread.currentThread()));
     }
+
+    /**
+     * A recordObtrude still under way has registered the future but not yet set its thread or
+     * count. analyze() put that null thread into Map.of and threw, so a worker still recording
+     * dropped the run's whole report (DetectorAnalysisUnderConcurrentWritesTest, #1212). This
+     * builds the half-recorded state directly instead of waiting for the scheduler to.
+     */
+    @Test
+    void aFutureRegisteredButNotYetRecordedIsNotReported() {
+        CompletableFutureObtrudeDetector d = new CompletableFutureObtrudeDetector();
+        d.stateFor(new CompletableFuture<String>(), "mid-record", "CompletableFuture");
+
+        CompletableFutureObtrudeDetector.Report report = assertDoesNotThrow(d::analyze);
+
+        assertFalse(report.hasIssues());
+        assertTrue(report.structuredViolations.isEmpty());
+    }
 }

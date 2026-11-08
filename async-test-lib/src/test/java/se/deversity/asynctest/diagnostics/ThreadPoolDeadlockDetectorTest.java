@@ -261,4 +261,31 @@ class ThreadPoolDeadlockDetectorTest {
         ThreadPoolDeadlockDetector d = new ThreadPoolDeadlockDetector();
         AbstractInstanceDetectorTest.assertNotRetained(() -> new java.util.concurrent.ThreadPoolExecutor(1, 1, 0, java.util.concurrent.TimeUnit.SECONDS, new java.util.concurrent.LinkedBlockingQueue<Runnable>()), e -> d.registerPool(e, null));
     }
+
+    /**
+     * The report's total and its pool list must come from the same pass. analyze() listed the
+     * pools, then read the detector-wide risk count; a submission recorded in between (or a pool
+     * whose weak key was cleared) left a total above zero with no pool listed, and the report
+     * claimed an issue it had no structured violation for (#1212). Dropping the pool's state
+     * while the detector-wide count stays reproduces that gap without depending on timing.
+     */
+    @Test
+    void aRiskWithNoListedPoolDoesNotMakeAnIssue() {
+        ThreadPoolDeadlockDetector detector = new ThreadPoolDeadlockDetector();
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            detector.registerPool(pool, "single");
+            detector.recordNestedSubmission(pool, "single");
+            assertEquals(1, detector.getDeadlockRiskCount());
+            detector.clearStates();
+
+            ThreadPoolDeadlockDetector.ThreadPoolDeadlockReport report =
+                    assertDoesNotThrow(detector::analyze);
+
+            assertFalse(report.hasIssues());
+            assertEquals(report.hasIssues(), !report.structuredViolations.isEmpty());
+        } finally {
+            pool.shutdownNow();
+        }
+    }
 }
