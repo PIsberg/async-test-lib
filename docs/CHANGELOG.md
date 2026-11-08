@@ -87,9 +87,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `reduce`, `min`, `max` and the matches; `toList`, `toArray`, `count` and the finds end a pipeline
   the same way. A plain counter or a shared `ArrayList` in a parallel `map` drew a finding only from
   the caller's own elements before. A combiner, a `reduce` operator or a comparator is ordered after
-  the subtasks that built what it merges, so a correct three-argument `collect` stays silent. A
-  primitive stream's `map` and `filter`, a stage behind `sorted`, `distinct`, `limit` or `mapToInt`, a
-  pipeline ended by `iterator()` and a `Collector`'s own functions are still not followed.
+  the subtasks that built what it merges, so a correct three-argument `collect` stays silent.
+  `IntStream`, `LongStream` and `DoubleStream` are followed the same way: `map`, `filter`, `peek` and
+  `mapToObj`, and the terminal operations `forEachOrdered`, `reduce`, `collect`, the matches, `sum`,
+  `count`, `average`, `min`, `max`, `summaryStatistics`, `toArray` and the finds. A pipeline stays
+  followed across `Stream.mapToInt`, `mapToLong` and `mapToDouble`, a primitive stream's `mapToObj`
+  and `boxed`, so `list.parallelStream().mapToInt(...).sum()` reaches the workers. A stage behind
+  `sorted`, `distinct`, `limit` or `skip`, a pipeline ended by `iterator()` and a `Collector`'s own
+  functions are still not followed.
 - A happens-before clock past its 4,096-thread cap now drops the entries of threads that have ended
   before those of running ones (#1172). It dropped the lowest ids first, and a long run starts
   thousands of workers after the common pool's threads, so the pool threads, still working, went

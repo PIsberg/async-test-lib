@@ -53,6 +53,23 @@ import java.util.stream.DoubleStream;
 import java.util.stream.LongStream;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import java.util.function.IntUnaryOperator;
+import java.util.function.IntPredicate;
+import java.util.function.IntBinaryOperator;
+import java.util.function.ObjIntConsumer;
+import java.util.function.ToIntFunction;
+import java.util.function.LongUnaryOperator;
+import java.util.function.LongPredicate;
+import java.util.function.LongFunction;
+import java.util.function.LongBinaryOperator;
+import java.util.function.ObjLongConsumer;
+import java.util.function.ToLongFunction;
+import java.util.function.DoubleUnaryOperator;
+import java.util.function.DoublePredicate;
+import java.util.function.DoubleFunction;
+import java.util.function.DoubleBinaryOperator;
+import java.util.function.ObjDoubleConsumer;
+import java.util.function.ToDoubleFunction;
 import java.util.function.DoubleConsumer;
 import java.util.function.LongConsumer;
 import java.util.function.IntConsumer;
@@ -887,6 +904,75 @@ final class CollectionAccessWeaver {
             Entry.call(Stream.class, "count", "streamCount"),
             Entry.call(Stream.class, "findFirst", "streamFindFirst"),
             Entry.call(Stream.class, "findAny", "streamFindAny"),
+            // The same for IntStream, LongStream and DoubleStream, and across the bridges
+            // between a Stream and them: mapToInt, mapToLong, mapToDouble, mapToObj and boxed
+            // keep the stages behind them in the pipeline they return (#1172).
+            Entry.call(Stream.class, "mapToInt", "streamMapToInt", ToIntFunction.class),
+            Entry.call(Stream.class, "mapToLong", "streamMapToLong", ToLongFunction.class),
+            Entry.call(Stream.class, "mapToDouble", "streamMapToDouble", ToDoubleFunction.class),
+            Entry.call(IntStream.class, "map", "intStreamMap", IntUnaryOperator.class),
+            Entry.call(IntStream.class, "filter", "intStreamFilter", IntPredicate.class),
+            Entry.call(IntStream.class, "peek", "intStreamPeek", IntConsumer.class),
+            Entry.call(IntStream.class, "mapToObj", "intStreamMapToObj", IntFunction.class),
+            Entry.call(IntStream.class, "boxed", "intStreamBoxed"),
+            Entry.call(IntStream.class, "forEachOrdered", "intStreamForEachOrdered", IntConsumer.class),
+            Entry.call(IntStream.class, "reduce", "intStreamReduce", int.class, IntBinaryOperator.class),
+            Entry.call(IntStream.class, "reduce", "intStreamReduce", IntBinaryOperator.class),
+            Entry.call(IntStream.class, "collect", "intStreamCollect", Supplier.class, ObjIntConsumer.class, BiConsumer.class),
+            Entry.call(IntStream.class, "anyMatch", "intStreamAnyMatch", IntPredicate.class),
+            Entry.call(IntStream.class, "allMatch", "intStreamAllMatch", IntPredicate.class),
+            Entry.call(IntStream.class, "noneMatch", "intStreamNoneMatch", IntPredicate.class),
+            Entry.call(IntStream.class, "sum", "intStreamSum"),
+            Entry.call(IntStream.class, "count", "intStreamCount"),
+            Entry.call(IntStream.class, "average", "intStreamAverage"),
+            Entry.call(IntStream.class, "min", "intStreamMin"),
+            Entry.call(IntStream.class, "max", "intStreamMax"),
+            Entry.call(IntStream.class, "summaryStatistics", "intStreamSummaryStatistics"),
+            Entry.call(IntStream.class, "toArray", "intStreamToArray"),
+            Entry.call(IntStream.class, "findFirst", "intStreamFindFirst"),
+            Entry.call(IntStream.class, "findAny", "intStreamFindAny"),
+            Entry.call(LongStream.class, "map", "longStreamMap", LongUnaryOperator.class),
+            Entry.call(LongStream.class, "filter", "longStreamFilter", LongPredicate.class),
+            Entry.call(LongStream.class, "peek", "longStreamPeek", LongConsumer.class),
+            Entry.call(LongStream.class, "mapToObj", "longStreamMapToObj", LongFunction.class),
+            Entry.call(LongStream.class, "boxed", "longStreamBoxed"),
+            Entry.call(LongStream.class, "forEachOrdered", "longStreamForEachOrdered", LongConsumer.class),
+            Entry.call(LongStream.class, "reduce", "longStreamReduce", long.class, LongBinaryOperator.class),
+            Entry.call(LongStream.class, "reduce", "longStreamReduce", LongBinaryOperator.class),
+            Entry.call(LongStream.class, "collect", "longStreamCollect", Supplier.class, ObjLongConsumer.class, BiConsumer.class),
+            Entry.call(LongStream.class, "anyMatch", "longStreamAnyMatch", LongPredicate.class),
+            Entry.call(LongStream.class, "allMatch", "longStreamAllMatch", LongPredicate.class),
+            Entry.call(LongStream.class, "noneMatch", "longStreamNoneMatch", LongPredicate.class),
+            Entry.call(LongStream.class, "sum", "longStreamSum"),
+            Entry.call(LongStream.class, "count", "longStreamCount"),
+            Entry.call(LongStream.class, "average", "longStreamAverage"),
+            Entry.call(LongStream.class, "min", "longStreamMin"),
+            Entry.call(LongStream.class, "max", "longStreamMax"),
+            Entry.call(LongStream.class, "summaryStatistics", "longStreamSummaryStatistics"),
+            Entry.call(LongStream.class, "toArray", "longStreamToArray"),
+            Entry.call(LongStream.class, "findFirst", "longStreamFindFirst"),
+            Entry.call(LongStream.class, "findAny", "longStreamFindAny"),
+            Entry.call(DoubleStream.class, "map", "doubleStreamMap", DoubleUnaryOperator.class),
+            Entry.call(DoubleStream.class, "filter", "doubleStreamFilter", DoublePredicate.class),
+            Entry.call(DoubleStream.class, "peek", "doubleStreamPeek", DoubleConsumer.class),
+            Entry.call(DoubleStream.class, "mapToObj", "doubleStreamMapToObj", DoubleFunction.class),
+            Entry.call(DoubleStream.class, "boxed", "doubleStreamBoxed"),
+            Entry.call(DoubleStream.class, "forEachOrdered", "doubleStreamForEachOrdered", DoubleConsumer.class),
+            Entry.call(DoubleStream.class, "reduce", "doubleStreamReduce", double.class, DoubleBinaryOperator.class),
+            Entry.call(DoubleStream.class, "reduce", "doubleStreamReduce", DoubleBinaryOperator.class),
+            Entry.call(DoubleStream.class, "collect", "doubleStreamCollect", Supplier.class, ObjDoubleConsumer.class, BiConsumer.class),
+            Entry.call(DoubleStream.class, "anyMatch", "doubleStreamAnyMatch", DoublePredicate.class),
+            Entry.call(DoubleStream.class, "allMatch", "doubleStreamAllMatch", DoublePredicate.class),
+            Entry.call(DoubleStream.class, "noneMatch", "doubleStreamNoneMatch", DoublePredicate.class),
+            Entry.call(DoubleStream.class, "sum", "doubleStreamSum"),
+            Entry.call(DoubleStream.class, "count", "doubleStreamCount"),
+            Entry.call(DoubleStream.class, "average", "doubleStreamAverage"),
+            Entry.call(DoubleStream.class, "min", "doubleStreamMin"),
+            Entry.call(DoubleStream.class, "max", "doubleStreamMax"),
+            Entry.call(DoubleStream.class, "summaryStatistics", "doubleStreamSummaryStatistics"),
+            Entry.call(DoubleStream.class, "toArray", "doubleStreamToArray"),
+            Entry.call(DoubleStream.class, "findFirst", "doubleStreamFindFirst"),
+            Entry.call(DoubleStream.class, "findAny", "doubleStreamFindAny"),
             // A submit whose future the caller pops can never be inspected, so the task's
             // exception reaches nobody; the POP becomes submitResultDiscarded, and a store, a
             // return or a get is left alone.

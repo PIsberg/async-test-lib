@@ -774,6 +774,276 @@ class DiscardedOfferWeavingTest {
             return receiver.findAny();
         }
 
+        public static java.util.stream.IntStream streamMapToInt(java.util.stream.Stream<Object> receiver, java.util.function.ToIntFunction<Object> mapper) {
+            return receiver.mapToInt(mapper);
+        }
+
+        public static java.util.stream.LongStream streamMapToLong(java.util.stream.Stream<Object> receiver, java.util.function.ToLongFunction<Object> mapper) {
+            return receiver.mapToLong(mapper);
+        }
+
+        public static java.util.stream.DoubleStream streamMapToDouble(java.util.stream.Stream<Object> receiver, java.util.function.ToDoubleFunction<Object> mapper) {
+            return receiver.mapToDouble(mapper);
+        }
+
+        public static java.util.stream.IntStream intStreamMap(java.util.stream.IntStream receiver, java.util.function.IntUnaryOperator mapper) {
+            return receiver.map(mapper);
+        }
+
+        public static java.util.stream.IntStream intStreamFilter(java.util.stream.IntStream receiver, java.util.function.IntPredicate predicate) {
+            return receiver.filter(predicate);
+        }
+
+        public static java.util.stream.IntStream intStreamPeek(java.util.stream.IntStream receiver, java.util.function.IntConsumer action) {
+            return receiver.peek(action);
+        }
+
+        public static java.util.stream.Stream<Object> intStreamMapToObj(java.util.stream.IntStream receiver, java.util.function.IntFunction<Object> mapper) {
+            return receiver.mapToObj(mapper);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.stream.Stream<Object> intStreamBoxed(java.util.stream.IntStream receiver) {
+            return (java.util.stream.Stream<Object>) (java.util.stream.Stream<?>) receiver.boxed();
+        }
+
+        public static void intStreamForEachOrdered(java.util.stream.IntStream receiver, java.util.function.IntConsumer action) {
+            receiver.forEachOrdered(action);
+        }
+
+        public static int intStreamReduce(java.util.stream.IntStream receiver, int identity, java.util.function.IntBinaryOperator operator) {
+            return receiver.reduce(identity, operator);
+        }
+
+        public static java.util.OptionalInt intStreamReduce(java.util.stream.IntStream receiver, java.util.function.IntBinaryOperator operator) {
+            return receiver.reduce(operator);
+        }
+
+        public static Object intStreamCollect(java.util.stream.IntStream receiver, java.util.function.Supplier<Object> supplier,
+                                       java.util.function.ObjIntConsumer<Object> accumulator, java.util.function.BiConsumer<Object, Object> combiner) {
+            return receiver.collect(supplier, accumulator, combiner);
+        }
+
+        public static boolean intStreamAnyMatch(java.util.stream.IntStream receiver, java.util.function.IntPredicate predicate) {
+            return receiver.anyMatch(predicate);
+        }
+
+        public static boolean intStreamAllMatch(java.util.stream.IntStream receiver, java.util.function.IntPredicate predicate) {
+            return receiver.allMatch(predicate);
+        }
+
+        public static boolean intStreamNoneMatch(java.util.stream.IntStream receiver, java.util.function.IntPredicate predicate) {
+            return receiver.noneMatch(predicate);
+        }
+
+        public static int intStreamSum(java.util.stream.IntStream receiver) {
+            return receiver.sum();
+        }
+
+        public static long intStreamCount(java.util.stream.IntStream receiver) {
+            return receiver.count();
+        }
+
+        public static java.util.OptionalDouble intStreamAverage(java.util.stream.IntStream receiver) {
+            return receiver.average();
+        }
+
+        public static java.util.OptionalInt intStreamMin(java.util.stream.IntStream receiver) {
+            return receiver.min();
+        }
+
+        public static java.util.OptionalInt intStreamMax(java.util.stream.IntStream receiver) {
+            return receiver.max();
+        }
+
+        public static java.util.IntSummaryStatistics intStreamSummaryStatistics(java.util.stream.IntStream receiver) {
+            return receiver.summaryStatistics();
+        }
+
+        public static int[] intStreamToArray(java.util.stream.IntStream receiver) {
+            return receiver.toArray();
+        }
+
+        public static java.util.OptionalInt intStreamFindFirst(java.util.stream.IntStream receiver) {
+            return receiver.findFirst();
+        }
+
+        public static java.util.OptionalInt intStreamFindAny(java.util.stream.IntStream receiver) {
+            return receiver.findAny();
+        }
+
+        public static java.util.stream.LongStream longStreamMap(java.util.stream.LongStream receiver, java.util.function.LongUnaryOperator mapper) {
+            return receiver.map(mapper);
+        }
+
+        public static java.util.stream.LongStream longStreamFilter(java.util.stream.LongStream receiver, java.util.function.LongPredicate predicate) {
+            return receiver.filter(predicate);
+        }
+
+        public static java.util.stream.LongStream longStreamPeek(java.util.stream.LongStream receiver, java.util.function.LongConsumer action) {
+            return receiver.peek(action);
+        }
+
+        public static java.util.stream.Stream<Object> longStreamMapToObj(java.util.stream.LongStream receiver, java.util.function.LongFunction<Object> mapper) {
+            return receiver.mapToObj(mapper);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.stream.Stream<Object> longStreamBoxed(java.util.stream.LongStream receiver) {
+            return (java.util.stream.Stream<Object>) (java.util.stream.Stream<?>) receiver.boxed();
+        }
+
+        public static void longStreamForEachOrdered(java.util.stream.LongStream receiver, java.util.function.LongConsumer action) {
+            receiver.forEachOrdered(action);
+        }
+
+        public static long longStreamReduce(java.util.stream.LongStream receiver, long identity, java.util.function.LongBinaryOperator operator) {
+            return receiver.reduce(identity, operator);
+        }
+
+        public static java.util.OptionalLong longStreamReduce(java.util.stream.LongStream receiver, java.util.function.LongBinaryOperator operator) {
+            return receiver.reduce(operator);
+        }
+
+        public static Object longStreamCollect(java.util.stream.LongStream receiver, java.util.function.Supplier<Object> supplier,
+                                       java.util.function.ObjLongConsumer<Object> accumulator, java.util.function.BiConsumer<Object, Object> combiner) {
+            return receiver.collect(supplier, accumulator, combiner);
+        }
+
+        public static boolean longStreamAnyMatch(java.util.stream.LongStream receiver, java.util.function.LongPredicate predicate) {
+            return receiver.anyMatch(predicate);
+        }
+
+        public static boolean longStreamAllMatch(java.util.stream.LongStream receiver, java.util.function.LongPredicate predicate) {
+            return receiver.allMatch(predicate);
+        }
+
+        public static boolean longStreamNoneMatch(java.util.stream.LongStream receiver, java.util.function.LongPredicate predicate) {
+            return receiver.noneMatch(predicate);
+        }
+
+        public static long longStreamSum(java.util.stream.LongStream receiver) {
+            return receiver.sum();
+        }
+
+        public static long longStreamCount(java.util.stream.LongStream receiver) {
+            return receiver.count();
+        }
+
+        public static java.util.OptionalDouble longStreamAverage(java.util.stream.LongStream receiver) {
+            return receiver.average();
+        }
+
+        public static java.util.OptionalLong longStreamMin(java.util.stream.LongStream receiver) {
+            return receiver.min();
+        }
+
+        public static java.util.OptionalLong longStreamMax(java.util.stream.LongStream receiver) {
+            return receiver.max();
+        }
+
+        public static java.util.LongSummaryStatistics longStreamSummaryStatistics(java.util.stream.LongStream receiver) {
+            return receiver.summaryStatistics();
+        }
+
+        public static long[] longStreamToArray(java.util.stream.LongStream receiver) {
+            return receiver.toArray();
+        }
+
+        public static java.util.OptionalLong longStreamFindFirst(java.util.stream.LongStream receiver) {
+            return receiver.findFirst();
+        }
+
+        public static java.util.OptionalLong longStreamFindAny(java.util.stream.LongStream receiver) {
+            return receiver.findAny();
+        }
+
+        public static java.util.stream.DoubleStream doubleStreamMap(java.util.stream.DoubleStream receiver, java.util.function.DoubleUnaryOperator mapper) {
+            return receiver.map(mapper);
+        }
+
+        public static java.util.stream.DoubleStream doubleStreamFilter(java.util.stream.DoubleStream receiver, java.util.function.DoublePredicate predicate) {
+            return receiver.filter(predicate);
+        }
+
+        public static java.util.stream.DoubleStream doubleStreamPeek(java.util.stream.DoubleStream receiver, java.util.function.DoubleConsumer action) {
+            return receiver.peek(action);
+        }
+
+        public static java.util.stream.Stream<Object> doubleStreamMapToObj(java.util.stream.DoubleStream receiver, java.util.function.DoubleFunction<Object> mapper) {
+            return receiver.mapToObj(mapper);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static java.util.stream.Stream<Object> doubleStreamBoxed(java.util.stream.DoubleStream receiver) {
+            return (java.util.stream.Stream<Object>) (java.util.stream.Stream<?>) receiver.boxed();
+        }
+
+        public static void doubleStreamForEachOrdered(java.util.stream.DoubleStream receiver, java.util.function.DoubleConsumer action) {
+            receiver.forEachOrdered(action);
+        }
+
+        public static double doubleStreamReduce(java.util.stream.DoubleStream receiver, double identity, java.util.function.DoubleBinaryOperator operator) {
+            return receiver.reduce(identity, operator);
+        }
+
+        public static java.util.OptionalDouble doubleStreamReduce(java.util.stream.DoubleStream receiver, java.util.function.DoubleBinaryOperator operator) {
+            return receiver.reduce(operator);
+        }
+
+        public static Object doubleStreamCollect(java.util.stream.DoubleStream receiver, java.util.function.Supplier<Object> supplier,
+                                       java.util.function.ObjDoubleConsumer<Object> accumulator, java.util.function.BiConsumer<Object, Object> combiner) {
+            return receiver.collect(supplier, accumulator, combiner);
+        }
+
+        public static boolean doubleStreamAnyMatch(java.util.stream.DoubleStream receiver, java.util.function.DoublePredicate predicate) {
+            return receiver.anyMatch(predicate);
+        }
+
+        public static boolean doubleStreamAllMatch(java.util.stream.DoubleStream receiver, java.util.function.DoublePredicate predicate) {
+            return receiver.allMatch(predicate);
+        }
+
+        public static boolean doubleStreamNoneMatch(java.util.stream.DoubleStream receiver, java.util.function.DoublePredicate predicate) {
+            return receiver.noneMatch(predicate);
+        }
+
+        public static double doubleStreamSum(java.util.stream.DoubleStream receiver) {
+            return receiver.sum();
+        }
+
+        public static long doubleStreamCount(java.util.stream.DoubleStream receiver) {
+            return receiver.count();
+        }
+
+        public static java.util.OptionalDouble doubleStreamAverage(java.util.stream.DoubleStream receiver) {
+            return receiver.average();
+        }
+
+        public static java.util.OptionalDouble doubleStreamMin(java.util.stream.DoubleStream receiver) {
+            return receiver.min();
+        }
+
+        public static java.util.OptionalDouble doubleStreamMax(java.util.stream.DoubleStream receiver) {
+            return receiver.max();
+        }
+
+        public static java.util.DoubleSummaryStatistics doubleStreamSummaryStatistics(java.util.stream.DoubleStream receiver) {
+            return receiver.summaryStatistics();
+        }
+
+        public static double[] doubleStreamToArray(java.util.stream.DoubleStream receiver) {
+            return receiver.toArray();
+        }
+
+        public static java.util.OptionalDouble doubleStreamFindFirst(java.util.stream.DoubleStream receiver) {
+            return receiver.findFirst();
+        }
+
+        public static java.util.OptionalDouble doubleStreamFindAny(java.util.stream.DoubleStream receiver) {
+            return receiver.findAny();
+        }
+
         public static java.util.concurrent.CompletableFuture<Void> runAsync(Runnable r) {
             return java.util.concurrent.CompletableFuture.runAsync(r);
         }
