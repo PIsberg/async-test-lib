@@ -38,9 +38,12 @@ class SiteCaptureTest {
     }
 
     @Test
-    void aClassNestedInAnAgentHookIsSkipped() {
+    void aClassNestedInAnAgentHookIsSkipped() throws ClassNotFoundException {
         // HandedTask wraps the task a body submits to an executor; its run() sits under the task.
-        assertTrue(SiteCapture.isFrameworkClass("se.deversity.asynctest.AgentConcurrencyUtilHooks$HandedTask"),
+        // Resolved rather than spelled out: the literal outlived the class's move to
+        // AgentHandOffHooks (#1213), and a name that no longer exists passes for nothing.
+        String handedTask = Class.forName("se.deversity.asynctest.AgentHandOffHooks$HandedTask").getName();
+        assertTrue(SiteCapture.isFrameworkClass(handedTask),
                 "a nested class of a hook is the library's code too");
     }
 
