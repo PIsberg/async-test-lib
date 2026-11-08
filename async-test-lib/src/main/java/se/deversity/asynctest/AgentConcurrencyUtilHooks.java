@@ -14,6 +14,12 @@ import java.util.Collections;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collector;
+import java.util.function.Predicate;
+import java.util.function.IntFunction;
+import java.util.function.BinaryOperator;
+import java.util.Optional;
+import java.util.Comparator;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.DoubleStream;
 import java.util.stream.LongStream;
@@ -39,7 +45,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
-import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.RejectedExecutionException;
@@ -81,6 +86,13 @@ import se.deversity.asynctest.diagnostics.SemaphoreMisuseDetector;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import se.deversity.asynctest.telemetry.ControlledSchedule;
 import se.deversity.vibetags.annotations.AIContract;
+import se.deversity.asynctest.AgentHandOffHooks.Handed;
+import se.deversity.asynctest.AgentHandOffHooks.HandedAll;
+import se.deversity.asynctest.AgentHandOffHooks.HandedStage;
+import se.deversity.asynctest.AgentHandOffHooks.HandedTask;
+import se.deversity.asynctest.AgentHandOffHooks.StageBiFunction;
+import se.deversity.asynctest.AgentHandOffHooks.StageFunction;
+import se.deversity.asynctest.AgentHandOffHooks.Submissions;
 
 /**
  * Hooks for the {@code java.util.concurrent} coordination primitives.
@@ -3038,7 +3050,7 @@ public final class AgentConcurrencyUtilHooks {
      * The common-pool task the calling thread is running, for the blocking detector, while it
      * runs; unset everywhere else.
      */
-    private static final ThreadLocal<HandedTask> COMMON_POOL_TASK = new ThreadLocal<>();
+    static final ThreadLocal<HandedTask> COMMON_POOL_TASK = new ThreadLocal<>();
 
     /**
      * Hands a call that is about to block the calling thread to the two detectors that judge a
@@ -3755,6 +3767,8 @@ public final class AgentConcurrencyUtilHooks {
             Thread thread = Thread.currentThread();
             if (thread == caller) { // NOPMD CompareObjectsWithEquals - the same thread
                 body.run();
+                // For a combine on a helper, which may merge what this element built (#1172).
+                helpers.put(thread.threadId(), HappensBefore.handOff());
                 return;
             }
             HappensBefore.receive(started);
@@ -3769,6 +3783,21 @@ public final class AgentConcurrencyUtilHooks {
                 leaveTask(taskBefore);
                 AsyncTestContext.restoreLent(lentBefore);
             }
+        }
+
+        /**
+         * Runs {@code body}, a combiner, a reduce operator or a comparator, as an element ordered
+         * after every element that finished before it (#1172).
+         *
+         * <p>Each of these merges what other subtasks built, and the operation runs it only once
+         * those subtasks are done; the fork and join that order them are JDK code the agent does
+         * not see. Every element publishes its thread's clock when it ends, so receiving all of
+         * them covers the subtasks being merged. It may also cover a subtask that finished but is
+         * not merged here, which the read of the map that carries the clocks does order.
+         */
+        void combined(Runnable body) {
+            helpers.values().forEach(HappensBefore::receive);
+            element(body);
         }
 
         /** Orders the caller after every helper; the operation has returned. */
@@ -3786,17 +3815,427 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static void streamForEach(Stream<Object> receiver, Consumer<Object> action) {
+        parallelTerminal(receiver, operation -> {
+            receiver.forEach(operation == null ? action
+                    : value -> operation.element(() -> action.accept(value)));
+            return null;
+        });
+    }
+
+    // --- The rest of a parallel Stream pipeline (#1172) ----------------------------------------
+
+    /**
+     * A lambda the run gave to {@code map}, {@code filter} or {@code peek}, waiting for the
+     * terminal operation that runs it (#1172).
+     *
+     * <p>An intermediate operation only builds: whether the stream runs in parallel, and when the
+     * caller's writes are ordered before its elements, is settled by the terminal operation. So
+     * the woven terminal operation lends its {@link ParallelForEach} to every slot of its pipeline
+     * for as long as it runs. A slot nothing lends to runs its lambda as it was: a pipeline whose
+     * terminal operation is not woven, such as {@code iterator()}, would have no join to order the
+     * caller after its helpers, and lending them the run without one would report the read of a
+     * result as a race.
+     */
+    static final class StageSlot {
+
+        private volatile @Nullable ParallelForEach operation;
+
+        <T> T element(Supplier<T> body) {
+            return inElement(operation, body);
+        }
+    }
+
+    /**
+     * Per stream a woven intermediate operation returned: the slots of every woven stage behind it.
+     * Weak in the stream, which an abandoned pipeline drops, and holding only the slots, which hold
+     * nothing of the stream.
+     */
+    private static final Map<Stream<?>, List<StageSlot>> PIPELINES =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    /**
+     * Runs {@code body} as an element of {@code operation}, or as it was when there is none.
+     *
+     * @param operation the parallel operation running it, or null
+     * @param body      the lambda's own work
+     * @param <T>       what it returns
+     * @return what {@code body} returned
+     */
+    @SuppressWarnings("unchecked")
+    private static <T> T inElement(@Nullable ParallelForEach operation, Supplier<T> body) {
+        if (operation == null) {
+            return body.get();
+        }
+        Object[] result = new Object[1];
+        operation.element(() -> result[0] = body.get());
+        return (T) result[0];
+    }
+
+    /**
+     * Runs {@code body} as a combine of {@code operation} ({@link ParallelForEach#combined}), or as
+     * it was when there is none.
+     *
+     * @param operation the parallel operation running it, or null
+     * @param body      the combine's own work
+     * @param <T>       what it returns
+     * @return what {@code body} returned
+     */
+    @SuppressWarnings("unchecked")
+    private static <T> T inCombine(@Nullable ParallelForEach operation, Supplier<T> body) {
+        if (operation == null) {
+            return body.get();
+        }
+        Object[] result = new Object[1];
+        operation.combined(() -> result[0] = body.get());
+        return (T) result[0];
+    }
+
+    /**
+     * Records that {@code result} is {@code receiver} with one more woven stage, {@code slot}.
+     * {@code receiver} is linked now and can no longer be operated on, so its entry goes.
+     */
+    private static Stream<Object> staged(Stream<Object> receiver, Stream<Object> result, StageSlot slot) {
+        List<StageSlot> behind = PIPELINES.remove(receiver);
+        List<StageSlot> slots = new ArrayList<>(behind == null ? List.of() : behind);
+        slots.add(slot);
+        PIPELINES.put(result, slots);
+        return result;
+    }
+
+    /**
+     * Runs one terminal operation on {@code receiver}: with a fresh {@link ParallelForEach} lent to
+     * every woven stage of its pipeline when the stream is parallel and a run is in progress, and
+     * with null and no slot touched otherwise, which is the call as it was.
+     *
+     * <p>Every terminal operation of a stream waits for the tasks it forked, short-circuiting ones
+     * included, so when it returns no helper is still running a lambda of it: the slots are
+     * cleared and the caller receives every helper's clock, as after {@code forEach} (#1156).
+     *
+     * @param receiver  the stream
+     * @param operation the terminal operation, given the parallel operation or null
+     * @param <T>       what it returns
+     * @return what it returned
+     */
+    private static <T> T parallelTerminal(Stream<?> receiver,
+                                          Function<@Nullable ParallelForEach, T> operation) {
         ControlledSchedule.point();
+        List<StageSlot> stages = PIPELINES.remove(receiver);
         if (!receiver.isParallel() || AsyncTestContext.agentContext() == null) {
-            receiver.forEach(action);
-            return;
+            return operation.apply(null);
         }
-        ParallelForEach forEach = new ParallelForEach();
+        ParallelForEach parallel = new ParallelForEach();
+        if (stages != null) {
+            stages.forEach(slot -> slot.operation = parallel);
+        }
         try {
-            receiver.forEach(value -> forEach.element(() -> action.accept(value)));
+            return operation.apply(parallel);
         } finally {
-            forEach.joined();
+            if (stages != null) {
+                stages.forEach(slot -> slot.operation = null);
+            }
+            parallel.joined();
         }
+    }
+
+    /**
+     * Weaves {@code Stream.map}: see {@link StageSlot}. Outside a run the call is as it was.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given to each element
+     * @return the mapped stream
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamMap(Stream<Object> receiver, Function<Object, Object> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.map(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.map(value -> slot.element(() -> mapper.apply(value))), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.filter}, as {@link #streamMap}.
+     *
+     * @param receiver  the stream
+     * @param predicate what keeps an element
+     * @return the filtered stream
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamFilter(Stream<Object> receiver, Predicate<Object> predicate) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.filter(predicate);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver,
+                receiver.filter(value -> slot.element(() -> predicate.test(value))), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.peek}, as {@link #streamMap}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element as it passes
+     * @return the peeked stream
+     * @since 1.14.2
+     */
+    public static Stream<Object> streamPeek(Stream<Object> receiver, Consumer<Object> action) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.peek(action);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.peek(value -> slot.element(() -> {
+            action.accept(value);
+            return null;
+        })), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.forEachOrdered}, as {@link #streamForEach}.
+     *
+     * @param receiver the stream
+     * @param action   what to run for each element, in encounter order
+     * @since 1.14.2
+     */
+    public static void streamForEachOrdered(Stream<Object> receiver, Consumer<Object> action) {
+        parallelTerminal(receiver, operation -> {
+            receiver.forEachOrdered(operation == null ? action
+                    : value -> operation.element(() -> action.accept(value)));
+            return null;
+        });
+    }
+
+    /**
+     * Weaves {@code Stream.collect(Collector)}: the pipeline's woven stages run as its elements.
+     * The collector's own functions are left as they are; the JDK's run no woven code.
+     *
+     * @param receiver  the stream
+     * @param collector what accumulates the elements, run as it is
+     * @return what the collector produced
+     * @since 1.14.2
+     */
+    public static Object streamCollect(Stream<Object> receiver, Collector<? super Object, ?, ?> collector) {
+        return parallelTerminal(receiver, operation -> receiver.collect(collector));
+    }
+
+    /**
+     * Weaves {@code Stream.collect(Supplier, BiConsumer, BiConsumer)}: supplier and accumulator run
+     * as elements, and the combiner, which merges containers other subtasks filled, as a combine.
+     *
+     * @param receiver    the stream
+     * @param supplier    makes a container
+     * @param accumulator adds an element to one
+     * @param combiner    merges two
+     * @return the container
+     * @since 1.14.2
+     */
+    public static Object streamCollect(Stream<Object> receiver, Supplier<Object> supplier,
+                                       BiConsumer<Object, Object> accumulator,
+                                       BiConsumer<Object, Object> combiner) {
+        return parallelTerminal(receiver, operation -> operation == null
+                ? receiver.collect(supplier, accumulator, combiner)
+                : receiver.collect(() -> inElement(operation, supplier),
+                        (container, value) -> inElement(operation, () -> {
+                            accumulator.accept(container, value);
+                            return null;
+                        }),
+                        (left, right) -> inCombine(operation, () -> {
+                            combiner.accept(left, right);
+                            return null;
+                        })));
+    }
+
+    /**
+     * Weaves {@code Stream.reduce(BinaryOperator)}: the accumulator runs as a combine, since it
+     * also merges partial results other subtasks built ({@link ParallelForEach#combined}).
+     *
+     * @param receiver    the stream
+     * @param accumulator combines two values
+     * @return the reduction, if any element
+     * @since 1.14.2
+     */
+    public static Optional<Object> streamReduce(Stream<Object> receiver, BinaryOperator<Object> accumulator) {
+        return parallelTerminal(receiver, operation -> receiver.reduce(operation == null ? accumulator
+                : (left, right) -> inCombine(operation, () -> accumulator.apply(left, right))));
+    }
+
+    /**
+     * Weaves {@code Stream.reduce(Object, BinaryOperator)}, as {@link #streamReduce(Stream, BinaryOperator)}.
+     *
+     * @param receiver    the stream
+     * @param identity    the identity value
+     * @param accumulator combines two values
+     * @return the reduction
+     * @since 1.14.2
+     */
+    public static Object streamReduce(Stream<Object> receiver, Object identity,
+                                      BinaryOperator<Object> accumulator) {
+        return parallelTerminal(receiver, operation -> receiver.reduce(identity, operation == null
+                ? accumulator
+                : (left, right) -> inCombine(operation, () -> accumulator.apply(left, right))));
+    }
+
+    /**
+     * Weaves {@code Stream.reduce(Object, BiFunction, BinaryOperator)}: the accumulator runs as an
+     * element and the combiner as a combine.
+     *
+     * @param receiver    the stream
+     * @param identity    the identity value
+     * @param accumulator folds an element into a partial result
+     * @param combiner    merges two partial results
+     * @return the reduction
+     * @since 1.14.2
+     */
+    public static Object streamReduce(Stream<Object> receiver, Object identity,
+                                      BiFunction<Object, Object, Object> accumulator,
+                                      BinaryOperator<Object> combiner) {
+        return parallelTerminal(receiver, operation -> operation == null
+                ? receiver.reduce(identity, accumulator, combiner)
+                : receiver.reduce(identity,
+                        (partial, value) -> inElement(operation, () -> accumulator.apply(partial, value)),
+                        (left, right) -> inCombine(operation, () -> combiner.apply(left, right))));
+    }
+
+    /**
+     * Weaves {@code Stream.min(Comparator)}: the comparator runs as a combine, since it compares
+     * elements other subtasks produced.
+     *
+     * @param receiver   the stream
+     * @param comparator orders two values
+     * @return the least, if any element
+     * @since 1.14.2
+     */
+    public static Optional<Object> streamMin(Stream<Object> receiver, Comparator<Object> comparator) {
+        return parallelTerminal(receiver, operation -> receiver.min(compared(operation, comparator)));
+    }
+
+    /**
+     * Weaves {@code Stream.max(Comparator)}, as {@link #streamMin}.
+     *
+     * @param receiver   the stream
+     * @param comparator orders two values
+     * @return the greatest, if any element
+     * @since 1.14.2
+     */
+    public static Optional<Object> streamMax(Stream<Object> receiver, Comparator<Object> comparator) {
+        return parallelTerminal(receiver, operation -> receiver.max(compared(operation, comparator)));
+    }
+
+    private static Comparator<Object> compared(@Nullable ParallelForEach operation,
+                                               Comparator<Object> comparator) {
+        return operation == null ? comparator
+                : (left, right) -> inCombine(operation, () -> comparator.compare(left, right));
+    }
+
+    /**
+     * Weaves {@code Stream.anyMatch}: the predicate runs as an element.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether any element passed
+     * @since 1.14.2
+     */
+    public static boolean streamAnyMatch(Stream<Object> receiver, Predicate<Object> predicate) {
+        return parallelTerminal(receiver, operation -> receiver.anyMatch(tested(operation, predicate)));
+    }
+
+    /**
+     * Weaves {@code Stream.allMatch}, as {@link #streamAnyMatch}.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether every element passed
+     * @since 1.14.2
+     */
+    public static boolean streamAllMatch(Stream<Object> receiver, Predicate<Object> predicate) {
+        return parallelTerminal(receiver, operation -> receiver.allMatch(tested(operation, predicate)));
+    }
+
+    /**
+     * Weaves {@code Stream.noneMatch}, as {@link #streamAnyMatch}.
+     *
+     * @param receiver  the stream
+     * @param predicate the test
+     * @return whether no element passed
+     * @since 1.14.2
+     */
+    public static boolean streamNoneMatch(Stream<Object> receiver, Predicate<Object> predicate) {
+        return parallelTerminal(receiver, operation -> receiver.noneMatch(tested(operation, predicate)));
+    }
+
+    private static Predicate<Object> tested(@Nullable ParallelForEach operation, Predicate<Object> predicate) {
+        return operation == null ? predicate
+                : value -> inElement(operation, () -> predicate.test(value));
+    }
+
+    /**
+     * Weaves {@code Stream.toList()}: the pipeline's woven stages run as its elements.
+     *
+     * @param receiver the stream
+     * @return the elements
+     * @since 1.14.2
+     */
+    public static List<Object> streamToList(Stream<Object> receiver) {
+        return parallelTerminal(receiver, operation -> receiver.toList());
+    }
+
+    /**
+     * Weaves {@code Stream.toArray()}, as {@link #streamToList}.
+     *
+     * @param receiver the stream
+     * @return the elements
+     * @since 1.14.2
+     */
+    public static Object[] streamToArray(Stream<Object> receiver) {
+        return parallelTerminal(receiver, operation -> receiver.toArray());
+    }
+
+    /**
+     * Weaves {@code Stream.toArray(IntFunction)}, as {@link #streamToList}; the generator is the
+     * array constructor nearly always and is left as it is.
+     *
+     * @param receiver  the stream
+     * @param generator makes the array
+     * @return the elements
+     * @since 1.14.2
+     */
+    public static Object[] streamToArray(Stream<Object> receiver, IntFunction<Object[]> generator) {
+        return parallelTerminal(receiver, operation -> receiver.toArray(generator));
+    }
+
+    /**
+     * Weaves {@code Stream.count()}, as {@link #streamToList}.
+     *
+     * @param receiver the stream
+     * @return how many elements
+     * @since 1.14.2
+     */
+    public static long streamCount(Stream<Object> receiver) {
+        return parallelTerminal(receiver, operation -> receiver.count());
+    }
+
+    /**
+     * Weaves {@code Stream.findFirst()}, as {@link #streamToList}.
+     *
+     * @param receiver the stream
+     * @return the first element, if any
+     * @since 1.14.2
+     */
+    public static Optional<Object> streamFindFirst(Stream<Object> receiver) {
+        return parallelTerminal(receiver, operation -> receiver.findFirst());
+    }
+
+    /**
+     * Weaves {@code Stream.findAny()}, as {@link #streamToList}.
+     *
+     * @param receiver the stream
+     * @return some element, if any
+     * @since 1.14.2
+     */
+    public static Optional<Object> streamFindAny(Stream<Object> receiver) {
+        return parallelTerminal(receiver, operation -> receiver.findAny());
     }
 
     /**
@@ -3928,7 +4367,7 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /** The task the calling thread is running, for a get to compare its pool with the future's. */
-    private static final ThreadLocal<@Nullable HandedTask> RUNNING_HANDED = new ThreadLocal<>();
+    static final ThreadLocal<@Nullable HandedTask> RUNNING_HANDED = new ThreadLocal<>();
 
     /**
      * Tells {@code EXECUTOR_DEADLOCK} when a task is about to block on a task of its own pool
@@ -4204,7 +4643,7 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /** What {@link #completionObserved} does, given the work known to be behind {@code future}. */
-    private static void observed(Object future, @Nullable Handed handed) {
+    static void observed(Object future, @Nullable Handed handed) {
         if (future instanceof CompletableFuture) {
             HappensBefore.acquire(future);
         }
@@ -4218,51 +4657,6 @@ public final class AgentConcurrencyUtilHooks {
             // A composed stage completes when the stage its function returned does, so what was
             // released to that one is observed too (#741).
             HappensBefore.acquire(stage.composed);
-        }
-    }
-
-    /**
-     * The futures an {@code allOf} waits for, and the work this thread knew to be behind each. It
-     * completes only once they all have, so observing it observes every one of them. Taken when
-     * {@code allOf} is called, because a thread remembers only its last {@link Submissions#MAX_KEPT}
-     * submissions: a child submitted further back than that, like one this thread did not submit, is
-     * observed only through what a woven {@code complete} released to it.
-     */
-    static final class HandedAll extends Handed {
-
-        private final CompletableFuture<?>[] children;
-        private final @Nullable Handed[] work;
-
-        HandedAll(CompletableFuture<?>[] children) {
-            this.children = children.clone();
-            this.work = new Handed[children.length];
-            for (int i = 0; i < children.length; i++) {
-                work[i] = Submissions.peek(children[i]);
-            }
-        }
-
-        void observed() {
-            for (int i = 0; i < children.length; i++) {
-                AgentConcurrencyUtilHooks.observed(children[i], work[i]);
-            }
-        }
-    }
-
-    /**
-     * Work handed to another thread, or to a later moment, with the stamp of the thread that ran
-     * it taken when it finished; {@code null} until then. The stamp is what a get or join on the
-     * thread that handed it over receives (#741).
-     */
-    abstract static class Handed {
-
-        /** Where task tokens come from; unique in the JVM, which is what the bridge matches on. */
-        static final AtomicLong TOKENS = new AtomicLong();
-
-        volatile HappensBefore.@Nullable Stamp finished;
-
-        /** {@return the stamp the work finished with, {@code null} while it has not} */
-        final HappensBefore.@Nullable Stamp finished() {
-            return finished;
         }
     }
 
@@ -4420,497 +4814,6 @@ public final class AgentConcurrencyUtilHooks {
             return org.slf4j.MDC.getCopyOfContextMap();
         } catch (RuntimeException | LinkageError e) { // NOPMD - a broken backend must not fail the task
             return Map.of();
-        }
-    }
-
-    /**
-     * A submitted task carrying the submitter's clock to the thread that runs it, and that
-     * thread's clock back to whoever gets the result (#741).
-     *
-     * <p>The executor hands the task over in JDK code the agent does not weave, so neither end
-     * has an object to name at the moment it happens; the wrapper is that object. It takes the
-     * submitter's stamp when it is made, which the running thread receives before the task, and
-     * takes the running thread's stamp when the task ends, before the executor completes the
-     * future, so a get that returned finds it. It also carries a token the telemetry bridge
-     * attributes the task by: the submitter publishes it when the wrapper is made, and the running
-     * thread publishes it around the task, so a task a worker submitted is judged as part of the
-     * worker's run while it runs, and the pool thread is not before or after (#745). One object of
-     * four fields per submission; the stamps are snapshots the threads already hold.
-     */
-    static final class HandedTask extends Handed implements Runnable, Callable<Object>, Supplier<Object> {
-
-        private final Object task;
-        private final HappensBefore.Stamp submitted;
-        private final long token;
-        private final @Nullable AsyncTestContext submittedIn;
-
-        /** The executor a woven submit gave this task to, or {@code null}. */
-        @Nullable Object executor;
-
-        /** Whether the task was handed to the common pool, and declared to the blocking detector. */
-        private volatile boolean commonPool;
-
-        /**
-         * The controlled schedule's adoption of this task (#1049), taken on the submitting worker,
-         * or {@code null} outside a controlled round: the task joins the round where it runs.
-         */
-        final @Nullable Object adoption;
-
-        HandedTask(Object task) {
-            this.task = task;
-            this.submitted = HappensBefore.handOff();
-            this.token = TOKENS.incrementAndGet();
-            this.submittedIn = AsyncTestContext.agentContext();
-            this.adoption = ControlledSchedule.submitting();
-            TelemetryRegistry.taskSubmitted(token);
-        }
-
-        /** {@return this task, remembering the executor it is submitted to} */
-        HandedTask onExecutor(Object submittedTo) {
-            executor = submittedTo;
-            return this;
-        }
-
-        /** Tells the controlled schedule this task will never run: its executor rejected it. */
-        void abandoned() {
-            ControlledSchedule.taskAbandoned(adoption);
-        }
-
-        /**
-         * Declares this task, submitted to the common {@code ForkJoinPool}, to the detector that
-         * reports a blocking call inside one; this wrapper is the identity it is tracked by.
-         *
-         * @return this task
-         */
-        HandedTask onTheCommonPool() {
-            CompletableFutureCommonPoolBlockingDetector pool =
-                    AsyncTestContext.currentCfCommonPoolBlockingDetector();
-            if (pool != null) {
-                pool.recordCommonPoolSubmission(this, Thread.currentThread(), callbackLabel(task));
-                commonPool = true;
-            }
-            return this;
-        }
-
-        /**
-         * Marks this task as the one the calling thread runs, when it is a common-pool task running
-         * on a common-pool worker. With parallelism 1 the JDK runs such a task on a thread of its
-         * own, which starves nothing, and that thread is not a pool worker.
-         *
-         * @return whether it marked, so {@link #leavePool} knows to undo it
-         */
-        @SuppressWarnings("ReferenceEquality") // the common pool, by identity
-        private boolean enterPool() {
-            if (commonPool && Thread.currentThread() instanceof ForkJoinWorkerThread worker
-                    && worker.getPool() == ForkJoinPool.commonPool()) { // NOPMD CompareObjectsWithEquals - the one pool, by identity
-                COMMON_POOL_TASK.set(this);
-                return true;
-            }
-            return false;
-        }
-
-        /** Undoes {@link #enterPool}, restoring whatever task the thread was running before. */
-        private static void leavePool(boolean entered, @Nullable HandedTask outer) {
-            if (!entered) {
-                return;
-            }
-            if (outer == null) {
-                COMMON_POOL_TASK.remove();
-            } else {
-                COMMON_POOL_TASK.set(outer);
-            }
-        }
-
-        @Override
-        public void run() {
-            Object scheduled = ControlledSchedule.taskStarting(adoption);
-            HappensBefore.receive(submitted);
-            AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
-            TelemetryRegistry.taskStarted(token);
-            mdcAtTaskStart();
-            long taskBefore = enterTask();
-            HandedTask outer = COMMON_POOL_TASK.get();
-            boolean entered = enterPool();
-            HandedTask outerRunning = RUNNING_HANDED.get();
-            RUNNING_HANDED.set(this);
-            try {
-                ((Runnable) task).run();
-            } finally {
-                RUNNING_HANDED.set(outerRunning);
-                leavePool(entered, outer);
-                finished = HappensBefore.handOff();
-                TelemetryRegistry.taskEnded();
-                leaveTask(taskBefore);
-                mdcAtTaskEnd();
-                AsyncTestContext.restoreLent(lentBefore);
-                ControlledSchedule.taskEnded(scheduled);
-            }
-        }
-
-        @Override
-        public @Nullable Object call() throws Exception {
-            Object scheduled = ControlledSchedule.taskStarting(adoption);
-            HappensBefore.receive(submitted);
-            AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
-            TelemetryRegistry.taskStarted(token);
-            mdcAtTaskStart();
-            long taskBefore = enterTask();
-            HandedTask outer = COMMON_POOL_TASK.get();
-            boolean entered = enterPool();
-            HandedTask outerRunning = RUNNING_HANDED.get();
-            RUNNING_HANDED.set(this);
-            try {
-                return ((Callable<?>) task).call();
-            } finally {
-                RUNNING_HANDED.set(outerRunning);
-                leavePool(entered, outer);
-                finished = HappensBefore.handOff();
-                TelemetryRegistry.taskEnded();
-                leaveTask(taskBefore);
-                mdcAtTaskEnd();
-                AsyncTestContext.restoreLent(lentBefore);
-                ControlledSchedule.taskEnded(scheduled);
-            }
-        }
-
-        @Override
-        public @Nullable Object get() {
-            Object scheduled = ControlledSchedule.taskStarting(adoption);
-            HappensBefore.receive(submitted);
-            AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
-            TelemetryRegistry.taskStarted(token);
-            mdcAtTaskStart();
-            long taskBefore = enterTask();
-            HandedTask outer = COMMON_POOL_TASK.get();
-            boolean entered = enterPool();
-            HandedTask outerRunning = RUNNING_HANDED.get();
-            RUNNING_HANDED.set(this);
-            try {
-                return ((Supplier<?>) task).get();
-            } finally {
-                RUNNING_HANDED.set(outerRunning);
-                leavePool(entered, outer);
-                finished = HappensBefore.handOff();
-                TelemetryRegistry.taskEnded();
-                leaveTask(taskBefore);
-                mdcAtTaskEnd();
-                AsyncTestContext.restoreLent(lentBefore);
-                ControlledSchedule.taskEnded(scheduled);
-            }
-        }
-
-        /** The task's own, so a future that prints its task prints the caller's. */
-        @Override
-        public String toString() {
-            return task.toString();
-        }
-    }
-
-    /**
-     * A function registered on a {@code CompletableFuture}, carrying the registering thread's clock
-     * and the completions it follows to whichever thread runs it, and that thread's clock back to a
-     * join on the registering thread (#741).
-     *
-     * <p>The JDK runs a dependent stage's function on the thread that completes its source, on an
-     * executor for the async forms, or inside the registering call when the source is already
-     * complete, all in code the agent does not weave. The wrapper is never handed back: a
-     * {@code CompletableFuture} keeps its functions to itself. It acquires what a woven
-     * {@code complete} released to each source it waits for, and what the task behind a source
-     * this thread submitted published when it finished. A stage that follows either of two sources
-     * acquires neither, since it is not known which one it followed. Like {@link HandedTask} it
-     * carries a task token, so a pool thread running a stage the body registered is attributed to
-     * the run while it runs (#834).
-     */
-    abstract static class HandedStage extends Handed {
-
-        private final HappensBefore.Stamp registered;
-        private final @Nullable Object source;
-        private final @Nullable Object other;
-        private final @Nullable Handed sourceWork;
-        private final @Nullable Handed otherWork;
-        private final long token;
-        private final @Nullable AsyncTestContext registeredIn;
-
-        /**
-         * The {@code CompletableFuture} the function returned, for {@code thenCompose} and
-         * {@code exceptionallyCompose}: the stage completes when that one does (#741).
-         */
-        volatile @Nullable Object composed;
-
-        /**
-         * Takes the registering thread's clock, on that thread.
-         *
-         * @param source the stage the function follows, {@code null} when that is not known
-         * @param other  the second stage it also follows, {@code null} for none or not known
-         */
-        HandedStage(@Nullable Object source, @Nullable Object other) {
-            this.registered = HappensBefore.handOff();
-            this.source = source;
-            this.other = other;
-            this.sourceWork = source == null ? null : Submissions.peek(source);
-            this.otherWork = other == null ? null : Submissions.peek(other);
-            this.token = TOKENS.incrementAndGet();
-            this.registeredIn = AsyncTestContext.agentContext();
-            TelemetryRegistry.taskSubmitted(token);
-        }
-
-        /**
-         * Orders the thread about to run the function after everything it follows, and lends it
-         * the registering thread's run (#834).
-         *
-         * @return what the thread was lent before, for {@link #end}
-         */
-        final @Nullable AsyncTestContext begin() {
-            HappensBefore.receive(registered);
-            if (source != null) {
-                HappensBefore.acquire(source);
-            }
-            if (other != null) {
-                HappensBefore.acquire(other);
-            }
-            if (sourceWork instanceof HandedAll all) {
-                all.observed();
-            } else if (sourceWork != null) {
-                HappensBefore.receive(sourceWork.finished());
-            }
-            if (otherWork instanceof HandedAll all) {
-                all.observed();
-            } else if (otherWork != null) {
-                HappensBefore.receive(otherWork.finished());
-            }
-            AsyncTestContext lentBefore = AsyncTestContext.lend(registeredIn);
-            TelemetryRegistry.taskStarted(token);
-            // Inside the loan, so a callback a pool thread runs for the run is the run's.
-            CompletableFutureBlockingCallbackDetector callbacks =
-                    AsyncTestContext.currentCfBlockingCallbackDetector();
-            if (callbacks != null) {
-                callbacks.recordEnterCallback(callbackLabel(callback()), Thread.currentThread());
-            }
-            return lentBefore;
-        }
-
-        /** {@return the caller's function this stage runs} */
-        abstract Object callback();
-
-        /**
-         * Takes the clock of the thread that ran the function, for a join of the stage, and ends
-         * the loan {@link #begin} made.
-         *
-         * @param lentBefore what {@link #begin} returned
-         */
-        final void end(@Nullable AsyncTestContext lentBefore) {
-            CompletableFutureBlockingCallbackDetector callbacks =
-                    AsyncTestContext.currentCfBlockingCallbackDetector();
-            if (callbacks != null) {
-                callbacks.recordExitCallback(Thread.currentThread());
-            }
-            finished = HappensBefore.handOff();
-            TelemetryRegistry.taskEnded();
-            AsyncTestContext.restoreLent(lentBefore);
-        }
-    }
-
-    /** A {@link HandedStage} for every function shape but the two-argument function. */
-    static final class StageFunction extends HandedStage
-            implements Function<Object, Object>, Consumer<Object>, BiConsumer<Object, Object>, Runnable {
-
-        private final Object function;
-
-        StageFunction(Object function, @Nullable Object source, @Nullable Object other) {
-            super(source, other);
-            this.function = function;
-        }
-
-        @Override
-        Object callback() {
-            return function;
-        }
-
-        @Override
-        @SuppressWarnings("unchecked") // the caller's own function, erased at the call site
-        public @Nullable Object apply(@Nullable Object value) {
-            AsyncTestContext lentBefore = begin();
-            try {
-                Object result = ((Function<@Nullable Object, @Nullable Object>) function).apply(value);
-                if (result instanceof CompletableFuture) {
-                    composed = result;
-                }
-                return result;
-            } finally {
-                end(lentBefore);
-            }
-        }
-
-        @Override
-        @SuppressWarnings("unchecked") // the caller's own action, erased at the call site
-        public void accept(@Nullable Object value) {
-            AsyncTestContext lentBefore = begin();
-            try {
-                ((Consumer<@Nullable Object>) function).accept(value);
-            } finally {
-                end(lentBefore);
-            }
-        }
-
-        @Override
-        @SuppressWarnings("unchecked") // the caller's own action, erased at the call site
-        public void accept(@Nullable Object value, @Nullable Object failure) {
-            AsyncTestContext lentBefore = begin();
-            try {
-                ((BiConsumer<@Nullable Object, @Nullable Object>) function).accept(value, failure);
-            } finally {
-                end(lentBefore);
-            }
-        }
-
-        @Override
-        public void run() {
-            AsyncTestContext lentBefore = begin();
-            try {
-                ((Runnable) function).run();
-            } finally {
-                end(lentBefore);
-            }
-        }
-
-        /** {@return this function as {@code thenCompose} takes it} */
-        @SuppressWarnings("unchecked") // apply returns what the caller's function returned
-        Function<Object, CompletionStage<Object>> composing() {
-            return (Function<Object, CompletionStage<Object>>) (Function<?, ?>) this;
-        }
-
-        /** {@return this function as {@code exceptionally} takes it} */
-        @SuppressWarnings("unchecked") // apply hands the failure to the caller's function unchanged
-        Function<Throwable, Object> recovering() {
-            return (Function<Throwable, Object>) (Function<?, ?>) this;
-        }
-
-        /** {@return this function as {@code exceptionallyCompose} takes it} */
-        @SuppressWarnings("unchecked") // as composing and recovering together
-        Function<Throwable, CompletionStage<Object>> recoveringBy() {
-            return (Function<Throwable, CompletionStage<Object>>) (Function<?, ?>) this;
-        }
-
-        /** The function's own, so a stage that prints its function prints the caller's. */
-        @Override
-        public String toString() {
-            return function.toString();
-        }
-    }
-
-    /** A {@link HandedStage} for a two-argument function, {@code thenCombine} and {@code handle}. */
-    static final class StageBiFunction extends HandedStage implements BiFunction<Object, Object, Object> {
-
-        private final Object function;
-
-        StageBiFunction(Object function, @Nullable Object source, @Nullable Object other) {
-            super(source, other);
-            this.function = function;
-        }
-
-        @Override
-        Object callback() {
-            return function;
-        }
-
-        @Override
-        @SuppressWarnings("unchecked") // the caller's own function, erased at the call site
-        public @Nullable Object apply(@Nullable Object value, @Nullable Object second) {
-            AsyncTestContext lentBefore = begin();
-            try {
-                return ((BiFunction<@Nullable Object, @Nullable Object, @Nullable Object>) function)
-                        .apply(value, second);
-            } finally {
-                end(lentBefore);
-            }
-        }
-
-        /** {@return this function as {@code handle} takes it} */
-        @SuppressWarnings("unchecked") // apply hands the failure to the caller's function unchanged
-        BiFunction<Object, Throwable, Object> handling() {
-            return (BiFunction<Object, Throwable, Object>) (BiFunction<?, ?, ?>) this;
-        }
-
-        /** The function's own, so a stage that prints its function prints the caller's. */
-        @Override
-        public String toString() {
-            return function.toString();
-        }
-    }
-
-    /**
-     * The futures this thread submitted most recently, each with its {@link HandedTask} or
-     * {@link HandedStage}, so a
-     * get on this thread can find what the task published (#741).
-     *
-     * <p>A future the JDK returns cannot carry the task's clock, and a map keyed by every future
-     * would cost an entry per submission. What a get needs is almost always a future its own
-     * thread submitted, so each thread keeps its last {@link #KEPT} and a get forgets the one it
-     * found. A get on another thread, or of a future pushed out by later submissions, finds
-     * nothing and orders nothing, which is the answer the model had before.
-     */
-    static final class Submissions {
-
-        /** How many submissions a thread starts out able to remember. */
-        private static final int INITIAL_KEPT = 16;
-
-        /**
-         * The most a thread remembers. A thread that submits, then gets each future, then reads the
-         * results is correct however many it submitted, and anything forgotten reports it (#1176). It
-         * grows on demand, so a thread that submits a few tasks pays for sixteen slots as before.
-         */
-        static final int MAX_KEPT = 1024;
-
-        private static final ThreadLocal<Submissions> MINE = ThreadLocal.withInitial(Submissions::new);
-
-        private @Nullable Object[] futures = new Object[INITIAL_KEPT];
-        private @Nullable Handed[] tasks = new Handed[INITIAL_KEPT];
-        private int next;
-
-        /** {@return {@code future}, remembered on this thread with the task behind it} */
-        static <F> F remember(F future, Handed task) {
-            Submissions mine = MINE.get();
-            if (mine.next == mine.futures.length && mine.futures.length < MAX_KEPT) {
-                mine.futures = Arrays.copyOf(mine.futures, mine.futures.length * 2);
-                mine.tasks = Arrays.copyOf(mine.tasks, mine.tasks.length * 2);
-            }
-            if (mine.next == mine.futures.length) {
-                mine.next = 0; // full at its largest: the oldest goes
-            }
-            mine.futures[mine.next] = future;
-            mine.tasks[mine.next] = task;
-            mine.next++;
-            return future;
-        }
-
-        /** {@return the task behind {@code future}, forgotten, or {@code null} if not remembered} */
-        @SuppressWarnings("ReferenceEquality") // the same future, not an equal one
-        static @Nullable Handed forget(Object future) {
-            Submissions mine = MINE.get();
-            for (int i = 0; i < mine.futures.length; i++) {
-                if (mine.futures[i] == future) { // NOPMD CompareObjectsWithEquals - identity
-                    Handed task = mine.tasks[i];
-                    mine.futures[i] = null;
-                    mine.tasks[i] = null;
-                    return task;
-                }
-            }
-            return null;
-        }
-
-        /**
-         * {@return the work behind {@code future}, still remembered, or {@code null}}: a stage
-         * registered on it needs what the work published without taking it from a later join.
-         */
-        @SuppressWarnings("ReferenceEquality") // the same future, not an equal one
-        static @Nullable Handed peek(Object future) {
-            Submissions mine = MINE.get();
-            for (int i = 0; i < mine.futures.length; i++) {
-                if (mine.futures[i] == future) { // NOPMD CompareObjectsWithEquals - identity
-                    return mine.tasks[i];
-                }
-            }
-            return null;
         }
     }
 }

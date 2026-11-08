@@ -49,6 +49,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * recording paths reached are the ones such arguments reach; a recording call that rejects them is
  * ignored, since only analysis is under test. The floor at the end keeps the harness honest: if
  * most detectors stopped being reached, a green run would mean nothing.
+ *
+ * <p>The timing test catches a detector that iterates a plain collection, because that window is
+ * the whole iteration. It rarely catches a record path that publishes a state before writing to
+ * it, because that window is a few instructions: {@code CompletableFutureObtrudeDetector} passed
+ * every leg of the PR that added this test and failed on main days later (#1212). The second test
+ * opens that window on purpose: it registers a state the way a record path's first step does, and
+ * analyses before anything is written to it.
  */
 class DetectorAnalysisUnderConcurrentWritesTest {
 
@@ -95,6 +102,103 @@ class DetectorAnalysisUnderConcurrentWritesTest {
         assertTrue(reached.size() >= 100,
                 "only " + reached.size() + " detectors accepted a generated recording call, so this "
                         + "harness no longer exercises most of them: " + new java.util.TreeSet<>(reached));
+    }
+
+    @Test
+    @DisplayName("no detector's analyze() throws on a state registered but not yet written to")
+    void analysisSurvivesAStateRegisteredButNotYetWritten() throws Exception {
+        // Every per-instance detector registers through AbstractInstanceDetector.stateFor, which
+        // publishes the state in a ConcurrentHashMap before the record path writes a field of it.
+        // Calling it directly leaves the state exactly as another thread's analysis sees it inside
+        // that window, every time instead of once in many runs.
+        Class<?> base = Class.forName("se.deversity.asynctest.diagnostics.AbstractInstanceDetector");
+        Method stateFor = base.getDeclaredMethod("stateFor", Object.class, String.class);
+        stateFor.setAccessible(true);
+
+        AsyncTestConfig config = AsyncTestConfig.builder().detectAll(true).build();
+        DetectorRegistry registry = new DetectorRegistry(config);
+
+        Map<String, String> failures = new TreeMap<>();
+        Set<String> reached = new java.util.TreeSet<>();
+        Map<Class<?>, Object> shared = new HashMap<>();
+        try {
+            for (Object detector : registry.instances().values()) {
+                Method analyze = analyzeMethod(detector.getClass());
+                if (!base.isInstance(detector) || analyze == null) {
+                    continue;
+                }
+                String name = detector.getClass().getSimpleName();
+                if (!registerFreshStates(detector, stateFor, shared)) {
+                    continue; // registers through a factory only, or takes none of the instances tried
+                }
+                reached.add(name);
+                try {
+                    analyze.invoke(detector);
+                } catch (InvocationTargetException e) {
+                    failures.put(name, e.getCause().toString());
+                }
+            }
+        } finally {
+            shutDown(shared);
+        }
+
+        assertTrue(failures.isEmpty(),
+                "analyze() threw on a state that is registered but not yet written to, which is what "
+                        + "another thread's analysis sees while a record path is between its stateFor and "
+                        + "its first write. Read each field once and skip a state that is not filled in "
+                        + "yet; the analysis at the end of the run reports it:\n  "
+                        + String.join("\n  ", failures.entrySet().stream()
+                                .map(e -> e.getKey() + ": " + e.getValue()).toList()));
+        // 57 per-instance detectors register through newState (2026-11-07); the floor keeps the test
+        // from going quietly vacuous if registration stops working for most of them.
+        assertTrue(reached.size() >= 50,
+                "only " + reached.size() + " detectors registered a fresh state, so this test no longer "
+                        + "covers most of them: " + reached);
+    }
+
+    /**
+     * Registers a named and an unnamed state on {@code detector}, with an instance of the first type
+     * its recording methods take that its {@code newState} accepts; {@return whether one was registered}
+     */
+    private static boolean registerFreshStates(Object detector, Method stateFor, Map<Class<?>, Object> shared) {
+        Set<Class<?>> candidates = new java.util.LinkedHashSet<>();
+        for (Method m : recordingMethods(detector.getClass())) {
+            Class<?>[] types = m.getParameterTypes();
+            if (types.length > 0 && !types[0].isPrimitive()) {
+                candidates.add(types[0]);
+            }
+        }
+        candidates.add(Object.class);
+        for (Class<?> type : candidates) {
+            // i = 0 gives a shared instance, i = 3 a fresh one where the type has a recipe: the
+            // second registration then takes the unnamed-label path instead of finding the first.
+            Object named = argument(type, 0, shared);
+            Object unnamed = argument(type, 3, shared);
+            if (named == NO_RECIPE || named == null || unnamed == NO_RECIPE || unnamed == null) {
+                continue;
+            }
+            try {
+                stateFor.invoke(detector, named, "fresh-state");
+                stateFor.invoke(detector, unnamed, null);
+                return true;
+            } catch (InvocationTargetException | IllegalAccessException notThisOne) {
+                // A factory-only detector throws UnsupportedOperationException, and a newState that
+                // reads its instance may reject the type; try the next candidate.
+            }
+        }
+        return false;
+    }
+
+    private static void shutDown(Map<Class<?>, Object> shared) {
+        synchronized (shared) {
+            for (Object made : shared.values()) {
+                if (made instanceof java.util.concurrent.ExecutorService executor) {
+                    executor.shutdownNow();
+                } else if (made instanceof java.util.Timer timer) {
+                    timer.cancel();
+                }
+            }
+        }
     }
 
     /** Records from two threads until the window closes, analysing on a third; returns what analysis threw. */

@@ -404,16 +404,98 @@ class HappensBeforeTest {
     }
 
     @Test
+    @DisplayName("a thread whose thread-locals are cleared keeps its clock")
+    void aClearedThreadLocalKeepsTheClock() throws Exception {
+        // What a common pool worker does from JDK 24 each time it goes idle and wakes up again, often
+        // partway through one parallel stream. A clock started over covered neither the thread's
+        // own accesses before the reset nor what it had acquired, so a combine that merged the
+        // container it filled reported a race.
+        AtomicReference<@Nullable Throwable> failure = new AtomicReference<>();
+        Thread worker = new Thread(() -> {
+            try {
+                long me = Thread.currentThread().threadId();
+                long other = 1L << 40;
+                HappensBefore.receive(HappensBefore.Stamp.of(other));
+                HappensBefore.handOff();
+                HappensBefore.Stamp access = HappensBefore.current();
+
+                java.lang.reflect.Field clocks = HappensBefore.class.getDeclaredField("CLOCKS");
+                clocks.setAccessible(true);
+                ((ThreadLocal<?>) clocks.get(null)).remove();
+
+                HappensBefore.Stamp published = HappensBefore.handOff();
+                assertTrue(published.covers(access),
+                        "what the thread publishes after the clear covers its access before it");
+                assertTrue(published.countOf(me) >= access.countOf(me), "its count did not start over");
+                assertEquals(1, published.countOf(other), "and it still knows what it acquired");
+            } catch (Throwable t) { // NOPMD AvoidCatchingThrowable - carried to the test thread
+                failure.set(t);
+            }
+        }, "innocuous");
+        worker.start();
+        worker.join();
+        Throwable thrown = failure.get();
+        if (thrown != null) {
+            throw new AssertionError(thrown);
+        }
+    }
+
+    @Test
     @DisplayName("a clock past the cap drops other threads, never its own")
     void theCapKeepsTheOwnEntry() {
         long own = 5L;
+        // Ids no thread of this JVM has, so none of them counts as running (#1172).
+        long first = 1L << 40;
         HappensBefore.Stamp mine = HappensBefore.Stamp.of(own);
-        for (long other = 1_000L; other < 1_000L + HappensBefore.MAX_ENTRIES + 10; other++) {
+        for (long other = first; other < first + HappensBefore.MAX_ENTRIES + 10; other++) {
             mine = mine.join(HappensBefore.Stamp.of(other), own);
         }
         assertEquals(HappensBefore.MAX_ENTRIES, mine.size(), "the clock is bounded");
         assertEquals(1, mine.countOf(own), "the owner's entry survived although its id is the lowest");
-        assertEquals(0, mine.countOf(1_000L), "the lowest foreign id went first");
+        assertEquals(0, mine.countOf(first), "the lowest foreign id went first");
+    }
+
+    @Test
+    @DisplayName("a clock past the cap drops ended threads before a running one with a lower id (#1172)")
+    void theCapDropsEndedThreadsFirst() throws InterruptedException {
+        // A pool thread started early and still working, beside a run's workers started after it
+        // and ended: by id alone it went first, and a combine on another pool thread forgot it.
+        java.util.concurrent.CountDownLatch released = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        AtomicReference<HappensBefore.@Nullable Stamp> poolStamp = new AtomicReference<>();
+        Thread pool = new Thread(() -> {
+            poolStamp.set(HappensBefore.handOff());
+            released.countDown();
+            try {
+                done.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "pool");
+        pool.start();
+        try {
+            released.await();
+            Object crowd = new Object();
+            Thread[] workers = new Thread[HappensBefore.MAX_ENTRIES + 8];
+            for (int i = 0; i < workers.length; i++) {
+                workers[i] = new Thread(() -> HappensBefore.release(crowd), "worker-" + i);
+                workers[i].start();
+            }
+            for (Thread worker : workers) {
+                worker.join();
+            }
+            HappensBefore.receive(poolStamp.get());
+            HappensBefore.acquire(crowd);
+
+            HappensBefore.Stamp mine = HappensBefore.current();
+            assertEquals(HappensBefore.MAX_ENTRIES, mine.size(), "the clock is still bounded");
+            assertTrue(mine.countOf(pool.threadId()) > 0,
+                    "the running thread kept its entry although every ended worker's id is higher");
+            assertTrue(mine.countOf(Thread.currentThread().threadId()) > 0, "and so did this one");
+        } finally {
+            done.countDown();
+            pool.join();
+        }
     }
 
     @Test

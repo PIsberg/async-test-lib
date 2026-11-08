@@ -5758,6 +5758,36 @@ final class Corpus {
                             + "copy (#1156)",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_parallelMap_countsUnderALock", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a parallel map whose lambda increments under one lock, collected by toList: "
+                            + "the workers run the lambda for the run and the caller reads after the join"),
+
+            new RecordingSubject("idiom_parallelMap_plainCounter", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same map with no lock. Only forEach's action reached the workers before "
+                            + "#1172, so a map lambda raced on the caller's elements alone",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_parallelCollect_containerPerSubtask", JDK,
+                    "java.util.ArrayList",
+                    DetectorType.SHARED_COLLECTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the three-argument collect: an ArrayList per subtask, merged by the combiner "
+                            + "only after the subtasks that filled both finished (#1172)"),
+
+            new RecordingSubject("idiom_parallelMap_addsToAnArrayList", JDK,
+                    "java.util.ArrayList",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one ArrayList shared by a parallel map's lambda, which loses elements or throws "
+                            + "from the array copy (#1172)",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_spinLockFlag_contendedInsideCaffeine", CAFFEINE,
                     "com.github.benmanes.caffeine.cache.Interner",
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,

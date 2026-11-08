@@ -1532,6 +1532,62 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    /** A parallel map whose lambda counts under one lock, collected by toList (#1172). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelMap_countsUnderALock() {
+        correct(() -> {
+            Ledger ledger = new Ledger();
+            List<Integer> mapped = IntStream.range(0, PARALLEL_ELEMENTS).boxed().parallel().map(i -> {
+                synchronized (ledger.lock) {
+                    ledger.balance++;
+                }
+                return i;
+            }).toList();
+            use(mapped.size() + ledger.balance);
+        });
+    }
+
+    /** The same map with no lock (#1172). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelMap_plainCounter() {
+        broken(() -> {
+            Ledger ledger = new Ledger();
+            List<Integer> mapped = IntStream.range(0, PARALLEL_ELEMENTS).boxed().parallel().map(i -> {
+                ledger.balance++;
+                return i;
+            }).toList();
+            use(mapped.size() + ledger.balance);
+        });
+    }
+
+    /**
+     * The correct way to collect in parallel: one ArrayList per subtask, merged once both halves
+     * are done. Lambdas, so that each add is a call site (#1172).
+     */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelCollect_containerPerSubtask() {
+        correct(() -> {
+            List<Integer> out = IntStream.range(0, PARALLEL_ELEMENTS).boxed().parallel().collect(
+                    () -> new ArrayList<Integer>(),
+                    (list, i) -> list.add(i),
+                    (left, right) -> left.addAll(right));
+            use(out.size());
+        });
+    }
+
+    /** One ArrayList shared by a parallel map's lambda, the same mistake as forEach's (#1172). */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelMap_addsToAnArrayList() {
+        broken(() -> {
+            List<Integer> out = new ArrayList<>();
+            List<Integer> mapped = IntStream.range(0, PARALLEL_ELEMENTS).boxed().parallel().map(i -> {
+                out.add(i);
+                return i;
+            }).toList();
+            use(mapped.size() + out.size());
+        });
+    }
+
     /** Long enough per body that Caffeine's striped buffer resizes under contention (#1171). */
     private static final int INTERNS_PER_BODY = 200;
 
