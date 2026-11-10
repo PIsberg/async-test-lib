@@ -14,8 +14,9 @@ import se.deversity.asynctest.FailOn
  * The silent twin of `KotlinMutexReentrancyIsReportedTest` (#1007): the same woven `Mutex` calls in
  * shapes that never wait for their own coroutine. A mutex locked twice in a row; a `launch` child
  * that waits its turn behind its parent; the run's workers contending for one mutex; a `tryLock`
- * inside the lock, which backs off rather than waits; and a lock that waits for another coroutine
- * after an unlock and a lock the agent never saw (#1221).
+ * inside the lock, which backs off rather than waits; a lock that waits for another coroutine
+ * after an unlock and a lock the agent never saw (#1221); and a lock after a `select` whose
+ * `onLock` clause lost, or whose mutex was unlocked again (#1220).
  */
 class KotlinMutexWithoutReentryIsNotReportedTest {
 
@@ -114,5 +115,29 @@ class KotlinMutexWithoutReentryIsNotReportedTest {
     )
     fun lockAfterTryLockIsReleased() {
         assertTrue(bridges.lockAfterTryLockIsReleased(), "the lock after the released tryLock was never taken")
+    }
+
+    @AsyncTest(
+        threads = 4,
+        invocations = 4,
+        failOn = FailOn.NONE,
+        licenseMockMode = true,
+        timeoutMs = 60_000,
+        includes = [DetectorType.KOTLIN_MUTEX_REENTRANCY]
+    )
+    fun lockAfterALostSelect() {
+        assertTrue(bridges.lockAfterALostSelect(), "the lock after the lost select was never taken")
+    }
+
+    @AsyncTest(
+        threads = 4,
+        invocations = 4,
+        failOn = FailOn.NONE,
+        licenseMockMode = true,
+        timeoutMs = 60_000,
+        includes = [DetectorType.KOTLIN_MUTEX_REENTRANCY]
+    )
+    fun lockAfterSelectIsReleased() {
+        assertTrue(bridges.lockAfterSelectIsReleased(), "the lock after the released select was never taken")
     }
 }

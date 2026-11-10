@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`KOTLIN_MUTEX_REENTRANCY` names the coroutine behind `select { mutex.onLock { } }` (#1220).**
+  A mutex taken through a `select` clause held no owner token of the agent's, so a coroutine that
+  then locked it again from a `coroutineScope` or `supervisorScope` block hung exactly like the
+  reported case and nothing was reported (`Findings were: []` in the new fixture before the change).
+  `select` is inline, so its clauses are registered in the caller with `SelectBuilder.invoke`; the
+  agent now replaces the two `SelectClause2` registrations with hooks that also take the enclosing
+  coroutine's continuation. A `Mutex`'s `onLock` clause is registered with the agent's owner token
+  where it had none, kept with the caller's `Job`, and counts only once the mutex says the clause
+  won. Every other clause is registered unchanged. Proven against real kotlinx 1.11 in
+  `consumer-fixture-langs/kotlin`, with a silent twin for a clause that lost and one released
+  before the relock. A `tryLock` outside any suspend function still names no coroutine (#1236).
+
 ## [1.14.2] - 2026-11-08
 
 ### Upgrading

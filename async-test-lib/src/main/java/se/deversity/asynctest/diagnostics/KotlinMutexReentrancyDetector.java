@@ -42,11 +42,14 @@ import java.util.function.Predicate;
  * (#1220).
  *
  * <p>A {@code tryLock} takes no continuation, so the agent passes the one of the suspend function or
- * lambda it is called in, and a mutex it takes is kept with that {@code Job} too (#1220).
+ * lambda it is called in, and a mutex it takes is kept with that {@code Job} too (#1220). A
+ * {@code select { mutex.onLock { } }} clause is registered in that function as well, since
+ * {@code select} is inline, with a token kept the same way; it holds the mutex only if the clause
+ * wins (#1220).
  *
- * <p>It errs toward silence. A coroutine that took the mutex through {@code select}, through a
- * {@code tryLock} outside any suspend function, or in a class the agent does not weave, holds no
- * token of the agent's, so a reentrant lock under it is missed. A {@code launch} or {@code async} child is not counted as part
+ * <p>It errs toward silence. A coroutine that took the mutex through a {@code tryLock} outside any
+ * suspend function, or in a class the agent does not weave, holds no token of the agent's, so a
+ * reentrant lock under it is missed. A {@code launch} or {@code async} child is not counted as part
  * of its parent: the parent may unlock without waiting for it, and the child then simply waits its
  * turn.
  *
