@@ -1853,14 +1853,13 @@ class DetectorAccuracyEvalTest {
 
     @Test
     @DisplayName("lock order: an A->B / B->A inversion fires without needing a deadlock (true positive)")
-    void lockOrderValidatorFiresOnInversion() {
+    void lockOrderValidatorFiresOnInversion() throws InterruptedException {
         LockOrderValidator validator = new LockOrderValidator();
         Object a = new Object();
         Object b = new Object();
-        // Sequential on purpose: the union graph accumulates edges across threads, so the
-        // inversion is reported structurally, with no risk of this test really deadlocking.
-        acquireInOrder(validator, a, b);
-        acquireInOrder(validator, b, a);
+        // Two threads, one order each: one thread taking both orders cannot deadlock with itself
+        // and is not reported (#1242). Nothing is really locked, so nothing can deadlock here.
+        onTwoThreads(() -> acquireInOrder(validator, a, b), () -> acquireInOrder(validator, b, a));
 
         assertTrue(validator.validateLockOrder().hasIssues(),
                 "Both nesting directions were recorded; the cycle exists whether or not "
@@ -1870,12 +1869,11 @@ class DetectorAccuracyEvalTest {
 
     @Test
     @DisplayName("lock order: consistent A->B ordering stays silent (true negative)")
-    void lockOrderValidatorStaysSilentOnConsistentOrdering() {
+    void lockOrderValidatorStaysSilentOnConsistentOrdering() throws InterruptedException {
         LockOrderValidator validator = new LockOrderValidator();
         Object a = new Object();
         Object b = new Object();
-        acquireInOrder(validator, a, b);
-        acquireInOrder(validator, a, b);
+        onTwoThreads(() -> acquireInOrder(validator, a, b), () -> acquireInOrder(validator, a, b));
 
         assertFalse(validator.validateLockOrder().hasIssues(),
                 "Consistent ordering is the fix for lock-order deadlocks; a validator "

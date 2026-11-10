@@ -55,12 +55,21 @@ class LockWeavingFeedsLockDetectorsTest {
         findings = AsyncFindings.collect();
     }
 
+    /**
+     * Never runs the two orders at once, so the run cannot really deadlock. This class is outside
+     * the woven package, so the validator does not see this monitor and the two orders share no
+     * guard it knows of: what it reports is the inversion it observed.
+     */
+    private static final Object NOT_AT_ONCE = new Object();
+
     @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void invertedLockOrder() {
-        if ((Thread.currentThread().threadId() & 1L) == 0L) {
-            inverted.forward();
-        } else {
-            inverted.reverse();
+        synchronized (NOT_AT_ONCE) {
+            if ((Thread.currentThread().threadId() & 1L) == 0L) {
+                inverted.forward();
+            } else {
+                inverted.reverse();
+            }
         }
     }
 

@@ -34,11 +34,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.StampedLock;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -1802,6 +1804,126 @@ class CorpusIdiomLaneTest {
         } catch (BrokenBarrierException | TimeoutException e) {
             throw new IllegalStateException("the workers did not line up", e);
         }
+    }
+
+    // --- 15. Lock order: a gate lock, and the tryLock back-off ---------------------------------
+
+    /** The locks one round's threads take: a gate and the pair it orders. */
+    private static final class OrderedPair {
+        final ReentrantLock gate = new ReentrantLock();
+        final ReentrantLock a = new ReentrantLock();
+        final ReentrantLock b = new ReentrantLock();
+        /**
+         * Harness for the broken twins only: keeps the workers out of the inverted region one at
+         * a time, so writing the deadlock does not mean suffering it. A semaphore is not a lock to
+         * LockOrderValidator, so it is no gate.
+         */
+        final Semaphore oneAtATime = new Semaphore(1);
+        int value;
+    }
+
+    private static final Rounds<OrderedPair> GATED_PAIRS = new Rounds<>(OrderedPair::new);
+    private static final Rounds<OrderedPair> UNGATED_PAIRS = new Rounds<>(OrderedPair::new);
+    private static final Rounds<OrderedPair> BACKED_OFF_PAIRS = new Rounds<>(OrderedPair::new);
+    private static final Rounds<OrderedPair> BLOCKING_PAIRS = new Rounds<>(OrderedPair::new);
+
+    /** Takes {@code first} then {@code second}, both blocking, and bumps the value. */
+    private static void nestBlocking(OrderedPair pair, ReentrantLock first, ReentrantLock second) {
+        first.lock();
+        try {
+            second.lock();
+            try {
+                pair.value++;
+            } finally {
+                second.unlock();
+            }
+        } finally {
+            first.unlock();
+        }
+    }
+
+    /**
+     * Half the threads take a then b, the other half b then a, every one of them inside the gate.
+     * Whoever holds the gate holds the pair, so the two orders are never in progress at once.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_lockOrder_bothOrdersUnderOneGate() {
+        correct(() -> {
+            Turn<OrderedPair> turn = GATED_PAIRS.next();
+            OrderedPair pair = turn.shared();
+            boolean forward = turn.ticket() % 2 == 0;
+            pair.gate.lock();
+            try {
+                nestBlocking(pair, forward ? pair.a : pair.b, forward ? pair.b : pair.a);
+            } finally {
+                pair.gate.unlock();
+            }
+        });
+    }
+
+    /** The same two orders with no gate: two threads can each hold one lock and want the other. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_lockOrder_bothOrdersWithoutAGate() {
+        broken(() -> {
+            Turn<OrderedPair> turn = UNGATED_PAIRS.next();
+            OrderedPair pair = turn.shared();
+            boolean forward = turn.ticket() % 2 == 0;
+            pair.oneAtATime.acquire();
+            try {
+                nestBlocking(pair, forward ? pair.a : pair.b, forward ? pair.b : pair.a);
+            } finally {
+                pair.oneAtATime.release();
+            }
+        });
+    }
+
+    /**
+     * JCIP listing 13.3: take both with tryLock, and on failure let go of the first and retry.
+     * No thread ever waits holding a lock, so no order of the two can deadlock.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_lockOrder_tryLockBackOff() {
+        correct(() -> {
+            Turn<OrderedPair> turn = BACKED_OFF_PAIRS.next();
+            OrderedPair pair = turn.shared();
+            boolean forward = turn.ticket() % 2 == 0;
+            ReentrantLock first = forward ? pair.a : pair.b;
+            ReentrantLock second = forward ? pair.b : pair.a;
+            for (int attempt = 0; attempt < SPIN_LIMIT; attempt++) {
+                if (first.tryLock()) {
+                    try {
+                        if (second.tryLock()) {
+                            try {
+                                pair.value++;
+                                return;
+                            } finally {
+                                second.unlock();
+                            }
+                        }
+                    } finally {
+                        first.unlock();
+                    }
+                }
+                Thread.onSpinWait();
+            }
+            throw new AssertionError("the back-off never got both locks");
+        });
+    }
+
+    /** The same two orders with lock() for both: each thread waits holding the other's lock. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_lockOrder_blockingInsteadOfBackingOff() {
+        broken(() -> {
+            Turn<OrderedPair> turn = BLOCKING_PAIRS.next();
+            OrderedPair pair = turn.shared();
+            boolean forward = turn.ticket() % 2 == 0;
+            pair.oneAtATime.acquire();
+            try {
+                nestBlocking(pair, forward ? pair.a : pair.b, forward ? pair.b : pair.a);
+            } finally {
+                pair.oneAtATime.release();
+            }
+        });
     }
 
     // --- Harness -----------------------------------------------------------------------------

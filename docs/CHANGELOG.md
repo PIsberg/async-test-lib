@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`LockOrderValidator` no longer reports lock orders that cannot deadlock (#1242).** It unioned
+  every thread's nesting edges and reported any pair seen both ways round, at `VERDICT` tier and
+  `CRITICAL` severity, so a correct build failed under `failOn = CRITICAL, minTrust = VERDICT` for
+  three deadlock-free shapes: both orders taken inside one outer gate lock, the `tryLock` back-off
+  (JCIP listing 13.3), and one thread taking both orders in turn. Each edge now keeps the thread
+  that made it and the other locks it held, and a pair or cycle is reported only when its edges
+  come from different threads with no lock in common. A successful `tryLock` counts as held but is
+  never the waiting side, and `recordLockAcquisition(Object, boolean)` lets a hand-recorded test say
+  the same. The agent-fed fixture `LockOrderInversionBean` was itself the back-off shape and now
+  blocks on both locks. Tests first in `LockOrderValidatorTest`, with idiom rows for the gate lock
+  and the back-off and a broken twin for each.
+
+- **A lock-order inversion behind a reentrant hold is reported (#1244).** The validator kept the
+  locks a thread held as a set, so the first release of a lock taken twice dropped it while it was
+  still held, and the inversion behind it went unreported. Holds are now counted, and re-entering a
+  held lock, which cannot block, records no edge.
+
+- **A lock-order inversion on `synchronized` is reported (#1243).** With the agent attached and
+  `fields=true`, woven `synchronized` blocks and methods fed the lockset and the controlled schedule
+  and stopped there, so nested `synchronized` taken both ways round drew nothing while the same
+  shape on two `ReentrantLock`s was reported. They now reach `LockOrderValidator` too. A
+  synchronized method's hold is re-confirmed with `Thread.holdsLock`, since no exit is woven when an
+  exception leaves it, and `Object.wait` gives the monitor back for the wait. Verified by
+  `MonitorWeavingFeedsLockOrderTest`, which goes red with the delivery removed, and by an agent pair
+  in the corpus. The corpus pair lane's `ORDER_GUARD` was a monitor that relied on monitors not
+  being seen, and is now a semaphore.
+
 - **The rest of a parallel stream pipeline is lent the run (#1172).** A `mapMulti` lambda, boxed
   or primitive, and a stage behind a primitive stream's `unordered()` or any stream's `onClose`, ran
   on the common pool's workers unattributed, and so did a `Collector`'s own supplier, accumulator

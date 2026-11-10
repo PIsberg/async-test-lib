@@ -150,10 +150,29 @@ class CorpusAgentPairLaneTest {
     /**
      * Serialises the lock-order rows, so that writing an inversion does not mean suffering one.
      *
-     * <p>A monitor rather than a Lock on purpose: monitor acquisitions are not delivered to
-     * LockOrderValidator, so this adds no edge to the graph the pair is measuring.
+     * <p>A one-permit Semaphore rather than a lock on purpose. A lock or a monitor around both
+     * orders is a gate: the two nestings could never be in progress at once, the code cannot
+     * deadlock, and LockOrderValidator rightly stays silent on it (#1242), which since #1243 holds
+     * for a woven synchronized block too. A semaphore is not a lock to the validator, so the rows
+     * still measure the order the locks were taken in.
      */
-    private static final Object ORDER_GUARD = new Object();
+    /** The monitors the synchronized lock-order rows nest (#1243). */
+    private static final Object MONITOR_ORDER_A = new Object();
+    private static final Object MONITOR_ORDER_B = new Object();
+    /** Written only while both MONITOR_ORDER monitors are held. */
+    private static int monitorOrderWork;
+
+    private static final Semaphore ORDER_GUARD = new Semaphore(1);
+
+    /** Runs {@code body} holding {@link #ORDER_GUARD}. */
+    private static void orderSerialised(Runnable body) {
+        ORDER_GUARD.acquireUninterruptibly();
+        try {
+            body.run();
+        } finally {
+            ORDER_GUARD.release();
+        }
+    }
 
     // --- The confined halves. A ThreadLocal where building the instance is the expense that made
     //     someone cache it in the first place, and a plain local where it is not.
@@ -1842,17 +1861,16 @@ class CorpusAgentPairLaneTest {
     /**
      * Nests the two locks one way and then the other.
      *
-     * <p>The edges are pooled by lock identity across the whole run, so the two orderings need not
-     * come from two threads: one body doing both closes the cycle. That is deliberate. Writing the
-     * inversion across threads would be writing a real deadlock, and the corpus would hang on it
-     * rather than report it. {@code ORDER_GUARD} serialises the region for the same reason, and
-     * contributes no edge of its own because a monitor is not delivered to this detector - only
-     * {@code Lock} acquisitions are.
+     * <p>Every worker runs the body, so each order is taken by several threads, and a nesting by
+     * one thread and its reverse by another, under no common lock, is the inversion (#1242: one
+     * thread taking both orders cannot deadlock with itself). {@code ORDER_GUARD} keeps the
+     * workers out of the region one at a time, so that writing the inversion does not mean
+     * suffering it, and is a semaphore so that it is not itself a common lock.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_lockOrder_nestedBothWays() {
         counted(() -> {
-            synchronized (ORDER_GUARD) {
+            orderSerialised(() -> {
                 LOCK_A.lock();
                 try {
                     LOCK_B.lock();
@@ -1867,7 +1885,7 @@ class CorpusAgentPairLaneTest {
                 } finally {
                     LOCK_B.unlock();
                 }
-            }
+            });
         });
     }
 
@@ -1875,7 +1893,7 @@ class CorpusAgentPairLaneTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_lockOrder_nestedOneWay() {
         counted(() -> {
-            synchronized (ORDER_GUARD) {
+            orderSerialised(() -> {
                 LOCK_A.lock();
                 try {
                     LOCK_B.lock();
@@ -1889,9 +1907,41 @@ class CorpusAgentPairLaneTest {
                     LOCK_B.unlock();
                 } finally {
                     LOCK_A.unlock();
+                }
+            });
+        });
+    }
+
+    /**
+     * Nests the two monitors one way and then the other, the ReentrantLock row written with
+     * {@code synchronized}. Serialised like it, by a semaphore, which is no lock (#1243).
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_monitorOrder_nestedBothWays() {
+        counted(() -> orderSerialised(() -> {
+            synchronized (MONITOR_ORDER_A) {
+                synchronized (MONITOR_ORDER_B) {
+                    monitorOrderWork++;
                 }
             }
-        });
+            synchronized (MONITOR_ORDER_B) {
+                synchronized (MONITOR_ORDER_A) {
+                    monitorOrderWork++;
+                }
+            }
+        }));
+    }
+
+    /** The same two monitors, always A before B. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_monitorOrder_nestedOneWay() {
+        counted(() -> orderSerialised(() -> {
+            synchronized (MONITOR_ORDER_A) {
+                synchronized (MONITOR_ORDER_B) {
+                    monitorOrderWork++;
+                }
+            }
+        }));
     }
 
     // --- Lock leaks --------------------------------------------------------------------------
@@ -2340,7 +2390,7 @@ class CorpusAgentPairLaneTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaMonitorOrder_nestedBothWays() {
         counted(() -> {
-            synchronized (ORDER_GUARD) {
+            orderSerialised(() -> {
                 MONITOR_A.enter();
                 try {
                     MONITOR_B.enter();
@@ -2355,7 +2405,7 @@ class CorpusAgentPairLaneTest {
                 } finally {
                     MONITOR_B.leave();
                 }
-            }
+            });
         });
     }
 
@@ -2363,7 +2413,7 @@ class CorpusAgentPairLaneTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaMonitorOrder_nestedOneWay() {
         counted(() -> {
-            synchronized (ORDER_GUARD) {
+            orderSerialised(() -> {
                 MONITOR_A.enter();
                 try {
                     MONITOR_B.enter();
@@ -2378,7 +2428,7 @@ class CorpusAgentPairLaneTest {
                 } finally {
                     MONITOR_A.leave();
                 }
-            }
+            });
         });
     }
 
