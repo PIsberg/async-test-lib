@@ -670,6 +670,89 @@ class DiscardedOfferWeavingTest {
             return pool.getQueue();
         }
 
+        public static java.util.stream.Stream<Object> streamMapMulti(java.util.stream.Stream<Object> receiver,
+                java.util.function.BiConsumer<Object, java.util.function.Consumer<Object>> mapper) {
+            return receiver.mapMulti(mapper);
+        }
+
+        public static java.util.stream.IntStream streamMapMultiToInt(java.util.stream.Stream<Object> receiver,
+                java.util.function.BiConsumer<Object, java.util.function.IntConsumer> mapper) {
+            return receiver.mapMultiToInt(mapper);
+        }
+
+        public static java.util.stream.LongStream streamMapMultiToLong(java.util.stream.Stream<Object> receiver,
+                java.util.function.BiConsumer<Object, java.util.function.LongConsumer> mapper) {
+            return receiver.mapMultiToLong(mapper);
+        }
+
+        public static java.util.stream.DoubleStream streamMapMultiToDouble(java.util.stream.Stream<Object> receiver,
+                java.util.function.BiConsumer<Object, java.util.function.DoubleConsumer> mapper) {
+            return receiver.mapMultiToDouble(mapper);
+        }
+
+        public static java.util.stream.IntStream intStreamMapMulti(java.util.stream.IntStream receiver,
+                java.util.stream.IntStream.IntMapMultiConsumer mapper) {
+            return receiver.mapMulti(mapper);
+        }
+
+        public static java.util.stream.LongStream longStreamMapMulti(java.util.stream.LongStream receiver,
+                java.util.stream.LongStream.LongMapMultiConsumer mapper) {
+            return receiver.mapMulti(mapper);
+        }
+
+        public static java.util.stream.DoubleStream doubleStreamMapMulti(java.util.stream.DoubleStream receiver,
+                java.util.stream.DoubleStream.DoubleMapMultiConsumer mapper) {
+            return receiver.mapMulti(mapper);
+        }
+
+        public static java.util.stream.BaseStream<?, ?> intStreamUnordered(java.util.stream.IntStream receiver) {
+            return receiver.unordered();
+        }
+
+        public static java.util.stream.BaseStream<?, ?> longStreamUnordered(java.util.stream.LongStream receiver) {
+            return receiver.unordered();
+        }
+
+        public static java.util.stream.BaseStream<?, ?> doubleStreamUnordered(java.util.stream.DoubleStream receiver) {
+            return receiver.unordered();
+        }
+
+        public static java.util.stream.BaseStream<?, ?> streamOnClose(java.util.stream.Stream<Object> receiver,
+                Runnable closeHandler) {
+            return receiver.onClose(closeHandler);
+        }
+
+        public static java.util.stream.BaseStream<?, ?> intStreamOnClose(java.util.stream.IntStream receiver,
+                Runnable closeHandler) {
+            return receiver.onClose(closeHandler);
+        }
+
+        public static java.util.stream.BaseStream<?, ?> longStreamOnClose(java.util.stream.LongStream receiver,
+                Runnable closeHandler) {
+            return receiver.onClose(closeHandler);
+        }
+
+        public static java.util.stream.BaseStream<?, ?> doubleStreamOnClose(java.util.stream.DoubleStream receiver,
+                Runnable closeHandler) {
+            return receiver.onClose(closeHandler);
+        }
+
+        public static java.util.Iterator<Object> streamIterator(java.util.stream.Stream<Object> receiver) {
+            return receiver.iterator();
+        }
+
+        public static java.util.PrimitiveIterator.OfInt intStreamIterator(java.util.stream.IntStream receiver) {
+            return receiver.iterator();
+        }
+
+        public static java.util.PrimitiveIterator.OfLong longStreamIterator(java.util.stream.LongStream receiver) {
+            return receiver.iterator();
+        }
+
+        public static java.util.PrimitiveIterator.OfDouble doubleStreamIterator(java.util.stream.DoubleStream receiver) {
+            return receiver.iterator();
+        }
+
         public static void streamForEach(java.util.stream.Stream<Object> receiver,
                                          java.util.function.Consumer<Object> action) {
             receiver.forEach(action);

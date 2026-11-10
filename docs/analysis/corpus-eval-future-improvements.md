@@ -32,8 +32,7 @@ The gates (`everySubjectIsExercised`, `everySilentRowReachesItsDetector`, `every
 source, and subject lists, with the existing no-arg variants delegating to the static corpus defaults.
 
 What the fixes under "The most common mistakes" in [corpus-eval.md](corpus-eval.md) still leave out is
-#1238 (a lambda rejection handler, or a pool overriding `execute`, `remove` or `shutdownNow`), and of #1172 the stream forms its fix does not reach: a `mapMulti` lambda, a pipeline ended
-by `iterator()`, and a `Collector`'s own functions (see
+#1238 (a lambda rejection handler, or a pool overriding `execute`, `remove` or `shutdownNow`), and #1240, a parallel pipeline ended by `spliterator()` or in unwoven code (see
 [the agent's limitations](../agent/limitations.md)).
 
 What follows is the remainder, in the order worth doing them.

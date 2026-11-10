@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The rest of a parallel stream pipeline is lent the run (#1172).** A `mapMulti` lambda, boxed
+  or primitive, and a stage behind a primitive stream's `unordered()` or any stream's `onClose`, ran
+  on the common pool's workers unattributed, and so did a `Collector`'s own supplier, accumulator
+  and combiner. A race inside them was dropped as noise. Each is now woven like the other stages. A
+  pipeline ended by `iterator()` lends its stages the run inside each `hasNext` and `next`, and
+  orders the caller after them when the call returns, so reading what an element wrote is not
+  reported. Tests first in `AgentParallelStreamHooksTest`. A pipeline ended by `spliterator()`
+  stays unattributed (#1240).
+
 - **A `ThreadPoolExecutor` subclass with a `beforeExecute` or `afterExecute`, or a pool with a
   rejection handler class of its own, is observed (#1173).** A woven `execute` wraps a task inside a
   run so the task is ordered after the call and its thread attributed to the run (#1155). A pool

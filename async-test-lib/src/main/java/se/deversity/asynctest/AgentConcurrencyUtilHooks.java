@@ -1,5 +1,7 @@
 package se.deversity.asynctest;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -63,6 +65,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.WeakHashMap;
 import java.util.concurrent.BlockingQueue;
+import java.util.PrimitiveIterator;
+import java.util.Iterator;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -4179,7 +4183,52 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Object streamCollect(Stream<Object> receiver, Collector<? super Object, ?, ?> collector) {
-        return parallelTerminal(receiver, operation -> receiver.collect(collector));
+        return parallelTerminal(receiver, operation -> operation == null
+                ? receiver.collect(collector) : receiver.collect(lent(operation, collector)));
+    }
+
+    /**
+     * {@return {@code collector} with its supplier and accumulator run as elements of
+     * {@code operation}, and its combiner as a combine (#1172)} The finisher runs on the caller
+     * once the operation has joined, and the characteristics are the collector's own, so an
+     * identity finish still hands back the container.
+     */
+    @SuppressWarnings("unchecked")
+    private static Collector<Object, Object, Object> lent(ParallelForEach operation,
+                                                         Collector<? super Object, ?, ?> given) {
+        Collector<Object, Object, Object> collector = (Collector<Object, Object, Object>) given;
+        Supplier<Object> supplier = collector.supplier();
+        BiConsumer<Object, Object> accumulator = collector.accumulator();
+        BinaryOperator<Object> combiner = collector.combiner();
+        return new Collector<>() {
+            @Override
+            public Supplier<Object> supplier() {
+                return () -> inElement(operation, supplier);
+            }
+
+            @Override
+            public BiConsumer<Object, Object> accumulator() {
+                return (container, value) -> inElement(operation, () -> {
+                    accumulator.accept(container, value);
+                    return null;
+                });
+            }
+
+            @Override
+            public BinaryOperator<Object> combiner() {
+                return (left, right) -> inCombine(operation, () -> combiner.apply(left, right));
+            }
+
+            @Override
+            public Function<Object, Object> finisher() {
+                return collector.finisher();
+            }
+
+            @Override
+            public Set<Collector.Characteristics> characteristics() {
+                return collector.characteristics();
+            }
+        };
     }
 
     /**
@@ -4579,6 +4628,393 @@ public final class AgentConcurrencyUtilHooks {
         }
         StageSlot slot = new StageSlot();
         return staged(receiver, receiver.flatMap(value -> slot.element(() -> mapper.apply(value))), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.mapMulti}: the mapper runs as an element, and the values it passes on
+     * go downstream inside it (#1172).
+     *
+     * @param receiver the stream
+     * @param mapper   the function given each element and the sink for what it maps to
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static Stream<Object> streamMapMulti(Stream<Object> receiver, BiConsumer<Object, Consumer<Object>> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapMulti(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.<Object>mapMulti((value, sink) -> slot.element(() -> {
+            mapper.accept(value, sink);
+            return null;
+        })), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.mapMultiToInt}, as {@link #streamMapMulti}.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given each element and the sink for what it maps to
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static IntStream streamMapMultiToInt(Stream<Object> receiver, BiConsumer<Object, IntConsumer> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapMultiToInt(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapMultiToInt((value, sink) -> slot.element(() -> {
+            mapper.accept(value, sink);
+            return null;
+        })), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.mapMultiToLong}, as {@link #streamMapMulti}.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given each element and the sink for what it maps to
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static LongStream streamMapMultiToLong(Stream<Object> receiver, BiConsumer<Object, LongConsumer> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapMultiToLong(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapMultiToLong((value, sink) -> slot.element(() -> {
+            mapper.accept(value, sink);
+            return null;
+        })), slot);
+    }
+
+    /**
+     * Weaves {@code Stream.mapMultiToDouble}, as {@link #streamMapMulti}.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given each element and the sink for what it maps to
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static DoubleStream streamMapMultiToDouble(Stream<Object> receiver,
+                                                      BiConsumer<Object, DoubleConsumer> mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapMultiToDouble(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapMultiToDouble((value, sink) -> slot.element(() -> {
+            mapper.accept(value, sink);
+            return null;
+        })), slot);
+    }
+
+    /**
+     * Weaves {@code IntStream.mapMulti}, as {@link #streamMapMulti}.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given each element and the sink for what it maps to
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static IntStream intStreamMapMulti(IntStream receiver, IntStream.IntMapMultiConsumer mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapMulti(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapMulti((value, sink) -> slot.element(() -> {
+            mapper.accept(value, sink);
+            return null;
+        })), slot);
+    }
+
+    /**
+     * Weaves {@code LongStream.mapMulti}, as {@link #streamMapMulti}.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given each element and the sink for what it maps to
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static LongStream longStreamMapMulti(LongStream receiver, LongStream.LongMapMultiConsumer mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapMulti(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapMulti((value, sink) -> slot.element(() -> {
+            mapper.accept(value, sink);
+            return null;
+        })), slot);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.mapMulti}, as {@link #streamMapMulti}.
+     *
+     * @param receiver the stream
+     * @param mapper   the function given each element and the sink for what it maps to
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static DoubleStream doubleStreamMapMulti(DoubleStream receiver, DoubleStream.DoubleMapMultiConsumer mapper) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            return receiver.mapMulti(mapper);
+        }
+        StageSlot slot = new StageSlot();
+        return staged(receiver, receiver.mapMulti((value, sink) -> slot.element(() -> {
+            mapper.accept(value, sink);
+            return null;
+        })), slot);
+    }
+
+    /**
+     * Weaves {@code IntStream.unordered}, which {@code IntStream} inherits from {@code BaseStream}:
+     * it runs no lambda of its own and carries the woven stages behind it (#1172).
+     *
+     * @param receiver the stream
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static BaseStream<?, ?> intStreamUnordered(IntStream receiver) {
+        ControlledSchedule.point();
+        IntStream result = receiver.unordered();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code LongStream.unordered}, as {@link #intStreamUnordered}.
+     *
+     * @param receiver the stream
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static BaseStream<?, ?> longStreamUnordered(LongStream receiver) {
+        ControlledSchedule.point();
+        LongStream result = receiver.unordered();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.unordered}, as {@link #intStreamUnordered}.
+     *
+     * @param receiver the stream
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static BaseStream<?, ?> doubleStreamUnordered(DoubleStream receiver) {
+        ControlledSchedule.point();
+        DoubleStream result = receiver.unordered();
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code Stream.onClose}: the close handler runs at {@code close()}, not in the
+     * pipeline, so it carries the woven stages behind it like a stage with no lambda (#1172).
+     *
+     * @param receiver     the stream
+     * @param closeHandler what {@code close()} runs
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static BaseStream<?, ?> streamOnClose(Stream<Object> receiver, Runnable closeHandler) {
+        ControlledSchedule.point();
+        Stream<Object> result = receiver.onClose(closeHandler);
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code IntStream.onClose}, as {@link #streamOnClose}.
+     *
+     * @param receiver     the stream
+     * @param closeHandler what {@code close()} runs
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static BaseStream<?, ?> intStreamOnClose(IntStream receiver, Runnable closeHandler) {
+        ControlledSchedule.point();
+        IntStream result = receiver.onClose(closeHandler);
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code LongStream.onClose}, as {@link #streamOnClose}.
+     *
+     * @param receiver     the stream
+     * @param closeHandler what {@code close()} runs
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static BaseStream<?, ?> longStreamOnClose(LongStream receiver, Runnable closeHandler) {
+        ControlledSchedule.point();
+        LongStream result = receiver.onClose(closeHandler);
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * Weaves {@code DoubleStream.onClose}, as {@link #streamOnClose}.
+     *
+     * @param receiver     the stream
+     * @param closeHandler what {@code close()} runs
+     * @return the stream it returns
+     * @since 1.14.3
+     */
+    public static BaseStream<?, ?> doubleStreamOnClose(DoubleStream receiver, Runnable closeHandler) {
+        ControlledSchedule.point();
+        DoubleStream result = receiver.onClose(closeHandler);
+        return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
+    }
+
+    /**
+     * The woven stages of a pipeline ended by {@code iterator()} (#1172). The pipeline runs a little
+     * at a time, inside the caller's {@code hasNext} and {@code next}, and each of those returns
+     * only once the work it started is done: a stateful stage such as {@code sorted} evaluates
+     * everything upstream, in parallel, inside the first one. So each call lends the stages a fresh
+     * {@link ParallelForEach}, which orders the elements after the caller's writes so far, and
+     * joins it when the call returns, which orders the caller after them.
+     */
+    private static final class LentPipeline {
+        private final List<StageSlot> stages;
+
+        LentPipeline(List<StageSlot> stages) {
+            this.stages = stages;
+        }
+
+        <T> T call(Supplier<T> step) {
+            if (AsyncTestContext.agentContext() == null) {
+                return step.get();
+            }
+            ParallelForEach parallel = new ParallelForEach();
+            stages.forEach(slot -> slot.operation = parallel);
+            try {
+                return step.get();
+            } finally {
+                stages.forEach(slot -> slot.operation = null);
+                parallel.joined();
+            }
+        }
+
+        /** {@return the woven stages behind {@code receiver} to lend, or {@code null} to iterate it as it was} */
+        static @Nullable LentPipeline of(BaseStream<?, ?> receiver) {
+            List<StageSlot> stages = PIPELINES.remove(receiver);
+            return stages == null || !receiver.isParallel() || AsyncTestContext.agentContext() == null
+                    ? null : new LentPipeline(stages);
+        }
+    }
+
+    /**
+     * Weaves {@code Stream.iterator()}: see {@link LentPipeline}. A sequential pipeline, one with no
+     * woven stage, or one outside a run is iterated as it was.
+     *
+     * @param receiver the stream
+     * @return the iterator over its elements
+     * @since 1.14.3
+     */
+    public static Iterator<Object> streamIterator(Stream<Object> receiver) {
+        ControlledSchedule.point();
+        LentPipeline lent = LentPipeline.of(receiver);
+        Iterator<Object> elements = receiver.iterator();
+        if (lent == null) {
+            return elements;
+        }
+        return new Iterator<>() {
+            @Override
+            public boolean hasNext() {
+                return lent.call(elements::hasNext);
+            }
+
+            @Override
+            @SuppressFBWarnings(value = "IT_NO_SUCH_ELEMENT",
+                    justification = "the stream's own iterator throws it, inside the lent call")
+            public Object next() {
+                return lent.call(elements::next);
+            }
+        };
+    }
+
+    /**
+     * Weaves {@code IntStream.iterator()}, as {@link #streamIterator}.
+     *
+     * @param receiver the stream
+     * @return the iterator over its elements
+     * @since 1.14.3
+     */
+    public static PrimitiveIterator.OfInt intStreamIterator(IntStream receiver) {
+        ControlledSchedule.point();
+        LentPipeline lent = LentPipeline.of(receiver);
+        PrimitiveIterator.OfInt elements = receiver.iterator();
+        if (lent == null) {
+            return elements;
+        }
+        return new PrimitiveIterator.OfInt() {
+            @Override
+            public boolean hasNext() {
+                return lent.call(elements::hasNext);
+            }
+
+            @Override
+            public int nextInt() {
+                return lent.call(elements::nextInt);
+            }
+        };
+    }
+
+    /**
+     * Weaves {@code LongStream.iterator()}, as {@link #streamIterator}.
+     *
+     * @param receiver the stream
+     * @return the iterator over its elements
+     * @since 1.14.3
+     */
+    public static PrimitiveIterator.OfLong longStreamIterator(LongStream receiver) {
+        ControlledSchedule.point();
+        LentPipeline lent = LentPipeline.of(receiver);
+        PrimitiveIterator.OfLong elements = receiver.iterator();
+        if (lent == null) {
+            return elements;
+        }
+        return new PrimitiveIterator.OfLong() {
+            @Override
+            public boolean hasNext() {
+                return lent.call(elements::hasNext);
+            }
+
+            @Override
+            public long nextLong() {
+                return lent.call(elements::nextLong);
+            }
+        };
+    }
+
+    /**
+     * Weaves {@code DoubleStream.iterator()}, as {@link #streamIterator}.
+     *
+     * @param receiver the stream
+     * @return the iterator over its elements
+     * @since 1.14.3
+     */
+    public static PrimitiveIterator.OfDouble doubleStreamIterator(DoubleStream receiver) {
+        ControlledSchedule.point();
+        LentPipeline lent = LentPipeline.of(receiver);
+        PrimitiveIterator.OfDouble elements = receiver.iterator();
+        if (lent == null) {
+            return elements;
+        }
+        return new PrimitiveIterator.OfDouble() {
+            @Override
+            public boolean hasNext() {
+                return lent.call(elements::hasNext);
+            }
+
+            @Override
+            public double nextDouble() {
+                return lent.call(elements::nextDouble);
+            }
+        };
     }
 
     /**

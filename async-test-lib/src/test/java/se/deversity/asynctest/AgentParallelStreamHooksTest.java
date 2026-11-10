@@ -9,6 +9,10 @@ import se.deversity.asynctest.diagnostics.RaceConditionDetector;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import java.util.ArrayList;
+import java.util.stream.Collector;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.PrimitiveIterator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -880,5 +884,205 @@ class AgentParallelStreamHooksTest {
     @SuppressWarnings("unchecked")
     private static Stream<Object> castObjects(Stream<?> stream) {
         return (Stream<Object>) stream;
+    }
+
+    // --- The rest of #1172: mapMulti, a primitive unordered() or onClose, a Collector, iterator() ---
+
+    @Test
+    @DisplayName("a helper works for the run while it runs a mapMulti lambda, boxed or primitive")
+    void aMapMultiLambdaWorksForTheRun() {
+        installRun();
+        Thread caller = Thread.currentThread();
+        Set<Thread> helpers = ConcurrentHashMap.newKeySet();
+        AtomicBoolean outside = new AtomicBoolean();
+
+        Stream<Object> multi = AgentConcurrencyUtilHooks.streamMapMulti(numbers(), (value, sink) -> {
+            checkLent(caller, helpers, outside);
+            sink.accept(value);
+        });
+        assertEquals(ELEMENTS, AgentConcurrencyUtilHooks.streamCount(multi));
+        IntStream toInt = AgentConcurrencyUtilHooks.streamMapMultiToInt(numbers(), (value, sink) -> {
+            checkLent(caller, helpers, outside);
+            sink.accept((Integer) value);
+        });
+        IntStream ints = AgentConcurrencyUtilHooks.intStreamMapMulti(toInt, (i, sink) -> {
+            checkLent(caller, helpers, outside);
+            sink.accept(i);
+        });
+        assertEquals(ELEMENTS * (ELEMENTS - 1) / 2, AgentConcurrencyUtilHooks.intStreamSum(ints));
+        LongStream longs = AgentConcurrencyUtilHooks.longStreamMapMulti(
+                AgentConcurrencyUtilHooks.streamMapMultiToLong(numbers(), (value, sink) -> {
+                    checkLent(caller, helpers, outside);
+                    sink.accept((Integer) value);
+                }), (i, sink) -> {
+                    checkLent(caller, helpers, outside);
+                    sink.accept(i);
+                });
+        assertEquals((long) ELEMENTS * (ELEMENTS - 1) / 2, AgentConcurrencyUtilHooks.longStreamSum(longs));
+        DoubleStream doubles = AgentConcurrencyUtilHooks.doubleStreamMapMulti(
+                AgentConcurrencyUtilHooks.streamMapMultiToDouble(numbers(), (value, sink) -> {
+                    checkLent(caller, helpers, outside);
+                    sink.accept((Integer) value);
+                }), (d, sink) -> {
+                    checkLent(caller, helpers, outside);
+                    sink.accept(d);
+                });
+        assertEquals((double) ELEMENTS * (ELEMENTS - 1) / 2, AgentConcurrencyUtilHooks.doubleStreamSum(doubles));
+
+        assertFalse(outside.get(), "a helper ran a mapMulti lambda with no run lent to it");
+        assertEquals(commonPoolCanHelp(), !helpers.isEmpty(),
+                "the common pool should have helped, or this test observed nothing");
+    }
+
+    @Test
+    @DisplayName("a map lambda behind a primitive unordered() or any onClose stays lent")
+    void aLambdaStaysLentBehindUnorderedAndOnClose() {
+        installRun();
+        Thread caller = Thread.currentThread();
+        Set<Thread> helpers = ConcurrentHashMap.newKeySet();
+        AtomicBoolean outside = new AtomicBoolean();
+        AtomicInteger closed = new AtomicInteger();
+
+        IntStream ints = AgentConcurrencyUtilHooks.intStreamMap(ints(), i -> {
+            checkLent(caller, helpers, outside);
+            return i;
+        });
+        IntStream carriedInts = (IntStream) AgentConcurrencyUtilHooks.intStreamOnClose(
+                (IntStream) AgentConcurrencyUtilHooks.intStreamUnordered(ints), closed::incrementAndGet);
+        assertEquals(ELEMENTS * (ELEMENTS - 1) / 2, AgentConcurrencyUtilHooks.intStreamSum(carriedInts));
+        LongStream longs = AgentConcurrencyUtilHooks.longStreamMap(longs(), i -> {
+            checkLent(caller, helpers, outside);
+            return i;
+        });
+        LongStream carriedLongs = (LongStream) AgentConcurrencyUtilHooks.longStreamOnClose(
+                (LongStream) AgentConcurrencyUtilHooks.longStreamUnordered(longs), closed::incrementAndGet);
+        assertEquals((long) ELEMENTS * (ELEMENTS - 1) / 2, AgentConcurrencyUtilHooks.longStreamSum(carriedLongs));
+        DoubleStream doubles = AgentConcurrencyUtilHooks.doubleStreamMap(doubles(), d -> {
+            checkLent(caller, helpers, outside);
+            return d;
+        });
+        DoubleStream carriedDoubles = (DoubleStream) AgentConcurrencyUtilHooks.doubleStreamOnClose(
+                (DoubleStream) AgentConcurrencyUtilHooks.doubleStreamUnordered(doubles), closed::incrementAndGet);
+        assertEquals((double) ELEMENTS * (ELEMENTS - 1) / 2, AgentConcurrencyUtilHooks.doubleStreamSum(carriedDoubles));
+        @SuppressWarnings("unchecked")
+        Stream<Object> objects = (Stream<Object>) AgentConcurrencyUtilHooks.streamOnClose(
+                AgentConcurrencyUtilHooks.streamMap(numbers(), value -> {
+                    checkLent(caller, helpers, outside);
+                    return value;
+                }), closed::incrementAndGet);
+        assertEquals(ELEMENTS, AgentConcurrencyUtilHooks.streamCount(objects));
+        objects.close();
+        carriedInts.close();
+
+        assertEquals(2, closed.get(), "onClose keeps the close handler it was given");
+        assertFalse(outside.get(), "a helper ran a lambda behind unordered() or onClose with no run lent to it");
+        assertEquals(commonPoolCanHelp(), !helpers.isEmpty(),
+                "the common pool should have helped, or this test observed nothing");
+    }
+
+    @Test
+    @DisplayName("a helper works for the run while it runs a Collector's own supplier, accumulator or combiner")
+    void aCollectorsFunctionsWorkForTheRun() {
+        installRun();
+        Thread caller = Thread.currentThread();
+        Set<Thread> helpers = ConcurrentHashMap.newKeySet();
+        AtomicBoolean outside = new AtomicBoolean();
+
+        Collector<Object, List<Object>, Integer> counting = Collector.of(
+                () -> {
+                    checkLent(caller, helpers, outside);
+                    return new ArrayList<>();
+                },
+                (list, value) -> {
+                    checkLent(caller, helpers, outside);
+                    list.add(value);
+                },
+                (left, right) -> {
+                    checkLent(caller, helpers, outside);
+                    left.addAll(right);
+                    return left;
+                },
+                List::size);
+
+        assertEquals(ELEMENTS, AgentConcurrencyUtilHooks.streamCollect(numbers(), counting),
+                "the finisher still runs");
+        assertEquals(ELEMENTS, ((List<?>) AgentConcurrencyUtilHooks.streamCollect(numbers(),
+                Collectors.toList())).size(), "an identity-finishing collector still returns its container");
+        assertFalse(outside.get(), "a helper ran a Collector's function with no run lent to it");
+        assertEquals(commonPoolCanHelp(), !helpers.isEmpty(),
+                "the common pool should have helped, or this test observed nothing");
+    }
+
+    @Test
+    @DisplayName("a pipeline ended by iterator() lends its lambdas the run while the caller iterates")
+    void anIteratorLendsThePipelineTheRun() {
+        installRun();
+        Thread caller = Thread.currentThread();
+        Set<Thread> helpers = ConcurrentHashMap.newKeySet();
+        AtomicBoolean outside = new AtomicBoolean();
+
+        // sorted makes the first hasNext evaluate the whole upstream in parallel, on the helpers.
+        Iterator<Object> objects = AgentConcurrencyUtilHooks.streamIterator(AgentConcurrencyUtilHooks.streamSorted(
+                AgentConcurrencyUtilHooks.streamMap(numbers(), value -> {
+                    checkLent(caller, helpers, outside);
+                    return value;
+                })));
+        int count = 0;
+        while (objects.hasNext()) {
+            objects.next();
+            count++;
+        }
+        assertEquals(ELEMENTS, count);
+        PrimitiveIterator.OfInt ints = AgentConcurrencyUtilHooks.intStreamIterator(
+                AgentConcurrencyUtilHooks.intStreamSorted(AgentConcurrencyUtilHooks.intStreamMap(ints(), i -> {
+                    checkLent(caller, helpers, outside);
+                    return i;
+                })));
+        long sum = 0;
+        while (ints.hasNext()) {
+            sum += ints.nextInt();
+        }
+        assertEquals((long) ELEMENTS * (ELEMENTS - 1) / 2, sum);
+        long[] longSum = new long[1];
+        AgentConcurrencyUtilHooks.longStreamIterator(AgentConcurrencyUtilHooks.longStreamSorted(
+                AgentConcurrencyUtilHooks.longStreamMap(longs(), i -> {
+                    checkLent(caller, helpers, outside);
+                    return i;
+                }))).forEachRemaining((long i) -> longSum[0] += i);
+        assertEquals((long) ELEMENTS * (ELEMENTS - 1) / 2, longSum[0]);
+        double[] doubleSum = new double[1];
+        AgentConcurrencyUtilHooks.doubleStreamIterator(AgentConcurrencyUtilHooks.doubleStreamSorted(
+                AgentConcurrencyUtilHooks.doubleStreamMap(doubles(), d -> {
+                    checkLent(caller, helpers, outside);
+                    return d;
+                }))).forEachRemaining((double d) -> doubleSum[0] += d);
+        assertEquals((double) ELEMENTS * (ELEMENTS - 1) / 2, doubleSum[0]);
+
+        assertFalse(outside.get(), "a helper ran a lambda behind iterator() with no run lent to it");
+        assertEquals(commonPoolCanHelp(), !helpers.isEmpty(),
+                "the common pool should have helped, or this test observed nothing");
+    }
+
+    @Test
+    @DisplayName("the caller is ordered after what a map lambda wrote once hasNext returns")
+    void theCallerIsOrderedAfterAnIteratedMapLambda() {
+        installRun();
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Object[] cells = new Object[ELEMENTS];
+        for (int i = 0; i < ELEMENTS; i++) {
+            cells[i] = new Object();
+        }
+        Iterator<Object> objects = AgentConcurrencyUtilHooks.streamIterator(AgentConcurrencyUtilHooks.streamSorted(
+                AgentConcurrencyUtilHooks.streamMap(numbers(), value -> {
+                    pause();
+                    detector.recordFieldWrite(cells[(Integer) value], "value");
+                    return value;
+                })));
+        while (objects.hasNext()) {
+            detector.recordFieldRead(cells[(Integer) objects.next()], "value");
+        }
+
+        assertFalse(detector.analyzeRaceConditions().hasIssues(),
+                "each read follows the hasNext that waited for the write; the iterator joins its helpers");
     }
 }
