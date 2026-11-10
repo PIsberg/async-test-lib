@@ -6175,6 +6175,54 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * Weaves {@code ThreadPoolExecutor.getQueue()} (#1173): where the pool queues wrappers around
+     * the tasks {@link #execute} was given, woven code reads the queue through a view that holds
+     * the caller's own tasks, removes them by those tasks, and tells the schedule a task taken out
+     * of it will never run. Anywhere else the pool's own queue is returned, so its identity is
+     * unchanged outside a run.
+     *
+     * @param pool the pool the call site invoked
+     * @return the pool's queue, or a view of it that unwraps the tasks
+     * @since 1.14.3
+     */
+    public static BlockingQueue<Runnable> poolQueue(ThreadPoolExecutor pool) {
+        ControlledSchedule.point();
+        BlockingQueue<Runnable> queue = pool.getQueue();
+        return executesInvisibly(pool) ? new UnwrappingTaskQueue(queue) : queue;
+    }
+
+    /**
+     * {@return the task the caller gave, where {@code task} is the wrapper {@link #execute} queued
+     * around it, or {@code task} itself} The agent inserts this at the entry of a
+     * {@code ThreadPoolExecutor} subclass's {@code beforeExecute} and {@code afterExecute}, and of a
+     * {@code RejectedExecutionHandler}'s {@code rejectedExecution}, storing the result back into
+     * the parameter, so the override is handed what the caller gave (#1173). Not a schedule point:
+     * the pool, not the caller, calls these.
+     *
+     * @param task the task the pool handed the method
+     * @since 1.14.3
+     */
+    public static Runnable poolTask(Runnable task) {
+        return task instanceof HandedTask handed && handed.task instanceof Runnable given ? given : task;
+    }
+
+    /**
+     * Records that the agent rewrote {@code className}'s {@code beforeExecute},
+     * {@code afterExecute} or {@code rejectedExecution} with {@link #poolTask} (#1173), so
+     * {@link #execute} may wrap a task for a pool that overrides them or uses that handler. Called
+     * by the agent while it weaves the class, before the class can be used; a class it never
+     * reports keeps its pool's tasks unwrapped, the direction that cannot report correct code.
+     *
+     * @param className the binary name of the rewritten class
+     * @since 1.14.3
+     */
+    public static void poolTaskOverrideWoven(String className) {
+        if (className != null) {
+            TASK_UNWRAPPING_CLASSES.add(className);
+        }
+    }
+
+    /**
      * Records a rejected submission with the run's {@code ThreadPoolMonitor} and hands the same
      * exception back to be rethrown unchanged (#1055). A rejection that propagates fails the test
      * anyway; one the calling code catches and drops loses the task silently, and this record is
@@ -6378,18 +6426,35 @@ public final class AgentConcurrencyUtilHooks {
             Map.entry("shutdownNow", new Class<?>[0]));
 
     /**
+     * The methods of {@link #TASK_METHODS} the agent rewrites to be handed the caller's task
+     * (#1173): an override of one of these in a class {@link #poolTaskOverrideWoven} heard of sees
+     * no wrapper.
+     */
+    private static final Set<String> UNWRAPPED_TASK_METHODS = Set.of("beforeExecute", "afterExecute");
+
+    /**
+     * Names of the classes whose {@code beforeExecute}, {@code afterExecute} or
+     * {@code rejectedExecution} the agent rewrote to hand over the caller's task (#1173).
+     */
+    private static final Set<String> TASK_UNWRAPPING_CLASSES = ConcurrentHashMap.newKeySet();
+
+    /**
      * Per {@code ThreadPoolExecutor} subclass: whether no class between it and the pool declares
-     * one of {@link #TASK_METHODS}. A class reflection cannot read counts as overriding.
+     * one of {@link #TASK_METHODS} that would be handed the wrapper; a {@code beforeExecute} or
+     * {@code afterExecute} in a class the agent rewrote is handed the caller's task instead
+     * (#1173). A class reflection cannot read counts as overriding.
      */
     private static final ClassValue<Boolean> NO_TASK_OVERRIDES = new ClassValue<>() {
         @Override
         protected Boolean computeValue(Class<?> type) {
             try {
                 for (Class<?> c = type; c != ThreadPoolExecutor.class; c = c.getSuperclass()) {
+                    boolean unwraps = TASK_UNWRAPPING_CLASSES.contains(c.getName());
                     for (java.lang.reflect.Method declared : c.getDeclaredMethods()) {
                         for (Map.Entry<String, Class<?>[]> method : TASK_METHODS) {
                             if (declared.getName().equals(method.getKey())
-                                    && Arrays.equals(declared.getParameterTypes(), method.getValue())) {
+                                    && Arrays.equals(declared.getParameterTypes(), method.getValue())
+                                    && !(unwraps && UNWRAPPED_TASK_METHODS.contains(method.getKey()))) {
                                 return false;
                             }
                         }
@@ -6412,16 +6477,37 @@ public final class AgentConcurrencyUtilHooks {
             ThreadPoolExecutor.DiscardPolicy.class, ThreadPoolExecutor.DiscardOldestPolicy.class);
 
     /**
+     * Per rejection handler class: whether it is one of the JDK's policies, or its
+     * {@code rejectedExecution} is declared in a class the agent rewrote to hand over the caller's
+     * task (#1173). A class reflection cannot read counts as looking at the task.
+     */
+    private static final ClassValue<Boolean> HANDLER_SEES_NO_WRAPPER = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> type) {
+            if (JDK_REJECTION_POLICIES.contains(type)) {
+                return true;
+            }
+            try {
+                return TASK_UNWRAPPING_CLASSES.contains(type.getMethod("rejectedExecution",
+                        Runnable.class, ThreadPoolExecutor.class).getDeclaringClass().getName());
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError unreadable) { // NOPMD - unreadable means "may look"
+                return false;
+            }
+        }
+    };
+
+    /**
      * {@return whether {@code execute} wraps its task for {@code executor}}
      *
      * <p>A {@code ThreadPoolExecutor} qualifies inside a run (#1155), as does a subclass that
      * overrides none of the methods a task reaches (#1173): a {@code beforeExecute},
      * {@code afterExecute}, {@code execute}, {@code remove} or {@code shutdownNow} of its own would
-     * be handed the wrapper. Either needs one of the JDK's rejection policies, since a handler of
-     * the caller's own is handed the rejected task. {@link #shutdownNow} and
-     * {@link #removeFromPool} keep the wrapper from showing to the caller. {@code getQueue} still
-     * shows it, to code that looks at the elements rather than the size; outside a run nothing is
-     * wrapped.
+     * be handed the wrapper. A {@code beforeExecute} or {@code afterExecute} the agent rewrote is
+     * handed the caller's task instead ({@link #poolTask}), so it does not count. Either needs a
+     * rejection handler that never sees the wrapper: one of the JDK's policies, or one whose
+     * {@code rejectedExecution} the agent rewrote the same way. {@link #shutdownNow},
+     * {@link #removeFromPool} and {@link #poolQueue} keep the wrapper from showing to woven code;
+     * outside a run nothing is wrapped.
      *
      * <p>An {@code Executors.unconfigurable*} wrapper hands back only what the executor behind it
      * hands back, so it is judged by that executor, when a woven call made it (#1107). The map is
@@ -6436,7 +6522,7 @@ public final class AgentConcurrencyUtilHooks {
         if (type == ThreadPoolExecutor.class
                 || (ThreadPoolExecutor.class.isAssignableFrom(type) && NO_TASK_OVERRIDES.get(type))) {
             return AsyncTestContext.agentContext() != null
-                    && JDK_REJECTION_POLICIES.contains(
+                    && HANDLER_SEES_NO_WRAPPER.get(
                             ((ThreadPoolExecutor) executor).getRejectedExecutionHandler().getClass());
         }
         if (!type.getName().startsWith("java.util.concurrent.Executors$")) {

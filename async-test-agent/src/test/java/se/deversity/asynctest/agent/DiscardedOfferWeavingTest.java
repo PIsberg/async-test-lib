@@ -665,6 +665,11 @@ class DiscardedOfferWeavingTest {
             return pool.remove(task);
         }
 
+        public static java.util.concurrent.BlockingQueue<Runnable> poolQueue(
+                java.util.concurrent.ThreadPoolExecutor pool) {
+            return pool.getQueue();
+        }
+
         public static void streamForEach(java.util.stream.Stream<Object> receiver,
                                          java.util.function.Consumer<Object> action) {
             receiver.forEach(action);

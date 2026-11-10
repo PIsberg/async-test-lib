@@ -448,9 +448,15 @@ seen.
 hand a task back: `ForkJoinPool`, `ScheduledThreadPoolExecutor` and the virtual-thread-per-task
 executor, matched by exact class (#741), and an `Executors.unconfigurableExecutorService` or
 `unconfigurableScheduledExecutorService` wrapper a woven call made, judged by the executor it
-forwards to (#1107). On a `ThreadPoolExecutor`, which returns the task itself
-from `getQueue`, `shutdownNow` and `remove`, on a subclass of any of them, and on an executor
-outside the JDK, it is not an edge. With `fields=true`, a volatile write releases that field
+forwards to (#1107). A `ThreadPoolExecutor` hands its tasks back from `getQueue`, `shutdownNow`
+and `remove` and passes them to `beforeExecute`, `afterExecute` and its rejection handler, so it is
+wrapped for only inside a run (#1155), where the woven forms of those three calls give back and find
+the caller's own task. `PoolTaskWeaver` rewrites a subclass's `beforeExecute` and `afterExecute`, and
+a handler class's `rejectedExecution`, to be handed that task too: it inserts a call at the method's
+entry that stores the task the wrapper holds back into the parameter, and tells the library which
+classes it rewrote (#1173). A subclass overriding `execute`, `remove` or `shutdownNow`, a lambda or
+method-reference handler, an override outside `includes=`, and an executor outside the JDK are not
+wrapped for, and give no edge (#1238). With `fields=true`, a volatile write releases that field
 of its object, and a read of the same field acquires at the read what the write whose value it
 returned published: reading one volatile field receives nothing a write of another published, and
 a read that returned an older value receives nothing the later write published (#742). The acquire

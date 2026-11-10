@@ -878,6 +878,8 @@ final class CollectionAccessWeaver {
             Entry.call(ExecutorService.class, "invokeAny", "invokeAny", Collection.class, long.class,
                     TimeUnit.class),
             Entry.call(ThreadPoolExecutor.class, "remove", "removeFromPool", Runnable.class),
+            // ...and woven code reading the queue sees those tasks, not the wrappers (#1173).
+            Entry.call(ThreadPoolExecutor.class, "getQueue", "poolQueue"),
             // A parallel forEach's helpers are common-pool workers no woven call hands anything to,
             // so the action is what carries the run to them (#1156).
             Entry.call(Stream.class, "forEach", "streamForEach", Consumer.class),
