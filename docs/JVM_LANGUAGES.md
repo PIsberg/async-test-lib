@@ -46,9 +46,10 @@ that holds it, directly or from a `withContext`, `coroutineScope` or `withTimeou
 suspended for. kotlinx `Mutex` is not reentrant, so that lock waits forever. The woven `lock` reads
 the coroutine's `Job` from its continuation and records it as the holder of the mutex, at once or
 once a lock that had to wait is granted. A `tryLock` takes no continuation, so the agent passes the
-one of the suspend function or lambda it is called in (#1220). A holder that took the mutex through
-`select`, or with a `tryLock` outside any suspend function, is not known, and a lock under it is not
-judged. Races across suspensions are still
+one of the suspend function or lambda it is called in (#1220). `select` is inline, so a
+`mutex.onLock { }` clause is registered in that function too, with an owner token of the agent's,
+and the mutex says whether the clause won (#1220). A holder that took the mutex with a `tryLock`
+outside any suspend function is not known, and a lock under it is not judged. Races across suspensions are still
 [#1007](https://github.com/PIsberg/async-test-lib/issues/1007).
 Fixture:
 [`consumer-fixture-langs/kotlin`](../consumer-fixture-langs/kotlin); a fuller example with a

@@ -3357,6 +3357,69 @@ public final class AgentConcurrencyUtilHooks {
         return taken;
     }
 
+    /**
+     * Weaves {@code SelectBuilder.invoke(clause, block)}, the registration an inlined
+     * {@code select { mutex.onLock { } }} compiles to (#1220). {@code continuation} is the one of the
+     * suspend function or lambda the {@code select} is written in, which the agent passes, or
+     * {@code null} where it found none. While a run hears it and {@code clause} is a mutex's
+     * {@code onLock}, the clause is registered with a fresh owner token, as {@link #kotlinMutexLock}
+     * makes a lock with no owner, and the token is recorded with the calling coroutine's {@code Job}:
+     * the mutex then says, through {@code holdsLock}, whether the clause was selected and still holds
+     * it, and a later {@code lock} by the same coroutine that waits for it is reported. kotlinx
+     * compares owners by identity, so the select and an {@code unlock(null)} behave as with no owner.
+     * Every other clause, and every clause while no run hears the call, is registered unchanged.
+     * A schedule point, like every substituted call.
+     *
+     * @param builder      the receiver, the {@code select}'s builder
+     * @param clause       the clause, a {@code SelectClause2}
+     * @param block        the clause's block
+     * @param continuation the enclosing coroutine's continuation, or {@code null}
+     * @since 1.14.3
+     */
+    public static void kotlinSelectInvokeIn(Object builder, Object clause, Object block,
+                                            @Nullable Object continuation) {
+        ControlledSchedule.point();
+        KotlinMutexes.SelectBinding binding = KotlinMutexes.selectOf(builder);
+        KotlinMutexes.TryLockWatch watch = KotlinMutexes.onLockWatch(
+                AsyncTestContext.currentKotlinMutexReentrancyDetector(), clause, null, continuation, binding);
+        try {
+            if (watch == null) {
+                binding.invoke.invokeExact(builder, clause, block);
+            } else {
+                binding.invokeWithOwner.invokeExact(builder, clause, watch.owner, block);
+            }
+        } catch (Throwable t) {
+            throw KotlinMutexes.rethrow(t);
+        }
+        KotlinMutexes.TryLockWatch.registered(watch);
+    }
+
+    /**
+     * Weaves {@code SelectBuilder.invoke(clause, owner, block)}, the registration an inlined
+     * {@code select { mutex.onLock(owner) { } }} compiles to, as {@link #kotlinSelectInvokeIn}; an
+     * owner the caller passed is kept, and the mutex is asked about that one (#1220).
+     *
+     * @param builder      the receiver, the {@code select}'s builder
+     * @param clause       the clause, a {@code SelectClause2}
+     * @param owner        the clause's parameter: for {@code onLock}, the owner token, or {@code null}
+     * @param block        the clause's block
+     * @param continuation the enclosing coroutine's continuation, or {@code null}
+     * @since 1.14.3
+     */
+    public static void kotlinSelectInvokeOwnerIn(Object builder, Object clause, Object owner, Object block,
+                                                 @Nullable Object continuation) {
+        ControlledSchedule.point();
+        KotlinMutexes.SelectBinding binding = KotlinMutexes.selectOf(builder);
+        KotlinMutexes.TryLockWatch watch = KotlinMutexes.onLockWatch(
+                AsyncTestContext.currentKotlinMutexReentrancyDetector(), clause, owner, continuation, binding);
+        try {
+            binding.invokeWithOwner.invokeExact(builder, clause, watch == null ? owner : watch.owner, block);
+        } catch (Throwable t) {
+            throw KotlinMutexes.rethrow(t);
+        }
+        KotlinMutexes.TryLockWatch.registered(watch);
+    }
+
     /** {@link #blocking} for a get of {@code future}, managed when it is a {@code CompletableFuture}. */
     private static void blockingOn(Future<?> future) {
         if (future instanceof CompletableFuture) {

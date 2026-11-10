@@ -8,11 +8,13 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import java.util.concurrent.Executors
 
 /**
@@ -134,6 +136,71 @@ class MutexBridges {
         } finally {
             mutex.unlock()
         }
+    }
+
+    /**
+     * The misuse after a `select` (#1220): the coroutine takes the mutex through `onLock`, and its
+     * `coroutineScope` block locks it again. `select` is inline, so the clause is registered in the
+     * `runBlocking` lambda itself.
+     */
+    @Suppress("DEPRECATION")
+    fun reenterAfterSelect(): Boolean = runBlocking {
+        val mutex = Mutex()
+        select<Unit> { mutex.onLock { } }
+        try {
+            withTimeoutOrNull(TIMEOUT_MS) {
+                coroutineScope {
+                    mutex.lock()
+                    mutex.unlock()
+                    true
+                }
+            } ?: false
+        } finally {
+            mutex.unlock()
+        }
+    }
+
+    /** The same with an owner passed to the clause, in a named suspend function whose `supervisorScope` relocks. */
+    fun reenterAfterSelectWithAnOwner(): Boolean = runBlocking { selectThenReenter(Mutex()) }
+
+    @Suppress("DEPRECATION")
+    private suspend fun selectThenReenter(mutex: Mutex): Boolean {
+        val owner = Any()
+        select<Unit> { mutex.onLock(owner) { } }
+        try {
+            return withTimeoutOrNull(TIMEOUT_MS) {
+                supervisorScope { mutex.withLock { true } }
+            } ?: false
+        } finally {
+            mutex.unlock(owner)
+        }
+    }
+
+    /**
+     * Silent: a `select` whose `onLock` clause loses, because a child holds the mutex and another
+     * clause is ready at once, then a lock by the same coroutine, which waits for the child alone.
+     * Returns whether that lock was taken.
+     */
+    @Suppress("DEPRECATION")
+    fun lockAfterALostSelect(): Boolean = runBlocking {
+        val mutex = Mutex()
+        val ready = CompletableDeferred(Unit)
+        launch { mutex.withLock { delay(HOLD_MS) } }
+        yield()
+        select<Unit> {
+            mutex.onLock { mutex.unlock() }
+            ready.onAwait { }
+        }
+        coroutineScope { mutex.withLock { true } }
+    }
+
+    /** Silent: a mutex taken through `select`, unlocked, then locked by the same coroutine. */
+    @Suppress("DEPRECATION")
+    fun lockAfterSelectIsReleased(): Boolean = runBlocking {
+        val mutex = Mutex()
+        select<Unit> { mutex.onLock { } }
+        mutex.unlock()
+        coroutineScope { mutex.withLock { true } }
     }
 
     /** Silent: a `tryLock`, an unlock, then a lock by the same coroutine, which is free by then. */

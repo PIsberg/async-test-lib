@@ -15,10 +15,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 2.4.21 compiles against kotlinx 1.11.0, read with {@code javap} from the consumer fixture: an
  * inlined {@code withLock} calls {@code lock} and {@code unlock} through the interface, and a bare
  * {@code lock()}, {@code unlock()} or {@code tryLock()} the interface's static {@code $default} bridge.
+ * An inlined {@code select} registers {@code mutex.onLock { }} through {@code SelectBuilder.invoke}
+ * (#1220).
  */
 class KotlinMutexWeaverTest {
 
     private static final String MUTEX = "kotlinx/coroutines/sync/Mutex";
+    private static final String SELECT = "kotlinx/coroutines/selects/SelectBuilder";
 
     @Test
     @DisplayName("each compiled lock, unlock and tryLock form is matched to its hook")
@@ -36,16 +39,38 @@ class KotlinMutexWeaverTest {
     }
 
     @Test
+    @DisplayName("each compiled select clause registration that can take a mutex is matched to its hook (#1220)")
+    void everySelectRegistrationIsMatched() {
+        assertEquals("kotlinSelectInvokeIn", hook(Opcodes.INVOKEINTERFACE, SELECT, "invoke",
+                "(Lkotlinx/coroutines/selects/SelectClause2;Lkotlin/jvm/functions/Function2;)V"));
+        assertEquals("kotlinSelectInvokeOwnerIn", hook(Opcodes.INVOKEINTERFACE, SELECT, "invoke",
+                "(Lkotlinx/coroutines/selects/SelectClause2;Ljava/lang/Object;Lkotlin/jvm/functions/Function2;)V"));
+        assertNull(KotlinMutexWeaver.match(Opcodes.INVOKEINTERFACE, SELECT, "invoke",
+                "(Lkotlinx/coroutines/selects/SelectClause1;Lkotlin/jvm/functions/Function2;)V"),
+                "a SelectClause1 never takes a mutex");
+        assertNull(KotlinMutexWeaver.match(Opcodes.INVOKEINTERFACE, SELECT, "invoke",
+                "(Lkotlinx/coroutines/selects/SelectClause0;Lkotlin/jvm/functions/Function1;)V"));
+        assertNull(KotlinMutexWeaver.match(Opcodes.INVOKEINTERFACE, SELECT, "onTimeout",
+                "(JLkotlin/jvm/functions/Function1;)V"));
+        assertNull(KotlinMutexWeaver.match(Opcodes.INVOKEINTERFACE, MUTEX, "invoke",
+                "(Lkotlinx/coroutines/selects/SelectClause2;Lkotlin/jvm/functions/Function2;)V"),
+                "the owner is part of the match");
+    }
+
+    @Test
     @DisplayName("a hook takes the call site's stack with each Kotlin type as Object, and returns its result")
     void hookDescriptorsKeepTheStack() {
         for (KotlinMutexWeaver.Row row : KotlinMutexWeaver.ROWS) {
             String site = row.descriptor()
                     .replace("Lkotlinx/coroutines/sync/Mutex;", "Ljava/lang/Object;")
+                    .replace("Lkotlinx/coroutines/selects/SelectClause2;", "Ljava/lang/Object;")
+                    .replace("Lkotlin/jvm/functions/Function2;", "Ljava/lang/Object;")
                     .replace("Lkotlin/coroutines/Continuation;", "Ljava/lang/Object;");
             // An interface call's receiver becomes the hook's first argument.
             String expected = row.opcode() == Opcodes.INVOKEINTERFACE
                     ? "(Ljava/lang/Object;" + site.substring(1) : site;
-            // A tryLock's hook also takes the enclosing coroutine's continuation, last (#1220).
+            // A tryLock's or a select registration's hook also takes the enclosing coroutine's
+            // continuation, last (#1220).
             if (row.passesCaller()) {
                 expected = expected.replace(")", "Ljava/lang/Object;)");
             }
@@ -95,7 +120,11 @@ class KotlinMutexWeaverTest {
     }
 
     private static String hook(int opcode, String name, String descriptor) {
-        KotlinMutexWeaver.Row row = KotlinMutexWeaver.match(opcode, MUTEX, name, descriptor);
+        return hook(opcode, MUTEX, name, descriptor);
+    }
+
+    private static String hook(int opcode, String owner, String name, String descriptor) {
+        KotlinMutexWeaver.Row row = KotlinMutexWeaver.match(opcode, owner, name, descriptor);
         assertNotNull(row, name + descriptor);
         return row.hook();
     }

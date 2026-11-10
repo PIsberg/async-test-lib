@@ -12,8 +12,9 @@ import java.util.Deque;
 import java.util.List;
 
 /**
- * Calls kotlinx {@code Mutex} and reads the calling coroutine's {@code Job} for the woven
- * {@code Mutex} hooks (#1007), without the library depending on Kotlin.
+ * Calls kotlinx {@code Mutex} and {@code SelectBuilder} and reads the calling coroutine's
+ * {@code Job} for the woven {@code Mutex} and {@code select} hooks (#1007, #1220), without the
+ * library depending on Kotlin.
  *
  * <p>Every type is resolved by name through the class loader of the {@code Mutex} interface the
  * receiver implements, found on the receiver's own class, so it is the kotlinx the call site
@@ -31,6 +32,10 @@ final class KotlinMutexes {
     private static final String JOB = "kotlinx.coroutines.Job";
     private static final String SCOPE_COROUTINE = "kotlinx.coroutines.internal.ScopeCoroutine";
     private static final String SUSPENDED_TYPE = "kotlin.coroutines.intrinsics.CoroutineSingletons";
+    static final String SELECT_BUILDER = "kotlinx.coroutines.selects.SelectBuilder";
+    private static final String SELECT_CLAUSE = "kotlinx.coroutines.selects.SelectClause";
+    private static final String SELECT_CLAUSE2 = "kotlinx.coroutines.selects.SelectClause2";
+    private static final String FUNCTION2 = "kotlin.jvm.functions.Function2";
 
     /** Scopes followed outward from the caller before giving up; far beyond any real nesting. */
     private static final int MAX_DEPTH = 64;
@@ -42,7 +47,52 @@ final class KotlinMutexes {
         }
     };
 
+    private static final ClassValue<SelectBinding> SELECT_BINDINGS = new ClassValue<>() {
+        @Override
+        protected SelectBinding computeValue(Class<?> type) {
+            return bindSelect(type);
+        }
+    };
+
+    /** Whether a class implements kotlinx {@code Mutex}: a select clause's object is one only for {@code onLock}. */
+    private static final ClassValue<Boolean> IS_MUTEX = new ClassValue<>() {
+        @Override
+        protected Boolean computeValue(Class<?> type) {
+            return interfaceNamed(type, MUTEX) != null;
+        }
+    };
+
     private KotlinMutexes() {
+    }
+
+    /** The handles for one {@code SelectBuilder} implementation class (#1220). */
+    static final class SelectBinding {
+        /** {@code SelectBuilder.invoke(SelectClause2, Function2)}, as {@code (Object, Object, Object)void}. */
+        final MethodHandle invoke;
+        /** {@code SelectBuilder.invoke(SelectClause2, Object, Function2)}, as {@code (Object, Object, Object, Object)void}. */
+        final MethodHandle invokeWithOwner;
+        /** {@code SelectClause.getClauseObject()}, as {@code (Object)Object}; {@code null} where absent. */
+        final @Nullable MethodHandle clauseObject;
+
+        SelectBinding(MethodHandle invoke, MethodHandle invokeWithOwner, @Nullable MethodHandle clauseObject) {
+            this.invoke = invoke;
+            this.invokeWithOwner = invokeWithOwner;
+            this.clauseObject = clauseObject;
+        }
+
+        /** {@return the mutex {@code clause} is the {@code onLock} clause of, or {@code null} for any other clause} */
+        @Nullable Object mutexOf(Object clause) {
+            MethodHandle handle = clauseObject;
+            if (handle == null) {
+                return null;
+            }
+            try {
+                Object object = handle.invokeExact(clause);
+                return object != null && IS_MUTEX.get(object.getClass()) ? object : null;
+            } catch (Throwable unreadable) { // NOPMD - a clause that cannot say what it selects on takes no mutex for us
+                return null;
+            }
+        }
     }
 
     /** The handles for one {@code Mutex} implementation class. */
@@ -260,6 +310,37 @@ final class KotlinMutexes {
                 watch.detector.recordLocked(watch.mutex, watch.job, watch.owner, true);
             }
         }
+
+        /**
+         * A {@code select} registered the mutex's {@code onLock} clause with the owner (#1220): the
+         * caller's {@code Job} holds it under that owner once, and only if, the clause is selected,
+         * which the mutex answers through {@code holdsLock}. A clause that loses never holds it.
+         */
+        static void registered(@Nullable TryLockWatch watch) {
+            if (watch != null) {
+                watch.detector.recordLocked(watch.mutex, watch.job, watch.owner, false);
+            }
+        }
+    }
+
+    /**
+     * {@return the watch for a {@code select} clause about to be registered with {@code owner}, or
+     * {@code null} when no run hears it, the clause is not a mutex's {@code onLock}, or the coroutine
+     * or the holder cannot be named; the clause is then registered unchanged (#1220)}
+     */
+    static @Nullable TryLockWatch onLockWatch(@Nullable KotlinMutexReentrancyDetector detector, Object clause,
+                                              @Nullable Object owner, @Nullable Object continuation,
+                                              SelectBinding select) {
+        if (detector == null || continuation == null || clause == null) {
+            return null;
+        }
+        Object mutex = select.mutexOf(clause);
+        return mutex == null ? null : TryLockWatch.before(detector, mutex, owner, continuation, of(mutex));
+    }
+
+    /** {@return the binding for {@code builder}'s class} */
+    static SelectBinding selectOf(Object builder) {
+        return SELECT_BINDINGS.get(builder.getClass());
     }
 
     /** {@return the binding for {@code mutex}'s class} */
@@ -328,6 +409,41 @@ final class KotlinMutexes {
                     jobReader(loader, continuation));
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("cannot bind " + MUTEX + " on " + type.getName(), e);
+        }
+    }
+
+    private static SelectBinding bindSelect(Class<?> type) {
+        Class<?> builder = interfaceNamed(type, SELECT_BUILDER);
+        if (builder == null) {
+            throw new IllegalStateException(type.getName() + " does not implement " + SELECT_BUILDER);
+        }
+        try {
+            ClassLoader loader = builder.getClassLoader();
+            Class<?> clause2 = Class.forName(SELECT_CLAUSE2, false, loader);
+            Class<?> function2 = Class.forName(FUNCTION2, false, loader);
+            MethodHandles.Lookup lookup = MethodHandles.publicLookup();
+            MethodHandle invoke = lookup.findVirtual(builder, "invoke",
+                    MethodType.methodType(void.class, clause2, function2));
+            MethodHandle invokeWithOwner = lookup.findVirtual(builder, "invoke",
+                    MethodType.methodType(void.class, clause2, Object.class, function2));
+            return new SelectBinding(
+                    invoke.asType(MethodType.methodType(void.class, Object.class, Object.class, Object.class)),
+                    invokeWithOwner.asType(MethodType.methodType(void.class,
+                            Object.class, Object.class, Object.class, Object.class)),
+                    clauseObjectOf(lookup, loader));
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("cannot bind " + SELECT_BUILDER + " on " + type.getName(), e);
+        }
+    }
+
+    /** {@return {@code SelectClause.getClauseObject()}, or {@code null} on a kotlinx without it: nothing is then recorded} */
+    private static @Nullable MethodHandle clauseObjectOf(MethodHandles.Lookup lookup, @Nullable ClassLoader loader) {
+        try {
+            Class<?> clause = Class.forName(SELECT_CLAUSE, false, loader);
+            return lookup.findVirtual(clause, "getClauseObject", MethodType.methodType(Object.class))
+                    .asType(MethodType.genericMethodType(1));
+        } catch (ReflectiveOperationException | LinkageError olderKotlinx) { // NOPMD - unreadable records nothing
+            return null;
         }
     }
 

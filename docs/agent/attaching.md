@@ -307,7 +307,13 @@ continuation, and `KotlinMutexReentrancyDetector` keeps it with the token. A `tr
 continuation, so before its hook the weaver loads the one of the function the call is made in:
 `this` in a suspend lambda's `invokeSuspend`, the trailing `Continuation` parameter of a suspend
 function, or `null` elsewhere, and a mutex the `tryLock` takes is kept with that `Job` the same way
-(#1220). It reports a lock that
+(#1220). `select { mutex.onLock { } }` takes the mutex inside kotlinx, but `select` is inline, so
+each clause is registered in the caller with `INVOKEINTERFACE kotlinx/coroutines/selects/SelectBuilder.invoke`.
+The two registrations of a `SelectClause2`, with and without an owner, are replaced by hooks that
+also take the enclosing continuation, loaded as for `tryLock`. A clause whose `clauseObject` is a
+`Mutex` is registered with the agent's owner token where it had none, and the token is kept with
+the caller's `Job`; it holds the mutex only if the clause wins, which `holdsLock` answers. Every
+other clause is registered unchanged (#1220). It reports a lock that
 waits while the mutex's own `holdsLock` says a token of the caller, or of a coroutine suspended for
 the caller's scope, holds it. The mutex answers, so an unlock outside `includes=` ends a hold like
 any other (#1221); a lock outside `includes=` holds no token, and a reentry under it is missed

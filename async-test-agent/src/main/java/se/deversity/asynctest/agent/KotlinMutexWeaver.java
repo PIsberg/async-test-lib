@@ -17,7 +17,8 @@ import org.jspecify.annotations.Nullable;
 import java.util.List;
 
 /**
- * Hands each Kotlin coroutine {@code Mutex} lock, unlock and tryLock to the library, so a mutex
+ * Hands each Kotlin coroutine {@code Mutex} lock, unlock and tryLock, and each {@code select} clause
+ * registration that can take one, to the library, so a mutex
  * locked again by the coroutine that holds it is reported (#1007).
  *
  * <p>{@code mutex.withLock(owner) { }} is inline, so its {@code lock} and {@code unlock} are
@@ -34,7 +35,17 @@ import java.util.List;
  * in a suspend lambda's {@code invokeSuspend(Object)}, the trailing {@code Continuation} parameter of
  * a suspend function, or {@code null} anywhere else; the hook takes it as one more argument, so the
  * stack only grows by one. A slot the method stores a non-reference into before the call is not
- * loaded, since the verifier would refuse it; javac and kotlinc never do that to a parameter. Neither {@code Mutex} nor the Kotlin types in its descriptors are on
+ * loaded, since the verifier would refuse it; javac and kotlinc never do that to a parameter.
+ *
+ * <p>{@code select { mutex.onLock(owner) { } }} takes the mutex inside kotlinx, outside any woven
+ * call site (#1220). {@code select} is inline, so its builder is compiled into the caller, and each
+ * clause is registered there with {@code INVOKEINTERFACE SelectBuilder.invoke}. The two
+ * registrations of a {@code SelectClause2}, with and without an owner, are replaced by hooks that
+ * take the same stack and the enclosing coroutine's continuation, loaded as for {@code tryLock};
+ * the hook passes an owner of its own where the clause is a mutex's and none was given. Every other
+ * clause is registered unchanged.
+ *
+ * <p>Neither {@code Mutex} nor the Kotlin types in its descriptors are on
  * the agent's class path, so, as with {@link RunBlockingWeaver}, a call is matched by the owner,
  * name and descriptor written at the call site; a descriptor from some other kotlinx is left alone
  * rather than substituted by a hook that could not make it.
@@ -48,24 +59,34 @@ final class KotlinMutexWeaver implements AsmVisitorWrapper {
     /** The interface a Kotlin {@code Mutex} call site names as its owner. */
     static final String OWNER = "kotlinx/coroutines/sync/Mutex";
 
+    /** The interface an inlined {@code select} registers its clauses through (#1220). */
+    static final String SELECT_BUILDER = "kotlinx/coroutines/selects/SelectBuilder";
+
     private static final String OBJ = "Ljava/lang/Object;";
     private static final String MUTEX = "L" + OWNER + ";";
     private static final String CONTINUATION = "Lkotlin/coroutines/Continuation;";
+    private static final String CLAUSE2 = "Lkotlinx/coroutines/selects/SelectClause2;";
+    private static final String FUNCTION2 = "Lkotlin/jvm/functions/Function2;";
 
     /**
      * One substituted call: what the call site says, the hook it becomes, and whether the enclosing
      * coroutine's continuation is loaded as the hook's last argument.
      */
-    record Row(int opcode, String name, String descriptor, String hook, String hookDescriptor,
+    record Row(int opcode, String owner, String name, String descriptor, String hook, String hookDescriptor,
                List<Class<?>> hookParameters, boolean passesCaller) {
 
         Row(int opcode, String name, String descriptor, String hook, String hookDescriptor,
             List<Class<?>> hookParameters) {
-            this(opcode, name, descriptor, hook, hookDescriptor, hookParameters, false);
+            this(opcode, OWNER, name, descriptor, hook, hookDescriptor, hookParameters, false);
+        }
+
+        Row(int opcode, String name, String descriptor, String hook, String hookDescriptor,
+            List<Class<?>> hookParameters, boolean passesCaller) {
+            this(opcode, OWNER, name, descriptor, hook, hookDescriptor, hookParameters, passesCaller);
         }
     }
 
-    /** The six call shapes, as kotlinx 1.11 compiles them. */
+    /** The six {@code Mutex} call shapes and the two {@code select} registrations, as kotlinx 1.11 compiles them. */
     static final List<Row> ROWS = List.of(
             new Row(Opcodes.INVOKEINTERFACE, "lock", "(" + OBJ + CONTINUATION + ")" + OBJ,
                     "kotlinMutexLock", "(" + OBJ + OBJ + OBJ + ")" + OBJ,
@@ -84,7 +105,13 @@ final class KotlinMutexWeaver implements AsmVisitorWrapper {
                     List.of(Object.class, Object.class, Object.class), true),
             new Row(Opcodes.INVOKESTATIC, "tryLock$default", "(" + MUTEX + OBJ + "I" + OBJ + ")Z",
                     "kotlinMutexTryLockDefaultIn", "(" + OBJ + OBJ + "I" + OBJ + OBJ + ")Z",
-                    List.of(Object.class, Object.class, int.class, Object.class, Object.class), true));
+                    List.of(Object.class, Object.class, int.class, Object.class, Object.class), true),
+            new Row(Opcodes.INVOKEINTERFACE, SELECT_BUILDER, "invoke", "(" + CLAUSE2 + FUNCTION2 + ")V",
+                    "kotlinSelectInvokeIn", "(" + OBJ + OBJ + OBJ + OBJ + ")V",
+                    List.of(Object.class, Object.class, Object.class, Object.class), true),
+            new Row(Opcodes.INVOKEINTERFACE, SELECT_BUILDER, "invoke", "(" + CLAUSE2 + OBJ + FUNCTION2 + ")V",
+                    "kotlinSelectInvokeOwnerIn", "(" + OBJ + OBJ + OBJ + OBJ + OBJ + ")V",
+                    List.of(Object.class, Object.class, Object.class, Object.class, Object.class), true));
 
     /** A suspend lambda's body: {@code this} is the coroutine's continuation. */
     private static final String INVOKE_SUSPEND = "invokeSuspend";
@@ -142,11 +169,12 @@ final class KotlinMutexWeaver implements AsmVisitorWrapper {
 
     /** {@return the row a call site matches, or {@code null} for any other call} */
     static @Nullable Row match(int opcode, String owner, String name, String descriptor) {
-        if (!OWNER.equals(owner)) {
+        if (!OWNER.equals(owner) && !SELECT_BUILDER.equals(owner)) {
             return null;
         }
         for (Row row : ROWS) {
-            if (row.opcode() == opcode && row.name().equals(name) && row.descriptor().equals(descriptor)) {
+            if (row.opcode() == opcode && row.owner().equals(owner) && row.name().equals(name)
+                    && row.descriptor().equals(descriptor)) {
                 return row;
             }
         }
