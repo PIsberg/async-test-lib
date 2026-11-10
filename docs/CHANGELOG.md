@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `ThreadPoolExecutor` subclass with a `beforeExecute` or `afterExecute`, or a pool with a
+  rejection handler class of its own, is observed (#1173).** A woven `execute` wraps a task inside a
+  run so the task is ordered after the call and its thread attributed to the run (#1155). A pool
+  whose own methods would have been handed that wrapper kept its tasks unwrapped, so a race inside
+  them was dropped as noise. The new `PoolTaskWeaver` rewrites those overrides and a handler's
+  `rejectedExecution` to be handed the caller's own task, and tells the library which classes it
+  rewrote, so such a pool is wrapped for like a plain one. A woven `getQueue()` now holds the
+  caller's tasks too. It finds and removes them by those tasks, and a task taken out of the queue
+  is told to the controlled schedule as never going to run, as `shutdownNow` and `remove` already
+  did. `PoolTaskOverrideWeavingTest` failed before the change with the task left unwrapped. A pool
+  overriding `execute`, `remove` or `shutdownNow`, and a lambda or method-reference handler, stay
+  unwrapped (#1238).
+
 - **`KOTLIN_MUTEX_REENTRANCY` names the coroutine behind `select { mutex.onLock { } }` (#1220).**
   A mutex taken through a `select` clause held no owner token of the agent's, so a coroutine that
   then locked it again from a `coroutineScope` or `supervisorScope` block hung exactly like the
