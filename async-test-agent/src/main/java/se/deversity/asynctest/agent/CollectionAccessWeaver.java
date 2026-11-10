@@ -338,6 +338,14 @@ final class CollectionAccessWeaver {
             // The conditional two-argument removal, which is a mutation like its sibling (#440).
             Entry.call(Map.class, "remove", "mapRemove", Object.class, Object.class),
             Entry.call(Map.class, "containsKey", "mapContainsKey", Object.class),
+            // The atomic per-key updates (#1245): the hook holds a per-(map, key) stand-in for the
+            // lock a ConcurrentHashMap takes inside the JDK, and calls any other map as is.
+            Entry.call(Map.class, "compute", "mapCompute", Object.class, BiFunction.class),
+            Entry.call(Map.class, "computeIfPresent", "mapComputeIfPresent", Object.class,
+                    BiFunction.class),
+            Entry.call(Map.class, "computeIfAbsent", "mapComputeIfAbsent", Object.class,
+                    Function.class),
+            Entry.call(Map.class, "merge", "mapMerge", Object.class, Object.class, BiFunction.class),
             // Iteration, and where a synchronized map's views come from: a wrapper from
             // Collections.synchronized* must be iterated under the monitor it synchronizes on,
             // which for a map's view is the map's.
