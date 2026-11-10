@@ -45,14 +45,15 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   `ThreadPoolExecutor` (#1155), `ForkJoinPool`, `ScheduledThreadPoolExecutor` or virtual-thread-per-task
   executor (#741), or an `Executors.unconfigurable*` wrapper around one that a woven call made (#1107),
   or helping a parallel stream the run started: the `map`, `filter`, `peek` and `mapToObj` lambdas of a
-  `Stream`, `IntStream`, `LongStream` or `DoubleStream`, its `flatMap`, `takeWhile`, `dropWhile` and
-  `sorted` comparator, and the lambdas of its woven terminal operations (`forEach`, `forEachOrdered`,
-  `collect`, `reduce`, `min`, `max`, the matches; #1156, #1172). A pipeline stays followed across
-  every `mapTo*`, `mapToObj`, `boxed`, `as*Stream`, `sorted`, `distinct`, `limit`, `skip`,
-  `parallel()` and `sequential()`, and a `Stream`'s `unordered()`. A lambda reaches the workers only
-  through a chain of woven calls: one given to `mapMulti`, to a stage behind a primitive stream's
-  `unordered()` or `onClose`, or to a pipeline ended by `iterator()` or in unwoven code runs
-  unattributed, and a `Collector`'s own functions are not lent the run.
+  `Stream`, `IntStream`, `LongStream` or `DoubleStream`, its `flatMap`, `mapMulti`, `takeWhile`,
+  `dropWhile` and `sorted` comparator, and the lambdas of its woven terminal operations (`forEach`,
+  `forEachOrdered`, `collect` and a `Collector`'s own supplier, accumulator and combiner, `reduce`,
+  `min`, `max`, the matches; #1156, #1172). A pipeline stays followed across every `mapTo*`,
+  `mapMultiTo*`, `mapToObj`, `boxed`, `as*Stream`, `sorted`, `distinct`, `limit`, `skip`,
+  `parallel()`, `sequential()`, `unordered()` and `onClose`. A pipeline ended by `iterator()` lends its
+  lambdas the run inside each `hasNext` and `next`, and orders the caller after them when the call
+  returns. A lambda reaches the workers only through a chain of woven calls: one in a pipeline ended
+  by `spliterator()` or in unwoven code runs unattributed (#1240).
   Accesses on other application threads during the round, a thread started in unwoven code or a task
   given to `execute` on a `ThreadPoolExecutor` subclass that overrides `execute`, `remove` or
   `shutdownNow`, or a `beforeExecute` or `afterExecute` outside `includes=`, included, are treated as
