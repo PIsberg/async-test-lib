@@ -3368,7 +3368,7 @@ public final class AgentConcurrencyUtilHooks {
      * it, and a later {@code lock} by the same coroutine that waits for it is reported. kotlinx
      * compares owners by identity, so the select and an {@code unlock(null)} behave as with no owner.
      * Every other clause, and every clause while no run hears the call, is registered unchanged.
-     * Registering is not taking the mutex, so this is no schedule point.
+     * A schedule point, like every substituted call.
      *
      * @param builder      the receiver, the {@code select}'s builder
      * @param clause       the clause, a {@code SelectClause2}
@@ -3378,6 +3378,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static void kotlinSelectInvokeIn(Object builder, Object clause, Object block,
                                             @Nullable Object continuation) {
+        ControlledSchedule.point();
         KotlinMutexes.SelectBinding binding = KotlinMutexes.selectOf(builder);
         KotlinMutexes.TryLockWatch watch = KotlinMutexes.onLockWatch(
                 AsyncTestContext.currentKotlinMutexReentrancyDetector(), clause, null, continuation, binding);
@@ -3407,6 +3408,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static void kotlinSelectInvokeOwnerIn(Object builder, Object clause, Object owner, Object block,
                                                  @Nullable Object continuation) {
+        ControlledSchedule.point();
         KotlinMutexes.SelectBinding binding = KotlinMutexes.selectOf(builder);
         KotlinMutexes.TryLockWatch watch = KotlinMutexes.onLockWatch(
                 AsyncTestContext.currentKotlinMutexReentrancyDetector(), clause, owner, continuation, binding);
