@@ -20,6 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A periodic scheduled task that throws is reported (#1254).** A task given to
+  `scheduleAtFixedRate` or `scheduleWithFixedDelay` that throws is cancelled for good by its
+  executor, and the exception goes into a `ScheduledFuture` nobody reads, because nobody reads a
+  periodic task's future: the heartbeat stops and the test passes. The agent now substitutes both
+  calls, schedules the task unchanged and hands its future to `FUTURE_IGNORED`, which reports it
+  when the future has failed at analysis, unless a woven `get` threw that failure into the body.
+  A periodic task still scheduled, or cancelled, draws nothing. Same tier and severity as the
+  discarded-submit finding (`HIGH`). A one-shot `schedule(...)` whose future is dropped is not
+  woven and still draws nothing (#1281). Test first: the two firing cases in
+  `AgentExecutorHooksTest` failed with the periodic findings dropped, the read twin failed with the
+  read excuse removed, and `ExecutorFeedWeavingTest` failed with the `scheduleAtFixedRate` weaver
+  row removed. New corpus pair `agent_future_periodicTaskThrows` / `agent_future_periodicTaskCatches`.
+
 - **`FutureCapture.awaitDone` no longer throws for a cancelled future (#1251).** It called
   `future.get` and caught only the checked exceptions, so the unchecked `CancellationException`
   that `get` reports for a cancelled future escaped, and a test that cancelled a future and then

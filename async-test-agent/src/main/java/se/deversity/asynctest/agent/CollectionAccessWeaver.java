@@ -1094,6 +1094,13 @@ final class CollectionAccessWeaver {
                     .whenResultDiscarded("submitResultDiscarded"),
             Entry.call(ExecutorService.class, "submit", "submit", Runnable.class, Object.class)
                     .whenResultDiscarded("submitResultDiscarded"),
+            // A periodic task that throws is cancelled for good and its exception lands in a
+            // future nobody reads; the hooks schedule it unchanged and hand that future to the
+            // ignored-future detector (#1254).
+            Entry.call(ScheduledExecutorService.class, "scheduleAtFixedRate", "scheduleAtFixedRate",
+                    Runnable.class, long.class, long.class, TimeUnit.class),
+            Entry.call(ScheduledExecutorService.class, "scheduleWithFixedDelay",
+                    "scheduleWithFixedDelay", Runnable.class, long.class, long.class, TimeUnit.class),
             // The Executors factories, so a pool the run created is declared as the run's own:
             // ownership is the whole of the shutdown detector's rule, and an executor handed in
             // from outside the run is never declared (#387). Each is a static call, which the

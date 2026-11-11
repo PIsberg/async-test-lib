@@ -185,7 +185,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 90. Future Ignored Detector
 * **Severity**: `HIGH`
-* **Description**: Detects `Future` instances returned from `ExecutorService.submit()` that are never inspected via `get()`/`isDone()`/`isCancelled()`/`cancel()`. When the submitted task throws, the exception is captured inside the `Future` and silently discarded if no one ever checks it.
+* **Description**: Detects `Future` instances returned from `ExecutorService.submit()` that are never inspected via `get()`/`isDone()`/`isCancelled()`/`cancel()`. When the submitted task throws, the exception is captured inside the `Future` and silently discarded if no one ever checks it. With the agent attached it also reports a periodic task that threw (#1254): a `scheduleAtFixedRate` or `scheduleWithFixedDelay` task that throws is cancelled for good by its executor, and the exception sits in a `ScheduledFuture` nobody reads, so the heartbeat or refresh simply stops. The future's state at analysis decides, so a periodic task still scheduled, or cancelled by the body, draws nothing, and a woven `get` that threw the failure into the body excuses it. Catch and log inside the task to keep the schedule alive.
 * **Buggy Code**:
   ```java
   Future<?> f = executor.submit(this::processOrder);

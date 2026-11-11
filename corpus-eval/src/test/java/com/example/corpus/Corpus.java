@@ -1303,6 +1303,24 @@ final class Corpus {
                     "the same failing submit with the future kept and its exception read "
                             + "through get, so the failure reached the caller"),
 
+            new RecordingSubject("agent_future_periodicTaskThrows", JDK,
+                    "java.util.concurrent.ScheduledExecutorService",
+                    DetectorType.FUTURE_IGNORED, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker schedules a heartbeat at a fixed rate that throws on its first "
+                            + "run, so the executor cancels every later run and the exception sits "
+                            + "in a ScheduledFuture nothing reads. Nothing is recorded: the woven "
+                            + "scheduleAtFixedRate hands the future to the detector (#1254)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_future_periodicTaskCatches", JDK,
+                    "java.util.concurrent.ScheduledExecutorService",
+                    DetectorType.FUTURE_IGNORED, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same heartbeat catching its own exception, so the schedule keeps running "
+                            + "until the body cancels it; its future is dropped, as every periodic "
+                            + "task's is"),
+
             new RecordingSubject("agent_completableFuture_failingRunAsyncDiscarded", JDK,
                     "java.util.concurrent.CompletableFuture",
                     DetectorType.COMPLETABLE_FUTURE_EXCEPTIONS, Contract.THREAD_SAFE,

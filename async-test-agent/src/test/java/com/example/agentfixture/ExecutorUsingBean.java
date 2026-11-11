@@ -6,6 +6,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -16,6 +18,10 @@ import java.util.concurrent.TimeUnit;
  * throws and discards the future as a statement; {@link #keepFailingSubmit} keeps it and reads the
  * failure. Woven with {@code collections=true}, the factory and the {@code POP} after
  * {@code submit} reach the hooks.
+ *
+ * <p>{@link #scheduleFailingHeartbeat} schedules a periodic task that throws on its first run,
+ * which ends the schedule for good; {@link #scheduleCatchingHeartbeat} catches the same exception
+ * inside the task, so it keeps running (#1254).
  */
 public class ExecutorUsingBean {
 
@@ -68,6 +74,53 @@ public class ExecutorUsingBean {
             future.get();
         } catch (ExecutionException expected) {
             // observed, which is what keeping the future is for
+        }
+    }
+
+    /**
+     * Schedules a heartbeat that throws on its first run, keeps nothing but a local, and waits
+     * until the executor has ended the schedule.
+     *
+     * @param scheduler the scheduler to run it on
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public void scheduleFailingHeartbeat(ScheduledExecutorService scheduler)
+            throws InterruptedException {
+        ScheduledFuture<?> heartbeat = scheduler.scheduleAtFixedRate(ExecutorUsingBean::fail,
+                0, 1, TimeUnit.MILLISECONDS);
+        awaitEnded(heartbeat);
+    }
+
+    /**
+     * Schedules a heartbeat that catches its own exception, lets it run twice, and cancels it.
+     *
+     * @param scheduler the scheduler to run it on
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public void scheduleCatchingHeartbeat(ScheduledExecutorService scheduler)
+            throws InterruptedException {
+        java.util.concurrent.CountDownLatch twice = new java.util.concurrent.CountDownLatch(2);
+        ScheduledFuture<?> heartbeat = scheduler.scheduleWithFixedDelay(() -> {
+            try {
+                twice.countDown();
+                fail();
+            } catch (IllegalStateException logged) {
+                // logged and carried on, which keeps the schedule alive
+            }
+        }, 0, 1, TimeUnit.MILLISECONDS);
+        if (!twice.await(10, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("the heartbeat stopped");
+        }
+        heartbeat.cancel(false);
+    }
+
+    private static void awaitEnded(Future<?> future) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (!future.isDone()) {
+            if (System.nanoTime() > deadline) {
+                throw new IllegalStateException("the schedule did not end");
+            }
+            Thread.sleep(1);
         }
     }
 

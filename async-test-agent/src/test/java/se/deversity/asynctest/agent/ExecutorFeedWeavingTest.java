@@ -11,8 +11,10 @@ import se.deversity.asynctest.DetectorType;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
@@ -27,6 +29,7 @@ class ExecutorFeedWeavingTest {
 
     private static AsyncFindings findings;
     private static ExecutorService shared;
+    private static ScheduledExecutorService scheduler;
     private static final ExecutorUsingBean BEAN = new ExecutorUsingBean();
 
     @BeforeAll
@@ -44,6 +47,7 @@ class ExecutorFeedWeavingTest {
         AsyncTestAgent.selfAttach("includes=com.example.agentfixture,collections=true");
         // Made here, on the JUnit thread outside any run, so it is no run's to shut down.
         shared = Executors.newFixedThreadPool(2);
+        scheduler = Executors.newScheduledThreadPool(2);
         findings = AsyncFindings.collect();
     }
 
@@ -55,6 +59,11 @@ class ExecutorFeedWeavingTest {
     @AsyncTest(threads = 2, invocations = 5, includes = DetectorType.FUTURE_IGNORED)
     void failingSubmitDiscarded() {
         BEAN.dropFailingSubmit(shared);
+    }
+
+    @AsyncTest(threads = 2, invocations = 5, includes = DetectorType.FUTURE_IGNORED)
+    void periodicTaskThatThrows() throws InterruptedException {
+        BEAN.scheduleFailingHeartbeat(scheduler);
     }
 
     @AfterAll
@@ -72,10 +81,19 @@ class ExecutorFeedWeavingTest {
                             + "reported, so the POP after submit did not reach "
                             + "submitResultDiscarded: check its whenResultDiscarded row. Findings "
                             + "were: " + findings.violations());
+            assertTrue(findings.violationsFrom("FutureIgnored").stream()
+                            .anyMatch(v -> String.valueOf(v.attributes().get("report"))
+                                    .contains("Periodic task scheduled by "
+                                            + "ScheduledExecutorService.scheduleAtFixedRate")),
+                    "scheduleFailingHeartbeat schedules a task that throws, which ends the "
+                            + "schedule. Nothing was reported, so the woven scheduleAtFixedRate "
+                            + "never reached FutureIgnoredDetector.recordPeriodic (#1254). "
+                            + "Findings were: " + findings.violations());
         } finally {
             findings.close();
             ExecutorUsingBean.LEFT_RUNNING.forEach(ExecutorService::shutdownNow);
             shared.shutdownNow();
+            scheduler.shutdownNow();
         }
     }
 }

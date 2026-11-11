@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,6 +39,14 @@ import java.util.concurrent.atomic.LongAdder;
  * {@link #recordDiscarded} receives it. That path reports a future only when its task actually
  * failed, judged from the future itself at analysis, so fire-and-forget of a task that succeeded,
  * or that is still running when the run ends, draws nothing.
+ *
+ * <p>A periodic task is judged the same way (#1254). A {@code scheduleAtFixedRate} or
+ * {@code scheduleWithFixedDelay} task that throws is cancelled for good by its executor, and the
+ * exception goes into a {@code ScheduledFuture} that nobody reads, because nobody reads a periodic
+ * task's future: the heartbeat simply stops. The agent hands every periodic future to
+ * {@link #recordPeriodic}, kept or not, since dropping it is normal; a future that has failed at
+ * analysis is reported unless a woven {@code get} on it threw that failure into the body
+ * ({@link #recordPeriodicRead}). A periodic task still scheduled, or cancelled, draws nothing.
  *
  * @since 0.10.0
  */
@@ -125,6 +135,49 @@ public class FutureIgnoredDetector extends AbstractInstanceDetector<FutureIgnore
         discarded.add(new Discarded(future, ReportSections.threadLabel(thread), call));
     }
 
+    /** A periodic task's future, the call that scheduled it, and the thread that did. */
+    private record Periodic(Future<?> future, String threadLabel, String call) { }
+
+    private final Queue<Periodic> periodic = new ConcurrentLinkedQueue<>();
+    private final AtomicInteger periodicCount = new AtomicInteger();
+    private final LongAdder periodicDropped = new LongAdder();
+    /** Periodic futures a woven get threw the failure of, by identity: a Future's equals is its own. */
+    private final Set<Future<?>> periodicRead = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Records the future of a periodic task, which the agent sees as a woven
+     * {@code scheduleAtFixedRate} or {@code scheduleWithFixedDelay}.
+     *
+     * <p>The executor cancels a periodic task that throws, and only its future holds the
+     * exception. Whether it threw is read from the future at {@link #analyze()}, so a task still
+     * scheduled, or one the body cancelled, is not reported.
+     *
+     * @param future the periodic task's future (null-safe)
+     * @param thread the thread that scheduled it (null-safe)
+     * @param call   the call that scheduled it, for the report
+     * @since 1.14.3
+     */
+    public void recordPeriodic(Future<?> future, Thread thread, String call) {
+        if (future == null || thread == null) return;
+        if (periodicCount.incrementAndGet() > MAX_DISCARDED) {
+            periodicDropped.increment();
+            return;
+        }
+        periodic.add(new Periodic(future, ReportSections.threadLabel(thread), call));
+    }
+
+    /**
+     * Records that a get on {@code future} threw its task's failure into the body, which then saw
+     * the exception, so a periodic task's failure was not swallowed. Any other future is ignored.
+     *
+     * @param future the future a get threw an {@code ExecutionException} from (null-safe)
+     * @since 1.14.3
+     */
+    public void recordPeriodicRead(Future<?> future) {
+        if (future == null || periodicCount.get() == 0) return;
+        periodicRead.add(future);
+    }
+
     /** {@return the failure {@code future} completed with, or {@code null} if it has not failed} */
     private static @org.jspecify.annotations.Nullable Throwable failureOf(Future<?> future) {
         try {
@@ -167,7 +220,24 @@ public class FutureIgnoredDetector extends AbstractInstanceDetector<FutureIgnore
                             "exception", failure.getClass().getName()),
                     Instant.now()));
         }
-        r.discardedNotTracked = discardedDropped.sum();
+        for (Periodic p : periodic) {
+            Throwable failure = failureOf(p.future());
+            if (failure == null || periodicRead.contains(p.future())) {
+                continue;
+            }
+            String finding = String.format(
+                    "Periodic task scheduled by %s on thread '%s' threw %s: %s — the executor "
+                            + "cancelled every later run, and the exception sits in a "
+                            + "ScheduledFuture nothing read",
+                    p.call(), p.threadLabel(), failure.getClass().getName(), failure.getMessage());
+            r.violations.add(finding);
+            r.structuredViolations.add(new Violation("FutureIgnored", IssueSeverity.HIGH,
+                    finding, List.of(), Map.of(
+                            "call", p.call(),
+                            "exception", failure.getClass().getName()),
+                    Instant.now()));
+        }
+        r.discardedNotTracked = discardedDropped.sum() + periodicDropped.sum();
         return DetectorFailurePolicy.checkedReport(this, r);
     }
 
@@ -191,6 +261,10 @@ public class FutureIgnoredDetector extends AbstractInstanceDetector<FutureIgnore
             if (discardedNotTracked > 0) {
                 sb.append("  Note: ").append(discardedNotTracked).append(" discarded future(s) past the first ")
                   .append(MAX_DISCARDED).append(" were counted and not judged.\n");
+            }
+            if (violations.stream().anyMatch(v -> v.startsWith("Periodic task"))) {
+                sb.append("  Periodic fix: catch and log inside the task body so one failure does not end the "
+                        + "schedule, or keep the ScheduledFuture and get() it from a watchdog.\n");
             }
             sb.append("""
   Why: A Future that is submitted but never retrieved (get()/join() never called) means the task runs
