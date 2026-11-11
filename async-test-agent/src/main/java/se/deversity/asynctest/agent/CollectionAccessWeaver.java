@@ -375,6 +375,10 @@ final class CollectionAccessWeaver {
             Entry.call(Queue.class, "poll", "queuePoll")
                     .whenSynchronized("queuePoll"),
             Entry.call(Queue.class, "peek", "queuePeek"),
+            // The check halves of a queue check-then-act, beside peek, and element, an act that
+            // reads the head a check vouched for (#1249).
+            Entry.call(Queue.class, "isEmpty", "queueIsEmpty"),
+            Entry.call(Queue.class, "element", "queueElement"),
             // The entry and removal forms #664 left unwoven (#692). An element that went in
             // through one of these had no recorded offer, so every thread got the #557 excuse,
             // and one that came out through one of these was never a take, so the remover's own

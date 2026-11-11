@@ -245,8 +245,9 @@ classes were silent for exactly this reason ([corpus eval](../analysis/corpus-ev
 ```
 
 What is rewritten is an explicit table in `CollectionAccessWeaver`: `Map.put/get/remove/containsKey`,
-`Map.compute/computeIfPresent/computeIfAbsent/merge`,
-`Collection.add/addAll/remove/removeIf/contains/clear`, `List.get/set`, `Queue.offer/poll/peek/remove`,
+`Map.size/isEmpty`, `Map.compute/computeIfPresent/computeIfAbsent/merge`,
+`Collection.add/addAll/remove/removeIf/contains/clear`, `List.get/set`,
+`Queue.offer/poll/peek/remove/isEmpty/element`,
 and the `Deque` end-specific offers and takes. Each call becomes a
 call to a hook that records and then performs the original operation, so behaviour is unchanged;
 `CollectionWeavingEndToEndTest` pins that a woven program still computes the same values.
@@ -274,6 +275,18 @@ check together. The thread's next `put` or `remove` on the same map in the same 
 and it is reported when another thread's `put` or `remove` on the map landed between the two with
 no lock held from the check through the act, graded `PROMPT`, since the agent cannot see that the
 act depended on the check. Under the map's own monitor it stays silent.
+
+A queue has the same shape (#1249): `if (!queue.isEmpty()) queue.remove()` on a
+`ConcurrentLinkedQueue` or a `BlockingQueue` throws `NoSuchElementException` when another consumer
+takes the last element between the two, and with elements to spare it takes one the check never
+saw. A woven `isEmpty` that answered no, or a `peek`, notes the head; the thread's next `remove()`
+or `element()` on that queue in the same round is reported by `BlockingQueueDetector` when it
+returned a different element, or threw, and the noted head is gone from the queue, so another
+thread took it in between. A head still in the queue was passed by an insertion ahead of it (a
+priority queue, a `push`), which leaves the check true, and stays silent. A `poll` or `take` after
+the check is the safe form and consumes it. Graded `PROMPT`, like the map's keyless pair; under the
+queue's own monitor it stays silent (`CheckThenActWeavingEndToEndTest`). A plain `ArrayDeque` is
+not judged here, since the shared-collection detectors report it whatever the pair.
 
 Blocking calls are classified by thread too (#991, #993). Every woven blocking call (a sleep, a
 `join` or `get` of a pending future, a latch await, a take) also reaches

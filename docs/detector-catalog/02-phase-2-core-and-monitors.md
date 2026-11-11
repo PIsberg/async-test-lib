@@ -294,7 +294,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 24. Blocking Queue Detector
 * **Severity**: `HIGH`
-* **Description**: Instruments `BlockingQueue` `offer`/`poll`/`put`/`take` calls to catch silently ignored return values, queue saturation, unbounded growth, and producer/consumer throughput imbalance.
+* **Description**: Instruments `BlockingQueue` `offer`/`poll`/`put`/`take` calls to catch silently ignored return values, queue saturation, unbounded growth, and producer/consumer throughput imbalance. With the agent attached it also reports a check-then-act on a thread-safe queue (#1249): `if (!queue.isEmpty()) queue.remove()`, or a `peek` then `remove` or `element`, on a `ConcurrentLinkedQueue` or any `BlockingQueue`, when another thread took the head the check saw before this thread's act. That remove throws `NoSuchElementException` on the last element, or takes one the check never saw. It is graded `PROMPT` (HIGH severity), since the agent sees the interleaving but not whether the act relied on the check; take with `poll()` and test for `null` instead.
 * **Buggy Code**:
   ```java
   queue.offer(item); // return value ignored: item is silently dropped if the queue is full

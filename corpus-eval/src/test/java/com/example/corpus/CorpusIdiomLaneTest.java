@@ -24,6 +24,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -2441,6 +2442,74 @@ class CorpusIdiomLaneTest {
             }
             if (turn.ticket() == 1) {
                 members.choreography.overtook();
+            }
+        });
+    }
+
+    // --- 24. Taking one job from a concurrent queue (#1249) -----------------------------------
+
+    /**
+     * A round's jobs, two per thread so no take finds the queue empty, with the choreography of
+     * {@link Admissions}: ticket 0 checks, then waits (bounded) until ticket 1 has taken, so every
+     * round of the raced row holds a take between ticket 0's check and its remove.
+     */
+    private static final class Jobs {
+        final ConcurrentLinkedQueue<Object> queue = new ConcurrentLinkedQueue<>();
+        final Admissions choreography = new Admissions();
+
+        Jobs() {
+            for (int i = 0; i < 2 * THREADS; i++) {
+                queue.add("job-" + i);
+            }
+        }
+    }
+
+    private static final Rounds<Jobs> CHECKED_TAKES = new Rounds<>(Jobs::new);
+    private static final Rounds<Jobs> POLLED_TAKES = new Rounds<>(Jobs::new);
+
+    /**
+     * Each thread takes a job with poll and tests the result for null, which no other thread's take
+     * can invalidate: ticket 1's take before ticket 0's poll only changes which job ticket 0 gets.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_takeOneJob_pollThenNullCheck() {
+        correct(() -> {
+            Turn<Jobs> turn = POLLED_TAKES.next();
+            Jobs jobs = turn.shared();
+            if (turn.ticket() == 1) {
+                jobs.choreography.awaitAPeersCheck();
+            }
+            if (turn.ticket() == 0) {
+                jobs.choreography.letAPeerOvertake();
+            }
+            Object job = jobs.queue.poll();
+            if (job != null && turn.ticket() == 1) {
+                jobs.choreography.overtook();
+            }
+        });
+    }
+
+    /**
+     * Each thread checks the queue is not empty, then removes: ticket 1's take lands between ticket
+     * 0's check and its remove, so ticket 0 takes a job its check never saw, and on the last job it
+     * would throw NoSuchElementException.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_takeOneJob_isEmptyThenRemove() {
+        broken(() -> {
+            Turn<Jobs> turn = CHECKED_TAKES.next();
+            Jobs jobs = turn.shared();
+            if (turn.ticket() == 1) {
+                jobs.choreography.awaitAPeersCheck();
+            }
+            if (!jobs.queue.isEmpty()) {
+                if (turn.ticket() == 0) {
+                    jobs.choreography.letAPeerOvertake();
+                }
+                jobs.queue.remove();
+            }
+            if (turn.ticket() == 1) {
+                jobs.choreography.overtook();
             }
         });
     }
