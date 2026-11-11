@@ -5969,6 +5969,22 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same add with no monitor: a two-slot element read and written by six "
                             + "threads loses adds",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_cyclicBarrier_readsAfterTheAwait", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "each thread writes its own result, awaits the round's barrier and reads every "
+                            + "result. CyclicBarrier's javadoc orders actions before await before "
+                            + "actions after the return in other threads (#1246)"),
+
+            new RecordingSubject("idiom_cyclicBarrier_readsBeforeTheAwait", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same writes and await with every result read before the await, so "
+                            + "nothing orders another thread's write before the read",
                     IssueSeverity.HIGH)
     );
 

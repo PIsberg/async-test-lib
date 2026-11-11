@@ -92,6 +92,17 @@ class DiscardedOfferWeavingTest {
             return l.await(timeout, unit);
         }
 
+        public static int await(java.util.concurrent.CyclicBarrier b)
+                throws InterruptedException, java.util.concurrent.BrokenBarrierException {
+            return b.await();
+        }
+
+        public static int await(java.util.concurrent.CyclicBarrier b, long timeout, TimeUnit unit)
+                throws InterruptedException, java.util.concurrent.BrokenBarrierException,
+                java.util.concurrent.TimeoutException {
+            return b.await(timeout, unit);
+        }
+
         public static boolean offer(BlockingQueue<Object> q, Object e) {
             OFFERS.incrementAndGet();
             return q.offer(e);

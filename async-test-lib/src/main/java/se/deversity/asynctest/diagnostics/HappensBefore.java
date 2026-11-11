@@ -64,7 +64,11 @@ import org.jspecify.annotations.Nullable;
  *       {@code AtomicReference}, where an offer the container refused or a failed
  *       {@code compareAndSet} is withdrawn with {@link #retract} and publishes nothing;
  *       {@code CountDownLatch.countDown} and a successful {@code await};
- *       {@code Semaphore.release} and a successful acquire; and, with {@code fields=true}, a
+ *       {@code Semaphore.release} and a successful acquire; a {@code CyclicBarrier.await},
+ *       which releases into the generation it arrives in and, on a normal return, acquires it
+ *       (#1246), the generation read under the barrier's own lock in the same hold the arrival
+ *       takes, so a party arriving for the next generation never publishes into this one; and,
+ *       with {@code fields=true}, a
  *       volatile write of a field of an object and a read of the same field of the same object
  *       that returned the value the write stored. The weaver reports the value on both sides, the
  *       write just before its store and the read just after its load, and the reading thread
@@ -124,7 +128,16 @@ import org.jspecify.annotations.Nullable;
  *       rest) is ordered after the registering thread and the completions it waits for, and a
  *       join of its stage on the registering thread after it; an {@code Either} stage carries
  *       only the registering thread's clock (#741).
- *   <li>Not yet observed: {@code execute} on a {@code ThreadPoolExecutor}, which hands its
+ *   <li>A {@code CyclicBarrier}'s barrier action runs on the tripping party after that party
+ *       released, so what the action does is not ordered before the other parties' returns, which
+ *       the memory model does order; a field the action writes and the parties read afterwards
+ *       keeps its finding. A barrier whose fields cannot be read, because
+ *       {@code java.util.concurrent} is not open to this library (collection weaving off, or the
+ *       opening refused), orders nothing (#1246).
+ *   <li>Not yet observed: a {@code Phaser} advance, {@code ExecutorService.awaitTermination} and
+ *       {@code ExecutorService.close} (#1246), so code that reads what a phase or a pool's tasks
+ *       wrote after one of those keeps its finding; {@code execute} on a
+ *       {@code ThreadPoolExecutor}, which hands its
  *       tasks back (on a {@code ForkJoinPool}, a {@code ScheduledThreadPoolExecutor} and the
  *       virtual-thread-per-task executor it is an edge to the task's start since #741), a task
  *       submitted to an executor outside the

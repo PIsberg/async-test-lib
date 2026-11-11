@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Correct `CyclicBarrier` code is no longer reported as a race (#1246).** `await` was not an
+  edge in the happens-before model, so threads that each wrote their own field, met at a barrier
+  and then read every field were reported by `AtomicityValidator` with the text a real race gets.
+  With `collections=true` the agent now weaves both `await` overloads: each releases into the
+  generation it arrives in and acquires it on a normal return. The generation is read under the
+  barrier's own lock inside the hold the arrival takes, so a party already arriving for the next
+  generation cannot publish into the one a slower party is returning from; a broken barrier, a
+  timeout or an interrupt orders nothing. The agent opens `java.util.concurrent` to the library
+  under `collections=true` for this read. A barrier action's own writes are still not ordered, and
+  a `Phaser`, `awaitTermination` and `ExecutorService.close` are still not edges. Test first in
+  `BarrierEdgeWeavingTest`, whose two barrier rows reported before the change, with an idiom pair
+  in the corpus.
 - **A value mutated inside `ConcurrentHashMap.compute` is no longer reported (#1245).** The map
   runs `compute`, `computeIfPresent`, `computeIfAbsent` and `merge` atomically for the key under a
   lock inside the JDK the lockset cannot see, so `AtomicityValidator` reported a value bumped inside
