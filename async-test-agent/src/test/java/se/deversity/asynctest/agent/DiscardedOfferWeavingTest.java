@@ -103,6 +103,33 @@ class DiscardedOfferWeavingTest {
             return b.await(timeout, unit);
         }
 
+        public static int arriveAndAwaitAdvance(java.util.concurrent.Phaser p) {
+            return p.arriveAndAwaitAdvance();
+        }
+
+        public static int arrive(java.util.concurrent.Phaser p) {
+            return p.arrive();
+        }
+
+        public static int arriveAndDeregister(java.util.concurrent.Phaser p) {
+            return p.arriveAndDeregister();
+        }
+
+        public static int awaitAdvance(java.util.concurrent.Phaser p, int phase) {
+            return p.awaitAdvance(phase);
+        }
+
+        public static int awaitAdvanceInterruptibly(java.util.concurrent.Phaser p, int phase)
+                throws InterruptedException {
+            return p.awaitAdvanceInterruptibly(phase);
+        }
+
+        public static int awaitAdvanceInterruptibly(java.util.concurrent.Phaser p, int phase,
+                long timeout, TimeUnit unit)
+                throws InterruptedException, java.util.concurrent.TimeoutException {
+            return p.awaitAdvanceInterruptibly(phase, timeout, unit);
+        }
+
         public static boolean offer(BlockingQueue<Object> q, Object e) {
             OFFERS.incrementAndGet();
             return q.offer(e);

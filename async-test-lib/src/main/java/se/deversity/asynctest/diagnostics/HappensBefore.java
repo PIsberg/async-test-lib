@@ -142,8 +142,12 @@ import org.jspecify.annotations.Nullable;
  *       so its {@code close}, which waits for nothing, and its {@code awaitTermination} order
  *       nothing, and neither does a {@code close} reached through {@code AutoCloseable} rather
  *       than {@code ExecutorService} (#1266).
- *   <li>Not yet observed: a {@code Phaser} advance (#1265), so code that reads what a phase
- *       wrote after one keeps its finding; {@code execute} on a
+ *   <li>A {@code Phaser} phase is keyed by the root phaser and the phase number, for the last
+ *       four phases of each root: a party that arrived and waits on a phase more than three
+ *       behind the root's finds nothing to acquire and keeps its finding. A phase read before
+ *       an arrival is exact, since the phase cannot advance without that party; a release the
+ *       returned phase contradicts anyway is withdrawn (#1265).
+ *   <li>Not yet observed: {@code execute} on a
  *       {@code ThreadPoolExecutor}, which hands its
  *       tasks back (on a {@code ForkJoinPool}, a {@code ScheduledThreadPoolExecutor} and the
  *       virtual-thread-per-task executor it is an edge to the task's start since #741), a task

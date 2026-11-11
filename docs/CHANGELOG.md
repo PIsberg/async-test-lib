@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Correct `Phaser` code is no longer reported as a race (#1265).** A phase advance was not an
+  edge in the happens-before model, so a worker that wrote a plain field, called
+  `arriveAndAwaitAdvance` and then read what the other parties wrote was reported by
+  `AtomicityValidator` at `PROMPT`/`HIGH`. With `collections=true`, `arrive`,
+  `arriveAndDeregister` and `arriveAndAwaitAdvance` now release into the phase they arrive in, and
+  `arriveAndAwaitAdvance`, `awaitAdvance` and both `awaitAdvanceInterruptibly` overloads acquire it
+  once the phaser has moved past it. The phase is keyed by the root phaser, so children of one
+  tiered phaser order each other, and a terminated phaser orders nothing. Test first in
+  `PhaserEdgeWeavingTest`, whose five ordered cases were reported before the change; keying every
+  phase alike turns its next-phase twin red. Idiom pair `idiom_phaser_readsAfterTheAdvance`, whose
+  silent row reports again with the weave removed.
+
 - **Reading what a pool's tasks wrote after the pool terminated is no longer reported (#1266).**
   `awaitTermination` and `ExecutorService.close` were not edges in the happens-before model, so a
   submitter that read its tasks' results after `awaitTermination` returned `true`, or after a

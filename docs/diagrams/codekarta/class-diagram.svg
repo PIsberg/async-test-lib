@@ -974,13 +974,13 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <rect class="node-rect" x="3368.0" y="24.0" width="180.0" height="280.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="3458.0" y="46.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="10.8" font-weight="bold" fill="#1f2937">AgentConcurrencyUtilHooks</text>
   <line x1="3368.0" y1="68.0" x2="3548.0" y2="68.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="3376.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">WAIT_FOR_DURATION: MethodH…</text>
-  <text x="3376.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">COMMON_POOL_TASK: ThreadLo…</text>
-  <text x="3376.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">STACK: StackWalker</text>
-  <text x="3376.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UNCONFIGURABLE: Map&lt;Execut…</text>
-  <text x="3376.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">PIPELINES: Map&lt;BaseStream&lt;…</text>
-  <text x="3376.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">RUNNING_HANDED: ThreadLoca…</text>
-  <text x="3376.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+9 more)</text>
+  <text x="3376.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">barrierGenerationField: Fi…</text>
+  <text x="3376.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">barrierLockField: Field</text>
+  <text x="3376.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">PHASE_TOKENS: Map&lt;Phaser,P…</text>
+  <text x="3376.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">WAIT_FOR_DURATION: MethodH…</text>
+  <text x="3376.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">COMMON_POOL_TASK: ThreadLo…</text>
+  <text x="3376.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">STACK: StackWalker</text>
+  <text x="3376.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+12 more)</text>
   <line x1="3368.0" y1="185.0" x2="3548.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="3376.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object): ABAProble…</text>
   <text x="3376.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object, Object): A…</text>
@@ -988,7 +988,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquire(Semaphore): void</text>
   <text x="3376.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">tryAcquire(Semaphore): boo…</text>
   <text x="3376.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">release(Semaphore): void</text>
-  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+376 more)</text>
+  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+393 more)</text>
 </g>
 <g id="AgentConstructionHooks">
   <title>AgentConstructionHooks [CLASS]</title>

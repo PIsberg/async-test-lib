@@ -49,6 +49,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Exchanger;
+import java.util.concurrent.Phaser;
 import java.util.concurrent.Executor;
 import java.util.stream.DoubleStream;
 import java.util.stream.LongStream;
@@ -683,6 +684,15 @@ final class CollectionAccessWeaver {
             // every party does after a normal return from the same generation (#1246).
             Entry.call(CyclicBarrier.class, "await", "await"),
             Entry.call(CyclicBarrier.class, "await", "await", long.class, TimeUnit.class),
+            // Every arrival in a phase before every return from waiting for it to advance (#1265).
+            Entry.call(Phaser.class, "arriveAndAwaitAdvance", "arriveAndAwaitAdvance"),
+            Entry.call(Phaser.class, "arrive", "arrive"),
+            Entry.call(Phaser.class, "arriveAndDeregister", "arriveAndDeregister"),
+            Entry.call(Phaser.class, "awaitAdvance", "awaitAdvance", int.class),
+            Entry.call(Phaser.class, "awaitAdvanceInterruptibly", "awaitAdvanceInterruptibly",
+                    int.class),
+            Entry.call(Phaser.class, "awaitAdvanceInterruptibly", "awaitAdvanceInterruptibly",
+                    int.class, long.class, TimeUnit.class),
             // The boolean a caller discards is the finding (#454): the POP after either offer
             // becomes a call to offerResultDiscarded, and a branch, store or return is left alone.
             Entry.call(BlockingQueue.class, "offer", "offer", Object.class)
