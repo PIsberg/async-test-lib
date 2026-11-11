@@ -627,10 +627,14 @@ class CorpusAgentPairLaneTest {
     /**
      * One hand-off: offer an object, take whichever one comes out, and write to it.
      *
-     * <p>Every worker offers before any polls, and every worker has polled and written before the
-     * offerer's second write, so that write lands in the generation the taker opened. The
-     * previous-owner excuse (#557) covers a generation a later take closed, and nothing takes
-     * these objects twice.
+     * <p>Every worker offers before any polls, and every worker has polled before the offerer's
+     * second write, so that write lands in the generation the taker opened. The previous-owner
+     * excuse (#557) covers a generation a later take closed, and nothing takes these objects twice.
+     *
+     * <p>The taker writes after the second rendezvous, not before it. {@code CyclicBarrier.await}
+     * is a happens-before edge (#1246), so a taker's write made before it would be ordered before
+     * the offerer's second write and the firing row would be race-free. After it, the two writes
+     * have nothing in common but the barrier both have already passed.
      */
     private static void handOver(boolean offererWritesAgain) throws InterruptedException {
         HandedOver mine = new HandedOver();
@@ -638,12 +642,12 @@ class CorpusAgentPairLaneTest {
         HAND_OVER_QUEUE.offer(mine);
         everyWorkerIsHere();
         HandedOver theirs = pollHandedOver();
-        if (theirs != null) {
-            theirs.touched++;
-        }
         // Compares references only, so it touches no field and no collection the agent weaves.
         CorpusRecorder.noteHandOff(theirs != null && theirs != mine);
         everyWorkerIsHere();
+        if (theirs != null) {
+            theirs.touched++;
+        }
         if (offererWritesAgain) {
             mine.touched++;
         }
