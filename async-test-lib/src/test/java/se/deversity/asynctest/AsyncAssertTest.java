@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import org.junit.jupiter.api.Test;
 import java.time.Duration;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
@@ -156,5 +157,45 @@ public class AsyncAssertTest {
 
         assertTrue(capture.isSuccess(), "A null result is a completed future, not a missing one");
         assertNull(capture.requireResult());
+    }
+
+    @Test
+    void awaitDone_onACancelledFuture_returnsAndCapturesTheCancellation() {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        AsyncAssert.FutureCapture<String> capture = AsyncAssert.capture(future);
+        future.cancel(true);
+
+        capture.awaitDone(Duration.ofSeconds(1));
+
+        assertTrue(capture.isComplete(), "A cancelled future has completed");
+        assertTrue(capture.isFailed());
+        assertInstanceOf(CancellationException.class, capture.getError());
+        AssertionError error = assertThrows(AssertionError.class, capture::requireResult);
+        assertInstanceOf(CancellationException.class, error.getCause());
+    }
+
+    @Test
+    void awaitDone_onAStageCancelledThroughItsSource_capturesTheUnwrappedCancellation() {
+        CompletableFuture<String> source = new CompletableFuture<>();
+        AsyncAssert.FutureCapture<Integer> capture = AsyncAssert.capture(source.thenApply(String::length));
+        source.cancel(true);
+
+        capture.awaitDone(Duration.ofSeconds(1));
+
+        assertTrue(capture.isComplete());
+        assertTrue(capture.isFailed());
+        // get() unwraps the dependent's CompletionException to the CancellationException, and
+        // awaitDone has always stored what get() reported, the same as for any other failure.
+        assertInstanceOf(CancellationException.class, capture.getError());
+    }
+
+    @Test
+    void awaitAsync_onACancelledFuture_rethrowsTheCancellation() {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        future.cancel(true);
+
+        // Deliberately unlike awaitDone: awaitAsync rethrows the stage's own unchecked failure.
+        assertThrows(CancellationException.class,
+                () -> AsyncAssert.awaitAsync(future, Duration.ofSeconds(1)));
     }
 }

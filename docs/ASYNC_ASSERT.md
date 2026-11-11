@@ -66,6 +66,11 @@ assertEquals("SUCCESS", capture.requireResult());
 `requireResult()` throws an `AssertionError` when the future has not completed, and when it
 completed exceptionally attaches that exception as the cause.
 
+A cancelled future has completed too: `awaitDone` returns, `isFailed()` is true and `getError()`
+is the `CancellationException`, also for a dependent stage whose source was cancelled. Before
+#1251 `awaitDone` threw that `CancellationException` instead. `awaitAsync` still rethrows it, as
+it rethrows any unchecked failure of the stage.
+
 ## Asserting on detector findings: `AsyncFindings` (1.9.0)
 
 `AsyncAssert` waits for the code under test. `AsyncFindings` asserts on what the detectors saw.
