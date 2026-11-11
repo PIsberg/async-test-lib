@@ -5985,6 +5985,37 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same writes and await with every result read before the await, so "
                             + "nothing orders another thread's write before the read",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_executorTermination_readsAfterAwaitTermination", JDK,
+                    "java.util.concurrent.ThreadPoolExecutor",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a task given to execute writes the output, the body shuts the pool down, "
+                            + "awaits its termination and reads it: a pool terminates only once "
+                            + "every task has ended (#1266)"),
+
+            new RecordingSubject("idiom_executorTermination_readsBeforeAwaitTermination", JDK,
+                    "java.util.concurrent.ThreadPoolExecutor",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same task with the output read before the shutdown, so nothing orders "
+                            + "the task's write before the read",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_executorClose_readsAfterTheBlock", JDK,
+                    "java.util.concurrent.ThreadPerTaskExecutor",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same task on a virtual-thread executor in try-with-resources, read after "
+                            + "the block: close waits for every task, the idiom the JDK documents "
+                            + "for virtual threads (#1266)"),
+
+            new RecordingSubject("idiom_executorClose_readsInsideTheBlock", JDK,
+                    "java.util.concurrent.ThreadPerTaskExecutor",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same block with the output read inside it, before close",
                     IssueSeverity.HIGH)
     );
 

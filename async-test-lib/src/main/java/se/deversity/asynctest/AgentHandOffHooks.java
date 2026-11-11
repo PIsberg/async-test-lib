@@ -110,6 +110,14 @@ final class AgentHandOffHooks {
         /** The executor a woven submit gave this task to, or {@code null}. */
         @Nullable Object executor;
 
+        /**
+         * The executor this task ran on, given by a woven submit or execute, or {@code null}: the
+         * task releases into it when it ends, which a woven {@code awaitTermination} or
+         * {@code close} that saw the pool terminated acquires (#1266). Apart from
+         * {@link #executor}, which a sibling-wait judgement reads and an execute leaves unset.
+         */
+        private @Nullable Object pool;
+
         /** Whether the task was handed to the common pool, and declared to the blocking detector. */
         private volatile boolean commonPool;
 
@@ -131,6 +139,13 @@ final class AgentHandOffHooks {
         /** {@return this task, remembering the executor it is submitted to} */
         HandedTask onExecutor(Object submittedTo) {
             executor = submittedTo;
+            pool = submittedTo;
+            return this;
+        }
+
+        /** {@return this task, remembering the pool it ends in, for termination only (#1266)} */
+        HandedTask endsIn(Object executedBy) {
+            pool = executedBy;
             return this;
         }
 
@@ -201,6 +216,7 @@ final class AgentHandOffHooks {
             } finally {
                 AgentConcurrencyUtilHooks.RUNNING_HANDED.set(outerRunning);
                 leavePool(entered, outer);
+                HappensBefore.release(pool);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
                 AgentConcurrencyUtilHooks.leaveTask(taskBefore);
@@ -227,6 +243,7 @@ final class AgentHandOffHooks {
             } finally {
                 AgentConcurrencyUtilHooks.RUNNING_HANDED.set(outerRunning);
                 leavePool(entered, outer);
+                HappensBefore.release(pool);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
                 AgentConcurrencyUtilHooks.leaveTask(taskBefore);
@@ -253,6 +270,7 @@ final class AgentHandOffHooks {
             } finally {
                 AgentConcurrencyUtilHooks.RUNNING_HANDED.set(outerRunning);
                 leavePool(entered, outer);
+                HappensBefore.release(pool);
                 finished = HappensBefore.handOff();
                 TelemetryRegistry.taskEnded();
                 AgentConcurrencyUtilHooks.leaveTask(taskBefore);

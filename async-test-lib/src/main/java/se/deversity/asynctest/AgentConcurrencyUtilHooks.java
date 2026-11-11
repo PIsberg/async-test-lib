@@ -4025,7 +4025,7 @@ public final class AgentConcurrencyUtilHooks {
         HandedTask handed = null;
         try {
             if (!(command instanceof ForkJoinTask) && executesInvisibly(receiver)) {
-                handed = new HandedTask(command);
+                handed = new HandedTask(command).endsIn(receiver);
                 receiver.execute(handed);
                 return;
             }
@@ -6730,6 +6730,60 @@ public final class AgentConcurrencyUtilHooks {
             }
         }
         return unwrapped == null ? queued : unwrapped;
+    }
+
+    /**
+     * Weaves {@code ExecutorService.awaitTermination(long, TimeUnit)} (#1266): a {@code true}
+     * return means every task the pool ran has ended, so the caller is ordered after what each
+     * task a woven submit or execute wrapped did; each released into the pool as it ended. A
+     * {@code false} return orders nothing. See {@link #poolTerminated} for which pools count.
+     *
+     * @param receiver the executor
+     * @param timeout  how long to wait
+     * @param unit     the unit of {@code timeout}
+     * @return whether the executor terminated
+     * @throws InterruptedException if interrupted while waiting
+     * @since 1.14.3
+     */
+    public static boolean awaitTermination(ExecutorService receiver, long timeout, TimeUnit unit)
+            throws InterruptedException {
+        ControlledSchedule.point();
+        boolean terminated = receiver.awaitTermination(timeout, unit);
+        if (terminated) {
+            poolTerminated(receiver);
+        }
+        return terminated;
+    }
+
+    /**
+     * Weaves {@code ExecutorService.close()} (#1266), the end of a try-with-resources block over
+     * an executor: it returns once every task has ended, so the caller is ordered after them as
+     * after {@link #awaitTermination}. The common pool's {@code close} does nothing, which
+     * {@link #poolTerminated} sees.
+     *
+     * @param receiver the executor
+     * @since 1.14.3
+     */
+    public static void closeExecutor(ExecutorService receiver) {
+        ControlledSchedule.point();
+        receiver.close();
+        poolTerminated(receiver);
+    }
+
+    /**
+     * The acquire half of a pool's termination: what every wrapped task released into
+     * {@code pool} as it ended, when the pool reports itself terminated. Asked of the JDK's
+     * executors and of a {@code ThreadPoolExecutor} subclass only, whose tasks are the only ones
+     * wrapped, so no user executor is asked anything its caller did not ask. The common pool never
+     * terminates, so its {@code close}, which waits for nothing, and its {@code awaitTermination},
+     * which only waits for quiet, acquire nothing.
+     */
+    private static void poolTerminated(ExecutorService pool) {
+        if ((pool instanceof ThreadPoolExecutor
+                || pool.getClass().getName().startsWith("java.util.concurrent."))
+                && pool.isTerminated()) {
+            HappensBefore.acquire(pool);
+        }
     }
 
     /**

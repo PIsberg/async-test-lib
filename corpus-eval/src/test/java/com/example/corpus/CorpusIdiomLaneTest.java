@@ -2076,6 +2076,77 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 19. A pool's termination: awaitTermination and close (#1266) -------------------------
+
+    /**
+     * A task executed on a pool of the body's own reads the input and writes the output; the body
+     * shuts the pool down, awaits its termination, and reads the output. Only the termination
+     * orders the task's write before the read: {@code execute} hands back no future. A fixed pool
+     * rather than {@code newSingleThreadExecutor}, whose JDK-built wrapper's {@code execute} is not
+     * wrapped, so its task's accesses would never reach the run and both rows would be silent.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_executorTermination_readsAfterAwaitTermination() {
+        correct(() -> {
+            Result result = new Result();
+            result.input = (int) Thread.currentThread().threadId();
+            ExecutorService executor = Executors.newFixedThreadPool(1);
+            executor.execute(() -> result.output = result.input * 2);
+            executor.shutdown();
+            awaitTerminated(executor);
+            use(result.output);
+        });
+    }
+
+    /** The same task, with the output read before the pool is shut down and awaited. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_executorTermination_readsBeforeAwaitTermination() {
+        broken(() -> {
+            Result result = new Result();
+            result.input = (int) Thread.currentThread().threadId();
+            ExecutorService executor = Executors.newFixedThreadPool(1);
+            executor.execute(() -> result.output = result.input * 2);
+            use(result.output);
+            executor.shutdown();
+            awaitTerminated(executor);
+        });
+    }
+
+    /**
+     * The same task on a virtual-thread executor in a try-with-resources block, the output read
+     * after the block: {@code close} waits for every task, the idiom the JDK documents.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_executorClose_readsAfterTheBlock() {
+        correct(() -> {
+            Result result = new Result();
+            result.input = (int) Thread.currentThread().threadId();
+            try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                executor.execute(() -> result.output = result.input * 2);
+            }
+            use(result.output);
+        });
+    }
+
+    /** The same block, with the output read inside it, before {@code close}. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_executorClose_readsInsideTheBlock() {
+        broken(() -> {
+            Result result = new Result();
+            result.input = (int) Thread.currentThread().threadId();
+            try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                executor.execute(() -> result.output = result.input * 2);
+                use(result.output);
+            }
+        });
+    }
+
+    private static void awaitTerminated(ExecutorService executor) throws InterruptedException {
+        if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
+            throw new AssertionError("a pool running one short task did not terminate");
+        }
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**
