@@ -5939,6 +5939,36 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same bump on the value a get returned: the map is safe and the value it "
                             + "hands out is not, so six threads lose increments",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_intArray_aSlotPerThread", JDK,
+                    "int[]",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "each thread bumps its own slot of a shared int[]: no element is touched by two "
+                            + "threads, and elements are judged one by one (#1250)"),
+
+            new RecordingSubject("idiom_intArray_everyThreadOnOneSlot", JDK,
+                    "int[]",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread bumps counter[0]: the lost update a field counter has, which was "
+                            + "silent before arrays=true (#1250)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_longArray_bucketUnderItsMonitor", JDK,
+                    "long[]",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread adds to one long bucket inside synchronized (histogram), so the "
+                            + "read and the write of the element are one step"),
+
+            new RecordingSubject("idiom_longArray_bucketWithoutIt", JDK,
+                    "long[]",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same add with no monitor: a two-slot element read and written by six "
+                            + "threads loses adds",
                     IssueSeverity.HIGH)
     );
 

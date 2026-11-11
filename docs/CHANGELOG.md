@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`arrays=true`: races on plain array elements (#1250).** No array instruction was woven, so a
+  lost update on `counter[0]` or a `long[]` histogram bucket drew nothing while the same update on a
+  field was reported, and moving a counter into an array silenced the library. The new agent option
+  weaves every element load and store (`ArrayAccessWeaver`) and records each as an access of the
+  array named `int[3]`, judged per element by the lockset and happens-before rules a field gets. Off
+  by default and not implied by `fields=true`; only the first 256 indices of an array are observed.
+  Test first in `ArrayElementWeavingTest`, whose two race rows were silent before the change, with
+  idiom pairs in the corpus, whose idioms lane now runs with `arrays=true`.
+
 ### Fixed
 
 - **A value mutated inside `ConcurrentHashMap.compute` is no longer reported (#1245).** The map

@@ -528,6 +528,71 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * Array elements past this index are not recorded (#1250). A dropped access can only miss a
+     * race, never invent one, and it keeps the name table and the per-element state bounded.
+     */
+    static final int MAX_TRACKED_ARRAY_INDEX = 256;
+
+    /** Element kind names, in the order of the array opcodes, then {@code boolean}. */
+    private static final String[] ARRAY_KINDS =
+            {"int", "long", "float", "double", "Object", "byte", "char", "short", "boolean"};
+
+    /** The access name of each element, {@code int[3]}, made once and reused. */
+    private static final String[][] ARRAY_ELEMENT_NAMES =
+            new String[ARRAY_KINDS.length][MAX_TRACKED_ARRAY_INDEX];
+
+    /**
+     * Records a read of an array element, called by code {@code ArrayAccessWeaver} wove with
+     * {@code arrays=true} just before the load instruction (#1250).
+     *
+     * <p>The element is recorded as an access of the array named for its kind and index,
+     * {@code int[3]}, so it is judged per element, by the lockset and happens-before rules a field
+     * access is judged by: each thread on its own slot is not a race, one slot bumped by every
+     * thread is. Never throws: a {@code null} array or an index out of range records nothing and
+     * leaves the instruction to throw.
+     *
+     * @param array the array, as the load instruction is about to receive it
+     * @param index the element read; negative, past the array's end or past
+     *              the first 256 elements records nothing
+     * @param kind  the element kind, 0 to 7 in the order {@code IALOAD} to {@code SALOAD}
+     * @since 1.14.3
+     */
+    public static void arrayRead(@Nullable Object array, int index, int kind) {
+        arrayAccess(array, index, kind, false);
+    }
+
+    /**
+     * Records a write of an array element, called just before the store instruction (#1250).
+     * See {@link #arrayRead(Object, int, int)}.
+     *
+     * @param array the array, as the store instruction is about to receive it
+     * @param index the element written; out of range records nothing, as for a read
+     * @param kind  the element kind, 0 to 7 in the order {@code IASTORE} to {@code SASTORE}
+     * @since 1.14.3
+     */
+    public static void arrayWrite(@Nullable Object array, int index, int kind) {
+        arrayAccess(array, index, kind, true);
+    }
+
+    private static void arrayAccess(@Nullable Object array, int index, int kind, boolean write) {
+        if (array == null || index < 0 || index >= MAX_TRACKED_ARRAY_INDEX || kind < 0
+                || kind >= ARRAY_KINDS.length - 1 || index >= java.lang.reflect.Array.getLength(array)) {
+            return;
+        }
+        // BALOAD and BASTORE serve both byte[] and boolean[].
+        int named = kind == 5 && array instanceof boolean[] ? ARRAY_KINDS.length - 1 : kind;
+        String[] names = ARRAY_ELEMENT_NAMES[named];
+        String name = names[index];
+        if (name == null) {
+            // A racing first access makes an equal string; either one is fine to keep.
+            name = ARRAY_KINDS[named] + '[' + index + ']';
+            names[index] = name;
+        }
+        recordAccess(array, null, Thread.currentThread().threadId(), name, write, false,
+                Integer.MIN_VALUE, false, false);
+    }
+
+    /**
      * Records that the calling thread has entered a {@code synchronized} method holding
      * {@code monitor}: {@code this}, or the class for a static method.
      *

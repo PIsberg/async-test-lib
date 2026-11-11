@@ -2002,8 +2002,9 @@ probe was not kept, so nothing would have noticed any of them coming back. The `
 
 **How a row works.** Each correct idiom is written the way a user writes it, and is followed by its
 broken twin: the same code with the synchronization removed or put in the wrong place. The agent is
-attached as `fields=true,collections=true` with Surefire's own classes excluded, as in lane one,
-and bodies record nothing, except in the rows `Corpus.idiomManualApiRows()` names with a reason:
+attached as `fields=true,collections=true,arrays=true` with Surefire's own classes excluded, as in
+lane one plus element weaving (#1250), and bodies record nothing, except in the rows
+`Corpus.idiomManualApiRows()` names with a reason:
 the idiom is invisible to every woven call site there, because `ThreadLocalRandom` and
 `java.util.Random` are not woven, a check-then-act is no single call, or a pool hands out a holder
 around the instance a detector tracks. `IdiomRowPremise` fails the lane if any other body touches

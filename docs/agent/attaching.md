@@ -119,6 +119,7 @@ Everything after the `=` is the `agentArgs` string, parsed by `AgentOptions`. Th
 | `debug` | `true` / `false` | `debug=true` turns on verbose diagnostics (see [Diagnostics](diagnostics.md#6-diagnostics)). Any other value, or absence, keeps the default errors-only logging. Case-insensitive. |
 | `fields` | `true` / `false` | `fields=true` also weaves **direct field instructions**, so a field touched only inside a method body — the `count++` in an `increment()` — produces events. Off by default; see below. Case-insensitive. |
 | `collections` | `true` / `false` | `collections=true` rewrites the collection calls an instrumented type makes, so the **collection instance** reaches the detectors that are keyed by instance. It is what makes a class whose state lives in a `HashMap` visible at all. Off by default; see below. Case-insensitive. |
+| `arrays` | `true` / `false` | `arrays=true` also weaves **array element loads and stores**, so a race on `counter[0]` is judged like one on a field, element by element (#1250). Off by default, and not implied by `fields=true`; see below. Case-insensitive. |
 
 **Separators and multi-values.** Entries are separated by `,` **or** `;`. A bare token (no
 `=`) is appended to the **most recently named key**, so a single key can carry several
@@ -204,6 +205,16 @@ without that, a `System.out` reference in user code would emit on every call, an
 inside the telemetry sink would recurse. Static initialisers are skipped too, because emitting
 from `<clinit>` can force the telemetry classes to initialise inside another class's
 initialisation, and circular class initialisation deadlocks rather than failing.
+
+**`arrays=true`: array elements.** Without it no array instruction is woven, so a lost update on a
+plain array element (`counter[0]++` on a shared `int[]`, a `long[]` histogram bucket) draws nothing,
+while the same update on a field is reported. With it, every element load and store in an
+instrumented type is recorded as an access of the array named for its kind and index (`int[3]`),
+and judged per element by the same lockset and happens-before rules as a field: each thread on its
+own slot is not a race, one slot every thread bumps is, and a slot bumped under one lock is not.
+Only the first 256 indices of an array are observed; an access past that is not recorded, which can
+miss a race but never invents one. The type initializer is not woven. Array instructions are more
+frequent than field instructions in most code, which is why this is a separate opt-in.
 
 **`collections=true`: reaching state a class does not own.**
 

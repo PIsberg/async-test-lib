@@ -56,7 +56,8 @@ import java.util.stream.IntStream;
  * kept and gated.
  *
  * <p><strong>How a row works.</strong> Every body is written the way a user writes it, with
- * {@code detectAll = true} and the agent attached as {@code fields=true,collections=true}, and
+ * {@code detectAll = true} and the agent attached as
+ * {@code fields=true,collections=true,arrays=true}, and
  * records nothing, except where the idiom is only observable through the manual API. Those rows
  * are named in {@link Corpus#idiomManualApiRows()} with the reason, and {@link IdiomRowPremise}
  * fails the lane if any other body touches {@code AsyncTestContext}. Each correct row has a broken
@@ -1878,8 +1879,9 @@ class CorpusIdiomLaneTest {
     }
 
     /**
-     * JCIP listing 13.3: take both with tryLock, and on failure let go of the first and retry.
-     * No thread ever waits holding a lock, so no order of the two can deadlock.
+     * JCIP listing 13.3: take both with tryLock, and on failure let go of the first, pause a
+     * random time and retry. No thread ever waits holding a lock, so no order of the two can
+     * deadlock, and the random pause keeps the two orders from livelocking.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void idiom_lockOrder_tryLockBackOff() {
@@ -1904,7 +1906,10 @@ class CorpusIdiomLaneTest {
                         first.unlock();
                     }
                 }
-                Thread.onSpinWait();
+                // A random pause, as in the listing: two threads retrying in opposite orders
+                // with a fixed one can fail in lockstep, and once did for all 200,000 attempts.
+                java.util.concurrent.locks.LockSupport.parkNanos(
+                        ThreadLocalRandom.current().nextLong(1_000, 100_000));
             }
             throw new AssertionError("the back-off never got both locks");
         });
@@ -1963,6 +1968,51 @@ class CorpusIdiomLaneTest {
             ConcurrentHashMap<String, Tally> tallies = FETCHED_TALLIES.next().shared();
             tallies.get("k").hits++;
         });
+    }
+
+    // --- 17. Counters kept in a plain array (#1250; this lane runs the agent with arrays=true) --
+
+    private static final Rounds<int[]> SLOTTED_COUNTS = new Rounds<>(() -> new int[THREADS]);
+    private static final Rounds<int[]> SHARED_COUNTS = new Rounds<>(() -> new int[1]);
+
+    /** A histogram and the lock that guards it, one per round. */
+    private static final class Histogram {
+        final long[] buckets = new long[4];
+    }
+
+    private static final Rounds<Histogram> GUARDED_HISTOGRAMS = new Rounds<>(Histogram::new);
+    private static final Rounds<Histogram> RACED_HISTOGRAMS = new Rounds<>(Histogram::new);
+
+    /** Each thread bumps its own slot: no element is touched by two threads. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_intArray_aSlotPerThread() {
+        correct(() -> {
+            Turn<int[]> turn = SLOTTED_COUNTS.next();
+            turn.shared()[turn.ticket() % THREADS]++;
+        });
+    }
+
+    /** Every thread bumps the one slot: the field-counter lost update, moved into an array. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_intArray_everyThreadOnOneSlot() {
+        broken(() -> SHARED_COUNTS.next().shared()[0]++);
+    }
+
+    /** Every thread adds to one bucket, under the histogram's own monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_longArray_bucketUnderItsMonitor() {
+        correct(() -> {
+            Histogram histogram = GUARDED_HISTOGRAMS.next().shared();
+            synchronized (histogram) {
+                histogram.buckets[1] += 3L;
+            }
+        });
+    }
+
+    /** The same add with no monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_longArray_bucketWithoutIt() {
+        broken(() -> RACED_HISTOGRAMS.next().shared().buckets[1] += 3L);
     }
 
     // --- Harness -----------------------------------------------------------------------------

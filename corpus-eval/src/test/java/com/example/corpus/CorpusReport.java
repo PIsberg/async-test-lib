@@ -233,7 +233,7 @@ final class CorpusReport {
                 .append(" (").append(System.getProperty("os.arch")).append(")\n")
                 .append("- Configuration: threads=").append(threads)
                 .append(", invocations=").append(invocations)
-                .append(", detectAll=true, agent=fields=true,collections=true\n")
+                .append(", detectAll=true, agent=fields=true,collections=true,arrays=true\n")
                 .append("- Body executions: ").append(CorpusRecorder.bodyExecutions()).append('\n')
                 .append(LibraryBuild.describe()).append("\n\n");
 

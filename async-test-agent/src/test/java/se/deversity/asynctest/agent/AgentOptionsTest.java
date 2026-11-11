@@ -140,6 +140,17 @@ class AgentOptionsTest {
     }
 
     @Test
+    void arrays_isOffByDefaultAndOnlyTheLiteralTrueEnablesIt() {
+        assertFalse(AgentOptions.parse("includes=com.myapp").arrays(),
+                "array weaving is opt-in (#1250)");
+        assertTrue(AgentOptions.parse("includes=com.myapp,arrays=true").arrays());
+        assertTrue(AgentOptions.parse("ARRAYS=TRUE").arrays(), "keys and values are case-insensitive");
+        assertFalse(AgentOptions.parse("arrays=yes").arrays());
+        assertFalse(AgentOptions.parse("fields=true,collections=true").arrays(),
+                "fields and collections do not imply arrays");
+    }
+
+    @Test
     void includesAndExcludes_returnImmutableLists() {
         AgentOptions options = AgentOptions.parse("includes=com.myapp;excludes=com.dto");
         assertThrowsUnsupported(() -> options.includes().add("x"));
