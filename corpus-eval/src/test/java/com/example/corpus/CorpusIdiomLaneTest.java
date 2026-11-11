@@ -2082,9 +2082,8 @@ class CorpusIdiomLaneTest {
     /**
      * A task executed on a pool of the body's own reads the input and writes the output; the body
      * shuts the pool down, awaits its termination, and reads the output. Only the termination
-     * orders the task's write before the read: {@code execute} hands back no future. A fixed pool
-     * rather than {@code newSingleThreadExecutor}, whose JDK-built wrapper's {@code execute} is not
-     * wrapped, so its task's accesses would never reach the run and both rows would be silent.
+     * orders the task's write before the read: {@code execute} hands back no future. Section 21
+     * runs the same pair through {@code newSingleThreadExecutor}'s wrapper.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void idiom_executorTermination_readsAfterAwaitTermination() {
@@ -2194,6 +2193,40 @@ class CorpusIdiomLaneTest {
                 use(result.value);
             }
             round.phaser.arriveAndAwaitAdvance();
+        });
+    }
+
+    // --- 21. A task executed on newSingleThreadExecutor (#1269) ------------------------------
+
+    /**
+     * Section 19's pair on {@code Executors.newSingleThreadExecutor()}, whose pool sits behind a
+     * wrapper the JDK builds. Before #1269 {@code execute} through that wrapper ran the task
+     * unwrapped, so its accesses never reached the run and both rows were silent.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_singleThreadExecute_readsAfterAwaitTermination() {
+        correct(() -> {
+            Result result = new Result();
+            result.input = (int) Thread.currentThread().threadId();
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+            executor.execute(() -> result.output = result.input * 2);
+            executor.shutdown();
+            awaitTerminated(executor);
+            use(result.output);
+        });
+    }
+
+    /** The same task, with the output read before the executor is shut down and awaited. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_singleThreadExecute_readsBeforeAwaitTermination() {
+        broken(() -> {
+            Result result = new Result();
+            result.input = (int) Thread.currentThread().threadId();
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+            executor.execute(() -> result.output = result.input * 2);
+            use(result.output);
+            executor.shutdown();
+            awaitTerminated(executor);
         });
     }
 

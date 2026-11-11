@@ -474,7 +474,9 @@ seen.
 hand a task back: `ForkJoinPool`, `ScheduledThreadPoolExecutor` and the virtual-thread-per-task
 executor, matched by exact class (#741), and an `Executors.unconfigurableExecutorService` or
 `unconfigurableScheduledExecutorService` wrapper a woven call made, judged by the executor it
-forwards to (#1107). A `ThreadPoolExecutor` hands its tasks back from `getQueue`, `shutdownNow`
+forwards to (#1107), as is a wrapper an `Executors` factory builds inside the JDK, such as the one
+`newSingleThreadExecutor` returns, whose executor is read from the JDK's own field, which needs
+`collections=true` (#1269). A `ThreadPoolExecutor` hands its tasks back from `getQueue`, `shutdownNow`
 and `remove` and passes them to `beforeExecute`, `afterExecute` and its rejection handler, so it is
 wrapped for only inside a run (#1155), where the woven forms of those three calls give back and find
 the caller's own task. `PoolTaskWeaver` rewrites a subclass's `beforeExecute` and `afterExecute`, and

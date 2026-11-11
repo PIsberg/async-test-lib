@@ -8,6 +8,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.AsyncTestConfig;
+import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.telemetry.TelemetryBridge;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
@@ -224,6 +226,62 @@ class SpawnedWorkAttributionWeavingTest {
                             + run.findings());
             assertEquals(0L, run.dropped(),
                     "the task was submitted by a worker, so its accesses belong to the run");
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    /**
+     * {@code call} with a run installed on the worker, as the runner installs one: a
+     * {@code ThreadPoolExecutor}'s {@code execute} wraps its task only inside a run (#1155).
+     */
+    private static Call inARun(Call call) {
+        return () -> {
+            AsyncTestContext.install(new AsyncTestContext(AsyncTestConfig.builder().build()));
+            try {
+                return call.run();
+            } finally {
+                AsyncTestContext.uninstall();
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("a task executed on newSingleThreadExecutor is the run's: its unordered write is reported (#1269)")
+    void executedTaskOnASingleThreadExecutorIsReported() throws InterruptedException {
+        SpawnedWorkBean bean = new SpawnedWorkBean();
+        Written written = new Written();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Run run = onAWorker(inARun(() -> bean.executedReadUnordered(executor, 42,
+                    written::signal, written::await)));
+
+            assertTrue(run.mentionsTheBox(),
+                    "The worker executed a task on the JDK's single-thread executor, which wrote "
+                            + "the box on its pool thread, and read it with nothing ordering the "
+                            + "two. A silent run means the wrapper the factory returns hid the "
+                            + "pool behind it, so the task ran unwrapped and its write was dropped. "
+                            + "Findings were: " + run.findings() + ", events dropped: "
+                            + run.dropped());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    @DisplayName("the same task's write read after a latch is ordered, and nothing was dropped (#1269)")
+    void executedTaskOnASingleThreadExecutorReadAfterALatchIsSilent() throws InterruptedException {
+        SpawnedWorkBean bean = new SpawnedWorkBean();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Run run = onAWorker(inARun(() -> bean.executedReadAfterLatch(executor, 42)));
+
+            assertFalse(run.mentionsTheBox(),
+                    "The task counted down a latch after its write and the worker read after "
+                            + "the await, so the write is ordered before the read. Findings were: "
+                            + run.findings());
+            assertEquals(0L, run.dropped(),
+                    "the task was executed by a worker, so its accesses belong to the run");
         } finally {
             executor.shutdownNow();
         }
