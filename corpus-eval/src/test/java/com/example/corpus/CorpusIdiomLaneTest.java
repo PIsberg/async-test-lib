@@ -1878,8 +1878,9 @@ class CorpusIdiomLaneTest {
     }
 
     /**
-     * JCIP listing 13.3: take both with tryLock, and on failure let go of the first and retry.
-     * No thread ever waits holding a lock, so no order of the two can deadlock.
+     * JCIP listing 13.3: take both with tryLock, and on failure let go of the first, pause a
+     * random time and retry. No thread ever waits holding a lock, so no order of the two can
+     * deadlock, and the random pause keeps the two orders from livelocking.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void idiom_lockOrder_tryLockBackOff() {
@@ -1904,7 +1905,10 @@ class CorpusIdiomLaneTest {
                         first.unlock();
                     }
                 }
-                Thread.onSpinWait();
+                // A random pause, as in the listing: two threads retrying in opposite orders
+                // with a fixed one can fail in lockstep, and once did for all 200,000 attempts.
+                java.util.concurrent.locks.LockSupport.parkNanos(
+                        ThreadLocalRandom.current().nextLong(1_000, 100_000));
             }
             throw new AssertionError("the back-off never got both locks");
         });
