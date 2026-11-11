@@ -4,6 +4,7 @@ import org.jspecify.annotations.Nullable;
 
 import se.deversity.asynctest.diagnostics.LockOrderValidator;
 import se.deversity.asynctest.diagnostics.MissedSignalDetector;
+import se.deversity.asynctest.diagnostics.SpuriousWakeupDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedNonFinalDetector;
 import se.deversity.asynctest.telemetry.ControlledSchedule;
 import se.deversity.vibetags.annotations.AIContract;
@@ -53,15 +54,16 @@ public final class AgentMonitorHooks {
         int holds = ControlledSchedule.releasingForWait(receiver);
         int orderHolds = releasingOrderForWait(receiver);
         try {
-            if (detector == null || !detector.recordObservedWait(receiver)) {
-                receiver.wait();
-                return;
-            }
+            MissedSignalDetector taken =
+                    detector != null && detector.recordObservedWait(receiver) ? detector : null;
             try {
                 receiver.wait();
             } finally {
-                detector.recordObservedWakeup(receiver);
+                if (taken != null) {
+                    taken.recordObservedWakeup(receiver);
+                }
             }
+            returnedFromWait(receiver);
         } finally {
             reacquiredOrderAfterWait(receiver, orderHolds);
             ControlledSchedule.reacquiredAfterWait(receiver, holds);
@@ -81,15 +83,16 @@ public final class AgentMonitorHooks {
         int holds = ControlledSchedule.releasingForWait(receiver);
         int orderHolds = releasingOrderForWait(receiver);
         try {
-            if (detector == null || !detector.recordObservedWait(receiver)) {
-                receiver.wait(timeoutMillis);
-                return;
-            }
+            MissedSignalDetector taken =
+                    detector != null && detector.recordObservedWait(receiver) ? detector : null;
             try {
                 receiver.wait(timeoutMillis);
             } finally {
-                detector.recordObservedWakeup(receiver);
+                if (taken != null) {
+                    taken.recordObservedWakeup(receiver);
+                }
             }
+            returnedFromWait(receiver);
         } finally {
             reacquiredOrderAfterWait(receiver, orderHolds);
             ControlledSchedule.reacquiredAfterWait(receiver, holds);
@@ -111,15 +114,16 @@ public final class AgentMonitorHooks {
         int holds = ControlledSchedule.releasingForWait(receiver);
         int orderHolds = releasingOrderForWait(receiver);
         try {
-            if (detector == null || !detector.recordObservedWait(receiver)) {
-                receiver.wait(timeoutMillis, nanos);
-                return;
-            }
+            MissedSignalDetector taken =
+                    detector != null && detector.recordObservedWait(receiver) ? detector : null;
             try {
                 receiver.wait(timeoutMillis, nanos);
             } finally {
-                detector.recordObservedWakeup(receiver);
+                if (taken != null) {
+                    taken.recordObservedWakeup(receiver);
+                }
             }
+            returnedFromWait(receiver);
         } finally {
             reacquiredOrderAfterWait(receiver, orderHolds);
             ControlledSchedule.reacquiredAfterWait(receiver, holds);
@@ -157,6 +161,22 @@ public final class AgentMonitorHooks {
         MissedSignalDetector detector = AsyncTestContext.currentMissedSignalDetector();
         if (detector != null) {
             detector.recordObservedLoopBackEdge();
+        }
+        SpuriousWakeupDetector spurious = AsyncTestContext.currentSpuriousWakeupDetector();
+        if (spurious != null) {
+            spurious.recordObservedLoopBackEdge();
+        }
+    }
+
+    /**
+     * Delivers a wait that returned normally, with the monitor reacquired, to the run's
+     * {@link SpuriousWakeupDetector} (#1255). Not from a {@code finally}: a wait that ends in
+     * {@code InterruptedException} leaves a loop without its back-edge and was no wakeup at all.
+     */
+    private static void returnedFromWait(Object receiver) {
+        SpuriousWakeupDetector spurious = AsyncTestContext.currentSpuriousWakeupDetector();
+        if (spurious != null) {
+            spurious.recordObservedWakeup(receiver);
         }
     }
 

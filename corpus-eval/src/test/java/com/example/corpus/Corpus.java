@@ -1209,6 +1209,23 @@ final class Corpus {
                             + "backward jump around it is what the weaver marks, and a loop "
                             + "re-tests the state a lost notify announced"),
 
+            new RecordingSubject("agent_wait_gateCheckedOnce", JDK,
+                    "java.lang.Object",
+                    DetectorType.SPURIOUS_WAKEUP_HAZARD, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the body waits for its gate behind an if, so when the wait returns it "
+                            + "proceeds without re-testing the flag; Object.wait's javadoc says a "
+                            + "wait may return spuriously and belongs in a loop. Nothing is "
+                            + "recorded: the woven wait returns and no back-edge follows (#1255)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_wait_gateRecheckedInALoop", JDK,
+                    "java.lang.Object",
+                    DetectorType.SPURIOUS_WAKEUP_HAZARD, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same gate and timed wait inside while (!gate.open), bounded at two "
+                            + "polls: every wakeup reaches the backward jump the weaver marks"),
+
             new RecordingSubject("agent_abaStack_nodePushedBackAfterTheRead", JDK,
                     "java.util.concurrent.atomic.AtomicReference",
                     DetectorType.ABA_PROBLEM, Contract.THREAD_SAFE,

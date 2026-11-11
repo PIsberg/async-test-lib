@@ -126,6 +126,81 @@ class AgentMonitorHooksTest {
     }
 
     @Test
+    @DisplayName("a wait its thread leaves with no back-edge is a spurious wakeup hazard, a loop's is not (#1255)")
+    void anIfGuardedWaitIsASpuriousWakeupHazard() throws InterruptedException {
+        // Only SPURIOUS_WAKEUP_HAZARD: the back-edge must reach it with MISSED_SIGNAL off.
+        AsyncTestContext context = spuriousOnlyContext();
+        AsyncTestContext.install(context);
+        try {
+            synchronized (monitor) {
+                AgentMonitorHooks.monitorWait(monitor, 1L);
+                AgentMonitorHooks.loopBackEdge(); // while (!ready) wait(1)
+                AgentMonitorHooks.monitorWait(monitor, 1L);
+                AgentMonitorHooks.loopBackEdge();
+            }
+            assertFalse(AsyncTestContext.spuriousWakeupHazardDetector().analyze().hasIssues(),
+                    "a wait whose thread reached the loop's back-edge after waking is a loop's");
+
+            synchronized (monitor) {
+                AgentMonitorHooks.monitorWait(monitor, 1L); // if (!ready) wait(1)
+            }
+            assertTrue(AsyncTestContext.spuriousWakeupHazardDetector().analyze().hasIssues(),
+                    "a wait its thread left with no back-edge is an if's");
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("a back-edge in the next round does not excuse an if-guarded wait from this one (#1255)")
+    void aRoundEndSettlesTheWait() throws InterruptedException {
+        AsyncTestContext context = spuriousOnlyContext();
+        AsyncTestContext.install(context);
+        try {
+            synchronized (monitor) {
+                AgentMonitorHooks.monitorWait(monitor, 1L);
+            }
+            // The runner starts a round from its own thread, with no context installed.
+            AsyncTestContext.uninstall();
+            context.markInvocationStart();
+            AsyncTestContext.install(context);
+            AgentMonitorHooks.loopBackEdge();
+            assertTrue(AsyncTestContext.spuriousWakeupHazardDetector().analyze().hasIssues(),
+                    "the round that made the wait ended with no back-edge behind it");
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("a wait that ends in InterruptedException is not judged (#1255)")
+    void anInterruptedWaitIsNotJudged() {
+        AsyncTestContext context = spuriousOnlyContext();
+        AsyncTestContext.install(context);
+        try {
+            Thread.currentThread().interrupt();
+            synchronized (monitor) {
+                // A loop that leaves on interrupt never reaches its back-edge, and is no if.
+                assertThrows(InterruptedException.class,
+                        () -> AgentMonitorHooks.monitorWait(monitor, 1_000L));
+            }
+            assertFalse(AsyncTestContext.spuriousWakeupHazardDetector().analyze().hasIssues(),
+                    "the wait never returned, so there was no wakeup to proceed on");
+        } finally {
+            Thread.interrupted();
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    /** {@return a context with only the spurious wakeup detector, after its first round start} */
+    private static AsyncTestContext spuriousOnlyContext() {
+        AsyncTestContext context = new AsyncTestContext(
+                AsyncTestConfig.builder().detectSpuriousWakeupHazard(true).build());
+        context.markInvocationStart();
+        return context;
+    }
+
+    @Test
     @DisplayName("with no context installed the back-edge hook does nothing")
     void backEdgeWithoutAContextIsANoOp() {
         AgentMonitorHooks.loopBackEdge();

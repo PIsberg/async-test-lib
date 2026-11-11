@@ -43,6 +43,10 @@ final class LibraryReach {
                         + "that tries for a ReentrantReadWriteLock's write lock while holding its "
                         + "read lock, and no corpus library ships that defect, so its pair locks "
                         + "in the test file");
+        unreached(DetectorType.SPURIOUS_WAKEUP_HAZARD,
+                "agent-fed since #1255 through the woven Object.wait and the loop back-edge "
+                        + "MISSED_SIGNAL's pair goes through; a firing library row needs a library "
+                        + "method that waits behind an if, and no corpus library ships that defect");
         unreached(DetectorType.EXPLICIT_GC,
                 "no corpus library calls System.gc, so its pair calls it from the test file");
         unreached(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE,

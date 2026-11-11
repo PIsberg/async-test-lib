@@ -1130,6 +1130,10 @@ public final class AsyncTestContext {
         if (missedSignalDetector != null) {
             missedSignalDetector.markInvocationStart();
         }
+        // A woven back-edge confirms only a wakeup from its own round (#1255).
+        if (spuriousWakeupHazardDetector != null) {
+            spuriousWakeupHazardDetector.markInvocationStart();
+        }
         // An unsignalled wait return is excused only by a second wait from the same thread; a
         // pooled worker's wait in the next round is a fresh body execution, not that re-check (#590).
         if (wakeupDetector != null) {
@@ -2412,6 +2416,12 @@ public final class AsyncTestContext {
     static @Nullable MissedSignalDetector currentMissedSignalDetector() {
         AsyncTestContext context = CURRENT.get();
         return context == null ? null : context.missedSignalDetector;
+    }
+
+    /** {@return the {@link SpuriousWakeupDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SpuriousWakeupDetector currentSpuriousWakeupDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.spuriousWakeupHazardDetector;
     }
 
     /** {@return the {@link BlockingQueueDetector} for the calling thread's test, or {@code null}} */

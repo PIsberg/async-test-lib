@@ -346,7 +346,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (50)
+### Agent-fed (51)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -530,6 +530,11 @@ acquire and needs no state of its own. A blocking acquire under the caller's own
 reported as the deadlock it is, recorded before it hangs; a `tryLock`, timed or not, as an upgrade
 that always fails, because the lock never grants the write lock to a reader.
 
+`SpuriousWakeupDetector` joined in the same release. It reads the woven `Object.wait` and the
+back-edge the weaver already marks for `MissedSignalDetector`, with its own record of each
+thread's latest wakeup, so it works with `MISSED_SIGNAL` off: a wait that returned and whose
+thread left it with no back-edge was an `if`'s.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `LockUpgradeDeadlockDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
@@ -537,7 +542,7 @@ that always fails, because the lock never grants the write lock to a reader.
 `SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
 `SharedSplittableRandomDetector`, `SemaphoreMisuseDetector`,
 `CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
-`MissedSignalDetector`, `ExplicitGcDetector`, `CompletableFutureObtrudeDetector`,
+`MissedSignalDetector`, `SpuriousWakeupDetector`, `ExplicitGcDetector`, `CompletableFutureObtrudeDetector`,
 `DaemonThreadHygieneDetector`, `ABAProblemDetector`,
 `SynchronizedNonFinalDetector`, `NonAtomicConcurrentMapUpdateDetector`, `ExecutorShutdownDetector`,
 `FutureIgnoredDetector`, `CompletableFutureExceptionDetector`,
@@ -608,7 +613,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (95)
+### Recording-only (94)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -644,7 +649,7 @@ recording is the feed:
 `NotifyWithoutMonitorDetector`, `SharedSecureRandomDetector`,
 `WeakHashMapSharedDetector`, `SharedStatefulCryptoDetector`,
 `ThisEscapeDetector`,
-`ThreadLocalRandomMisuseDetector`, `SpuriousWakeupDetector`,
+`ThreadLocalRandomMisuseDetector`,
 `StableValueMisuseDetector`,
 `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`,
 `FileChannelPositionRaceDetector`, `SharedIteratorDetector`, `HighContentionAtomicDetector`,

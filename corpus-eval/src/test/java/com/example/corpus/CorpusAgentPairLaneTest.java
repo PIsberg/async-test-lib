@@ -716,6 +716,44 @@ class CorpusAgentPairLaneTest {
         });
     }
 
+    /** A gate with its flag, as the spurious wakeup rows wait on it; nothing opens it. */
+    private static final class Gate {
+        boolean open;
+    }
+
+    /**
+     * Waits for a gate behind an {@code if} (#1255).
+     *
+     * <p>Structural: the gate is the body's own and no thread signals it, so the timed wait runs out
+     * and the body proceeds with the gate still shut, which is what a spurious wakeup does to the
+     * same code. No notify is involved, so the missed-signal rule has nothing to say about it.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_wait_gateCheckedOnce() {
+        counted(() -> {
+            Gate gate = new Gate();
+            synchronized (gate) {
+                if (!gate.open) {
+                    gate.wait(2);
+                }
+            }
+        });
+    }
+
+    /** The same gate and timed wait, inside a bounded loop that re-tests the flag after waking. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_wait_gateRecheckedInALoop() {
+        counted(() -> {
+            Gate gate = new Gate();
+            synchronized (gate) {
+                int polls = 0;
+                while (!gate.open && polls++ < 2) {
+                    gate.wait(2);
+                }
+            }
+        });
+    }
+
     // --- AtomicReference compare-and-set, the A-B-A (#817) -------------------------------------
 
     /**

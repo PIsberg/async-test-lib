@@ -223,7 +223,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 107. Spurious Wakeup Detector
 * **Severity**: `HIGH`
-* **Description**: Detects `wait()`/`Condition.await()` calls made outside a condition-checking loop. A thread can wake up spuriously — without `notify()` ever being called — and proceed as if the awaited condition were satisfied when it was not.
+* **Description**: Detects `wait()`/`Condition.await()` calls made outside a condition-checking loop. A thread can wake up spuriously — without `notify()` ever being called — and proceed as if the awaited condition were satisfied when it was not. With the agent attached it fires on unmodified code for `Object.wait` (#1255): a woven wait that returned is a loop's when its thread reaches the backward jump the weaver marks around it, and an `if`'s when the thread waits again or its round ends first. A wait that ends in `InterruptedException` is not judged. The weave reads a loop in one method around a bare `wait()` in another, and a timed `wait` used as a delay with no predicate, as `if`s and reports them; an `if`-guarded wait inside any loop of the same method reads as a loop. `Condition.await` is still recording-only.
 * **Buggy Code**:
   ```java
   synchronized (lock) {
