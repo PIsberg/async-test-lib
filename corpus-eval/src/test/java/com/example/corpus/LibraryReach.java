@@ -43,6 +43,10 @@ final class LibraryReach {
                         + "that tries for a ReentrantReadWriteLock's write lock while holding its "
                         + "read lock, and no corpus library ships that defect, so its pair locks "
                         + "in the test file");
+        unreached(DetectorType.CONDITION_VARIABLES,
+                "agent-fed since #1255 through the woven Condition.await, signal and loop back-edge; "
+                        + "a firing library row needs a library method that awaits behind an if "
+                        + "after a lost signal, and no corpus library ships that defect");
         unreached(DetectorType.SPURIOUS_WAKEUP_HAZARD,
                 "agent-fed since #1255 through the woven Object.wait and the loop back-edge "
                         + "MISSED_SIGNAL's pair goes through; a firing library row needs a library "

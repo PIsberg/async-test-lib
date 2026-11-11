@@ -1226,6 +1226,24 @@ final class Corpus {
                     "the same gate and timed wait inside while (!gate.open), bounded at two "
                             + "polls: every wakeup reaches the backward jump the weaver marks"),
 
+            new RecordingSubject("agent_condition_awaitedOnce", JDK,
+                    "java.util.concurrent.locks.Condition",
+                    DetectorType.CONDITION_VARIABLES, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread signals a Condition and then awaits it behind an if. The first "
+                            + "signalAll of a round finds nobody waiting and the last await of the "
+                            + "round receives none, so it needed a signal that was already gone. "
+                            + "Both calls are seen by the woven hooks under the lock (#1255)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_condition_awaitedInALoop", JDK,
+                    "java.util.concurrent.locks.Condition",
+                    DetectorType.CONDITION_VARIABLES, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same signalAll and the same timed await, inside while (!handedOff). The "
+                            + "await runs out after a lost signal exactly as its twin's does; the "
+                            + "backward jump around it is what the weaver marks"),
+
             new RecordingSubject("agent_abaStack_nodePushedBackAfterTheRead", JDK,
                     "java.util.concurrent.atomic.AtomicReference",
                     DetectorType.ABA_PROBLEM, Contract.THREAD_SAFE,

@@ -2,6 +2,8 @@ package se.deversity.asynctest;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -190,6 +192,89 @@ class AgentMonitorHooksTest {
             Thread.interrupted();
             AsyncTestContext.uninstall();
         }
+    }
+
+    @Test
+    @DisplayName("an await behind an if after a signal nobody heard is a lost signal, a loop's is not (#1255)")
+    void anIfGuardedAwaitAfterALostSignalIsReported() throws InterruptedException {
+        assertTrue(lostConditionSignalAfter(false), "if (!ready) await(1ms) after a lost signalAll");
+        assertFalse(lostConditionSignalAfter(true), "while (!ready) await(1ms): the back-edge confirms the loop");
+    }
+
+    /** Signals, then a timed await that runs out, then optionally the back-edge; {@return whether it is a finding} */
+    private static boolean lostConditionSignalAfter(boolean loop) throws InterruptedException {
+        AsyncTestContext context = conditionOnlyContext();
+        ReentrantLock lock = new ReentrantLock();
+        Condition ready = lock.newCondition();
+        AsyncTestContext.install(context);
+        try {
+            lock.lock();
+            try {
+                AgentMonitorHooks.conditionSignalAll(ready);
+                assertFalse(AgentMonitorHooks.conditionAwait(ready, 1L, TimeUnit.MILLISECONDS),
+                        "nothing signals during the wait, so it must run out");
+                if (loop) {
+                    AgentMonitorHooks.loopBackEdge();
+                }
+            } finally {
+                lock.unlock();
+            }
+            return AsyncTestContext.conditionVariableDetector().analyze().hasIssues();
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("an await behind an if that receives a signal of its own is not a lost signal (#1255)")
+    void anAwaitThatIsSignalledIsNotReported() throws InterruptedException {
+        AsyncTestContext context = conditionOnlyContext();
+        ReentrantLock lock = new ReentrantLock();
+        Condition ready = lock.newCondition();
+        CountDownLatch woken = new CountDownLatch(1);
+        Thread waiter = new Thread(() -> {
+            AsyncTestContext.install(context);
+            lock.lock();
+            try {
+                AgentMonitorHooks.conditionAwait(ready); // if (!ready) await(), with no lost signal before it
+                woken.countDown();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                lock.unlock();
+                AsyncTestContext.uninstall();
+            }
+        });
+        waiter.start();
+        AsyncTestContext.install(context);
+        try {
+            while (true) {
+                lock.lock();
+                try {
+                    if (lock.hasWaiters(ready)) {
+                        AgentMonitorHooks.conditionSignal(ready);
+                        break;
+                    }
+                } finally {
+                    lock.unlock();
+                }
+                Thread.onSpinWait();
+            }
+            assertTrue(woken.await(10, TimeUnit.SECONDS), "conditionSignal must make the call it replaced");
+            waiter.join();
+            assertFalse(AsyncTestContext.conditionVariableDetector().analyze().hasIssues(),
+                    "the await received the signal it waited for");
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    /** {@return a context with only the condition variable detector, after its first round start} */
+    private static AsyncTestContext conditionOnlyContext() {
+        AsyncTestContext context = new AsyncTestContext(
+                AsyncTestConfig.builder().detectConditionVariableIssues(true).build());
+        context.markInvocationStart();
+        return context;
     }
 
     /** {@return a context with only the spurious wakeup detector, after its first round start} */

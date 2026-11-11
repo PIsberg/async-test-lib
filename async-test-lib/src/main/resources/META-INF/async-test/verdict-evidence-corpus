@@ -211,7 +211,14 @@ CYCLIC_BARRIER = recorded_cyclicBarrier_awaitedWhileBroken, recorded_cyclicBarri
 # What the pair does not reach: a stuck waiter behind unrelated contention on the lock at analysis,
 # which is noted rather than reported (#657), and a predicate that is wrong about what the waiter
 # waits for, which the detector evaluates but cannot check.
-CONDITION_VARIABLES = recorded_condition_awaitedWithNoSignal, recorded_condition_consumerIdleOnAnEmptyQueue
+#
+# Demoted in #1255, and the registration removed: with the agent attached the detector now also
+# reports a lost signal, an await woven after a signal nobody was waiting for, judged by
+# MISSED_SIGNAL's rule and graded PROMPT for the same reason MISSED_SIGNAL is held. The report
+# grades each finding, so the stuck waiter the pair above exercises (recorded_condition_
+# awaitedWithNoSignal against recorded_condition_consumerIdleOnAnEmptyQueue) is still graded
+# VERDICT, and a minTrust = VERDICT gate still fails on it. The detector's tier is the floor over
+# its grades, and a graded detector is not promoted on a pair (PairEvidence.HeldBack.GRADED).
 
 # --- 2026-09-26, #819: held on its model since #755, promoted once the model changed.
 #

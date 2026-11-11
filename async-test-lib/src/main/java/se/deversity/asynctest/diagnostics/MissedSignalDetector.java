@@ -365,7 +365,7 @@ public class MissedSignalDetector {
             return openWaits.size() + pendingWaits.size() + openLoops.size();
         }
 
-        synchronized void describeInto(List<String> findings) {
+        synchronized void describeInto(List<String> findings, String waitWord, String signalWord) {
             int ended = unsignalledWaits;
             for (PendingWait wait : pendingWaits.values()) {
                 if (wait.missedItsSignal && !wait.confirmedWithoutAnotherWait()) {
@@ -380,18 +380,37 @@ public class MissedSignalDetector {
             }
             if (ended + stillWaiting > 0) {
                 findings.add(String.format(
-                        "%s: %d wait(s) began after a notify no thread was waiting for and received "
-                                + "no notify of their own (%d ended unsignalled, %d still waiting; "
-                                + "%d of %d notify call(s) found no waiter) — SIGNAL LOST, "
+                        "%s: %d %s(s) began after a %s no thread was waiting for and received "
+                                + "no %s of their own (%d ended unsignalled, %d still waiting; "
+                                + "%d of %d %s call(s) found no waiter) — SIGNAL LOST, "
                                 + "potential indefinite wait!",
-                        label, ended + stillWaiting, ended, stillWaiting,
-                        notifiesWithNoWaiter, notifies));
+                        label, ended + stillWaiting, waitWord, signalWord, signalWord, ended,
+                        stillWaiting, notifiesWithNoWaiter, notifies, signalWord));
             }
         }
     }
 
     /** Keyed by the condition name ({@link String}) or by the monitor's {@link IdentityKey}. */
     private final Map<Object, ConditionState> conditions = new ConcurrentHashMap<>();
+    /** What a finding calls the wait, {@code wait} or {@code await}. */
+    private final String waitWord;
+    /** What a finding calls the signal, {@code notify} or {@code signal}. */
+    private final String signalWord;
+
+    /** Creates a detector for monitors, worded with {@code wait} and {@code notify}. */
+    public MissedSignalDetector() {
+        this("wait", "notify");
+    }
+
+    /**
+     * Creates a detector whose findings use other words for the wait and the signal, for
+     * {@link ConditionVariableDetector}'s woven {@code Condition} path (#1255), which judges an
+     * await by the same rule.
+     */
+    MissedSignalDetector(String waitWord, String signalWord) {
+        this.waitWord = waitWord;
+        this.signalWord = signalWord;
+    }
     /** Bumped at the start of every invocation round; read on the recording threads. */
     private final AtomicLong invocationEpoch = new AtomicLong();
 
@@ -696,13 +715,22 @@ public class MissedSignalDetector {
     public MissedSignalReport analyze() {
         MissedSignalReport report = new MissedSignalReport();
         for (ConditionState state : conditions.values()) {
-            state.describeInto(report.missedConditions);
+            state.describeInto(report.missedConditions, waitWord, signalWord);
         }
         report.fillStructuredViolations();
         return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     // ---- Internal ----------------------------------------------------------
+
+    /** {@return the findings {@link #analyze()} would report, for a detector that embeds this one} */
+    List<String> lostSignals() {
+        List<String> findings = new ArrayList<>();
+        for (ConditionState state : conditions.values()) {
+            state.describeInto(findings, waitWord, signalWord);
+        }
+        return findings;
+    }
 
     /** {@return how many wait records all conditions still hold}; for the memory-bound test. */
     int retainedWaits() {

@@ -1,7 +1,12 @@
 package se.deversity.asynctest;
 
+import java.util.Date;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+
 import org.jspecify.annotations.Nullable;
 
+import se.deversity.asynctest.diagnostics.ConditionVariableDetector;
 import se.deversity.asynctest.diagnostics.LockOrderValidator;
 import se.deversity.asynctest.diagnostics.MissedSignalDetector;
 import se.deversity.asynctest.diagnostics.SpuriousWakeupDetector;
@@ -10,8 +15,8 @@ import se.deversity.asynctest.telemetry.ControlledSchedule;
 import se.deversity.vibetags.annotations.AIContract;
 
 /**
- * Hooks for {@code Object.wait}, {@code notify} and {@code notifyAll}, and for the back-edge of a
- * loop around a wait.
+ * Hooks for {@code Object.wait}, {@code notify} and {@code notifyAll}, for {@code Condition.await},
+ * {@code signal} and {@code signalAll} (#1255), and for the back-edge of a loop around a wait.
  *
  * <h2>Why these need the agent</h2>
  *
@@ -36,7 +41,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.12.2
  */
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.MONITOR_ENTRIES, loopBackEdge by name with a ()V descriptor, and monitorFieldEntered by FieldAccessWeaver with an (Object, Object, String)V descriptor, so none can change independently of the weaver. monitorFieldEntered runs before a MONITORENTER and must not throw: a null monitor is left for the MONITORENTER to reject with its own NullPointerException. Every hook must perform the original call on the receiver and propagate what it throws unchanged: InterruptedException, and the IllegalMonitorStateException of a call made without the monitor, which is why nothing is recorded unless Thread.holdsLock(receiver). Record the wait before wait() releases the monitor and the wakeup after it is reacquired, in a finally, so a notify is judged against the threads really waiting; record a notify before making it. The same goes for a controlled schedule's record of the hold: releasingForWait before wait(), reacquiredAfterWait in an outer finally, so a peer waiting to enter the monitor is not passed over while it is free (#1048). loopBackEdge takes nothing and returns nothing because the weaver inserts it in front of a jump whose operands are already on the stack.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.MONITOR_ENTRIES, loopBackEdge by name with a ()V descriptor, and monitorFieldEntered by FieldAccessWeaver with an (Object, Object, String)V descriptor, so none can change independently of the weaver. monitorFieldEntered runs before a MONITORENTER and must not throw: a null monitor is left for the MONITORENTER to reject with its own NullPointerException. Every hook must perform the original call on the receiver and propagate what it throws unchanged: InterruptedException, and the IllegalMonitorStateException of a call made without the monitor, which is why nothing is recorded on a monitor unless Thread.holdsLock(receiver); a Condition cannot be asked about its lock, so its await is recorded before the call, and one made without the lock throws before it waits (#1255). Record the wait before wait() releases the monitor and the wakeup after it is reacquired, in a finally, so a notify is judged against the threads really waiting; record a notify before making it. The same goes for a controlled schedule's record of the hold: releasingForWait before wait(), reacquiredAfterWait in an outer finally, so a peer waiting to enter the monitor is not passed over while it is free (#1048). loopBackEdge takes nothing and returns nothing because the weaver inserts it in front of a jump whose operands are already on the stack.")
 public final class AgentMonitorHooks {
 
     private AgentMonitorHooks() {
@@ -156,6 +161,124 @@ public final class AgentMonitorHooks {
         receiver.notifyAll();
     }
 
+    // ------------------------------------------------------------------------------------------
+    // Condition.await (#1048): the wait lets the condition's lock go, as Object.wait lets a
+    // monitor go, so a controlled schedule's record of the hold is handed back for the wait.
+    // Nothing else is recorded: the lockset and the lock detectors see the thread still inside
+    // lock()/unlock(), which is where the condition's lock is held when await returns.
+    // ------------------------------------------------------------------------------------------
+
+    /** Weaves {@code Condition.await()}. @param receiver the condition @throws InterruptedException if interrupted while waiting */
+    public static void conditionAwait(Condition receiver) throws InterruptedException {
+        ConditionVariableDetector conditions = observingAwait(receiver);
+        Object owner = ControlledSchedule.lockOf(receiver);
+        int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        try {
+            receiver.await();
+        } finally {
+            if (conditions != null) {
+                conditions.recordObservedAwaitExit(receiver);
+            }
+            if (owner != null) {
+                ControlledSchedule.reacquiredAfterWait(owner, holds);
+            }
+        }
+    }
+
+    /** Weaves {@code Condition.await(long, TimeUnit)}. @param receiver the condition @param time the maximum time to wait @param unit its unit @return false if the time elapsed first @throws InterruptedException if interrupted while waiting */
+    public static boolean conditionAwait(Condition receiver, long time, TimeUnit unit) throws InterruptedException {
+        ConditionVariableDetector conditions = observingAwait(receiver);
+        Object owner = ControlledSchedule.lockOf(receiver);
+        int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        try {
+            return receiver.await(time, unit);
+        } finally {
+            if (conditions != null) {
+                conditions.recordObservedAwaitExit(receiver);
+            }
+            if (owner != null) {
+                ControlledSchedule.reacquiredAfterWait(owner, holds);
+            }
+        }
+    }
+
+    /** Weaves {@code Condition.awaitNanos(long)}. @param receiver the condition @param nanosTimeout the maximum time to wait @return the time left, as the condition reports it @throws InterruptedException if interrupted while waiting */
+    public static long conditionAwaitNanos(Condition receiver, long nanosTimeout) throws InterruptedException {
+        ConditionVariableDetector conditions = observingAwait(receiver);
+        Object owner = ControlledSchedule.lockOf(receiver);
+        int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        try {
+            return receiver.awaitNanos(nanosTimeout);
+        } finally {
+            if (conditions != null) {
+                conditions.recordObservedAwaitExit(receiver);
+            }
+            if (owner != null) {
+                ControlledSchedule.reacquiredAfterWait(owner, holds);
+            }
+        }
+    }
+
+    /** Weaves {@code Condition.awaitUninterruptibly()}. @param receiver the condition */
+    public static void conditionAwaitUninterruptibly(Condition receiver) {
+        ConditionVariableDetector conditions = observingAwait(receiver);
+        Object owner = ControlledSchedule.lockOf(receiver);
+        int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        try {
+            receiver.awaitUninterruptibly();
+        } finally {
+            if (conditions != null) {
+                conditions.recordObservedAwaitExit(receiver);
+            }
+            if (owner != null) {
+                ControlledSchedule.reacquiredAfterWait(owner, holds);
+            }
+        }
+    }
+
+    /** Weaves {@code Condition.awaitUntil(Date)}. @param receiver the condition @param deadline the absolute time to wait until @return false if the deadline passed first @throws InterruptedException if interrupted while waiting */
+    public static boolean conditionAwaitUntil(Condition receiver, Date deadline) throws InterruptedException {
+        ConditionVariableDetector conditions = observingAwait(receiver);
+        Object owner = ControlledSchedule.lockOf(receiver);
+        int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        try {
+            return receiver.awaitUntil(deadline);
+        } finally {
+            if (conditions != null) {
+                conditions.recordObservedAwaitExit(receiver);
+            }
+            if (owner != null) {
+                ControlledSchedule.reacquiredAfterWait(owner, holds);
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code Condition.signal()}.
+     *
+     * @param receiver the condition
+     */
+    public static void conditionSignal(Condition receiver) {
+        ConditionVariableDetector conditions = AsyncTestContext.currentConditionVariableDetector();
+        if (conditions != null) {
+            conditions.recordObservedSignal(receiver);
+        }
+        receiver.signal();
+    }
+
+    /**
+     * Weaves {@code Condition.signalAll()}.
+     *
+     * @param receiver the condition
+     */
+    public static void conditionSignalAll(Condition receiver) {
+        ConditionVariableDetector conditions = AsyncTestContext.currentConditionVariableDetector();
+        if (conditions != null) {
+            conditions.recordObservedSignal(receiver);
+        }
+        receiver.signalAll();
+    }
+
     /** Emitted before a backward jump that encloses a woven wait: the loop's back-edge. */
     public static void loopBackEdge() {
         MissedSignalDetector detector = AsyncTestContext.currentMissedSignalDetector();
@@ -166,6 +289,20 @@ public final class AgentMonitorHooks {
         if (spurious != null) {
             spurious.recordObservedLoopBackEdge();
         }
+        ConditionVariableDetector conditions = AsyncTestContext.currentConditionVariableDetector();
+        if (conditions != null) {
+            conditions.recordObservedLoopBackEdge();
+        }
+    }
+
+    /**
+     * {@return the detector a woven await is recorded on, having taken the await, or {@code null}}
+     * Unlike a monitor, a {@code Condition} cannot be asked whether the caller holds its lock; an
+     * await made without it throws before it waits, and the body fails on that exception (#1255).
+     */
+    private static @Nullable ConditionVariableDetector observingAwait(Condition receiver) {
+        ConditionVariableDetector conditions = AsyncTestContext.currentConditionVariableDetector();
+        return conditions != null && conditions.recordObservedAwait(receiver) ? conditions : null;
     }
 
     /**

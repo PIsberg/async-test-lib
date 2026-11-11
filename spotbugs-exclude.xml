@@ -238,25 +238,16 @@
          so each hook makes exactly that call: a wait with no loop of its own, because the loop,
          or its absence, belongs to the woven caller and is what MissedSignalDetector judges, and a
          notify where the caller wrote notify. Turning either into the better idiom would change
-         the behaviour of the code under test. Scoped to the class. -->
+         the behaviour of the code under test. The Condition.await hooks moved here from
+         AgentLockHooks (#1255) and are the same case: the loop around an await belongs to the woven
+         caller and is what ConditionVariableDetector judges. Scoped to the class. -->
     <Match>
         <Or>
             <Bug pattern="WA_NOT_IN_LOOP"/>
+            <Bug pattern="WA_AWAIT_NOT_IN_LOOP"/>
             <Bug pattern="NO_NOTIFY_NOT_NOTIFYALL"/>
         </Or>
         <Class name="se.deversity.asynctest.AgentMonitorHooks"/>
-    </Match>
-
-    <!-- The same for AgentLockHooks' Condition.await hooks (#1048): each stands in for the one
-         await the agent substituted, and the loop around it belongs to the woven caller. Scoped
-         to the hooks that substitute an await. -->
-    <Match>
-        <Bug pattern="WA_AWAIT_NOT_IN_LOOP"/>
-        <Class name="se.deversity.asynctest.AgentLockHooks"/>
-        <Or>
-            <Method name="conditionAwait"/>
-            <Method name="conditionAwaitUninterruptibly"/>
-        </Or>
     </Match>
 
 </FindBugsFilter>

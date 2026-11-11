@@ -230,7 +230,7 @@ public final class DetectorTrust {
             row(DetectorType.LOCK_LEAKS, "LockLeakDetector", "LockLeaks", TrustTier.PROMPT, Evidence.OBSERVED),
             row(DetectorType.SHARED_RANDOM, "SharedRandomDetector", "SharedRandom", TrustTier.ADVISORY, Evidence.HEURISTIC),
             row(DetectorType.BLOCKING_QUEUE, "BlockingQueueDetector", "BlockingQueue", TrustTier.PROMPT, Evidence.ASSERTED),
-            row(DetectorType.CONDITION_VARIABLES, "ConditionVariableDetector", "ConditionVariables", TrustTier.VERDICT, Evidence.OBSERVED),
+            row(DetectorType.CONDITION_VARIABLES, "ConditionVariableDetector", "ConditionVariables", TrustTier.PROMPT, Evidence.OBSERVED),
             row(DetectorType.SIMPLE_DATE_FORMAT, "SimpleDateFormatDetector", "SimpleDateFormat", TrustTier.PROMPT, Evidence.CONTEXTUAL),
             row(DetectorType.PARALLEL_STREAMS, "ParallelStreamDetector", "ParallelStreams", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.RESOURCE_LEAKS, "ResourceLeakDetector", "ResourceLeaks", TrustTier.FACT, Evidence.ASSERTED),
