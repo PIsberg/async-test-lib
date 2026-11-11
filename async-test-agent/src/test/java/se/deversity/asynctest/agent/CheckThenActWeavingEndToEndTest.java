@@ -1,6 +1,7 @@
 package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.BoundedAdmissionMapBean;
+import com.example.agentfixture.DrainOneQueueBean;
 import com.example.agentfixture.LazyFillMapBean;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.AfterAll;
@@ -13,6 +14,8 @@ import se.deversity.asynctest.report.Violation;
 import java.util.List;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
@@ -33,6 +36,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *
  * <p>The keyless pair is pinned the same way (#1249): {@code size} then {@code put} of each
  * worker's own key, with both workers lined up between the two, and its twin under the monitor.
+ * So is the queue pair: {@code isEmpty} then {@code remove}, where the second worker to remove
+ * takes a job its check never saw, and its twin under the queue's monitor.
  */
 @Tag("e2e")
 class CheckThenActWeavingEndToEndTest {
@@ -52,6 +57,11 @@ class CheckThenActWeavingEndToEndTest {
     private static final BoundedAdmissionMapBean GUARDED_ADMISSION =
             new BoundedAdmissionMapBean(new ConcurrentSkipListMap<>());
     private static final AtomicInteger ADMISSION_TICKETS = new AtomicInteger();
+    // The same two-type split for the queue pair; jobs to spare, so no remove ever throws.
+    private static final DrainOneQueueBean RACED_DRAIN =
+            new DrainOneQueueBean(new ConcurrentLinkedQueue<>(), 1_000);
+    private static final DrainOneQueueBean GUARDED_DRAIN =
+            new DrainOneQueueBean(new LinkedBlockingQueue<>(), 1_000);
 
     /** Lines both workers up between the check and the put, the interleaving that loses a value. */
     private static final CyclicBarrier BETWEEN = new CyclicBarrier(THREADS);
@@ -105,6 +115,24 @@ class CheckThenActWeavingEndToEndTest {
         GUARDED_ADMISSION.admitUnderTheMapsMonitor("member-" + ADMISSION_TICKETS.getAndIncrement());
     }
 
+    @AsyncTest(threads = THREADS, invocations = 10, detectAll = true)
+    void racedDrain() {
+        RACED_DRAIN.drainOne(CheckThenActWeavingEndToEndTest::meet);
+    }
+
+    @AsyncTest(threads = THREADS, invocations = 10, detectAll = true)
+    void guardedDrain() {
+        GUARDED_DRAIN.drainOneUnderTheQueuesMonitor();
+    }
+
+    /** {@return whether an isEmpty-then-remove finding was reported on a queue of type {@code queueType}} */
+    private static boolean isEmptyThenRemoveReportedOn(String queueType) {
+        return findings.violationsFrom("BlockingQueue").stream()
+                .map(v -> String.valueOf(v.attributes().get("report")))
+                .anyMatch(report -> report.contains(queueType + "@")
+                        && report.contains("isEmpty-then-remove"));
+    }
+
     /** {@return whether a size-then-put finding was reported on a map of type {@code mapType}} */
     private static boolean sizeThenPutReportedOn(String mapType) {
         return findings.violationsFrom("NonAtomicConcurrentMapUpdate").stream()
@@ -144,6 +172,16 @@ class CheckThenActWeavingEndToEndTest {
                             + "synchronized (members); a "
                             + "finding here is a false positive on the fix. Findings were: "
                             + findings.violations());
+            assertTrue(isEmptyThenRemoveReportedOn("ConcurrentLinkedQueue"),
+                    "DrainOneQueueBean.drainOne makes isEmpty then remove on a "
+                            + "ConcurrentLinkedQueue, and both workers of a round checked the same "
+                            + "head before either removed, so the second remove took another job. "
+                            + "Nothing was reported, so the woven isEmpty or remove never reached "
+                            + "BlockingQueueDetector (#1249). Findings were: " + findings.violations());
+            assertFalse(isEmptyThenRemoveReportedOn("LinkedBlockingQueue"),
+                    "drainOneUnderTheQueuesMonitor makes the same calls on a LinkedBlockingQueue "
+                            + "under synchronized (queue); a finding here is a false positive on "
+                            + "the fix. Findings were: " + findings.violations());
         } finally {
             findings.close();
         }

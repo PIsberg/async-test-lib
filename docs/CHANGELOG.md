@@ -33,6 +33,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AtomicNonAtomicUpdateDetectorTest` row failed before the rule, and the corpus idiom row
   `idiom_boundedAdmission_checkThenIncrement` was silent before the weaving, beside its
   compare-and-set twin, which stays silent.
+- **An isEmpty or peek check then a remove on a concurrent queue is reported (#1249).**
+  `if (!queue.isEmpty()) queue.remove()` on a `ConcurrentLinkedQueue` or a `BlockingQueue` throws
+  `NoSuchElementException` when another consumer takes the last element in between, and takes a job
+  the check never saw when there are more, and drew nothing. The agent now substitutes
+  `Queue.isEmpty` and `Queue.element`; a non-empty `isEmpty` or a `peek` notes the head, and the
+  thread's next `remove()` or `element()` on that queue in the same round is reported by
+  `BLOCKING_QUEUE` when it returned another element, or threw, and the noted head has left the
+  queue. A head still in the queue was passed by an insertion ahead of it and stays silent, and a
+  `poll` or `take` after the check is the safe form and consumes it. Graded `PROMPT` on `HEURISTIC`
+  evidence at `HIGH` severity; the detector was already `PROMPT`, so no tier moves. Test first: the
+  five firing cases of `AgentQueueCheckThenActHooksTest` failed before the rule; breaking the
+  insertion guard turned the priority-queue twin red, and dropping the `isEmpty` weaver row turned
+  `CheckThenActWeavingEndToEndTest` red. The corpus idiom row `idiom_takeOneJob_isEmptyThenRemove`
+  fires, beside its `poll` twin, which stays silent.
 - **A size or isEmpty check then a put on a concurrent map is reported (#1249).** `if (map.size() <
   LIMIT) map.put(k, v)` on a `ConcurrentHashMap` overfills the map when two threads pass the check
   together, and drew nothing: `CONCURRENT_MAP_CHECK_THEN_ACT` paired only a keyed check with a put

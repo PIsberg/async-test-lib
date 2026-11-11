@@ -64,6 +64,14 @@ class CollectionAccessWeaverTest {
             return receiver.isEmpty();
         }
 
+        public static boolean queueIsEmpty(java.util.Queue<Object> receiver) {
+            return receiver.isEmpty();
+        }
+
+        public static Object queueElement(java.util.Queue<Object> receiver) {
+            return receiver.element();
+        }
+
         public static Object mapCompute(Map<Object, Object> receiver, Object key,
                 java.util.function.BiFunction<Object, Object, Object> remapping) {
             return receiver.compute(key, remapping);

@@ -8,9 +8,14 @@ import java.util.ArrayList;
 
 import java.util.Locale;
 import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import org.jspecify.annotations.Nullable;
 
 /**
  * Detects BlockingQueue misuse patterns in concurrent code.
@@ -22,6 +27,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - Unbounded queue growth: no capacity limits leading to memory issues
  * - Producer/consumer imbalance: producers outpacing consumers or vice versa
  * - Timeout misuse: using blocking methods without proper timeout handling
+ * - Check-then-act (#1249): with the agent attached, {@code if (!queue.isEmpty()) queue.remove()}
+ *   or a {@code peek} then {@code remove} or {@code element} on a thread-safe queue, when another
+ *   thread took the head the check saw before this thread's act. The remove then throws
+ *   {@code NoSuchElementException} on the last element, or takes one the check never saw. Graded
+ *   PROMPT: the agent sees the interleaving, not whether the act relied on the check. A
+ *   {@code poll} after the check is the safe form and consumes it.
  * 
  * Usage:
  * <pre>{@code
@@ -254,6 +265,7 @@ public class BlockingQueueDetector extends AbstractInstanceDetector<BlockingQueu
         if (!enabled || queue == null) {
             return;
         }
+        agentPolled(queue);
         QueueState state = trackedState(queue);
         if (state != null) {
             state.pollCount.incrementAndGet();
@@ -293,6 +305,7 @@ public class BlockingQueueDetector extends AbstractInstanceDetector<BlockingQueu
         if (!enabled || queue == null) {
             return;
         }
+        agentPolled(queue);
         QueueState state = trackedState(queue);
         if (state != null) {
             state.takeCount.incrementAndGet();
@@ -304,6 +317,132 @@ public class BlockingQueueDetector extends AbstractInstanceDetector<BlockingQueu
         int size = state.queue.size();
         state.maxObservedSize.accumulateAndGet(size, Math::max);
         state.minObservedSize.accumulateAndGet(size, Math::min);
+    }
+
+    // ---- Check-then-act on a thread-safe queue (#1249) -------------------------------------
+
+    /** The calling thread's last non-empty check on a queue, waiting for the act that relies on it. */
+    private static final class HeadCheck {
+        @Nullable Queue<?> queue;
+        @Nullable Object head;
+        boolean peek;
+        int round;
+
+        void clear() {
+            queue = null;
+            head = null;
+        }
+    }
+
+    /**
+     * Each thread's pending check. Per detector, so per run: a check left pending when a run ends
+     * goes with the run's detector and cannot pair with the next run's act.
+     */
+    private final ThreadLocal<HeadCheck> headChecks = ThreadLocal.withInitial(HeadCheck::new);
+
+    /** One queue whose checks another thread's take overtook. */
+    private static final class Overtaken {
+        final String label;
+        final AtomicInteger count = new AtomicInteger();
+        final Set<String> threadNames = ConcurrentHashMap.newKeySet();
+        final Set<String> operations = ConcurrentHashMap.newKeySet();
+
+        Overtaken(String label) {
+            this.label = label;
+        }
+    }
+
+    private final Map<IdentityKey, Overtaken> overtaken = new ConcurrentHashMap<>();
+    private final UnnamedLabels unnamedLabels = new UnnamedLabels();
+
+    /**
+     * Records the check half of a check-then-act the agent saw on a thread-safe queue: a woven
+     * {@code isEmpty} that answered no, or a {@code peek}, with the head the queue held then.
+     *
+     * <p>Called by the agent's queue hooks, never by a test body. A {@code null} head, an empty
+     * queue, clears the thread's pending check, since nothing a later act takes can rely on it.
+     *
+     * @param queue the queue, a {@code BlockingQueue} or another {@code java.util.concurrent} queue
+     * @param head  the head when the check was made, {@code null} when the queue was empty
+     * @param peek  whether the check was {@code peek}, for the report; {@code isEmpty} otherwise
+     * @since 1.14.3
+     */
+    public void agentHeadCheck(Queue<?> queue, @Nullable Object head, boolean peek) {
+        if (!enabled || queue == null) {
+            return;
+        }
+        HeadCheck check = headChecks.get();
+        if (head == null) {
+            check.clear();
+            return;
+        }
+        check.queue = queue;
+        check.head = head;
+        check.peek = peek;
+        check.round = SelfGuard.RoundThreads.roundNow();
+    }
+
+    /**
+     * Records the act half: a woven {@code remove()} or {@code element()} on {@code queue}. It is
+     * judged against the thread's pending check on the same queue, in the same round: the act read
+     * or took a different element than the head the check saw, and that head is no longer in the
+     * queue, so another thread took it in between. A head still in the queue was overtaken by an
+     * insertion ahead of it (a priority queue, a deque's {@code push}), which leaves the check true.
+     * A {@code remove} consumes the check; an {@code element} that read the checked head leaves it
+     * pending for the {@code remove} that usually follows.
+     *
+     * @param queue   the queue acted on
+     * @param taken   what the act returned, {@code null} when it threw {@code NoSuchElementException}
+     * @param element whether the act was {@code element}; {@code remove} otherwise
+     * @since 1.14.3
+     */
+    @SuppressWarnings("ReferenceEquality") // one queue and one element, by identity
+    public void agentHeadTaken(Queue<?> queue, @Nullable Object taken, boolean element) {
+        if (!enabled || queue == null) {
+            return;
+        }
+        HeadCheck check = headChecks.get();
+        if (check.queue != queue) { // NOPMD CompareObjectsWithEquals - one queue, by identity
+            return;
+        }
+        Object head = check.head;
+        if (element && taken == head) { // NOPMD CompareObjectsWithEquals - the element itself
+            return;
+        }
+        boolean peek = check.peek;
+        int round = check.round;
+        check.clear();
+        if (taken == head // NOPMD CompareObjectsWithEquals - the element itself
+                || round != SelfGuard.RoundThreads.roundNow()
+                || queue.contains(head)) {
+            return;
+        }
+        Overtaken state = overtaken.get(new IdentityKey(queue));
+        if (state == null) {
+            String label = unnamedLabels.of(queue, queue.getClass().getSimpleName());
+            state = overtaken.computeIfAbsent(new IdentityKey(queue), k -> new Overtaken(label));
+        }
+        state.count.incrementAndGet();
+        state.threadNames.add(Thread.currentThread().getName());
+        state.operations.add((peek ? "peek-then-" : "isEmpty-then-") + (element ? "element" : "remove"));
+    }
+
+    /**
+     * Consumes the thread's pending check on {@code queue}: a {@code poll} or {@code take} after a
+     * check is the safe form, and an act after it relies on that take, not on the check.
+     *
+     * @param queue the queue the thread took from
+     * @since 1.14.3
+     */
+    @SuppressWarnings("ReferenceEquality") // one queue, by identity
+    public void agentPolled(Queue<?> queue) {
+        if (!enabled || queue == null) {
+            return;
+        }
+        HeadCheck check = headChecks.get();
+        if (check.queue == queue) { // NOPMD CompareObjectsWithEquals - one queue, by identity
+            check.clear();
+        }
     }
 
     /**
@@ -383,6 +522,16 @@ public class BlockingQueueDetector extends AbstractInstanceDetector<BlockingQueu
                 state.putCount.get(), state.takeCount.get(), state.maxObservedSize.get()));
         }
 
+        for (Overtaken state : overtaken.values()) {
+            report.overtakenChecks.add(String.format(Locale.ROOT,
+                    "%s: %s overtaken %d time(s) by another thread's take between the check and "
+                            + "the act (threads: %s); the act throws NoSuchElementException on the "
+                            + "last element or takes one the check never saw. Take with poll() and "
+                            + "test the result for null instead",
+                    state.label, String.join(", ", new TreeSet<>(state.operations)),
+                    state.count.get(), String.join(", ", new TreeSet<>(state.threadNames))));
+        }
+
         if (report.hasIssues()) {
             // The severity the failOn gate read from this text before #801: a marker in it,
             // else the value DetectorDefaultSeverity declared for the detector.
@@ -394,6 +543,10 @@ public class BlockingQueueDetector extends AbstractInstanceDetector<BlockingQueu
             }
             for (String finding : report.droppedElements) {
                 report.structuredViolations.add(new Violation("BlockingQueue", severity,
+                        finding, List.of(), Map.of(), Instant.now()));
+            }
+            for (String finding : report.overtakenChecks) {
+                report.structuredViolations.add(new Violation("BlockingQueue", IssueSeverity.HIGH,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }
@@ -409,6 +562,8 @@ public class BlockingQueueDetector extends AbstractInstanceDetector<BlockingQueu
         final List<String> silentFailures = new ArrayList<>();
         final List<String> emptyPolls = new ArrayList<>();
         final List<String> saturation = new ArrayList<>();
+        /** A check then a remove or element another thread's take overtook (#1249). */
+        final List<String> overtakenChecks = new ArrayList<>();
         /** The findings as Violations, at the severity the text resolved to (#801). */
         public final List<Violation> structuredViolations = new ArrayList<>();
         final List<String> producerConsumerImbalance = new ArrayList<>();
@@ -443,7 +598,7 @@ public class BlockingQueueDetector extends AbstractInstanceDetector<BlockingQueu
          * @return {@code true} when this detector recorded something worth acting on
          */
         public boolean hasIssues() {
-            return !saturation.isEmpty() || !droppedElements.isEmpty();
+            return !saturation.isEmpty() || !droppedElements.isEmpty() || !overtakenChecks.isEmpty();
         }
 
         /**
@@ -470,6 +625,10 @@ public class BlockingQueueDetector extends AbstractInstanceDetector<BlockingQueu
             }
             for (String full : saturation) {
                 out.add(new GradedFindings.Grade(severity, TrustTier.PROMPT, full, DetectorTrust.Evidence.HEURISTIC));
+            }
+            for (String check : overtakenChecks) {
+                out.add(new GradedFindings.Grade(IssueSeverity.HIGH, TrustTier.PROMPT, check,
+                        DetectorTrust.Evidence.HEURISTIC));
             }
             return List.copyOf(out);
         }
@@ -500,6 +659,13 @@ public class BlockingQueueDetector extends AbstractInstanceDetector<BlockingQueu
             if (!emptyPolls.isEmpty()) {
                 sb.append("  Empty Polls (poll returned null):\n");
                 for (String issue : emptyPolls) {
+                    sb.append("    - ").append(issue).append("\n");
+                }
+            }
+
+            if (!overtakenChecks.isEmpty()) {
+                sb.append("  Check-Then-Act (another thread took between the check and the act):\n");
+                for (String issue : overtakenChecks) {
                     sb.append("    - ").append(issue).append("\n");
                 }
             }

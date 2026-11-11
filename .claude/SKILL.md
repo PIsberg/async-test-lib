@@ -361,7 +361,7 @@ Select detectors below by their `DetectorType`: list them in `includes` to run o
 | `CONCURRENT_MODIFICATIONS` | Collection mutated during iteration |
 | `LOCK_LEAKS` | Locks acquired but never released |
 | `SHARED_RANDOM` | `java.util.Random` used across threads |
-| `BLOCKING_QUEUE` | Queue saturation or imbalance |
+| `BLOCKING_QUEUE` | Queue saturation or imbalance; with the agent, `isEmpty`/`peek` then `remove`/`element` on a thread-safe queue overtaken by another thread's take (PROMPT, #1249) |
 | `CONDITION_VARIABLES` | Stuck waiters, wakeups no signal accounts for |
 | `SIMPLE_DATE_FORMAT` | Non-thread-safe `SimpleDateFormat` |
 | `PARALLEL_STREAMS` | Stateful lambdas and side effects |

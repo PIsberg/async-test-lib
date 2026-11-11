@@ -6098,6 +6098,22 @@ final class Corpus {
                     "each thread checks the size and then puts its own key, so two threads that "
                             + "pass the check together overfill the map; no key is shared, so only "
                             + "the size check ties the calls together (#1249)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_takeOneJob_pollThenNullCheck", JDK,
+                    "java.util.concurrent.ConcurrentLinkedQueue",
+                    DetectorType.BLOCKING_QUEUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "each thread takes a job with poll and tests the result for null, which no "
+                            + "other thread's take can invalidate"),
+
+            new RecordingSubject("idiom_takeOneJob_isEmptyThenRemove", JDK,
+                    "java.util.concurrent.ConcurrentLinkedQueue",
+                    DetectorType.BLOCKING_QUEUE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "each thread checks isEmpty and then removes, so a thread whose check another "
+                            + "thread's take overtook removes a job it never saw, and throws on the "
+                            + "last one (#1249)",
                     IssueSeverity.HIGH)
     );
 

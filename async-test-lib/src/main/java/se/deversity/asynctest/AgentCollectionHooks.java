@@ -8,6 +8,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.NoSuchElementException;
 import java.util.Queue;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.TimeUnit;
@@ -22,6 +23,7 @@ import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.diagnostics.AtomicMapUpdateTokens;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.HeldLocks;
+import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
 import se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector;
 import se.deversity.asynctest.diagnostics.SharedCollectionDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedCollectionIterationDetector;
@@ -754,16 +756,72 @@ public final class AgentCollectionHooks {
         ControlledSchedule.point();
         record(receiver, "poll", true);
         Object taken = receiver.poll();
+        BlockingQueueDetector detector = queueDetector(receiver);
+        if (detector != null) {
+            detector.agentPolled(receiver);
+        }
         // The element left the queue, so it is this thread's alone as far as the queue goes (#555).
         TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
         return taken;
+    }
+
+    /** Weaves {@code Queue.isEmpty} (#1249). @param receiver the queue @return whether it was empty */
+    public static boolean queueIsEmpty(Queue<Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "isEmpty", false);
+        boolean empty = receiver.isEmpty();
+        BlockingQueueDetector detector = queueDetector(receiver);
+        if (detector != null) {
+            // The head this answer was about; null when a peer emptied the queue since, which
+            // leaves no check pending.
+            detector.agentHeadCheck(receiver, empty ? null : receiver.peek(), false);
+        }
+        return empty;
+    }
+
+    /** Weaves {@code Queue.element} (#1249). @param receiver the queue @return the head */
+    public static Object queueElement(Queue<Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "element", false);
+        BlockingQueueDetector detector = queueDetector(receiver);
+        Object head;
+        try {
+            head = receiver.element();
+        } catch (NoSuchElementException empty) {
+            if (detector != null) {
+                detector.agentHeadTaken(receiver, null, true);
+            }
+            throw empty;
+        }
+        if (detector != null) {
+            detector.agentHeadTaken(receiver, head, true);
+        }
+        return head;
+    }
+
+    /**
+     * The queue detector when {@code receiver} is a thread-safe queue whose check-then-act it
+     * judges (#1249): a {@code BlockingQueue} or another {@code java.util.concurrent} queue. A
+     * plain deque is left to the shared-collection detectors, which report it whatever the pair.
+     */
+    private static @Nullable BlockingQueueDetector queueDetector(Queue<Object> receiver) {
+        if (!(receiver instanceof java.util.concurrent.BlockingQueue)
+                && !receiver.getClass().getName().startsWith("java.util.concurrent.")) {
+            return null;
+        }
+        return AsyncTestContext.currentBlockingQueueDetector();
     }
 
     /** Weaves {@code Queue.peek}. @param receiver the queue @return the head, or null */
     public static @Nullable Object queuePeek(Queue<Object> receiver) {
         ControlledSchedule.point();
         record(receiver, "peek", false);
-        return receiver.peek();
+        Object head = receiver.peek();
+        BlockingQueueDetector detector = queueDetector(receiver);
+        if (detector != null) {
+            detector.agentHeadCheck(receiver, head, true);
+        }
+        return head;
     }
 
     // ---- The entry and removal forms #664 left unwoven (#692). Offers publish before the
@@ -956,7 +1014,19 @@ public final class AgentCollectionHooks {
                                                @Nullable Object monitor) {
         ControlledSchedule.point();
         record(receiver, "remove", true);
-        Object taken = receiver.remove();
+        BlockingQueueDetector detector = queueDetector(receiver);
+        Object taken;
+        try {
+            taken = receiver.remove();
+        } catch (NoSuchElementException empty) {
+            if (detector != null) {
+                detector.agentHeadTaken(receiver, null, false);
+            }
+            throw empty;
+        }
+        if (detector != null) {
+            detector.agentHeadTaken(receiver, taken, false);
+        }
         TelemetryRegistry.ownershipTaken(taken, receiver, monitor);
         return taken;
     }
