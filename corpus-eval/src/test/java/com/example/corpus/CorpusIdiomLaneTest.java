@@ -2298,6 +2298,45 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 22. Bounded admission on an atomic (#1249) -------------------------------------------
+
+    /** Admissions to a round, bounded by a limit no round reaches. */
+    private static final class Admissions {
+        static final int LIMIT = 1_000_000;
+        final AtomicInteger admitted = new AtomicInteger();
+    }
+
+    private static final Rounds<Admissions> CAS_ADMISSIONS = new Rounds<>(Admissions::new);
+    private static final Rounds<Admissions> CHECKED_ADMISSIONS = new Rounds<>(Admissions::new);
+
+    /** Each thread admits itself with a get and compareAndSet loop, which re-checks every lost race. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_boundedAdmission_compareAndSetLoop() {
+        correct(() -> {
+            AtomicInteger admitted = CAS_ADMISSIONS.next().shared().admitted;
+            for (;;) {
+                int now = admitted.get();
+                if (now >= Admissions.LIMIT || admitted.compareAndSet(now, now + 1)) {
+                    break;
+                }
+            }
+        });
+    }
+
+    /**
+     * Each thread checks the count, then increments it: two threads that both pass the check
+     * admit past the limit.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_boundedAdmission_checkThenIncrement() {
+        broken(() -> {
+            AtomicInteger admitted = CHECKED_ADMISSIONS.next().shared().admitted;
+            if (admitted.get() < Admissions.LIMIT) {
+                admitted.incrementAndGet();
+            }
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**

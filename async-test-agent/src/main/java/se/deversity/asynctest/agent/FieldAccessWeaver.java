@@ -142,6 +142,9 @@ final class FieldAccessWeaver {
     /** The {@code AtomicInteger} calls substituted; the hook is the name plus {@code AtomicInteger}. */
     private static final Map<String, String> ATOMIC_INTEGER_FORMS = Map.ofEntries(
             Map.entry("get", "()I"),
+            // Never a release: the act half of a check-then-act (#1249).
+            Map.entry("incrementAndGet", "()I"),
+            Map.entry("getAndIncrement", "()I"),
             Map.entry("compareAndSet", "(II)Z"),
             Map.entry("set", "(I)V"),
             Map.entry("lazySet", "(I)V"),
@@ -166,15 +169,24 @@ final class FieldAccessWeaver {
             Map.entry("getAndAccumulate", "(I" + BINARY + ")I"),
             Map.entry("accumulateAndGet", "(I" + BINARY + ")I"));
 
-    /** The {@code AtomicLong} calls substituted for a get then set, never as a lock (#1157). */
-    private static final Map<String, String> ATOMIC_LONG_FORMS = Map.of(
-            "get", "()J",
-            "set", "(J)V",
-            "lazySet", "(J)V",
-            "setRelease", "(J)V",
-            "compareAndSet", "(JJ)Z",
-            "weakCompareAndSetPlain", "(JJ)Z",
-            "weakCompareAndSetVolatile", "(JJ)Z");
+    /**
+     * The {@code AtomicLong} calls substituted for a get then set (#1157) or a get then an
+     * arithmetic update (#1249), never as a lock.
+     */
+    private static final Map<String, String> ATOMIC_LONG_FORMS = Map.ofEntries(
+            Map.entry("get", "()J"),
+            Map.entry("set", "(J)V"),
+            Map.entry("lazySet", "(J)V"),
+            Map.entry("setRelease", "(J)V"),
+            Map.entry("compareAndSet", "(JJ)Z"),
+            Map.entry("weakCompareAndSetPlain", "(JJ)Z"),
+            Map.entry("weakCompareAndSetVolatile", "(JJ)Z"),
+            Map.entry("incrementAndGet", "()J"),
+            Map.entry("getAndIncrement", "()J"),
+            Map.entry("decrementAndGet", "()J"),
+            Map.entry("getAndDecrement", "()J"),
+            Map.entry("addAndGet", "(J)J"),
+            Map.entry("getAndAdd", "(J)J"));
 
     /** Internal names of the reference slots whose offers and takes are substituted (#664). */
     private static final String ATOMIC_REFERENCE = "java/util/concurrent/atomic/AtomicReference";
@@ -925,9 +937,9 @@ final class FieldAccessWeaver {
          * call is not substituted; the registry re-confirms a hold against the flag instead of
          * relying on seeing it, and {@code SpinLocks} lists those forms.
          *
-         * <p>{@code AtomicInteger.get} and the {@code AtomicLong} calls are here for a get followed
-         * by a set (#1157), not for locking: the same substitution, the same stack, a different
-         * reader.
+         * <p>{@code AtomicInteger.get}, its increments and the {@code AtomicLong} calls are here for
+         * a get followed by a set (#1157) or by an arithmetic update (#1249), not for locking: the
+         * same substitution, the same stack, a different reader.
          */
         private static @Nullable String spinLockHook(int opcode, String owner, String name,
                                                      String descriptor) {

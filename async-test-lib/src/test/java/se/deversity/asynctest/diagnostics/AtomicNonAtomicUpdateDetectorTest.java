@@ -291,6 +291,97 @@ public class AtomicNonAtomicUpdateDetectorTest {
         assertTrue(s.contains("compareAndSet"));
     }
 
+    /** Runs {@code step} on its own thread and waits for it. */
+    private static void onAnotherThread(Runnable step) throws InterruptedException {
+        Thread thread = new Thread(step);
+        thread.start();
+        thread.join();
+    }
+
+    @Test
+    void aGetThenAnIncrementWithAnotherThreadsWriteBetweenIsReported() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger admitted = new AtomicInteger();
+        d.agentRead(admitted);
+        onAnotherThread(() -> d.agentIncrement(admitted));
+        d.agentIncrement(admitted);
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(),
+                "this thread checked the atomic, another thread wrote it, and this thread then "
+                        + "incremented it on the strength of a stale check (#1249)");
+        assertEquals(List.of(TrustTier.PROMPT),
+                report.grades().stream().map(GradedFindings.Grade::tier).toList(),
+                "the agent cannot see that the increment depended on the check, so it is a prompt");
+    }
+
+    @Test
+    void aGetThenAnIncrementWithNoWriteBetweenIsCorrect() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger admitted = new AtomicInteger();
+        d.agentRead(admitted);
+        d.agentIncrement(admitted);
+        onAnotherThread(() -> {
+            d.agentRead(admitted);
+            d.agentIncrement(admitted);
+        });
+        assertFalse(d.analyze().hasIssues(),
+                "no write landed between either thread's check and its increment");
+    }
+
+    @Test
+    void aStandaloneIncrementIsCorrect() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicLong hits = new AtomicLong();
+        d.agentIncrement(hits);
+        onAnotherThread(() -> d.agentIncrement(hits));
+        d.agentIncrement(hits);
+        assertFalse(d.analyze().hasIssues(), "an increment no check preceded is one atomic update");
+    }
+
+    @Test
+    void aGetThenCompareAndSetLoopIsCorrect() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger admitted = new AtomicInteger();
+        d.agentRead(admitted);
+        onAnotherThread(() -> d.agentIncrement(admitted));
+        d.agentSwap(admitted); // the compareAndSet that failed
+        d.agentRead(admitted);
+        d.agentSwap(admitted); // the retry that won
+        assertFalse(d.analyze().hasIssues(), "a CAS loop re-checks after every lost race");
+    }
+
+    @Test
+    void aWriteBetweenTheCheckAndTheIncrementInAnotherRoundIsNotCounted() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger admitted = new AtomicInteger();
+        d.agentRead(admitted);
+        d.markInvocationStart();
+        onAnotherThread(() -> d.agentIncrement(admitted));
+        d.agentIncrement(admitted);
+        assertFalse(d.analyze().hasIssues(),
+                "a check left pending when a round ended must not pair with the next round's "
+                        + "increment, which the runner orders after it");
+    }
+
+    @Test
+    void aCheckAndIncrementUnderALockHeldAcrossBothIsNotReported() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        AtomicInteger admitted = new AtomicInteger();
+        Object lock = new Object();
+        HeldLocks.acquired(lock); // what the agent records for a woven monitor enter
+        try {
+            d.agentRead(admitted);
+            onAnotherThread(() -> d.agentIncrement(admitted));
+            d.agentIncrement(admitted);
+        } finally {
+            HeldLocks.released(lock);
+        }
+        assertFalse(d.analyze().hasIssues(),
+                "a lock held across the check and the increment is how bounded admission is "
+                        + "usually guarded; the writer that skipped it is a different finding");
+    }
+
     @Test
     void getThenSetUnderTheAtomicsOwnMonitorIsNotALostUpdate() throws Exception {
         AtomicNonAtomicUpdateDetector d = new AtomicNonAtomicUpdateDetector();

@@ -6067,6 +6067,21 @@ final class Corpus {
                     "the same task with the output read before the shutdown, so nothing orders "
                             + "the task's write before the read; silent before #1269, when the "
                             + "task's accesses never reached the run",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_boundedAdmission_compareAndSetLoop", JDK,
+                    "java.util.concurrent.atomic.AtomicInteger",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "each thread admits itself with a get and compareAndSet loop, which re-checks "
+                            + "the limit after every lost race"),
+
+            new RecordingSubject("idiom_boundedAdmission_checkThenIncrement", JDK,
+                    "java.util.concurrent.atomic.AtomicInteger",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "each thread checks the count with get and then calls incrementAndGet, so two "
+                            + "threads that pass the check together admit past the limit (#1249)",
                     IssueSeverity.HIGH)
     );
 

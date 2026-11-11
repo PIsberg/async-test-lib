@@ -504,7 +504,11 @@ has room, and one thread behind `newSingleThreadExecutor`. A `ForkJoinPool` is l
 that waits runs other tasks, and so is any executor whose bound it cannot read.
 
 `AtomicNonAtomicUpdateDetector` hears the woven `get`, `set` and compare-and-set calls on
-`AtomicInteger`, `AtomicLong` and `AtomicReference` (#1157, #1174). A woven get then set is reported once a
+`AtomicInteger`, `AtomicLong` and `AtomicReference` (#1157, #1174), and the arithmetic updates on the first two
+(`incrementAndGet`, `getAndIncrement`, the decrements, `addAndGet`, `getAndAdd`, #1249). A get then an
+arithmetic update by the same thread is a check-then-act, `if (n.get() < LIMIT) n.incrementAndGet()`: it
+is reported, as a `PROMPT`, when another thread's update landed between the two and no lock was held
+across them, and an update no read preceded is one atomic step and stays silent. A woven get then set is reported once a
 second thread of the same round has done the same with no lock in common. Each read-then-store pair
 is judged by the locks it held throughout, so a lock-free read elsewhere does not taint an update
 made under a lock. One writer among readers loses nothing, and a compare-and-set spends the read. On
