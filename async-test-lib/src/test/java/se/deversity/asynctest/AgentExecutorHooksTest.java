@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -21,6 +22,8 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -526,6 +529,103 @@ class AgentExecutorHooksTest {
                     "a task that has not finished has swallowed nothing yet");
         } finally {
             release.countDown();
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    // --- FUTURE_IGNORED: a periodic task that threw (#1254) -------------------------------------
+
+    @Test
+    @DisplayName("a periodic task that threw is reported: the executor cancelled it for good")
+    void periodicTaskThatThrewIsReported() throws Exception {
+        ScheduledExecutorService scheduler = kept(Executors.newSingleThreadScheduledExecutor());
+        AtomicInteger runs = new AtomicInteger();
+        installed();
+        try {
+            ScheduledFuture<?> future = AgentConcurrencyUtilHooks.scheduleAtFixedRate(scheduler, () -> {
+                runs.incrementAndGet();
+                throw new IllegalStateException("the heartbeat ends here");
+            }, 0, 5, TimeUnit.MILLISECONDS);
+            awaitDone(future);
+
+            FutureIgnoredDetector.FutureIgnoredReport report =
+                    AsyncTestContext.futureIgnoredDetector().analyze();
+            assertEquals(1, runs.get(), "the executor runs a periodic task no more after it throws");
+            assertTrue(report.hasIssues(),
+                    "the periodic task threw once and the executor cancelled every later run; the "
+                            + "exception sits in a ScheduledFuture nobody read. " + report);
+            assertTrue(report.toString().contains("scheduleAtFixedRate"), report.toString());
+            assertTrue(report.toString().contains("the heartbeat ends here"), report.toString());
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("a fixed-delay task that threw is reported the same way")
+    void fixedDelayTaskThatThrewIsReported() throws Exception {
+        ScheduledExecutorService scheduler = kept(Executors.newSingleThreadScheduledExecutor());
+        installed();
+        try {
+            ScheduledFuture<?> future = AgentConcurrencyUtilHooks.scheduleWithFixedDelay(scheduler, () -> {
+                throw new IllegalStateException("refresh failed");
+            }, 0, 5, TimeUnit.MILLISECONDS);
+            awaitDone(future);
+
+            FutureIgnoredDetector.FutureIgnoredReport report =
+                    AsyncTestContext.futureIgnoredDetector().analyze();
+            assertTrue(report.hasIssues(), report.toString());
+            assertTrue(report.toString().contains("scheduleWithFixedDelay"), report.toString());
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("a periodic task that never throws, or catches its own exception, stays silent")
+    void periodicTaskThatKeepsRunningIsSilent() throws Exception {
+        ScheduledExecutorService scheduler = kept(Executors.newSingleThreadScheduledExecutor());
+        CountDownLatch ranTwice = new CountDownLatch(4);
+        installed();
+        try {
+            AgentConcurrencyUtilHooks.scheduleAtFixedRate(scheduler, ranTwice::countDown,
+                    0, 2, TimeUnit.MILLISECONDS);
+            AgentConcurrencyUtilHooks.scheduleWithFixedDelay(scheduler, () -> {
+                try {
+                    ranTwice.countDown();
+                    throw new IllegalStateException("handled");
+                } catch (IllegalStateException handled) {
+                    // the task logs and carries on, which is the fix
+                }
+            }, 0, 2, TimeUnit.MILLISECONDS);
+            assertTrue(ranTwice.await(5, TimeUnit.SECONDS), "both tasks kept running");
+
+            assertFalse(AsyncTestContext.futureIgnoredDetector().analyze().hasIssues(),
+                    "a periodic task still scheduled has lost nothing: dropping its future is how "
+                            + "every periodic task is written");
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("a periodic task that threw stays silent once a get surfaced the exception")
+    void periodicTaskWhoseFailureWasReadIsSilent() throws Exception {
+        ScheduledExecutorService scheduler = kept(Executors.newSingleThreadScheduledExecutor());
+        installed();
+        try {
+            ScheduledFuture<?> future = AgentConcurrencyUtilHooks.scheduleAtFixedRate(scheduler, () -> {
+                throw new IllegalStateException("seen by the watchdog");
+            }, 0, 5, TimeUnit.MILLISECONDS);
+            @SuppressWarnings("unchecked")
+            Future<Object> read = (Future<Object>) future;
+            assertThrows(ExecutionException.class,
+                    () -> AgentConcurrencyUtilHooks.get(read, 5, TimeUnit.SECONDS));
+
+            assertFalse(AsyncTestContext.futureIgnoredDetector().analyze().hasIssues(),
+                    "the body read the future and received the task's exception, so nothing was "
+                            + "swallowed");
+        } finally {
             AsyncTestContext.uninstall();
         }
     }

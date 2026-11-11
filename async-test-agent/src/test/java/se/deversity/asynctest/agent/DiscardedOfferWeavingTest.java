@@ -1396,6 +1396,18 @@ class DiscardedOfferWeavingTest {
             // the discard rows this test never reaches but the table resolves
         }
 
+        public static java.util.concurrent.ScheduledFuture<?> scheduleAtFixedRate(
+                java.util.concurrent.ScheduledExecutorService x, Runnable t, long d, long p,
+                TimeUnit u) {
+            return x.scheduleAtFixedRate(t, d, p, u);
+        }
+
+        public static java.util.concurrent.ScheduledFuture<?> scheduleWithFixedDelay(
+                java.util.concurrent.ScheduledExecutorService x, Runnable t, long d, long p,
+                TimeUnit u) {
+            return x.scheduleWithFixedDelay(t, d, p, u);
+        }
+
         public static void asyncResultDiscarded(java.util.concurrent.CompletableFuture<?> f) {
             DISCARDED_ROOTS.add(f);
         }

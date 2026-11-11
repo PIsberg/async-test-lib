@@ -86,6 +86,7 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -1240,6 +1241,7 @@ public final class AgentConcurrencyUtilHooks {
             value = receiver.get();
         } catch (ExecutionException failed) {
             completionObserved(receiver);
+            failureRead(receiver);
             throw failed;
         } finally {
             siblingWaitEnds(siblingPool);
@@ -1273,6 +1275,7 @@ public final class AgentConcurrencyUtilHooks {
             value = receiver.get(timeout, unit);
         } catch (ExecutionException failed) {
             completionObserved(receiver);
+            failureRead(receiver);
             throw failed;
         } finally {
             siblingWaitEnds(siblingPool);
@@ -3933,6 +3936,64 @@ public final class AgentConcurrencyUtilHooks {
         FutureIgnoredDetector detector = AsyncTestContext.currentFutureIgnoredDetector();
         if (detector != null) {
             detector.recordDiscarded(future, Thread.currentThread(), "ExecutorService.submit");
+        }
+    }
+
+    /**
+     * Weaves {@code ScheduledExecutorService.scheduleAtFixedRate}: the task is scheduled as it
+     * was, and its future is handed to the ignored-future detector, which reports it at analysis
+     * if the task threw, since the executor then cancels every later run and nobody reads a
+     * periodic task's future (#1254).
+     *
+     * @param receiver     the scheduler
+     * @param task         the periodic task, scheduled unchanged
+     * @param initialDelay the delay before the first run
+     * @param period       the period between the starts of runs
+     * @param unit         the unit of both
+     * @return the task's future
+     * @since 1.14.3
+     */
+    public static ScheduledFuture<?> scheduleAtFixedRate(ScheduledExecutorService receiver,
+            Runnable task, long initialDelay, long period, TimeUnit unit) {
+        ControlledSchedule.point();
+        ScheduledFuture<?> future = receiver.scheduleAtFixedRate(task, initialDelay, period, unit);
+        periodicScheduled(future, "ScheduledExecutorService.scheduleAtFixedRate");
+        return future;
+    }
+
+    /**
+     * Weaves {@code ScheduledExecutorService.scheduleWithFixedDelay}, as
+     * {@link #scheduleAtFixedRate}.
+     *
+     * @param receiver     the scheduler
+     * @param task         the periodic task, scheduled unchanged
+     * @param initialDelay the delay before the first run
+     * @param delay        the delay between the end of one run and the start of the next
+     * @param unit         the unit of both
+     * @return the task's future
+     * @since 1.14.3
+     */
+    public static ScheduledFuture<?> scheduleWithFixedDelay(ScheduledExecutorService receiver,
+            Runnable task, long initialDelay, long delay, TimeUnit unit) {
+        ControlledSchedule.point();
+        ScheduledFuture<?> future = receiver.scheduleWithFixedDelay(task, initialDelay, delay, unit);
+        periodicScheduled(future, "ScheduledExecutorService.scheduleWithFixedDelay");
+        return future;
+    }
+
+    /** Hands a periodic task's future to the ignored-future detector of the run, if any. */
+    private static void periodicScheduled(ScheduledFuture<?> future, String call) {
+        FutureIgnoredDetector detector = AsyncTestContext.currentFutureIgnoredDetector();
+        if (detector != null) {
+            detector.recordPeriodic(future, Thread.currentThread(), call);
+        }
+    }
+
+    /** Tells the ignored-future detector that a get threw {@code future}'s failure into the body. */
+    private static void failureRead(Future<?> future) {
+        FutureIgnoredDetector detector = AsyncTestContext.currentFutureIgnoredDetector();
+        if (detector != null) {
+            detector.recordPeriodicRead(future);
         }
     }
 

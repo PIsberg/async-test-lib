@@ -57,6 +57,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -201,6 +203,7 @@ class CorpusAgentPairLaneTest {
         LEFT_RUNNING.forEach(ExecutorService::shutdownNow);
         System.clearProperty(PROPERTY);
         SHARED_POOL.shutdownNow();
+        SHARED_SCHEDULER.shutdownNow();
         CorpusRecorder.uninstall();
         SHARED_FORMATTER.close();
         SHARED_DEFLATER.end();
@@ -988,6 +991,54 @@ class CorpusAgentPairLaneTest {
     void agent_future_failingSubmitInspected() {
         Future<?> future = SHARED_POOL.submit(CorpusAgentPairLaneTest::failingTask);
         counted(() -> readTheFailure(future));
+    }
+
+    /** Made at class init, so no run owns it and only the periodic rows judge it. */
+    private static final ScheduledExecutorService SHARED_SCHEDULER =
+            Executors.newScheduledThreadPool(2);
+
+    /**
+     * Every worker schedules a heartbeat that throws on its first run and keeps only a local
+     * future: the executor ends the schedule for good and the exception reaches nobody (#1254).
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_future_periodicTaskThrows() {
+        counted(() -> awaitEnded(SHARED_SCHEDULER.scheduleAtFixedRate(
+                CorpusAgentPairLaneTest::failingTask, 0, 1, TimeUnit.MILLISECONDS)));
+    }
+
+    /**
+     * The same heartbeat catching its own exception, so the schedule keeps running until the body
+     * cancels it after two runs.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_future_periodicTaskCatches() {
+        counted(() -> {
+            CountDownLatch twice = new CountDownLatch(2);
+            ScheduledFuture<?> heartbeat = SHARED_SCHEDULER.scheduleAtFixedRate(() -> {
+                try {
+                    twice.countDown();
+                    failingTask();
+                } catch (IllegalStateException logged) {
+                    // logged and carried on
+                }
+            }, 0, 1, TimeUnit.MILLISECONDS);
+            if (!twice.await(10, TimeUnit.SECONDS)) {
+                throw new AssertionError("the heartbeat stopped");
+            }
+            heartbeat.cancel(false);
+        });
+    }
+
+    /** Waits, bounded, until the executor has ended a periodic task's schedule. */
+    private static void awaitEnded(Future<?> future) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (!future.isDone()) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError("the schedule did not end");
+            }
+            Thread.sleep(1);
+        }
     }
 
     /** Reads the failure a kept future holds, which is what keeping it is for. */

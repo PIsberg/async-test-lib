@@ -11,6 +11,7 @@ import se.deversity.asynctest.DetectorType;
 
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -24,6 +25,7 @@ class ExecutorFeedSparesCorrectUseTest {
 
     private static AsyncFindings findings;
     private static ExecutorService shared;
+    private static ScheduledExecutorService scheduler;
     private static final ExecutorUsingBean BEAN = new ExecutorUsingBean();
 
     @BeforeAll
@@ -40,6 +42,7 @@ class ExecutorFeedSparesCorrectUseTest {
 
         AsyncTestAgent.selfAttach("includes=com.example.agentfixture,collections=true");
         shared = Executors.newFixedThreadPool(2);
+        scheduler = Executors.newScheduledThreadPool(2);
         findings = AsyncFindings.collect();
     }
 
@@ -54,6 +57,11 @@ class ExecutorFeedSparesCorrectUseTest {
         BEAN.keepFailingSubmit(shared);
     }
 
+    @AsyncTest(threads = 2, invocations = 5, includes = DetectorType.FUTURE_IGNORED)
+    void periodicTaskThatCatchesItsOwnFailure() throws InterruptedException {
+        BEAN.scheduleCatchingHeartbeat(scheduler);
+    }
+
     @AfterAll
     static void nothingIsReported() {
         try {
@@ -63,10 +71,13 @@ class ExecutorFeedSparesCorrectUseTest {
                             + "were: " + findings.violations());
             assertTrue(findings.violationsFrom("FutureIgnored").isEmpty(),
                     "keepFailingSubmit keeps the future and reads the failure through get, so "
-                            + "nothing was dropped. Findings were: " + findings.violations());
+                            + "nothing was dropped, and scheduleCatchingHeartbeat catches its "
+                            + "own exception, so its schedule never ended. Findings were: "
+                            + findings.violations());
         } finally {
             findings.close();
             shared.shutdownNow();
+            scheduler.shutdownNow();
         }
     }
 }

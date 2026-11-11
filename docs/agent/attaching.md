@@ -362,7 +362,10 @@ which is the detector's whole rule: an executor handed in from outside the run, 
 static initializer, is never declared, so leaving it running is not reported (#387). A
 `submit` whose future the caller never kept is seen as the `POP` after the call, and
 `FutureIgnoredDetector` reports that future when its task failed, because nothing can ever read
-the exception it holds. A `supplyAsync` or `runAsync` whose future the caller drops is handed to
+the exception it holds. A woven `scheduleAtFixedRate` or `scheduleWithFixedDelay` hands its
+future to the same detector whether the caller keeps it or not, since dropping a periodic task's
+future is normal: it is reported when the task threw, which ends the schedule for good, unless a
+woven `get` threw that failure into the body (#1254). A `supplyAsync` or `runAsync` whose future the caller drops is handed to
 `CompletableFutureExceptionDetector` the same way. The stage functions the agent already wraps
 for the happens-before model mark a callback's entry and exit, so a woven `join` or `get` of a
 future that is not done, or a sleep, latch await, `Object.wait` or take from an empty queue, is

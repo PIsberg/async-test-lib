@@ -472,7 +472,7 @@ Select detectors below by their `DetectorType`: list them in `includes` to run o
 | `INTERRUPT_SWALLOWING` | `catch (InterruptedException)` blocks that neither rethrow nor restore the interrupt flag |
 | `MDC_CONTEXT_LEAK` | SLF4J MDC entries not cleared at task end |
 | `SYSTEM_PROPERTY_MUTATION` | Concurrent `System.setProperty`/`clearProperty` calls during the run |
-| `FUTURE_IGNORED` | `Future` from `submit()` never inspected — failed-task exceptions silently swallowed |
+| `FUTURE_IGNORED` | `Future` from `submit()` never inspected — failed-task exceptions silently swallowed; with the agent, a periodic task that threw and ended its schedule (#1254) |
 | `EXPLICIT_GC` | `System.gc()`/`Runtime.gc()` calls — corrupt timing measurements |
 | `DEPRECATED_THREAD_API` | `Thread.stop()`/`suspend()`/`resume()`/`destroy()`/`countStackFrames()` |
 | `SHARED_XML_PARSER` | `DocumentBuilder`/`SAXParser`/`Transformer`/`XPath` shared concurrently |
