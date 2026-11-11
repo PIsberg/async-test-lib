@@ -2015,6 +2015,67 @@ class CorpusIdiomLaneTest {
         broken(() -> RACED_HISTOGRAMS.next().shared().buckets[1] += 3L);
     }
 
+    // --- 18. A CyclicBarrier rendezvous (#1246) -----------------------------------------------
+
+    /** One plain result per thread. */
+    private static final class PartyResult {
+        int value;
+    }
+
+    /** A round's results and the barrier its threads meet at. */
+    private static final class Rendezvous {
+        final PartyResult[] results = new PartyResult[THREADS];
+        final CyclicBarrier barrier = new CyclicBarrier(THREADS);
+
+        Rendezvous() {
+            for (int i = 0; i < THREADS; i++) {
+                results[i] = new PartyResult();
+            }
+        }
+    }
+
+    private static final Rounds<Rendezvous> RENDEZVOUS = new Rounds<>(Rendezvous::new);
+    private static final Rounds<Rendezvous> EARLY_READ_RENDEZVOUS = new Rounds<>(Rendezvous::new);
+
+    /**
+     * Each thread writes its own result, awaits the round's barrier, then reads every result. The
+     * memory model orders each write before every read after the return.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_cyclicBarrier_readsAfterTheAwait() {
+        correct(() -> {
+            Turn<Rendezvous> turn = RENDEZVOUS.next();
+            Rendezvous round = turn.shared();
+            round.results[turn.ticket() % THREADS].value = turn.ticket();
+            try {
+                round.barrier.await();
+            } catch (BrokenBarrierException e) {
+                throw new AssertionError("nothing in this row breaks the barrier", e);
+            }
+            for (PartyResult result : round.results) {
+                use(result.value);
+            }
+        });
+    }
+
+    /** The same write and await, with every result read before the await. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_cyclicBarrier_readsBeforeTheAwait() {
+        broken(() -> {
+            Turn<Rendezvous> turn = EARLY_READ_RENDEZVOUS.next();
+            Rendezvous round = turn.shared();
+            round.results[turn.ticket() % THREADS].value = turn.ticket();
+            for (PartyResult result : round.results) {
+                use(result.value);
+            }
+            try {
+                round.barrier.await();
+            } catch (BrokenBarrierException e) {
+                throw new AssertionError("nothing in this row breaks the barrier", e);
+            }
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**

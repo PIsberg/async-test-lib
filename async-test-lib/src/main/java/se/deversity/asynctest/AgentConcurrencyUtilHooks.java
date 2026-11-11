@@ -72,6 +72,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.locks.ReentrantLock;
+import java.lang.reflect.Field;
 import java.util.concurrent.Exchanger;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
@@ -460,6 +464,147 @@ public final class AgentConcurrencyUtilHooks {
             }
         }
         return reachedZero;
+    }
+
+    /**
+     * {@code CyclicBarrier}'s private {@code generation} field, or {@code null} until it has been
+     * opened for reading, which needs {@code java.util.concurrent} open to this library. The agent
+     * opens it under collection weaving, the mode that weaves the barrier hooks, before the first
+     * woven class runs (#1246). Set before {@link #barrierLockField}, so a non-null lock field
+     * means this one is set too.
+     */
+    private static volatile @Nullable Field barrierGenerationField;
+
+    /** {@code CyclicBarrier}'s private {@code lock} field, or {@code null} until it is readable. */
+    private static volatile @Nullable Field barrierLockField;
+
+    /** {@return the barrier's lock field, opened for reading now if it can be, or {@code null}} */
+    private static @Nullable Field resolveBarrierFields() {
+        try {
+            Field lock = CyclicBarrier.class.getDeclaredField("lock");
+            Field generation = CyclicBarrier.class.getDeclaredField("generation");
+            if (lock.getType() != ReentrantLock.class
+                    || !lock.trySetAccessible() || !generation.trySetAccessible()) {
+                return null;
+            }
+            barrierGenerationField = generation;
+            barrierLockField = lock;
+            return lock;
+        } catch (ReflectiveOperationException | RuntimeException e) { // NOPMD - a closed package is judged by the plain call
+            return null;
+        }
+    }
+
+    /**
+     * Weaves {@code CyclicBarrier.await()} (#1246).
+     *
+     * <p>The memory model orders every action a party takes before {@code await} before every
+     * action any party takes after a normal return from the same generation. The edge is keyed by
+     * the barrier's own generation object, read under the barrier's own lock, and the arrival is
+     * made inside the same hold: {@code await} takes that lock reentrantly, so no other party can
+     * trip the barrier between the read and the arrival, and every release into a generation comes
+     * from a party that arrived in it. A party already arriving for the next generation therefore
+     * cannot publish into the one a slower party is just returning from. A broken barrier, a
+     * timeout, an interrupt or a {@code reset} returns abnormally, and acquires nothing; the release
+     * is withdrawn. Where the fields cannot be read the call is made unchanged and orders nothing.
+     *
+     * @param receiver the barrier
+     * @return the arrival index {@code await} returned
+     * @throws InterruptedException   if interrupted while waiting
+     * @throws BrokenBarrierException if the barrier broke
+     */
+    public static int await(CyclicBarrier receiver) throws InterruptedException, BrokenBarrierException {
+        ControlledSchedule.point();
+        blocking("CyclicBarrier.await", false);
+        ReentrantLock lock = barrierLock(receiver);
+        if (lock == null) {
+            return receiver.await();
+        }
+        Object generation;
+        int index;
+        lock.lock();
+        try {
+            generation = barrierGeneration(receiver);
+            HappensBefore.release(generation);
+            try {
+                index = receiver.await();
+            } catch (InterruptedException | BrokenBarrierException | RuntimeException | Error e) {
+                HappensBefore.retract(generation);
+                throw e;
+            }
+        } finally {
+            lock.unlock();
+        }
+        HappensBefore.acquire(generation);
+        return index;
+    }
+
+    /**
+     * Weaves {@code CyclicBarrier.await(long, TimeUnit)}, the same edge as {@link #await(CyclicBarrier)}.
+     *
+     * @param receiver the barrier
+     * @param timeout  how long to wait
+     * @param unit     the unit of {@code timeout}
+     * @return the arrival index {@code await} returned
+     * @throws InterruptedException   if interrupted while waiting
+     * @throws BrokenBarrierException if the barrier broke
+     * @throws TimeoutException       if the timeout elapsed, which breaks the barrier
+     */
+    public static int await(CyclicBarrier receiver, long timeout, TimeUnit unit)
+            throws InterruptedException, BrokenBarrierException, TimeoutException {
+        ControlledSchedule.point();
+        blocking("CyclicBarrier.await", false);
+        ReentrantLock lock = barrierLock(receiver);
+        if (lock == null) {
+            return receiver.await(timeout, unit);
+        }
+        Object generation;
+        int index;
+        lock.lock();
+        try {
+            generation = barrierGeneration(receiver);
+            HappensBefore.release(generation);
+            try {
+                index = receiver.await(timeout, unit);
+            } catch (InterruptedException | BrokenBarrierException | TimeoutException
+                     | RuntimeException | Error e) {
+                HappensBefore.retract(generation);
+                throw e;
+            }
+        } finally {
+            lock.unlock();
+        }
+        HappensBefore.acquire(generation);
+        return index;
+    }
+
+    /** {@return the barrier's lock, or {@code null} when it cannot be read} */
+    private static @Nullable ReentrantLock barrierLock(CyclicBarrier barrier) {
+        Field field = barrierLockField;
+        if (field == null) {
+            field = resolveBarrierFields();
+            if (field == null) {
+                return null;
+            }
+        }
+        try {
+            return (ReentrantLock) field.get(barrier);
+        } catch (ReflectiveOperationException | RuntimeException e) { // NOPMD - unreadable orders nothing
+            return null;
+        }
+    }
+
+    /** {@return the generation the barrier is in, read under its lock, or {@code null}} */
+    private static @Nullable Object barrierGeneration(CyclicBarrier barrier) {
+        Field field = barrierGenerationField;
+        if (field == null) {
+            return null;
+        }
+        try {
+            return field.get(barrier);
+        } catch (ReflectiveOperationException | RuntimeException e) { // NOPMD - unreadable orders nothing
+            return null;
+        }
     }
 
     /**

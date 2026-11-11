@@ -50,7 +50,9 @@ import org.jspecify.annotations.Nullable;
  * the private {@code mutex} a {@code Collections.synchronized*} wrapper locks on, and judge an
  * iteration of a synchronized set or collection it did not see being made against its real lock,
  * a map's view guarded by the map included (#996); and {@code java.io}, so it can read the reading
- * end a {@code PipedOutputStream} writes into and pair a woven write with its pipe (#994).
+ * end a {@code PipedOutputStream} writes into and pair a woven write with its pipe (#994); and
+ * {@code java.util.concurrent}, so a woven {@code CyclicBarrier.await} can take the barrier's own
+ * lock and read the generation it is arriving in, which keys its happens-before edge (#1246).
  *
  * <p>Failure is silent, like {@link AtomicFieldRegistry}: without the opening an updater bound
  * before the attach stays unresolved and its spinlock undeclared, and a lock's owner is judged by
@@ -66,6 +68,8 @@ final class UpdaterAccess {
     private static final String UTIL_PACKAGE = "java.util";
 
     private static final String IO_PACKAGE = "java.io";
+
+    private static final String CONCURRENT_PACKAGE = "java.util.concurrent";
 
     /**
      * The library class every woven hook call goes through. Named, not referenced as a class
@@ -104,8 +108,9 @@ final class UpdaterAccess {
      * @param loader the loader of a class about to be woven; {@code null} (bootstrap) opens nothing
      * @param woven  the module of that class, or {@code null} when not known
      * @param atomic whether field weaving is on, the one mode whose spinlock hooks read updaters
-     * @param util   whether collection weaving is on, the one mode whose iteration and pipe hooks
-     *               read a synchronized wrapper's mutex and a piped writer's sink
+     * @param util   whether collection weaving is on, the one mode whose iteration, pipe and
+     *               barrier hooks read a synchronized wrapper's mutex, a piped writer's sink and a
+     *               barrier's lock and generation
      */
     static void openTo(Instrumentation inst, @Nullable ClassLoader loader, @Nullable Module woven,
                        boolean atomic, boolean util) {
@@ -137,6 +142,9 @@ final class UpdaterAccess {
             }
             if (util && !javaBase.isOpen(IO_PACKAGE, library)) {
                 opens.put(IO_PACKAGE, Set.of(library));
+            }
+            if (util && !javaBase.isOpen(CONCURRENT_PACKAGE, library)) {
+                opens.put(CONCURRENT_PACKAGE, Set.of(library));
             }
             if (!opens.isEmpty()) {
                 inst.redefineModule(javaBase, Set.of(), Map.of(), opens, Set.of(), Map.of());
