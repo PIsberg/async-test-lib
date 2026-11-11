@@ -10,10 +10,12 @@ import java.util.concurrent.locks.ReentrantLock;
  * the point: the agent substitutes the {@code lock()} and {@code unlock()} call sites, so the
  * acquisition order is visible without the class knowing a test exists.
  *
- * <p>The inner acquisition is a {@code tryLock} rather than a {@code lock} so this fixture cannot
- * actually deadlock the build. The hold-and-wait edge the validator needs is recorded either way -
- * a successful {@code tryLock} is an acquisition made while the outer lock is still held - and a
- * fixture that hangs the suite to prove a hang is detectable would be a poor trade.
+ * <p>Both acquisitions block. This fixture used a {@code tryLock} for the inner one, which is the
+ * back-off idiom that cannot deadlock, and the validator reporting it was the false positive of
+ * #1242: an acquisition that cannot wait is never the waiting side of a cycle. Its caller keeps
+ * the build from really deadlocking by never running {@link #forward()} and {@link #reverse()}
+ * at once, through a monitor in a class the agent does not weave, so the validator still sees two
+ * threads take the pair in opposite orders under no common lock.
  */
 public class LockOrderInversionBean {
 
@@ -26,12 +28,11 @@ public class LockOrderInversionBean {
     public void forward() {
         alpha.lock();
         try {
-            if (beta.tryLock()) {
-                try {
-                    work++;
-                } finally {
-                    beta.unlock();
-                }
+            beta.lock();
+            try {
+                work++;
+            } finally {
+                beta.unlock();
             }
         } finally {
             alpha.unlock();
@@ -42,12 +43,11 @@ public class LockOrderInversionBean {
     public void reverse() {
         beta.lock();
         try {
-            if (alpha.tryLock()) {
-                try {
-                    work++;
-                } finally {
-                    alpha.unlock();
-                }
+            alpha.lock();
+            try {
+                work++;
+            } finally {
+                alpha.unlock();
             }
         } finally {
             beta.unlock();

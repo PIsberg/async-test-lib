@@ -240,4 +240,291 @@ class LockOrderValidatorTest {
         assertEquals(1, report.inconsistentOrderings.size(), report.toString());
         assertFalse(report.potentialDeadlockCycles.isEmpty(), report.toString());
     }
+
+    private static void onNewThread(Runnable body) throws InterruptedException {
+        Thread thread = new Thread(body);
+        thread.start();
+        thread.join();
+    }
+
+    private static void nest(LockOrderValidator validator, Object... locks) {
+        for (Object lock : locks) {
+            validator.recordLockAcquisition(lock);
+        }
+        for (int i = locks.length - 1; i >= 0; i--) {
+            validator.recordLockRelease(locks[i]);
+        }
+    }
+
+    /**
+     * Both orders taken under one outer gate cannot deadlock: whoever holds the gate holds the
+     * pair, so the two nestings are never in progress at once (#1242).
+     */
+    @Test
+    void bothOrdersUnderOneGateAreSilent() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object gate = new Object();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> nest(validator, gate, a, b));
+        onNewThread(() -> nest(validator, gate, b, a));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertFalse(report.hasIssues(), "a common gate lock orders the pair: " + report);
+    }
+
+    /** Two different gates do not order anything: the inversion is real and still fires. */
+    @Test
+    void bothOrdersUnderDifferentGatesStillFire() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> nest(validator, new Object(), a, b));
+        onNewThread(() -> nest(validator, new Object(), b, a));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertEquals(1, report.inconsistentOrderings.size(), report.toString());
+        assertFalse(report.potentialDeadlockCycles.isEmpty(), report.toString());
+    }
+
+    /** One thread taking both orders in turn cannot deadlock with itself (#1242). */
+    @Test
+    void oneThreadTakingBothOrdersIsSilent() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> {
+            nest(validator, a, b);
+            nest(validator, b, a);
+        });
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertFalse(report.hasIssues(), "both nestings came from one thread: " + report);
+    }
+
+    /**
+     * The tryLock back-off (JCIP listing 13.3): an acquisition that cannot block never waits, so
+     * it cannot be the waiting side of a cycle (#1242).
+     */
+    @Test
+    void nonBlockingInnerAcquisitionsAreSilent() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> {
+            validator.recordLockAcquisition(a);
+            validator.recordLockAcquisition(b, false);
+            validator.recordLockRelease(b);
+            validator.recordLockRelease(a);
+        });
+        onNewThread(() -> {
+            validator.recordLockAcquisition(b);
+            validator.recordLockAcquisition(a, false);
+            validator.recordLockRelease(a);
+            validator.recordLockRelease(b);
+        });
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertFalse(report.hasIssues(), "neither inner acquisition could wait: " + report);
+    }
+
+    /**
+     * A lock taken without blocking is still held: a blocking acquisition nested inside it is an
+     * edge out of it, so the inversion against a thread that blocks the other way still fires.
+     */
+    @Test
+    void aBlockingAcquisitionInsideATryLockedLockStillFires() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> {
+            validator.recordLockAcquisition(a, false);
+            validator.recordLockAcquisition(b);
+            validator.recordLockRelease(b);
+            validator.recordLockRelease(a);
+        });
+        onNewThread(() -> nest(validator, b, a));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertEquals(1, report.inconsistentOrderings.size(), report.toString());
+    }
+
+    /**
+     * A reentrant hold released once is still held: the inversion behind it is as real as without
+     * the reentrant hold (#1244).
+     */
+    @Test
+    void anInversionBehindAReentrantHoldFires() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> {
+            validator.recordLockAcquisition(a);
+            validator.recordLockAcquisition(a);
+            validator.recordLockRelease(a); // a is still held once
+            validator.recordLockAcquisition(b);
+            validator.recordLockRelease(b);
+            validator.recordLockRelease(a);
+        });
+        onNewThread(() -> nest(validator, b, a));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertEquals(1, report.inconsistentOrderings.size(), report.toString());
+    }
+
+    /** A lock released before the next is taken imposes no order on it. */
+    @Test
+    void aReleasedLockRecordsNoEdge() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> {
+            validator.recordLockAcquisition(a);
+            validator.recordLockRelease(a);
+            validator.recordLockAcquisition(b);
+            validator.recordLockRelease(b);
+        });
+        onNewThread(() -> nest(validator, b, a));
+
+        assertFalse(validator.validateLockOrder().hasIssues());
+    }
+
+    /**
+     * Re-entering a lock the thread already holds cannot block, so it is not nested inside the
+     * locks taken since: {@code a, b, a} next to another thread's {@code a, b} is one order.
+     */
+    @Test
+    void reenteringAHeldLockRecordsNoEdgeIntoIt() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> nest(validator, a, b, a));
+        onNewThread(() -> nest(validator, a, b));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertFalse(report.hasIssues(), "re-entering a cannot wait for it: " + report);
+    }
+
+    /** Three threads closing a cycle through three locks is the dining-philosophers deadlock. */
+    @Test
+    void aThreeThreadCycleFires() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object a = new Object();
+        Object b = new Object();
+        Object c = new Object();
+        onNewThread(() -> nest(validator, a, b));
+        onNewThread(() -> nest(validator, b, c));
+        onNewThread(() -> nest(validator, c, a));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertTrue(report.inconsistentOrderings.isEmpty(), "no pair is inverted: " + report);
+        assertEquals(3, report.potentialDeadlockCycles.size(), report.toString());
+    }
+
+    /** The same three edges from one thread, or under one gate, cannot deadlock. */
+    @Test
+    void aThreeLockCycleFromOneThreadOrUnderOneGateIsSilent() throws InterruptedException {
+        LockOrderValidator oneThread = new LockOrderValidator();
+        Object a = new Object();
+        Object b = new Object();
+        Object c = new Object();
+        onNewThread(() -> {
+            nest(oneThread, a, b);
+            nest(oneThread, b, c);
+            nest(oneThread, c, a);
+        });
+        assertFalse(oneThread.validateLockOrder().hasIssues());
+
+        LockOrderValidator gated = new LockOrderValidator();
+        Object gate = new Object();
+        onNewThread(() -> nest(gated, gate, a, b));
+        onNewThread(() -> nest(gated, gate, b, c));
+        onNewThread(() -> nest(gated, gate, c, a));
+        LockOrderValidator.LockOrderReport report = gated.validateLockOrder();
+        assertFalse(report.hasIssues(), report.toString());
+    }
+
+    /**
+     * A synchronized method's exit is not woven on an exception, so its hold can go stale. A hold
+     * the thread no longer has must not nest what it takes next (#1243).
+     */
+    @Test
+    void aStaleMethodMonitorHoldRecordsNoEdge() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object monitor = new Object();
+        Object b = new Object();
+        onNewThread(() -> {
+            validator.recordMethodMonitorAcquisition(monitor); // never released, never really held
+            nest(validator, b);
+        });
+        onNewThread(() -> nest(validator, b, monitor));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertFalse(report.hasIssues(), "the monitor was not held when b was taken: " + report);
+    }
+
+    /** A method monitor the thread really holds nests what it takes, like any other lock. */
+    @Test
+    void aHeldMethodMonitorNestsWhatItTakes() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object monitor = new Object();
+        Object b = new Object();
+        onNewThread(() -> {
+            synchronized (monitor) {
+                validator.recordMethodMonitorAcquisition(monitor);
+                nest(validator, b);
+                validator.recordLockRelease(monitor);
+            }
+        });
+        onNewThread(() -> nest(validator, b, monitor));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertEquals(1, report.inconsistentOrderings.size(), report.toString());
+    }
+
+    /**
+     * {@code Object.wait} lets every hold of the monitor go and takes them all back: after the
+     * matching exits the monitor is free and nests nothing.
+     */
+    @Test
+    void aWaitHandsBackEveryHoldAndTakesThemAgain() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object monitor = new Object();
+        Object b = new Object();
+        int[] holds = new int[1];
+        onNewThread(() -> {
+            validator.recordLockAcquisition(monitor);
+            validator.recordLockAcquisition(monitor);
+            holds[0] = validator.recordReleaseForWait(monitor);
+            validator.recordReacquireAfterWait(monitor, holds[0]);
+            validator.recordLockRelease(monitor);
+            validator.recordLockRelease(monitor);
+            nest(validator, b);
+        });
+        onNewThread(() -> nest(validator, b, monitor));
+
+        assertEquals(2, holds[0]);
+        assertFalse(validator.validateLockOrder().hasIssues());
+    }
+
+    /** The re-acquisition after a wait blocks, so it is nested inside whatever else is held. */
+    @Test
+    void theReacquisitionAfterAWaitIsNestedInsideOtherHolds() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        Object outer = new Object();
+        Object monitor = new Object();
+        onNewThread(() -> {
+            validator.recordLockAcquisition(monitor);
+            int holds = validator.recordReleaseForWait(monitor);
+            validator.recordLockRelease(monitor); // not held while waiting: a no-op
+            validator.recordLockAcquisition(outer);
+            validator.recordReacquireAfterWait(monitor, holds);
+            validator.recordLockRelease(monitor);
+            validator.recordLockRelease(outer);
+        });
+        onNewThread(() -> nest(validator, monitor, outer));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertEquals(1, report.inconsistentOrderings.size(), report.toString());
+    }
 }

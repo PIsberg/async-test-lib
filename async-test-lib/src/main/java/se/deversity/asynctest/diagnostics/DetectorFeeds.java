@@ -56,7 +56,8 @@ public final class DetectorFeeds {
             // access guarded". These three ask different questions of the same event stream and
             // were reachable by hand-written record calls alone, so attaching the agent and
             // writing no instrumentation produced silence from them on genuinely inverted lock
-            // order. AgentLockHooks now delivers to each.
+            // order. AgentLockHooks now delivers to each, and AgentMonitorHooks delivers woven
+            // synchronized blocks and methods to LOCK_ORDER as well (#1243).
             DetectorType.LOCK_ORDER,
             DetectorType.LOCK_LEAKS,
             DetectorType.TRY_LOCK_MISUSE,

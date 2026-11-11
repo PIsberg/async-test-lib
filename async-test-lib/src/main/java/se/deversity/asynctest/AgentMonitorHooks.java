@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import org.jspecify.annotations.Nullable;
 
+import se.deversity.asynctest.diagnostics.LockOrderValidator;
 import se.deversity.asynctest.diagnostics.MissedSignalDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedNonFinalDetector;
 import se.deversity.asynctest.telemetry.ControlledSchedule;
@@ -50,6 +51,7 @@ public final class AgentMonitorHooks {
         AgentConcurrencyUtilHooks.blocking("Object.wait", false);
         MissedSignalDetector detector = observing(receiver);
         int holds = ControlledSchedule.releasingForWait(receiver);
+        int orderHolds = releasingOrderForWait(receiver);
         try {
             if (detector == null || !detector.recordObservedWait(receiver)) {
                 receiver.wait();
@@ -61,6 +63,7 @@ public final class AgentMonitorHooks {
                 detector.recordObservedWakeup(receiver);
             }
         } finally {
+            reacquiredOrderAfterWait(receiver, orderHolds);
             ControlledSchedule.reacquiredAfterWait(receiver, holds);
         }
     }
@@ -76,6 +79,7 @@ public final class AgentMonitorHooks {
         AgentConcurrencyUtilHooks.blocking("Object.wait", false);
         MissedSignalDetector detector = observing(receiver);
         int holds = ControlledSchedule.releasingForWait(receiver);
+        int orderHolds = releasingOrderForWait(receiver);
         try {
             if (detector == null || !detector.recordObservedWait(receiver)) {
                 receiver.wait(timeoutMillis);
@@ -87,6 +91,7 @@ public final class AgentMonitorHooks {
                 detector.recordObservedWakeup(receiver);
             }
         } finally {
+            reacquiredOrderAfterWait(receiver, orderHolds);
             ControlledSchedule.reacquiredAfterWait(receiver, holds);
         }
     }
@@ -104,6 +109,7 @@ public final class AgentMonitorHooks {
         AgentConcurrencyUtilHooks.blocking("Object.wait", false);
         MissedSignalDetector detector = observing(receiver);
         int holds = ControlledSchedule.releasingForWait(receiver);
+        int orderHolds = releasingOrderForWait(receiver);
         try {
             if (detector == null || !detector.recordObservedWait(receiver)) {
                 receiver.wait(timeoutMillis, nanos);
@@ -115,6 +121,7 @@ public final class AgentMonitorHooks {
                 detector.recordObservedWakeup(receiver);
             }
         } finally {
+            reacquiredOrderAfterWait(receiver, orderHolds);
             ControlledSchedule.reacquiredAfterWait(receiver, holds);
         }
     }
@@ -172,6 +179,67 @@ public final class AgentMonitorHooks {
         SynchronizedNonFinalDetector detector = AsyncTestContext.currentSynchronizedNonFinalDetector();
         if (detector != null) {
             detector.recordMonitorField(monitor, field, owner);
+        }
+    }
+
+    /**
+     * Delivers a woven {@code synchronized} block's entry to the run's {@link LockOrderValidator}
+     * (#1243). Called from {@code TelemetryRegistry.monitorEntered}, which the weaver emits before
+     * every {@code MONITORENTER}: entering a monitor can block, so it is nested by every lock the
+     * thread already holds, and a lock-order inversion on two {@code synchronized} blocks is the
+     * same deadlock as one on two {@code ReentrantLock}s.
+     *
+     * @param monitor the monitor about to be entered, {@code null} when the
+     *                {@code MONITORENTER} is about to throw
+     * @since 1.14.3
+     */
+    public static void lockOrderMonitorEntered(@Nullable Object monitor) {
+        LockOrderValidator order = AsyncTestContext.currentLockOrderValidator();
+        if (order != null && monitor != null) {
+            order.recordLockAcquisition(monitor);
+        }
+    }
+
+    /**
+     * Delivers a woven {@code synchronized} method's entry to the run's {@link LockOrderValidator}
+     * (#1243). No exit is woven when an exception leaves the method, so the validator re-confirms
+     * this hold with {@link Thread#holdsLock} before it nests anything.
+     *
+     * @param monitor the monitor the method holds: {@code this}, or the class for a static method
+     * @since 1.14.3
+     */
+    public static void lockOrderMethodMonitorEntered(Object monitor) {
+        LockOrderValidator order = AsyncTestContext.currentLockOrderValidator();
+        if (order != null) {
+            order.recordMethodMonitorAcquisition(monitor);
+        }
+    }
+
+    /**
+     * The release half of {@link #lockOrderMonitorEntered} and
+     * {@link #lockOrderMethodMonitorEntered}: one exit undoes one entry.
+     *
+     * @param monitor the monitor being exited
+     * @since 1.14.3
+     */
+    public static void lockOrderMonitorExited(Object monitor) {
+        LockOrderValidator order = AsyncTestContext.currentLockOrderValidator();
+        if (order != null) {
+            order.recordLockRelease(monitor);
+        }
+    }
+
+    /** {@code wait} lets every hold of the monitor go: the validator must not see it held. */
+    private static int releasingOrderForWait(Object receiver) {
+        LockOrderValidator order = AsyncTestContext.currentLockOrderValidator();
+        return order == null ? 0 : order.recordReleaseForWait(receiver);
+    }
+
+    /** Taking the monitor back after {@code wait} blocks, so it is nested by what else is held. */
+    private static void reacquiredOrderAfterWait(Object receiver, int holds) {
+        LockOrderValidator order = AsyncTestContext.currentLockOrderValidator();
+        if (order != null) {
+            order.recordReacquireAfterWait(receiver, holds);
         }
     }
 

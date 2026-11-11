@@ -1707,6 +1707,21 @@ final class Corpus {
                             + "textbook remedy and yields the single edge A to B, so a finding "
                             + "here would mean nesting itself reads as a defect"),
 
+            new RecordingSubject("agent_monitorOrder_nestedBothWays", JDK,
+                    "java.lang.Object",
+                    DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the ReentrantLock row's inversion written with nested synchronized blocks, "
+                            + "the commoner way to write it. The woven MONITORENTER reaches the "
+                            + "validator since #1243; before, this drew nothing",
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("agent_monitorOrder_nestedOneWay", JDK,
+                    "java.lang.Object",
+                    DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same two monitors, always A then B: one edge and no cycle"),
+
             new RecordingSubject("agent_lock_acquiredAndNeverReleased", JDK,
                     "java.util.concurrent.locks.ReentrantLock",
                     DetectorType.LOCK_LEAKS, Contract.THREAD_SAFE,
@@ -5876,7 +5891,40 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same two calls with no monitor: each is safe and the pair is not, so "
                             + "threads that all saw the element absent each add it (#1159)",
-                    IssueSeverity.HIGH)
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_lockOrder_bothOrdersUnderOneGate", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a then b on half the threads and b then a on the other half, all inside one "
+                            + "gate lock. Whoever holds the gate holds the pair, so the two "
+                            + "nestings are never in progress at once and cannot deadlock (#1242)"),
+
+            new RecordingSubject("idiom_lockOrder_bothOrdersWithoutAGate", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.LOCK_ORDER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same two orders with no gate: two threads can each hold one lock and "
+                            + "wait for the other. A semaphore, which is no lock, keeps the lane "
+                            + "from suffering the deadlock it records",
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("idiom_lockOrder_tryLockBackOff", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.LOCK_ORDER, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "JCIP listing 13.3: both locks taken with tryLock, the first let go when the "
+                            + "second fails. No thread waits holding a lock, so neither order can "
+                            + "be the waiting side of a cycle (#1242)"),
+
+            new RecordingSubject("idiom_lockOrder_blockingInsteadOfBackingOff", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.LOCK_ORDER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same two orders with lock() for both: each thread can wait holding the "
+                            + "lock the other wants",
+                    IssueSeverity.CRITICAL)
     );
 
     /**

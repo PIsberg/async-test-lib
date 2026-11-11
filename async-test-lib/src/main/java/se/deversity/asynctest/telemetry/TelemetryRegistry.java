@@ -1,6 +1,7 @@
 package se.deversity.asynctest.telemetry;
 
 import se.deversity.asynctest.AgentConcurrencyUtilHooks;
+import se.deversity.asynctest.AgentMonitorHooks;
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.HeldLocks;
@@ -523,6 +524,7 @@ public final class TelemetryRegistry {
         // once the worker is about to enter.
         ControlledSchedule.acquiring(monitor);
         HeldLocks.acquired(monitor);
+        AgentMonitorHooks.lockOrderMonitorEntered(monitor); // a nesting edge, for #1243
     }
 
     /**
@@ -544,6 +546,7 @@ public final class TelemetryRegistry {
         // for a controlled schedule rather than being a point (#1022).
         ControlledSchedule.acquired(monitor);
         HeldLocks.methodMonitorAcquired(monitor);
+        AgentMonitorHooks.lockOrderMethodMonitorEntered(monitor);
     }
 
     /**
@@ -556,6 +559,7 @@ public final class TelemetryRegistry {
     public static void methodMonitorExited(Object monitor) {
         ControlledSchedule.released(monitor);
         HeldLocks.methodMonitorReleased(monitor);
+        AgentMonitorHooks.lockOrderMonitorExited(monitor);
     }
 
     /**
@@ -3822,6 +3826,7 @@ public final class TelemetryRegistry {
     public static void monitorExited(Object monitor) {
         ControlledSchedule.released(monitor);
         HeldLocks.released(monitor);
+        AgentMonitorHooks.lockOrderMonitorExited(monitor);
     }
 
     /**

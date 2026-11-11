@@ -169,13 +169,21 @@ public final class AgentLockHooks {
     }
 
     private static void noteAcquired(Lock lock) {
+        noteAcquired(lock, true);
+    }
+
+    /**
+     * @param blocking whether the acquisition could have waited: false for a successful
+     *                 {@code tryLock}, which can never be the waiting side of a deadlock (#1242)
+     */
+    private static void noteAcquired(Lock lock, boolean blocking) {
         View view = viewOf(lock);
         if (view == null) {
             HeldLocks.acquired(lock);
         } else {
             HeldLocks.acquired(view.owner(), view.shared());
         }
-        deliverAcquired(view == null ? lock : view.owner(), lock);
+        deliverAcquired(view == null ? lock : view.owner(), lock, blocking);
     }
 
     private static void noteReleased(Lock lock) {
@@ -211,11 +219,13 @@ public final class AgentLockHooks {
      *
      * @param identity the lockset identity, the owner for a view
      * @param lock     the lock the call site actually named
+     * @param blocking whether the acquisition could have waited, which decides whether
+     *                 {@code LockOrderValidator} records an edge into it (#1242)
      */
-    private static void deliverAcquired(Object identity, Lock lock) {
+    private static void deliverAcquired(Object identity, Lock lock, boolean blocking) {
         LockOrderValidator order = AsyncTestContext.currentLockOrderValidator();
         if (order != null) {
-            order.recordLockAcquisition(identity);
+            order.recordLockAcquisition(identity, blocking);
         }
         LockLeakDetector leak = AsyncTestContext.currentLockLeakDetector();
         if (leak != null) {
@@ -228,7 +238,7 @@ public final class AgentLockHooks {
     }
 
     /**
-     * The release half of {@link #deliverAcquired(Object, Lock)}.
+     * The release half of {@link #deliverAcquired(Object, Lock, boolean)}.
      *
      * @param identity the lockset identity, the owner for a view
      * @param lock     the lock the call site actually named
@@ -291,7 +301,7 @@ public final class AgentLockHooks {
             if (exclusive(receiver)) {
                 ControlledSchedule.acquired(receiver);
             }
-            noteAcquired(receiver);
+            noteAcquired(receiver, false);
         }
         deliverTryLock(receiver, acquired);
         return acquired;
@@ -313,7 +323,7 @@ public final class AgentLockHooks {
             if (exclusive(receiver)) {
                 ControlledSchedule.acquired(receiver);
             }
-            noteAcquired(receiver);
+            noteAcquired(receiver, false);
         }
         deliverTryLock(receiver, acquired);
         return acquired;
