@@ -431,7 +431,7 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
      * Internal: the agent saw the calling thread about to await {@code condition}, holding its
      * lock (#1255).
      *
-     * @param condition the condition
+     * @param condition the woven call's receiver, which keys the lost-signal tally; null is ignored
      * @return whether the await was taken, so its exit is to be recorded
      * @since 1.14.3
      */
@@ -443,7 +443,7 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
      * Internal: the agent saw the calling thread leave an await {@link #recordObservedAwait} took,
      * however it ended.
      *
-     * @param condition the condition
+     * @param condition the receiver its {@link #recordObservedAwait} was given
      * @since 1.14.3
      */
     public void recordObservedAwaitExit(Condition condition) {
@@ -454,7 +454,8 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
      * Internal: the agent saw the calling thread about to signal {@code condition}, holding its
      * lock.
      *
-     * @param condition the condition
+     * @param condition the woven call's receiver, matched against the awaits on the same object;
+     *                  null is ignored
      * @since 1.14.3
      */
     public void recordObservedSignal(Condition condition) {
