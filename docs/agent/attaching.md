@@ -446,7 +446,10 @@ generation is read under the barrier's own lock, which needs `collections=true`,
 action's own writes are not covered), the end of each task a woven `submit` or `execute` wrapped
 and an `ExecutorService.awaitTermination` that returned `true` or a `close` that returned, once the
 executor reports itself terminated (#1266; the common pool never does, so its `close` orders
-nothing), and `Thread.start` and a `Thread.join` that returned with the thread finished (every
+nothing), a `Phaser` `arrive`, `arriveAndDeregister` or `arriveAndAwaitAdvance` and every return
+from waiting for that phase to advance, through `arriveAndAwaitAdvance`, `awaitAdvance` or either
+`awaitAdvanceInterruptibly` (#1265; keyed by the root phaser, whose phase a tiered phaser's
+children share, and a terminated phaser orders nothing), and `Thread.start` and a `Thread.join` that returned with the thread finished (every
 `join` overload is substituted for this). Since #741 also: a `CompletableFuture` completed with
 `complete`, `completeExceptionally` or an `obtrude` call and a `join` or `get` that observed it, where a
 `complete` the future refused publishes nothing; a task handed to `ExecutorService.submit` or

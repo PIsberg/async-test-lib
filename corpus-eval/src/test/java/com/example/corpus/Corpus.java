@@ -6016,6 +6016,22 @@ final class Corpus {
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same block with the output read inside it, before close",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_phaser_readsAfterTheAdvance", JDK,
+                    "java.util.concurrent.Phaser",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "each thread writes its own result, arrives at the round's phaser, waits for "
+                            + "the advance and reads every result. Phaser's javadoc orders every "
+                            + "arrival in a phase before every return from waiting for it (#1265)"),
+
+            new RecordingSubject("idiom_phaser_readsBeforeTheAdvance", JDK,
+                    "java.util.concurrent.Phaser",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same writes and arrival with every result read before it, so nothing "
+                            + "orders another thread's write before the read",
                     IssueSeverity.HIGH)
     );
 

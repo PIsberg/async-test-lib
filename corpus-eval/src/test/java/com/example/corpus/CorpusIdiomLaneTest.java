@@ -34,6 +34,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Phaser;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -2145,6 +2146,55 @@ class CorpusIdiomLaneTest {
         if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
             throw new AssertionError("a pool running one short task did not terminate");
         }
+    }
+
+    // --- 20. A phaser's advance (#1265) -------------------------------------------------------
+
+    /** A round's results and the phaser its threads advance. */
+    private static final class PhaseRound {
+        final PartyResult[] results = new PartyResult[THREADS];
+        final Phaser phaser = new Phaser(THREADS);
+
+        PhaseRound() {
+            for (int i = 0; i < THREADS; i++) {
+                results[i] = new PartyResult();
+            }
+        }
+    }
+
+    private static final Rounds<PhaseRound> PHASE_ROUNDS = new Rounds<>(PhaseRound::new);
+    private static final Rounds<PhaseRound> EARLY_READ_PHASE_ROUNDS = new Rounds<>(PhaseRound::new);
+
+    /**
+     * Each thread writes its own result, arrives at the round's phaser and waits for the advance,
+     * then reads every result: the {@code CyclicBarrier} row above written with the API that
+     * replaces it when parties come and go.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_phaser_readsAfterTheAdvance() {
+        correct(() -> {
+            Turn<PhaseRound> turn = PHASE_ROUNDS.next();
+            PhaseRound round = turn.shared();
+            round.results[turn.ticket() % THREADS].value = turn.ticket();
+            round.phaser.arriveAndAwaitAdvance();
+            for (PartyResult result : round.results) {
+                use(result.value);
+            }
+        });
+    }
+
+    /** The same write and arrival, with every result read before the arrival. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_phaser_readsBeforeTheAdvance() {
+        broken(() -> {
+            Turn<PhaseRound> turn = EARLY_READ_PHASE_ROUNDS.next();
+            PhaseRound round = turn.shared();
+            round.results[turn.ticket() % THREADS].value = turn.ticket();
+            for (PartyResult result : round.results) {
+                use(result.value);
+            }
+            round.phaser.arriveAndAwaitAdvance();
+        });
     }
 
     // --- Harness -----------------------------------------------------------------------------

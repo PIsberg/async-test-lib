@@ -74,6 +74,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Phaser;
 import java.util.concurrent.locks.ReentrantLock;
 import java.lang.reflect.Field;
 import java.util.concurrent.Exchanger;
@@ -604,6 +605,211 @@ public final class AgentConcurrencyUtilHooks {
             return field.get(barrier);
         } catch (ReflectiveOperationException | RuntimeException e) { // NOPMD - unreadable orders nothing
             return null;
+        }
+    }
+
+    /**
+     * Per root phaser, the object {@link HappensBefore} keys each recent phase by (#1265). Weak
+     * on the phaser, so a phaser that is collected takes its tokens with it.
+     */
+    private static final Map<Phaser, PhaseTokens> PHASE_TOKENS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    /**
+     * A token for each of a phaser's last four phases. A registered party cannot be more than one
+     * phase behind the phaser, since the phase never advances without its arrival, so four is
+     * room to spare; an unregistered waiter that falls further behind finds no token and orders
+     * nothing, which keeps a finding rather than hiding one.
+     */
+    private static final class PhaseTokens {
+        private final int[] phases = new int[4];
+        private final @Nullable Object[] tokens = new Object[4];
+
+        /** {@return the token of {@code phase}, made now if there is none} */
+        synchronized Object token(int phase) {
+            int slot = phase & 3;
+            Object token = tokens[slot];
+            if (token == null || phases[slot] != phase) {
+                token = new Object();
+                phases[slot] = phase;
+                tokens[slot] = token;
+            }
+            return token;
+        }
+
+        /** {@return the token of {@code phase}, or {@code null} when nobody released into it} */
+        synchronized @Nullable Object existing(int phase) {
+            int slot = phase & 3;
+            return phases[slot] == phase ? tokens[slot] : null;
+        }
+    }
+
+    /**
+     * {@return the token of the phase {@code phaser} is in now, or {@code null} once it has
+     * terminated} Keyed by the root, whose phase every child of a tiered phaser shares.
+     */
+    private static @Nullable Object currentPhaseToken(Phaser phaser, int phase) {
+        if (phase < 0) {
+            return null;
+        }
+        return PHASE_TOKENS.computeIfAbsent(phaser.getRoot(), root -> new PhaseTokens()).token(phase);
+    }
+
+    /** {@return the token of {@code phase} of {@code phaser}'s root, or {@code null}} */
+    private static @Nullable Object pastPhaseToken(Phaser phaser, int phase) {
+        PhaseTokens tokens = PHASE_TOKENS.get(phaser.getRoot());
+        return tokens == null ? null : tokens.existing(phase);
+    }
+
+    /**
+     * Weaves {@code Phaser.arriveAndAwaitAdvance()} (#1265).
+     *
+     * <p>The {@code Phaser} javadoc orders every arrival in a phase before every return from
+     * waiting for that phase to advance. This party releases into the phase it is in before it
+     * arrives, and acquires that phase once the call returns the next one. The phase is read
+     * before the call, which is exact for a registered party: the phase cannot advance without
+     * its arrival. Where the returned phase says otherwise, an arrival the phaser did not need,
+     * the release is withdrawn. A terminated phaser waits for nobody and orders nothing.
+     *
+     * <p>A tiered phaser is keyed by its root: children advance when the root does, with the
+     * root's phase numbers, so arrivals on two children of one root order each other.
+     *
+     * @param receiver the phaser
+     * @return the phase the call returned: the next phase, or a negative one once terminated
+     */
+    public static int arriveAndAwaitAdvance(Phaser receiver) {
+        ControlledSchedule.point();
+        int phase = receiver.getPhase();
+        Object token = currentPhaseToken(receiver, phase);
+        HappensBefore.release(token);
+        int next;
+        try {
+            next = receiver.arriveAndAwaitAdvance();
+        } catch (RuntimeException | Error e) {
+            HappensBefore.retract(token);
+            throw e;
+        }
+        if (next < 0) {
+            HappensBefore.retract(token);
+            return next;
+        }
+        int arrived = (next - 1) & Integer.MAX_VALUE;
+        if (arrived != phase) {
+            HappensBefore.retract(token);
+        }
+        HappensBefore.acquire(pastPhaseToken(receiver, arrived));
+        return next;
+    }
+
+    /**
+     * Weaves {@code Phaser.arrive()}: a release into the phase it arrives in, as in
+     * {@link #arriveAndAwaitAdvance}, with nothing to acquire, since it does not wait (#1265).
+     *
+     * @param receiver the phaser
+     * @return the arrival phase, or a negative phase once terminated
+     */
+    public static int arrive(Phaser receiver) {
+        ControlledSchedule.point();
+        int phase = receiver.getPhase();
+        Object token = currentPhaseToken(receiver, phase);
+        HappensBefore.release(token);
+        int arrived;
+        try {
+            arrived = receiver.arrive();
+        } catch (RuntimeException | Error e) {
+            HappensBefore.retract(token);
+            throw e;
+        }
+        if (arrived != phase) {
+            HappensBefore.retract(token);
+        }
+        return arrived;
+    }
+
+    /**
+     * Weaves {@code Phaser.arriveAndDeregister()}: the same release as {@link #arrive}; the
+     * party's last arrival still counts toward the phase it arrives in (#1265).
+     *
+     * @param receiver the phaser
+     * @return the arrival phase, or a negative phase once terminated
+     */
+    public static int arriveAndDeregister(Phaser receiver) {
+        ControlledSchedule.point();
+        int phase = receiver.getPhase();
+        Object token = currentPhaseToken(receiver, phase);
+        HappensBefore.release(token);
+        int arrived;
+        try {
+            arrived = receiver.arriveAndDeregister();
+        } catch (RuntimeException | Error e) {
+            HappensBefore.retract(token);
+            throw e;
+        }
+        if (arrived != phase) {
+            HappensBefore.retract(token);
+        }
+        return arrived;
+    }
+
+    /**
+     * Weaves {@code Phaser.awaitAdvance(int)} (#1265): once the phaser is past {@code phase},
+     * every arrival in it happened, so the caller acquires it. A return of {@code phase} itself
+     * cannot happen for a live phaser, and a negative one means it terminated; neither orders
+     * anything. A phase the phaser has not reached yet returns at once and has no token.
+     *
+     * @param receiver the phaser
+     * @param phase    the phase to wait out
+     * @return the phase the call returned
+     */
+    public static int awaitAdvance(Phaser receiver, int phase) {
+        ControlledSchedule.point();
+        int next = receiver.awaitAdvance(phase);
+        acquireAdvanced(receiver, phase, next);
+        return next;
+    }
+
+    /**
+     * Weaves {@code Phaser.awaitAdvanceInterruptibly(int)}, the same edge as
+     * {@link #awaitAdvance(Phaser, int)} on a normal return.
+     *
+     * @param receiver the phaser
+     * @param phase    the phase to wait out
+     * @return the phase the call returned
+     * @throws InterruptedException if interrupted while waiting
+     */
+    public static int awaitAdvanceInterruptibly(Phaser receiver, int phase)
+            throws InterruptedException {
+        ControlledSchedule.point();
+        int next = receiver.awaitAdvanceInterruptibly(phase);
+        acquireAdvanced(receiver, phase, next);
+        return next;
+    }
+
+    /**
+     * Weaves {@code Phaser.awaitAdvanceInterruptibly(int, long, TimeUnit)}, the same edge as
+     * {@link #awaitAdvance(Phaser, int)} on a normal return.
+     *
+     * @param receiver the phaser
+     * @param phase    the phase to wait out
+     * @param timeout  how long to wait
+     * @param unit     the unit of {@code timeout}
+     * @return the phase the call returned
+     * @throws InterruptedException if interrupted while waiting
+     * @throws TimeoutException     if the timeout elapsed first
+     */
+    public static int awaitAdvanceInterruptibly(Phaser receiver, int phase, long timeout,
+                                                TimeUnit unit)
+            throws InterruptedException, TimeoutException {
+        ControlledSchedule.point();
+        int next = receiver.awaitAdvanceInterruptibly(phase, timeout, unit);
+        acquireAdvanced(receiver, phase, next);
+        return next;
+    }
+
+    /** Acquires {@code phase} when the call that waited it out returned a later, live phase. */
+    private static void acquireAdvanced(Phaser receiver, int phase, int returned) {
+        if (phase >= 0 && returned >= 0 && returned != phase) {
+            HappensBefore.acquire(pastPhaseToken(receiver, phase));
         }
     }
 
