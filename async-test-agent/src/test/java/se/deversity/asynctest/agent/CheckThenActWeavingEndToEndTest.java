@@ -1,5 +1,6 @@
 package se.deversity.asynctest.agent;
 
+import com.example.agentfixture.BoundedAdmissionMapBean;
 import com.example.agentfixture.LazyFillMapBean;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.AfterAll;
@@ -11,6 +12,8 @@ import se.deversity.asynctest.report.Violation;
 
 import java.util.List;
 import java.util.concurrent.BrokenBarrierException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -27,6 +30,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * {@code collections=true} both calls are substituted, and the map hooks pair them per thread, map
  * and key. Its twin makes the same two calls under the map's own monitor, and must stay silent.
  * Both run through {@code @AsyncTest}, because the hooks resolve the detector from the live run.
+ *
+ * <p>The keyless pair is pinned the same way (#1249): {@code size} then {@code put} of each
+ * worker's own key, with both workers lined up between the two, and its twin under the monitor.
  */
 @Tag("e2e")
 class CheckThenActWeavingEndToEndTest {
@@ -39,6 +45,13 @@ class CheckThenActWeavingEndToEndTest {
     private static final LazyFillMapBean GUARDED = new LazyFillMapBean();
     private static final AtomicInteger RACED_TICKETS = new AtomicInteger();
     private static final AtomicInteger GUARDED_TICKETS = new AtomicInteger();
+    // Two map types, because a report names the map by its type and a number that restarts in
+    // every run: the type is what tells the raced run's finding from the guarded one's.
+    private static final BoundedAdmissionMapBean RACED_ADMISSION =
+            new BoundedAdmissionMapBean(new ConcurrentHashMap<>());
+    private static final BoundedAdmissionMapBean GUARDED_ADMISSION =
+            new BoundedAdmissionMapBean(new ConcurrentSkipListMap<>());
+    private static final AtomicInteger ADMISSION_TICKETS = new AtomicInteger();
 
     /** Lines both workers up between the check and the put, the interleaving that loses a value. */
     private static final CyclicBarrier BETWEEN = new CyclicBarrier(THREADS);
@@ -81,6 +94,24 @@ class CheckThenActWeavingEndToEndTest {
         GUARDED.fillUnderTheMapsMonitor("guarded-" + GUARDED_TICKETS.getAndIncrement() / THREADS);
     }
 
+    @AsyncTest(threads = THREADS, invocations = 10, detectAll = true)
+    void racedAdmission() {
+        RACED_ADMISSION.admit("member-" + ADMISSION_TICKETS.getAndIncrement(),
+                CheckThenActWeavingEndToEndTest::meet);
+    }
+
+    @AsyncTest(threads = THREADS, invocations = 10, detectAll = true)
+    void guardedAdmission() {
+        GUARDED_ADMISSION.admitUnderTheMapsMonitor("member-" + ADMISSION_TICKETS.getAndIncrement());
+    }
+
+    /** {@return whether a size-then-put finding was reported on a map of type {@code mapType}} */
+    private static boolean sizeThenPutReportedOn(String mapType) {
+        return findings.violationsFrom("NonAtomicConcurrentMapUpdate").stream()
+                .map(v -> String.valueOf(v.attributes().get("report")))
+                .anyMatch(report -> report.contains("'size-then-put' on " + mapType + "@"));
+    }
+
     private static boolean reportedForKeyPrefix(String prefix) {
         List<Violation> found = findings.violationsFrom("NonAtomicConcurrentMapUpdate");
         return found.stream().anyMatch(v -> String.valueOf(v.attributes().get("report"))
@@ -101,6 +132,17 @@ class CheckThenActWeavingEndToEndTest {
                     "fillUnderTheMapsMonitor makes the same calls under synchronized (cache), so "
                             + "no second worker can land between them; a finding here is a false "
                             + "positive on the documented fix. Findings were: "
+                            + findings.violations());
+            assertTrue(sizeThenPutReportedOn("ConcurrentHashMap"),
+                    "BoundedAdmissionMapBean.admit makes size then put on a ConcurrentHashMap, and "
+                            + "both workers of a round checked before either put, so the second put "
+                            + "landed after another worker's. Nothing was reported, so the woven "
+                            + "size never reached agentSizeCheck (#1249). Findings were: "
+                            + findings.violations());
+            assertFalse(sizeThenPutReportedOn("ConcurrentSkipListMap"),
+                    "admitUnderTheMapsMonitor makes the same calls on a ConcurrentSkipListMap under "
+                            + "synchronized (members); a "
+                            + "finding here is a false positive on the fix. Findings were: "
                             + findings.violations());
         } finally {
             findings.close();

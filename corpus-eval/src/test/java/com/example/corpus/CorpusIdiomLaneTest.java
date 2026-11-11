@@ -2388,6 +2388,63 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 23. Bounded admission on a ConcurrentHashMap (#1249) ---------------------------------
+
+    /**
+     * Members admitted to a round's map, bounded by a limit no round reaches, with the same
+     * choreography as {@link Admissions}: ticket 0 checks the size, then waits (bounded) until
+     * ticket 1 has put, so every round of the raced row holds the interleaving that overfills.
+     */
+    private static final class Membership {
+        static final int LIMIT = 1_000_000;
+        final ConcurrentHashMap<String, Object> map = new ConcurrentHashMap<>();
+        final Admissions choreography = new Admissions();
+    }
+
+    private static final Rounds<Membership> RACED_MEMBERSHIP = new Rounds<>(Membership::new);
+    private static final Rounds<Membership> GUARDED_MEMBERSHIP = new Rounds<>(Membership::new);
+
+    /**
+     * Each thread checks the size and puts under the map's own monitor, so no put lands between a
+     * check and the put it decides.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_boundedMembership_sizeThenPutUnderTheMonitor() {
+        correct(() -> {
+            Turn<Membership> turn = GUARDED_MEMBERSHIP.next();
+            Membership members = turn.shared();
+            synchronized (members.map) {
+                if (members.map.size() < Membership.LIMIT) {
+                    members.map.put("member-" + turn.ticket(), Boolean.TRUE);
+                }
+            }
+        });
+    }
+
+    /**
+     * Each thread checks the size, then puts its own key: ticket 1's put lands between ticket 0's
+     * check and its put, so both pass the check and the map can end over its limit.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_boundedMembership_sizeThenPut() {
+        broken(() -> {
+            Turn<Membership> turn = RACED_MEMBERSHIP.next();
+            Membership members = turn.shared();
+            if (turn.ticket() == 1) {
+                members.choreography.awaitAPeersCheck();
+            }
+            if (members.map.size() < Membership.LIMIT) {
+                if (turn.ticket() == 0) {
+                    members.choreography.letAPeerOvertake();
+                }
+                members.map.put("member-" + turn.ticket(), Boolean.TRUE);
+            }
+            if (turn.ticket() == 1) {
+                members.choreography.overtook();
+            }
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**

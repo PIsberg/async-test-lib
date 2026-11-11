@@ -268,7 +268,12 @@ it. The pair is reported when two threads complete it in one round with no lock 
 calls; under the map's own monitor it is atomic and stays silent
 (`CheckThenActWeavingEndToEndTest`). A round whose callers all put one shared object is excused;
 a boxed primitive such as `Integer.valueOf(1)` or an enum constant is not, since it is the same
-instance only because its value is (#996).
+instance only because its value is (#996). A `size` or `isEmpty` is a check that names no key
+(#1249): `if (map.size() < LIMIT) map.put(k, v)` overfills a bounded map when two threads pass the
+check together. The thread's next `put` or `remove` on the same map in the same round completes it,
+and it is reported when another thread's `put` or `remove` on the map landed between the two with
+no lock held from the check through the act, graded `PROMPT`, since the agent cannot see that the
+act depended on the check. Under the map's own monitor it stays silent.
 
 Blocking calls are classified by thread too (#991, #993). Every woven blocking call (a sleep, a
 `join` or `get` of a pending future, a latch await, a take) also reaches

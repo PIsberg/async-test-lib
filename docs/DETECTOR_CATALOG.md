@@ -212,10 +212,13 @@ raced one does. `CONCURRENT_MAP_CHECK_THEN_ACT` used to be the second, held beca
 `recordCheckThenAct` is the body saying a check-then-act happened and the detector only counted
 threads on the `(map, key)` site. Since 2026-09-25 it also asks whether one lock covered every
 call and whether the happens-before model orders them, so the `synchronized` twin of the firing
-body is silent and the finding is the detector's own; it is `VERDICT` on that model (#818). A
+body is silent and the finding is the detector's own; it was `VERDICT` on that model (#818). A
 caller that passes the value it put, through the five-argument `recordCheckThenAct`, is silent
 when every caller of a round put the same instance, which loses nothing (#827, judged per round
-since #833).
+since #833). Since #1249 it also reports a `size` or `isEmpty` check then a `put`, which the agent
+cannot tie to the check, and grades each finding: a keyed pair stays `VERDICT` on `CONTEXTUAL`
+evidence and still trips a `minTrust = VERDICT` gate, the keyless pair is `PROMPT` on `HEURISTIC`,
+and the row is `PROMPT`, its weaker path.
 `FILE_CHANNEL_POSITION_RACE` used to be the third. It judged single accesses, so threads that each
 made one self-contained `read(buffer)` or `write(buffer)` drew the finding, and `FileChannel` runs
 one operation involving the position at a time, so those lose nothing (#755). Since #819 the
@@ -319,7 +322,7 @@ not brings back the accesses since the latest earlier hand-off it is ordered aft
 access when there is none.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 38 VERDICT, 75 PROMPT, 29 FACT and 7
+tier is one a reader has to rank alone. The split is 37 VERDICT, 76 PROMPT, 29 FACT and 7
 ADVISORY. PROMPT is the honest default: it says nobody has measured that detector's
 silent-on-correct-code direction, or that what it decides from is a thread count or a threshold,
 not that the detector is wrong. FACT and ADVISORY are statements about the kind of claim a finding
