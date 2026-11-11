@@ -346,7 +346,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (49)
+### Agent-fed (50)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -523,8 +523,15 @@ update was compound, and one thread is enough. On an `AtomicReference`, storing 
 `null` ends the read instead: those are statuses, like Jackson's `drainStatus`, which is read in one
 method and set to a constant in another, and they were the rule's false positive.
 
+`LockUpgradeDeadlockDetector` joined in 1.14.3 (#1255). The agent had woven every
+`ReentrantReadWriteLock` write acquire for the lockset since collection weaving shipped, and the
+lock answers `getReadHoldCount()` for the calling thread, so the hook asks it before each write
+acquire and needs no state of its own. A blocking acquire under the caller's own read hold is
+reported as the deadlock it is, recorded before it hangs; a `tryLock`, timed or not, as an upgrade
+that always fails, because the lock never grants the write lock to a reader.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
-`TryLockMisuseDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
+`TryLockMisuseDetector`, `LockUpgradeDeadlockDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
 `SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SharedDeflaterDetector`,
 `SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
@@ -601,7 +608,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (96)
+### Recording-only (95)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -638,7 +645,6 @@ recording is the feed:
 `WeakHashMapSharedDetector`, `SharedStatefulCryptoDetector`,
 `ThisEscapeDetector`,
 `ThreadLocalRandomMisuseDetector`, `SpuriousWakeupDetector`,
-`LockUpgradeDeadlockDetector`,
 `StableValueMisuseDetector`,
 `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`,
 `FileChannelPositionRaceDetector`, `SharedIteratorDetector`, `HighContentionAtomicDetector`,

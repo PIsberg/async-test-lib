@@ -351,6 +351,141 @@ class AgentLockHooksTest {
         assertFalse(lock.isLocked(), "the fallback's unlock released the real lock");
     }
 
+    @Test
+    @DisplayName("a write tryLock under this thread's read lock is an upgrade that always fails (#1255)")
+    void tryLockUpgradeReachesTheUpgradeDetector() throws InterruptedException {
+        ReentrantReadWriteLock rw = new ReentrantReadWriteLock();
+        String untimed = upgradeReport(() -> {
+            Lock read = AgentLockHooks.readLock(rw);
+            AgentLockHooks.lock(read);
+            try {
+                assertFalse(AgentLockHooks.tryLock(AgentLockHooks.writeLock(rw)),
+                        "ReentrantReadWriteLock never grants the write lock to a reader");
+            } finally {
+                AgentLockHooks.unlock(read);
+            }
+        });
+        assertTrue(untimed.contains("always fails"),
+                "a woven writeLock().tryLock() under the same thread's read lock can never "
+                        + "succeed, so the write branch is dead code; nothing reported it. "
+                        + "Report: " + untimed);
+
+        String timed = upgradeReport(() -> {
+            Lock read = AgentLockHooks.readLock(rw);
+            AgentLockHooks.lock(read);
+            try {
+                assertFalse(timedTry(AgentLockHooks.writeLock(rw)),
+                        "waiting does not help: this thread's own read hold never goes away");
+            } finally {
+                AgentLockHooks.unlock(read);
+            }
+        });
+        assertTrue(timed.contains("always fails"),
+                "the timed tryLock is the same upgrade with a wait added. Report: " + timed);
+    }
+
+    @Test
+    @DisplayName("a blocking write acquire under this thread's read lock is reported as a deadlock (#1255)")
+    void blockingUpgradeReachesTheUpgradeDetector() throws InterruptedException {
+        ReentrantReadWriteLock rw = new ReentrantReadWriteLock();
+        AsyncTestContext ctx =
+                new AsyncTestContext(AsyncTestConfig.builder().detectAll(true).build());
+        Thread upgrader = new Thread(() -> {
+            AsyncTestContext.install(ctx);
+            Lock read = AgentLockHooks.readLock(rw);
+            AgentLockHooks.lock(read);
+            try {
+                AgentLockHooks.lockInterruptibly(AgentLockHooks.writeLock(rw));
+            } catch (InterruptedException expected) {
+                // the only way out of a real upgrade deadlock
+            } finally {
+                AgentLockHooks.unlock(read);
+                AsyncTestContext.uninstall();
+            }
+        }, "upgrade-deadlock");
+        upgrader.start();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (!rw.hasQueuedThread(upgrader) && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertTrue(rw.hasQueuedThread(upgrader), "the upgrader really blocked on its own read hold");
+        upgrader.interrupt();
+        upgrader.join();
+
+        AsyncTestContext.install(ctx);
+        try {
+            String report = AsyncTestContext.lockUpgradeDeadlockDetector().analyze().toString();
+            assertTrue(report.contains("permanent deadlock"),
+                    "the hook records before it blocks, so a thread stuck forever on its own "
+                            + "read hold is reported even though the round only times out. "
+                            + "Report: " + report);
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("release-then-acquire, the downgrade idiom and another thread's read lock are not upgrades")
+    void correctWriteAcquiresAreNotUpgrades() throws InterruptedException {
+        ReentrantReadWriteLock rw = new ReentrantReadWriteLock();
+        assertEquals("", upgradeReport(() -> {
+            Lock read = AgentLockHooks.readLock(rw);
+            Lock write = AgentLockHooks.writeLock(rw);
+            AgentLockHooks.lock(read);
+            AgentLockHooks.unlock(read);
+            AgentLockHooks.lock(write);           // the ReentrantReadWriteLock javadoc's order:
+            AgentLockHooks.lock(read);            // release read, take write, take read to
+            assertTrue(AgentLockHooks.tryLock(write), // downgrade, release write
+                    "a writer that still holds the write lock may re-enter it under a read");
+            AgentLockHooks.unlock(write);
+            AgentLockHooks.unlock(write);
+            AgentLockHooks.unlock(read);
+        }), "every write acquire here either holds no read lock or already holds the write lock");
+
+        CountDownLatch reading = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(1);
+        Thread reader = new Thread(() -> {
+            rw.readLock().lock();
+            reading.countDown();
+            try {
+                done.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                rw.readLock().unlock();
+            }
+        }, "other-reader");
+        reader.start();
+        reading.await();
+        try {
+            assertEquals("", upgradeReport(() -> assertFalse(
+                            AgentLockHooks.tryLock(AgentLockHooks.writeLock(rw)),
+                            "another thread's read lock keeps the writer out")),
+                    "a write try that fails on someone else's read hold is contention, not an "
+                            + "upgrade: this thread holds nothing");
+        } finally {
+            done.countDown();
+            reader.join();
+        }
+    }
+
+    /**
+     * Runs {@code body} under a fresh context and {@return the upgrade detector's findings, or
+     * an empty string when it found none}.
+     */
+    private static String upgradeReport(Runnable body) {
+        AsyncTestContext ctx =
+                new AsyncTestContext(AsyncTestConfig.builder().detectAll(true).build());
+        AsyncTestContext.install(ctx);
+        try {
+            body.run();
+            var report = AsyncTestContext.lockUpgradeDeadlockDetector().analyze();
+            return report.hasIssues() ? report.toString() : "";
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
     /** Joins {@code thread} from inside a lambda, keeping the interrupt. */
     private static void joinQuietly(Thread thread) {
         try {

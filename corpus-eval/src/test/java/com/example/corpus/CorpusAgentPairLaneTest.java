@@ -40,6 +40,8 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Formatter;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.SplittableRandom;
 import java.util.zip.CRC32;
 import java.util.zip.Deflater;
@@ -70,6 +72,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.StampedLock;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -2059,6 +2062,63 @@ class CorpusAgentPairLaneTest {
      * thread's last recorded outcome for a lock, so a row that skipped the plain acquisition
      * would be skipping the shape most likely to be misjudged.
      */
+    /**
+     * A read-through cache that upgrades under the read lock: it reads, misses, and tries for the
+     * write lock while still reading (#1255).
+     *
+     * <p>Structural, like the StampedLock rows: the lock is the body's own, so no other thread is
+     * involved, and the try fails only because {@code ReentrantReadWriteLock} never grants the
+     * write lock to a reader. The fill never runs, in any round.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_readWriteLock_upgradedUnderRead() {
+        counted(() -> {
+            ReentrantReadWriteLock rw = new ReentrantReadWriteLock();
+            Map<String, String> cache = new HashMap<>();
+            rw.readLock().lock();
+            try {
+                if (cache.get("k") == null && rw.writeLock().tryLock()) {
+                    try {
+                        cache.put("k", "v");
+                    } finally {
+                        rw.writeLock().unlock();
+                    }
+                }
+            } finally {
+                rw.readLock().unlock();
+            }
+        });
+    }
+
+    /**
+     * The same cache with the read lock released before the write is tried, the order the
+     * {@code ReentrantReadWriteLock} javadoc's {@code CachedData} example uses.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_readWriteLock_releasedBeforeWriting() {
+        counted(() -> {
+            ReentrantReadWriteLock rw = new ReentrantReadWriteLock();
+            Map<String, String> cache = new HashMap<>();
+            boolean missed;
+            rw.readLock().lock();
+            try {
+                missed = cache.get("k") == null;
+            } finally {
+                rw.readLock().unlock();
+            }
+            if (missed && rw.writeLock().tryLock()) {
+                try {
+                    cache.put("k", "v");
+                } finally {
+                    rw.writeLock().unlock();
+                }
+            }
+            if (!"v".equals(cache.get("k"))) {
+                throw new AssertionError("the write lock was free, so the fill must have run");
+            }
+        });
+    }
+
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_tryLock_unlockedOnlyWhenAcquired() {
         counted(() -> {

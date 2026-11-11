@@ -37,6 +37,12 @@ final class LibraryReach {
                 "a firing library row needs a library method that waits behind an if, and no "
                         + "corpus library ships that defect; Object.wait inside a library is "
                         + "woven by the same MONITOR_ENTRIES the jdk: pair goes through");
+        unreached(DetectorType.LOCK_UPGRADE_DEADLOCK,
+                "agent-fed since #1255 through the woven write acquire, which asks the lock for "
+                        + "the caller's read hold; a firing library row needs a library method "
+                        + "that tries for a ReentrantReadWriteLock's write lock while holding its "
+                        + "read lock, and no corpus library ships that defect, so its pair locks "
+                        + "in the test file");
         unreached(DetectorType.EXPLICIT_GC,
                 "no corpus library calls System.gc, so its pair calls it from the test file");
         unreached(DetectorType.COMPLETABLE_FUTURE_OBTRUDE_ABUSE,
