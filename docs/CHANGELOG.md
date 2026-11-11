@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `JfrPinningStreamTest`: the linkage stack failed before the rule; two twins, a contended enter and
   a park under a user's native method, still report, and neutralizing the native check reddened the
   first.
+  A pin's report also printed only its top three frames, which for a pin inside JDK code are all the
+  JDK's; it now ends on the first frame outside the JDK, after a count of the JDK frames between
+  (`VirtualThreadPinningDetectorTest.observedPin_printsTheFirstFrameOutsideTheJdk`, red first).
 
 - **A lost `Condition` signal is reported with the agent attached (#1255).** `CONDITION_VARIABLES`
   reported only a waiter the lock shows parked, so `signalAll()` before anyone waits followed by
