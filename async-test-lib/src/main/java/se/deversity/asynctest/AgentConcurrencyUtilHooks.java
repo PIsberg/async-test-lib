@@ -7584,6 +7584,19 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * A woven arithmetic update of one of those atomics, the act half of a check-then-act when this
+     * thread read the atomic just before (#1249).
+     *
+     * @param atomic the atomic the call site updated
+     */
+    public static void atomicIncremented(Object atomic) {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
+        if (detector != null) {
+            detector.agentIncrement(atomic);
+        }
+    }
+
+    /**
      * A woven store to an {@code AtomicReference} (#1174). Only a stored object can have been built
      * from the read, so an enum or a {@code Boolean}, which is a status, or {@code null}, ends the
      * read instead.

@@ -23,6 +23,11 @@ import org.jspecify.annotations.Nullable;
  * {@code set} sequence is still a non-atomic read-modify-write that races with other threads.
  * The correct pattern is a CAS loop, or the built-in {@code updateAndGet}/{@code getAndUpdate}.
  *
+ * <p>With the agent attached, a {@code get} followed by the same thread's {@code incrementAndGet},
+ * {@code addAndGet} or another arithmetic update is a check-then-act too, {@code if (n.get() < LIMIT)
+ * n.incrementAndGet()}, and is reported when another thread's update landed between the two
+ * (#1249); see {@link #agentIncrement}.
+ *
  * <p>Usage inside {@code @AsyncTest(includes = DetectorType.ATOMIC_NON_ATOMIC_UPDATE)}:
  * <pre>{@code
  * var mon = AsyncTestContext.atomicNonAtomicUpdateDetector();
@@ -46,13 +51,20 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
         final List<String>       details            = new CopyOnWriteArrayList<>();
         /** Threads that read then stored through woven calls in the round in progress (#1157). */
         final Set<Long>          roundUpdaters      = ConcurrentHashMap.newKeySet();
-        /** Per thread, the locks held at its last woven read that no store has spent yet. */
-        final Map<Long, int[]>   wovenReads         = new ConcurrentHashMap<>();
+        /** Per thread, its last woven read that no store or update has spent yet. */
+        final Map<Long, WovenRead> wovenReads       = new ConcurrentHashMap<>();
+        /** Woven stores and updates of this atomic, so a read can tell one landed after it (#1249). */
+        final AtomicInteger      writes             = new AtomicInteger();
+        /** Reads another thread's update overtook before this thread's own update (#1249). */
+        final AtomicInteger      checkThenUpdates   = new AtomicInteger();
         /** The locks every read-then-store pair of this round held throughout; null before one. */
         final AtomicReference<int @Nullable []> roundPairLocks = new AtomicReference<>();
 
         AtomicState(String name) { this.name = name; }
     }
+
+    /** A woven read: the locks held at it, and how many woven writes the atomic had seen. */
+    record WovenRead(int[] locks, int writesSeen) { }
 
     @Override
     AtomicState newState(Object instance, String label) {
@@ -117,7 +129,8 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
         if (atomic == null) return;
         AtomicState s = stateFor(atomic, null, "Atomic");
         s.noteAccess(atomic, false);
-        s.wovenReads.put(Thread.currentThread().threadId(), HeldLocks.intersect(null, atomic, true));
+        s.wovenReads.put(Thread.currentThread().threadId(),
+                new WovenRead(HeldLocks.intersect(null, atomic, true), s.writes.get()));
     }
 
     /**
@@ -137,12 +150,13 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
         if (atomic == null) return;
         AtomicState s = stateFor(atomic, null, "Atomic");
         s.noteAccess(atomic, true);
+        s.writes.incrementAndGet();
         Thread thread = Thread.currentThread();
-        int[] atRead = s.wovenReads.remove(thread.threadId());
+        WovenRead atRead = s.wovenReads.remove(thread.threadId());
         if (atRead == null) {
             return;
         }
-        int[] heldThroughout = HeldLocks.intersect(atRead, atomic, true);
+        int[] heldThroughout = HeldLocks.intersect(atRead.locks(), atomic, true);
         int[] commonToPairs = s.roundPairLocks.updateAndGet(common -> common == null
                 ? heldThroughout : Lockset.intersect(common, heldThroughout));
         boolean firstThisRound = s.roundUpdaters.add(thread.threadId());
@@ -183,7 +197,41 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
      */
     public void agentSwap(Object atomic) {
         if (atomic == null) return;
-        stateFor(atomic, null, "Atomic").wovenReads.remove(Thread.currentThread().threadId());
+        AtomicState s = stateFor(atomic, null, "Atomic");
+        s.writes.incrementAndGet();
+        s.wovenReads.remove(Thread.currentThread().threadId());
+    }
+
+    /**
+     * Records an atomic arithmetic update the agent saw at a call site ({@code incrementAndGet},
+     * {@code getAndIncrement}, the decrements, {@code addAndGet}, {@code getAndAdd}), and reports a
+     * check-then-act (#1249). Alone it is one atomic update. After this thread's own read with no
+     * update of its own between, it is the act half of {@code if (n.get() < LIMIT)
+     * n.incrementAndGet()}, which the update cannot make atomic: so it is reported when another
+     * thread's update of the atomic landed between the read and this one, which is the interleaving
+     * that over-admits, and when no lock was held from the read through this update. The agent cannot
+     * see whether the update depended on the read, so a read the code ignored matches too.
+     *
+     * @param atomic the atomic the call site updated, tracked by identity
+     * @since 1.14.3
+     */
+    public void agentIncrement(Object atomic) {
+        if (atomic == null) return;
+        AtomicState s = stateFor(atomic, null, "Atomic");
+        s.noteAccess(atomic, true);
+        Thread thread = Thread.currentThread();
+        WovenRead read = s.wovenReads.remove(thread.threadId());
+        int writesBefore = s.writes.getAndIncrement();
+        if (read == null || writesBefore == read.writesSeen()
+                || HeldLocks.intersect(read.locks(), atomic, true).length > 0) {
+            return;
+        }
+        s.checkThenUpdates.incrementAndGet();
+        if (s.details.size() < MAX_WOVEN_DETAILS) {
+            s.details.add(String.format(
+                "Thread '%s' read %s, another thread updated it, then the first updated it as if "
+                    + "its read still held", thread.getName(), s.name));
+        }
     }
 
     /**
@@ -235,6 +283,21 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
                 r.grades.add(new GradedFindings.Grade(IssueSeverity.HIGH, TrustTier.PROMPT, finding,
                         DetectorTrust.Evidence.HEURISTIC));
                 r.details.addAll(s.details);
+            }
+            // A check, another thread's update, then this thread's update (#1249): seen, not
+            // inferred, but whether the update depended on the check is not, so a prompt.
+            if (s.checkThenUpdates.get() > 0 && s.sawUnguardedRound()) {
+                String finding = String.format("%s: %d check-then-update sequence(s): a thread read it, "
+                    + "another thread updated it, then the first updated it with no lock held across "
+                    + "its read and update" + SelfGuard.REPORT_NOTE, s.name, s.checkThenUpdates.get());
+                r.violations.add(finding);
+                r.structuredViolations.add(new Violation("AtomicNonAtomicUpdate", IssueSeverity.HIGH,
+                        finding, List.of(), Map.of(), Instant.now()));
+                r.grades.add(new GradedFindings.Grade(IssueSeverity.HIGH, TrustTier.PROMPT, finding,
+                        DetectorTrust.Evidence.HEURISTIC));
+                if (s.wovenUpdates.get() == 0) {
+                    r.details.addAll(s.details);
+                }
             }
         }
         return DetectorFailurePolicy.checkedReport(this, r);

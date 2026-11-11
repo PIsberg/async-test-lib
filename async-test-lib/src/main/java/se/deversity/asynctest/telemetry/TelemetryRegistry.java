@@ -928,6 +928,113 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * Weaves {@code AtomicInteger.incrementAndGet}, which is never a spinlock release: only
+     * the act half of a check-then-act (#1249).
+     *
+     * @param count the atomic the call site invoked
+     * @return the updated value
+     * @since 1.14.3
+     */
+    public static int incrementAndGetAtomicInteger(AtomicInteger count) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicIncremented(count);
+        return count.incrementAndGet();
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.getAndIncrement}, as {@link #incrementAndGetAtomicInteger}.
+     *
+     * @param count the atomic the call site invoked
+     * @return the previous value
+     * @since 1.14.3
+     */
+    public static int getAndIncrementAtomicInteger(AtomicInteger count) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicIncremented(count);
+        return count.getAndIncrement();
+    }
+
+    /**
+     * Weaves {@code AtomicLong.incrementAndGet}, the act half of a check-then-act (#1249).
+     *
+     * @param count the atomic the call site invoked
+     * @return the updated value
+     * @since 1.14.3
+     */
+    public static long incrementAndGetAtomicLong(AtomicLong count) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicIncremented(count);
+        return count.incrementAndGet();
+    }
+
+    /**
+     * Weaves {@code AtomicLong.getAndIncrement}, as {@link #incrementAndGetAtomicLong}.
+     *
+     * @param count the atomic the call site invoked
+     * @return the previous value
+     * @since 1.14.3
+     */
+    public static long getAndIncrementAtomicLong(AtomicLong count) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicIncremented(count);
+        return count.getAndIncrement();
+    }
+
+    /**
+     * Weaves {@code AtomicLong.decrementAndGet}, as {@link #incrementAndGetAtomicLong}.
+     *
+     * @param count the atomic the call site invoked
+     * @return the updated value
+     * @since 1.14.3
+     */
+    public static long decrementAndGetAtomicLong(AtomicLong count) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicIncremented(count);
+        return count.decrementAndGet();
+    }
+
+    /**
+     * Weaves {@code AtomicLong.getAndDecrement}, as {@link #incrementAndGetAtomicLong}.
+     *
+     * @param count the atomic the call site invoked
+     * @return the previous value
+     * @since 1.14.3
+     */
+    public static long getAndDecrementAtomicLong(AtomicLong count) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicIncremented(count);
+        return count.getAndDecrement();
+    }
+
+    /**
+     * Weaves {@code AtomicLong.addAndGet}, as {@link #incrementAndGetAtomicLong}.
+     *
+     * @param count the atomic the call site invoked
+     * @param delta the value to add
+     * @return the updated value
+     * @since 1.14.3
+     */
+    public static long addAndGetAtomicLong(AtomicLong count, long delta) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicIncremented(count);
+        return count.addAndGet(delta);
+    }
+
+    /**
+     * Weaves {@code AtomicLong.getAndAdd}, as {@link #incrementAndGetAtomicLong}.
+     *
+     * @param count the atomic the call site invoked
+     * @param delta the value to add
+     * @return the previous value
+     * @since 1.14.3
+     */
+    public static long getAndAddAtomicLong(AtomicLong count, long delta) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicIncremented(count);
+        return count.getAndAdd(delta);
+    }
+
+    /**
      * Weaves {@code AtomicLong.get}, as {@link #getAtomicInteger}. @param count the atomic
      * @return what the atomic held @since 1.14.1
      */
@@ -1342,8 +1449,8 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int getAndAddAtomicInteger(AtomicInteger count, int delta) {
-        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicIncremented(count);
         int previous = count.getAndAdd(delta);
         if (previous + delta != 1) {
             SpinLocks.release(count);
@@ -1360,8 +1467,8 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int addAndGetAtomicInteger(AtomicInteger count, int delta) {
-        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicIncremented(count);
         int current = count.addAndGet(delta);
         if (current != 1) {
             SpinLocks.release(count);
@@ -1377,8 +1484,8 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int getAndDecrementAtomicInteger(AtomicInteger count) {
-        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicIncremented(count);
         int previous = count.getAndDecrement();
         if (previous != 2) {
             SpinLocks.release(count);
@@ -1394,8 +1501,8 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int decrementAndGetAtomicInteger(AtomicInteger count) {
-        AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicIncremented(count);
         int current = count.decrementAndGet();
         if (current != 1) {
             SpinLocks.release(count);

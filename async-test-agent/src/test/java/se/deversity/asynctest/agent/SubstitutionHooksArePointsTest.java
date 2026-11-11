@@ -60,6 +60,7 @@ class SubstitutionHooksArePointsTest {
             "offerResultDiscarded",
             // Called by TelemetryRegistry's atomic hooks, after the point those take (#1157).
             "atomicRead", "atomicStored", "atomicSwapped", "atomicReferenceStored",
+            "atomicIncremented", // (#1249)
             // Inserted at the entry of a pool's beforeExecute or afterExecute, or a handler's
             // rejectedExecution, which the pool calls, not the code under test (#1173); and the
             // agent's report, made while it weaves.

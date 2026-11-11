@@ -20,6 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A check then an increment on an atomic is reported (#1249).** `if (n.get() < LIMIT)
+  n.incrementAndGet()` admits past the limit when two threads pass the check together, and drew
+  nothing: `ATOMIC_NON_ATOMIC_UPDATE` paired a read only with a plain `set`, and `incrementAndGet` was
+  not woven at all. The agent now substitutes `incrementAndGet` and `getAndIncrement` on
+  `AtomicInteger`, and the increments, decrements, `addAndGet` and `getAndAdd` on `AtomicLong`; the
+  `AtomicInteger` decrement and add forms it already substituted now feed the detector too. A thread's
+  `get` followed by its own arithmetic update is reported when another thread's update of the atomic
+  landed between the two and no lock was held across them, graded `PROMPT` on `HEURISTIC` evidence,
+  since the agent cannot see that the update depended on the check. A standalone increment, a `get`
+  then `compareAndSet` loop and `updateAndGet` stay silent. Test first: the new
+  `AtomicNonAtomicUpdateDetectorTest` row failed before the rule, and the corpus idiom row
+  `idiom_boundedAdmission_checkThenIncrement` was silent before the weaving, beside its
+  compare-and-set twin, which stays silent.
+
 - **A `CyclicBarrier`'s barrier action is ordered with the parties (#1267).** The `await` edge
   from #1246 ordered each party's arrival before every return, but the barrier action runs on the
   party that trips the barrier, inside its `await`, after that party's release and before any

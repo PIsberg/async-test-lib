@@ -2298,6 +2298,96 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 22. Bounded admission on an atomic (#1249) -------------------------------------------
+
+    /**
+     * Admissions to a round, bounded by a limit no round reaches. Ticket 0 checks the count, then
+     * waits (bounded) until ticket 1 has updated it, so every round holds the interleaving that
+     * over-admits: a peer's update between one thread's check and its own update.
+     */
+    private static final class Admissions {
+        static final int LIMIT = 1_000_000;
+        final AtomicInteger admitted = new AtomicInteger();
+        volatile boolean checked;
+        volatile boolean overtaken;
+
+        /** Ticket 0, after its check: let ticket 1 update, and wait until it has. */
+        void letAPeerOvertake() {
+            checked = true;
+            for (int spins = 0; !overtaken && spins < SPIN_LIMIT; spins++) {
+                Thread.onSpinWait();
+            }
+        }
+
+        /** Ticket 1, before its update: wait until ticket 0 has checked. */
+        void awaitAPeersCheck() {
+            for (int spins = 0; !checked && spins < SPIN_LIMIT; spins++) {
+                Thread.onSpinWait();
+            }
+        }
+
+        /** Ticket 1, after its update. */
+        void overtook() {
+            overtaken = true;
+        }
+    }
+
+    private static final Rounds<Admissions> CAS_ADMISSIONS = new Rounds<>(Admissions::new);
+    private static final Rounds<Admissions> CHECKED_ADMISSIONS = new Rounds<>(Admissions::new);
+
+    /**
+     * Each thread admits itself with a get and compareAndSet loop, which re-checks every lost race:
+     * ticket 0's first compareAndSet loses to ticket 1's and its retry reads again.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_boundedAdmission_compareAndSetLoop() {
+        correct(() -> {
+            Turn<Admissions> turn = CAS_ADMISSIONS.next();
+            Admissions admissions = turn.shared();
+            if (turn.ticket() == 1) {
+                admissions.awaitAPeersCheck();
+            }
+            boolean first = true;
+            for (;;) {
+                int now = admissions.admitted.get();
+                if (first && turn.ticket() == 0) {
+                    admissions.letAPeerOvertake();
+                }
+                first = false;
+                if (now >= Admissions.LIMIT || admissions.admitted.compareAndSet(now, now + 1)) {
+                    break;
+                }
+            }
+            if (turn.ticket() == 1) {
+                admissions.overtook();
+            }
+        });
+    }
+
+    /**
+     * Each thread checks the count, then increments it: ticket 1's increment lands between ticket
+     * 0's check and its increment, so both pass the check and the limit can be exceeded.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_boundedAdmission_checkThenIncrement() {
+        broken(() -> {
+            Turn<Admissions> turn = CHECKED_ADMISSIONS.next();
+            Admissions admissions = turn.shared();
+            if (turn.ticket() == 1) {
+                admissions.awaitAPeersCheck();
+            }
+            if (admissions.admitted.get() < Admissions.LIMIT) {
+                if (turn.ticket() == 0) {
+                    admissions.letAPeerOvertake();
+                }
+                admissions.admitted.incrementAndGet();
+            }
+            if (turn.ticket() == 1) {
+                admissions.overtook();
+            }
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**
