@@ -988,7 +988,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquire(Semaphore): void</text>
   <text x="3376.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">tryAcquire(Semaphore): boo…</text>
   <text x="3376.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">release(Semaphore): void</text>
-  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+394 more)</text>
+  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+395 more)</text>
 </g>
 <g id="AgentConstructionHooks">
   <title>AgentConstructionHooks [CLASS]</title>

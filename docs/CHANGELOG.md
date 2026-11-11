@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `CyclicBarrier`'s barrier action is ordered with the parties (#1267).** The `await` edge
+  from #1246 ordered each party's arrival before every return, but the barrier action runs on the
+  party that trips the barrier, inside its `await`, after that party's release and before any
+  acquire. So a party's write before `await` read by the action, and the action's write read by a
+  party after `await`, each kept an `AtomicityValidator` finding on correct code. The tripping
+  party, seen under the barrier's lock as the last to arrive, now acquires the generation before
+  its `await`, and releases again before giving up the lock once `await` returns 0, which no other
+  party can return without. Test first in `BarrierEdgeWeavingTest`: two new cases, one for each
+  direction, failed before the change, and a third, a write the action makes and a thread that
+  never awaited reads, keeps its finding. Idiom pair `idiom_cyclicBarrier_actionTotalsTheResults`
+  / `idiom_cyclicBarrier_partyTotalsAfterTheAwait`.
+
 - **A task executed on `Executors.newSingleThreadExecutor()` is part of the run (#1269).** On
   JDK 21+ that factory returns a delegating wrapper the JDK builds itself, and the woven `execute`
   looked through such a wrapper only when a woven `unconfigurable*` call had made it (#1107), so

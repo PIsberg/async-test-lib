@@ -28,6 +28,19 @@ public class BarrierBean {
         return ++slot.result;
     }
 
+    /**
+     * {@return a barrier for {@code parties} whose action writes the slot (#1267)} The action runs
+     * on whichever party trips the barrier, inside that party's {@code await}.
+     */
+    public CyclicBarrier barrierFilling(int parties, int value) {
+        return new CyclicBarrier(parties, () -> slot.result = value);
+    }
+
+    /** {@return a barrier for {@code parties} whose action updates the slot, a read and a write} */
+    public CyclicBarrier barrierUpdating(int parties) {
+        return new CyclicBarrier(parties, () -> slot.result++);
+    }
+
     /** Waits at {@code barrier}. */
     public int arrive(CyclicBarrier barrier) throws InterruptedException, BrokenBarrierException {
         return barrier.await();

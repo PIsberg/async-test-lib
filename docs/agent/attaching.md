@@ -442,8 +442,8 @@ model names for the woven calls: an element offered to and taken from a `java.ut
 refused publishes nothing, a value put into and read back from such a map,
 `CountDownLatch.countDown` and an `await` that reached zero, `Semaphore.release` and an acquire that
 took a permit, a `CyclicBarrier.await` and the normal returns from the same generation (#1246; the
-generation is read under the barrier's own lock, which needs `collections=true`, and a barrier
-action's own writes are not covered), the end of each task a woven `submit` or `execute` wrapped
+generation is read under the barrier's own lock, which needs `collections=true`), with the
+barrier action ordered after every party's arrival and before every return (#1267), the end of each task a woven `submit` or `execute` wrapped
 and an `ExecutorService.awaitTermination` that returned `true` or a `close` that returned, once the
 executor reports itself terminated (#1266; the common pool never does, so its `close` orders
 nothing), a `Phaser` `arrive`, `arriveAndDeregister` or `arriveAndAwaitAdvance` and every return
