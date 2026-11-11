@@ -70,6 +70,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -750,6 +751,62 @@ class CorpusAgentPairLaneTest {
                 while (!gate.open && polls++ < 2) {
                     gate.wait(2);
                 }
+            }
+        });
+    }
+
+    /** The lock both condition rows signal and await under. */
+    private static final ReentrantLock HAND_OFF_LOCK = new ReentrantLock();
+
+    /** The condition both rows signal and await. Nothing sets the state, so every await runs out. */
+    private static final Condition HAND_OFF_READY = HAND_OFF_LOCK.newCondition();
+
+    /** Signals the condition under its lock. */
+    private static void signalHandOff() {
+        HAND_OFF_LOCK.lock();
+        try {
+            HAND_OFF_READY.signalAll();
+        } finally {
+            HAND_OFF_LOCK.unlock();
+        }
+    }
+
+    /**
+     * Signals, then awaits behind an {@code if} (#1255).
+     *
+     * <p>The {@code Condition} form of {@code agent_wait_behindAnIf}: the first {@code signalAll} of
+     * a round finds nobody waiting, and the last thread to await in the round receives none, so
+     * that await needed a signal that was already gone. The woven await and signal are the
+     * detector's only input.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_condition_awaitedOnce() {
+        counted(() -> {
+            signalHandOff();
+            HAND_OFF_LOCK.lock();
+            try {
+                if (!handedOff) {
+                    HAND_OFF_READY.await(3, TimeUnit.MILLISECONDS);
+                }
+            } finally {
+                HAND_OFF_LOCK.unlock();
+            }
+        });
+    }
+
+    /** The same signal and the same timed await, inside the loop that re-tests the state. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_condition_awaitedInALoop() {
+        counted(() -> {
+            signalHandOff();
+            HAND_OFF_LOCK.lock();
+            try {
+                int polls = 0;
+                while (!handedOff && polls++ < 2) {
+                    HAND_OFF_READY.await(3, TimeUnit.MILLISECONDS);
+                }
+            } finally {
+                HAND_OFF_LOCK.unlock();
             }
         });
     }

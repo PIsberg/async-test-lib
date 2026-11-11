@@ -187,7 +187,8 @@ final class PairEvidence {
         // and the detector never asked the object it named. CONDITION_VARIABLES, CYCLIC_BARRIER and
         // REENTRANT_LOCK were re-read on 2026-09-17, once their models asked the real object.
         // CONDITION_VARIABLES was held here until #666 made the lock-only, lock-less and
-        // missing-signal paths notes; it is promoted in verdict-evidence-corpus.
+        // missing-signal paths notes, and promoted in verdict-evidence-corpus until #1255 added a
+        // woven lost-signal finding graded PROMPT; it is held back as GRADED since.
         // CYCLIC_BARRIER was held here until #665 made reuse a party coming back to a barrier it
         // already saw broken; it is promoted in verdict-evidence-corpus, and
         // REVIEWED_DESPITE_SHAPE says why the reset only its silent rows record is not the separator.

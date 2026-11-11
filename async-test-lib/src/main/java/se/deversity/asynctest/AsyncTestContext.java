@@ -2418,6 +2418,12 @@ public final class AsyncTestContext {
         return context == null ? null : context.missedSignalDetector;
     }
 
+    /** {@return the {@link ConditionVariableDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable ConditionVariableDetector currentConditionVariableDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.conditionVariableDetector;
+    }
+
     /** {@return the {@link SpuriousWakeupDetector} for the calling thread's test, or {@code null}} */
     static @Nullable SpuriousWakeupDetector currentSpuriousWakeupDetector() {
         AsyncTestContext context = CURRENT.get();

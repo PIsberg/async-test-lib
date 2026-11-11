@@ -322,7 +322,7 @@ not brings back the accesses since the latest earlier hand-off it is ordered aft
 access when there is none.
 
 **Classified, and now mostly measured.** Every detector carries a tier, because a finding with no
-tier is one a reader has to rank alone. The split is 37 VERDICT, 76 PROMPT, 29 FACT and 7
+tier is one a reader has to rank alone. The split is 36 VERDICT, 77 PROMPT, 29 FACT and 7
 ADVISORY. PROMPT is the honest default: it says nobody has measured that detector's
 silent-on-correct-code direction, or that what it decides from is a thread count or a threshold,
 not that the detector is wrong. FACT and ADVISORY are statements about the kind of claim a finding
@@ -346,7 +346,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (51)
+### Agent-fed (52)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -535,6 +535,14 @@ back-edge the weaver already marks for `MissedSignalDetector`, with its own reco
 thread's latest wakeup, so it works with `MISSED_SIGNAL` off: a wait that returned and whose
 thread left it with no back-edge was an `if`'s.
 
+`ConditionVariableDetector` joined in the same release. `Condition.await` in all five forms,
+`signal` and `signalAll` moved into the agent's monitor table, so an await carries the same
+back-edge as `Object.wait`, and the woven awaits and signals are judged by `MissedSignalDetector`'s
+rule: an await that began after a signal nobody was waiting for, got none of its own, and reached
+no back-edge is a lost signal. That finding is graded PROMPT, as `MISSED_SIGNAL` is, so the
+detector's tier fell from VERDICT to PROMPT; a stuck waiter read from the lock is still graded
+VERDICT, so a `minTrust = VERDICT` gate keeps failing on it.
+
 `AtomicityValidator`, `SharedCollectionDetector`, `LockOrderValidator`, `LockLeakDetector`,
 `TryLockMisuseDetector`, `LockUpgradeDeadlockDetector`, `SimpleDateFormatDetector`, `SharedMatcherDetector`,
 `SharedMessageDigestDetector`, `CalendarDetector`, `StringBuilderDetector`,
@@ -542,7 +550,7 @@ thread left it with no back-edge was an `if`'s.
 `SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
 `SharedSplittableRandomDetector`, `SemaphoreMisuseDetector`,
 `CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
-`MissedSignalDetector`, `SpuriousWakeupDetector`, `ExplicitGcDetector`, `CompletableFutureObtrudeDetector`,
+`MissedSignalDetector`, `SpuriousWakeupDetector`, `ConditionVariableDetector`, `ExplicitGcDetector`, `CompletableFutureObtrudeDetector`,
 `DaemonThreadHygieneDetector`, `ABAProblemDetector`,
 `SynchronizedNonFinalDetector`, `NonAtomicConcurrentMapUpdateDetector`, `ExecutorShutdownDetector`,
 `FutureIgnoredDetector`, `CompletableFutureExceptionDetector`,
@@ -613,7 +621,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (94)
+### Recording-only (93)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -623,7 +631,7 @@ recording is the feed:
 `SynchronizerMonitor`,
 `MemoryOrderingMonitor`, `PipelineMonitor`, `ReadWriteLockMonitor`,
 `ThreadPoolDeadlockDetector`, `ConcurrentModificationDetector`,
-`SharedRandomDetector`, `ConditionVariableDetector`,
+`SharedRandomDetector`,
 `ParallelStreamDetector`, `ResourceLeakDetector`,
 `CyclicBarrierDetector`, `ReentrantLockDetector`,
 `VolatileArrayDetector`, `DoubleCheckedLockingDetector`, `WaitTimeoutDetector`,

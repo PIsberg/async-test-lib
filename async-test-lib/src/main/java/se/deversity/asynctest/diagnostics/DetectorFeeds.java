@@ -102,6 +102,9 @@ public final class DetectorFeeds {
             // The same woven wait and back-edge (#1255): a wait that returned and whose thread
             // left it with no back-edge was an if's, which a spurious wakeup walks straight past.
             DetectorType.SPURIOUS_WAKEUP_HAZARD,
+            // Condition.await and signal, woven in the monitor table with the same back-edge
+            // (#1255), are judged by the monitor rule; a stuck waiter is still read from the lock.
+            DetectorType.CONDITION_VARIABLES,
             // System.gc is the second static substitution, and unlike the sleep it needs no
             // guard: an explicit collection is a full stop-the-world pause that distorts every
             // latency the run measures and reschedules the interleavings it exists to explore,

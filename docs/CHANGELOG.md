@@ -20,6 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A lost `Condition` signal is reported with the agent attached (#1255).** `CONDITION_VARIABLES`
+  reported only a waiter the lock shows parked, so `signalAll()` before anyone waits followed by
+  `if (!ready) condition.await(30, MILLISECONDS)` was silent. The five `Condition.await` forms moved
+  from the agent's lock table to its monitor table, which also gains `signal` and `signalAll`, so
+  an await carries the loop back-edge `Object.wait` does, and the woven awaits and signals are
+  judged by `MissedSignalDetector`'s rule inside `ConditionVariableDetector`. The new finding is
+  graded PROMPT, so the detector's tier fell from VERDICT to PROMPT (catalog split now 36 VERDICT,
+  77 PROMPT) and its corpus VERDICT registration was removed; the stuck waiter is still graded
+  VERDICT, so a `minTrust = VERDICT` gate still fails on it. `CONDITION_VARIABLES` is now agent-fed
+  (52 agent-fed, 56 that see unmodified code). Test first: two `AgentMonitorHooksTest` cases and
+  the e2e pair `ConditionSignalWeavingTest` / `ConditionSignalWeavingSparesLoopTest`; dropping the
+  `await` back-edge turned the loop twin red, and dropping the `signalAll` entry turned the firing
+  test red. New corpus pair `agent_condition_awaitedOnce` / `agent_condition_awaitedInALoop`.
+
 - **An `if`-guarded `Object.wait` is reported with the agent attached (#1255).**
   `SPURIOUS_WAKEUP_HAZARD` reported a wait outside a condition loop only when the body recorded
   it with `recordWait`. It now reads the woven `wait` and the loop back-edge the weaver already

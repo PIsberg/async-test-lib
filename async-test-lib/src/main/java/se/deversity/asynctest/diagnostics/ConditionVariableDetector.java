@@ -19,7 +19,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * Detects {@link Condition} waits that no signal accounts for.
  *
- * <p><strong>Findings and notes (#666).</strong> Only one thing is a finding: a thread the lock
+ * <p><strong>Findings and notes (#666).</strong> With the agent attached, an await judged by
+ * {@link MissedSignalDetector}'s rule is a finding (#1255), described below. Otherwise only one
+ * thing is a finding: a thread the lock
  * shows parked on the condition at analysis while the predicate registered with
  * {@code registerCondition(lock, condition, ready, name)} already holds, with no thread queued to
  * re-acquire the lock. Everything else below is a note in the report and does not decide
@@ -93,6 +95,18 @@ import org.jspecify.annotations.Nullable;
  * A spurious wakeup recorded as woken reads as a missing signal; the JDK permits them, so
  * record the exit only once the loop's predicate check is done. That is one reason the missing
  * signal is a note.
+ *
+ * <p><strong>Or attach the agent (#1255).</strong> With {@code collections=true} the agent weaves
+ * {@code Condition.await} in all five forms, {@code signal} and {@code signalAll}, and marks every
+ * backward jump that encloses a woven await, as it does for {@code Object.wait}. Those awaits and
+ * signals are judged by the rule {@link MissedSignalDetector} applies to a woven monitor: an await
+ * that began after a signal no thread was waiting for, received no signal of its own, and whose
+ * thread reached no back-edge after waking in the same round is a lost signal. The back-edge is the
+ * guarded-loop excuse, so {@code while (!ready) await(...)} that runs out after a lost signal stays
+ * silent. That finding is graded {@link TrustTier#PROMPT}, as {@code MISSED_SIGNAL} is, because the
+ * same limits apply: a loop in one method around a bare {@code await()} in another reads as an
+ * {@code if}. A stuck waiter, read from the lock, stays {@link TrustTier#VERDICT}. This path is
+ * kept apart from the recorded one, which it neither reads nor feeds.
  *
  * <p>Usage:
  * <pre>{@code
@@ -203,6 +217,8 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
     /** Bumped at the start of every invocation round; read on the recording threads. */
     private final AtomicLong invocationEpoch = new AtomicLong();
     private volatile boolean enabled = true;
+    /** The woven path (#1255): awaits and signals the agent saw, under the monitor rule. */
+    private final MissedSignalDetector observed = new MissedSignalDetector("await", "signal");
 
     /**
      * Register a Condition for monitoring. A recorded await with no recorded exit on a condition
@@ -408,6 +424,53 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
      */
     public void markInvocationStart() {
         invocationEpoch.incrementAndGet();
+        observed.markInvocationStart();
+    }
+
+    /**
+     * Internal: the agent saw the calling thread about to await {@code condition}, holding its
+     * lock (#1255).
+     *
+     * @param condition the woven call's receiver, which keys the lost-signal tally; null is ignored
+     * @return whether the await was taken, so its exit is to be recorded
+     * @since 1.14.3
+     */
+    public boolean recordObservedAwait(Condition condition) {
+        return enabled && condition != null && observed.recordObservedWait(condition);
+    }
+
+    /**
+     * Internal: the agent saw the calling thread leave an await {@link #recordObservedAwait} took,
+     * however it ended.
+     *
+     * @param condition the receiver its {@link #recordObservedAwait} was given
+     * @since 1.14.3
+     */
+    public void recordObservedAwaitExit(Condition condition) {
+        observed.recordObservedWakeup(condition);
+    }
+
+    /**
+     * Internal: the agent saw the calling thread about to signal {@code condition}, holding its
+     * lock.
+     *
+     * @param condition the woven call's receiver, matched against the awaits on the same object;
+     *                  null is ignored
+     * @since 1.14.3
+     */
+    public void recordObservedSignal(Condition condition) {
+        if (enabled && condition != null) {
+            observed.recordObservedNotify(condition);
+        }
+    }
+
+    /**
+     * Internal: the calling thread reached a backward jump enclosing a woven await (#1255).
+     *
+     * @since 1.14.3
+     */
+    public void recordObservedLoopBackEdge() {
+        observed.recordObservedLoopBackEdge();
     }
 
     /**
@@ -520,6 +583,7 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
     public ConditionVariableReport analyze() {
         ConditionVariableReport report = new ConditionVariableReport();
         report.enabled = enabled;
+        report.lostSignals.addAll(observed.lostSignals());
 
         for (ConditionState state : states()) {
             synchronized (state) {
@@ -637,8 +701,10 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
     /**
      * Report class for Condition variable analysis.
      */
-    public static class ConditionVariableReport {
+    public static class ConditionVariableReport implements GradedFindings {
         private boolean enabled = true;
+        /** Findings from the woven path: awaits judged by the monitor rule (#1255). */
+        final List<String> lostSignals = new ArrayList<>();
         /** The findings: threads parked while their registered predicate holds (#643, #666). */
         final List<String> stuckWaiters = new ArrayList<>();
         /**
@@ -674,7 +740,25 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
          *         a note
          */
         public boolean hasIssues() {
-            return !stuckWaiters.isEmpty();
+            return !stuckWaiters.isEmpty() || !lostSignals.isEmpty();
+        }
+
+        /**
+         * {@return a grade per finding} A stuck waiter is read from the lock, a verdict; a lost
+         * signal is inferred from the woven sequence, as {@code MISSED_SIGNAL} infers it (#1255).
+         */
+        @Override
+        public List<GradedFindings.Grade> grades() {
+            List<GradedFindings.Grade> out = new ArrayList<>();
+            for (String lost : lostSignals) {
+                out.add(new GradedFindings.Grade(IssueSeverity.HIGH, TrustTier.PROMPT, lost,
+                        DetectorTrust.Evidence.OBSERVED));
+            }
+            for (String waiter : stuckWaiters) {
+                out.add(new GradedFindings.Grade(IssueSeverity.HIGH, TrustTier.VERDICT, waiter,
+                        DetectorTrust.Evidence.OBSERVED));
+            }
+            return out;
         }
 
         /** Adds an unconfirmed wait the caller can settle by changing how the condition is registered. */
@@ -712,6 +796,10 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
             // The severity the failOn gate read from this text before #801: a marker in it,
             // else the value DetectorDefaultSeverity declared for the detector.
             IssueSeverity severity = IssueSeverity.markedIn(toString()).orElse(IssueSeverity.HIGH);
+            for (String lost : lostSignals) {
+                structuredViolations.add(new Violation("ConditionVariables", severity,
+                        lost, List.of(), Map.of(), Instant.now()));
+            }
             for (String waiter : stuckWaiters) {
                 structuredViolations.add(new Violation("ConditionVariables", severity,
                         waiter, List.of(), Map.of(), Instant.now()));
@@ -726,6 +814,14 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
 
             StringBuilder sb = new StringBuilder();
             sb.append("CONDITION VARIABLE ISSUES DETECTED:\n");
+
+            if (!lostSignals.isEmpty()) {
+                sb.append("  Lost Signals (an await the agent saw begin after a signal nobody was "
+                        + "waiting for, with no loop re-testing the state):\n");
+                for (String issue : lostSignals) {
+                    sb.append("    - ").append(issue).append("\n");
+                }
+            }
 
             if (!stuckWaiters.isEmpty()) {
                 sb.append("  Stuck Waiters:\n");

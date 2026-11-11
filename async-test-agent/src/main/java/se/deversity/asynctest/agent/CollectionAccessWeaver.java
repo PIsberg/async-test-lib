@@ -434,13 +434,8 @@ final class CollectionAccessWeaver {
             Entry.call(Lock.class, "tryLock", "tryLock"),
             Entry.call(Lock.class, "tryLock", "tryLock", long.class, TimeUnit.class),
             Entry.call(Lock.class, "unlock", "unlock"),
-            // Condition.await lets the condition's lock go for the wait; the hooks tell a controlled
-            // schedule so, as the Object.wait hooks do for a monitor (#1048).
-            Entry.call(Condition.class, "await", "conditionAwait"),
-            Entry.call(Condition.class, "await", "conditionAwait", long.class, TimeUnit.class),
-            Entry.call(Condition.class, "awaitNanos", "conditionAwaitNanos", long.class),
-            Entry.call(Condition.class, "awaitUninterruptibly", "conditionAwaitUninterruptibly"),
-            Entry.call(Condition.class, "awaitUntil", "conditionAwaitUntil", Date.class),
+            // Condition.await and signal are in MONITOR_ENTRIES (#1255): a loop around an await
+            // needs the back-edge hook, and that table is the only one that carries it.
             // The views. Resolving readLock()/writeLock() at the call site is the only place the
             // owner and its view are both in hand; the hooks remember the pair so that acquiring
             // a view records the owner, in shared mode for the read side. The concrete class
@@ -1176,14 +1171,16 @@ final class CollectionAccessWeaver {
             Entry.call(ThreadLocal.class, "remove", "threadLocalRemove"));
 
     /**
-     * The monitor table: {@code Object.wait}, {@code notify} and {@code notifyAll} (#694).
+     * The monitor table: {@code Object.wait}, {@code notify} and {@code notifyAll} (#694), and
+     * {@code Condition.await} and {@code signal} (#1048, #1255).
      *
-     * <p>All five are {@code final} on {@code Object}, so a call site carrying one of these names
-     * and descriptors is that method whatever owner it was compiled against, and every resolvable
-     * owner is assignable to the entry's type. The hooks record on {@code MissedSignalDetector},
-     * which until this table existed could only judge what the body said about itself. Each wait
-     * carries the loop back-edge hook, because the loop around a wait is what separates the idiom
-     * from the bug.
+     * <p>The five {@code Object} methods are {@code final}, so a call site carrying one of these
+     * names and descriptors is that method whatever owner it was compiled against, and every
+     * resolvable owner is assignable to the entry's type; a {@code Condition} call is matched by
+     * assignability to the interface, as every other interface entry is. The hooks record on
+     * {@code MissedSignalDetector} and {@code ConditionVariableDetector}, which until this table
+     * existed could only judge what the body said about itself. Each wait and await carries the
+     * loop back-edge hook, because the loop around a wait is what separates the idiom from the bug.
      */
     private static final List<Entry> MONITOR_ENTRIES = List.of(
             Entry.call(Object.class, "wait", "monitorWait").whenInsideLoop("loopBackEdge"),
@@ -1192,7 +1189,24 @@ final class CollectionAccessWeaver {
             Entry.call(Object.class, "wait", "monitorWait", long.class, int.class)
                     .whenInsideLoop("loopBackEdge"),
             Entry.call(Object.class, "notify", "monitorNotify"),
-            Entry.call(Object.class, "notifyAll", "monitorNotifyAll"));
+            Entry.call(Object.class, "notifyAll", "monitorNotifyAll"),
+            // Condition.await lets the condition's lock go for the wait, as Object.wait lets a
+            // monitor go; the hooks tell a controlled schedule so (#1048). Its awaits carry the
+            // same back-edge hook and its signals are recorded like notify, so
+            // ConditionVariableDetector judges them by MissedSignalDetector's rule (#1255). They
+            // moved here from LOCK_ENTRIES: a second table with a back-edge hook would buffer every
+            // class twice and share this table's index of waiting methods.
+            Entry.call(Condition.class, "await", "conditionAwait").whenInsideLoop("loopBackEdge"),
+            Entry.call(Condition.class, "await", "conditionAwait", long.class, TimeUnit.class)
+                    .whenInsideLoop("loopBackEdge"),
+            Entry.call(Condition.class, "awaitNanos", "conditionAwaitNanos", long.class)
+                    .whenInsideLoop("loopBackEdge"),
+            Entry.call(Condition.class, "awaitUninterruptibly", "conditionAwaitUninterruptibly")
+                    .whenInsideLoop("loopBackEdge"),
+            Entry.call(Condition.class, "awaitUntil", "conditionAwaitUntil", Date.class)
+                    .whenInsideLoop("loopBackEdge"),
+            Entry.call(Condition.class, "signal", "conditionSignal"),
+            Entry.call(Condition.class, "signalAll", "conditionSignalAll"));
 
     /**
      * The static table: calls a detector's input maps onto that are not invoked on a receiver.

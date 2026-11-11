@@ -301,7 +301,7 @@ class ControlledScheduleLockTest {
                     if (waiter) {
                         while (!ready[0]) {
                             waited.incrementAndGet();
-                            AgentLockHooks.conditionAwait(changed);
+                            AgentMonitorHooks.conditionAwait(changed);
                         }
                     } else {
                         ready[0] = true;
