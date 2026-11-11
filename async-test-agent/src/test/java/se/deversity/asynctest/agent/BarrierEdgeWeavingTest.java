@@ -201,4 +201,70 @@ class BarrierEdgeWeavingTest {
                         + "await returned normally, and a broken generation orders nothing. "
                         + "Findings were: " + findings);
     }
+
+    /** Waits until {@code parties} parties are waiting at {@code barrier}, so the next one trips it. */
+    private static void awaitWaiting(CyclicBarrier barrier, int parties) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (barrier.getNumberWaiting() < parties) {
+            assertTrue(System.nanoTime() < deadline, "the other party never reached the barrier");
+            Thread.sleep(1);
+        }
+    }
+
+    @Test
+    @DisplayName("the barrier action's write is ordered before the other party's update after await (#1267)")
+    void theBarrierActionIsOrderedBeforeTheReturns() throws InterruptedException {
+        BarrierBean bean = new BarrierBean();
+        CyclicBarrier barrier = bean.barrierFilling(2, 1);
+        List<String> findings = findings(() -> {
+            awaitWaiting(barrier, 1);
+            bean.arrive(barrier);
+        }, () -> bean.awaitAndUpdate(barrier));
+
+        assertFalse(mentionsSlot(findings),
+                "The first worker arrived last, so the barrier action ran on it and wrote the "
+                        + "slot; the second worker updated the slot after its await returned. "
+                        + "CyclicBarrier orders the action before every party's return. A finding "
+                        + "here means the action's write was not released to the other party. "
+                        + "Findings were: " + findings);
+    }
+
+    @Test
+    @DisplayName("a party's write before await is ordered before the barrier action on another party (#1267)")
+    void theArrivalsAreOrderedBeforeTheBarrierAction() throws InterruptedException {
+        BarrierBean bean = new BarrierBean();
+        CyclicBarrier barrier = bean.barrierUpdating(2);
+        List<String> findings = findings(() -> bean.fillAndAwait(barrier, 1), () -> {
+            awaitWaiting(barrier, 1);
+            bean.arrive(barrier);
+        });
+
+        assertFalse(mentionsSlot(findings),
+                "The first worker wrote the slot and awaited; the second arrived last, so the "
+                        + "barrier action ran on it and updated the slot. CyclicBarrier orders "
+                        + "every party's actions before await before the action. A finding here "
+                        + "means the tripping party did not receive the others' releases. "
+                        + "Findings were: " + findings);
+    }
+
+    @Test
+    @DisplayName("an update ordered after the barrier action only by an unwoven latch keeps its finding (#1267)")
+    void theBarrierActionOrdersNothingForANonParty() throws InterruptedException {
+        BarrierBean bean = new BarrierBean();
+        CyclicBarrier alone = bean.barrierFilling(1, 1);
+        CountDownLatch filled = new CountDownLatch(1);
+        List<String> findings = findings(() -> {
+            bean.arrive(alone);
+            filled.countDown();
+        }, () -> {
+            await(filled);
+            bean.update();
+        });
+
+        assertTrue(mentionsSlot(findings),
+                "The barrier action wrote the slot on the only party; the updater never awaited "
+                        + "the barrier, so nothing the program does orders the write before the "
+                        + "update. Silence here means the action's release reached a thread that "
+                        + "never acquired it. Findings were: " + findings);
+    }
 }

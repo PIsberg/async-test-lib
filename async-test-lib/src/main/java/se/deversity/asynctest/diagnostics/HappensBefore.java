@@ -131,10 +131,8 @@ import org.jspecify.annotations.Nullable;
  *       rest) is ordered after the registering thread and the completions it waits for, and a
  *       join of its stage on the registering thread after it; an {@code Either} stage carries
  *       only the registering thread's clock (#741).
- *   <li>A {@code CyclicBarrier}'s barrier action runs on the tripping party after that party
- *       released, so what the action does is not ordered before the other parties' returns, which
- *       the memory model does order; a field the action writes and the parties read afterwards
- *       keeps its finding. A barrier whose fields cannot be read, because
+ *   <li>A {@code CyclicBarrier}'s barrier action is ordered after every party's arrival and
+ *       before every party's return (#1267). A barrier whose fields cannot be read, because
  *       {@code java.util.concurrent} is not open to this library (collection weaving off, or the
  *       opening refused), orders nothing (#1246).
  *   <li>A pool's termination orders only the tasks that ran wrapped: on the JDK's executors,

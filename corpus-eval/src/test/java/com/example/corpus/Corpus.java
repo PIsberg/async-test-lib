@@ -5987,6 +5987,24 @@ final class Corpus {
                             + "nothing orders another thread's write before the read",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_cyclicBarrier_actionTotalsTheResults", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "each thread writes its own result and awaits a barrier whose action totals "
+                            + "them, then reads the total. CyclicBarrier's javadoc orders actions "
+                            + "before await before the action, and the action before every "
+                            + "return (#1267)"),
+
+            new RecordingSubject("idiom_cyclicBarrier_partyTotalsAfterTheAwait", JDK,
+                    "java.util.concurrent.CyclicBarrier",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same results totalled by one party after its own return while the "
+                            + "others read the total after theirs, so nothing orders the write "
+                            + "before the reads",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_executorTermination_readsAfterAwaitTermination", JDK,
                     "java.util.concurrent.ThreadPoolExecutor",
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,

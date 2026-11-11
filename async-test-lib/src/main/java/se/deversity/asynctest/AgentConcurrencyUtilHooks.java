@@ -505,7 +505,13 @@ public final class AgentConcurrencyUtilHooks {
      * made inside the same hold: {@code await} takes that lock reentrantly, so no other party can
      * trip the barrier between the read and the arrival, and every release into a generation comes
      * from a party that arrived in it. A party already arriving for the next generation therefore
-     * cannot publish into the one a slower party is just returning from. A broken barrier, a
+     * cannot publish into the one a slower party is just returning from. The party that trips the
+     * barrier runs the barrier action inside its {@code await}, and the memory model orders every
+     * party's actions before {@code await} before the action, and the action before every return
+     * (#1267). So the tripping party, seen under the lock as the last to arrive, acquires the
+     * generation before its {@code await}, and once that returns 0 it releases again before
+     * giving up the lock, which no other party can return without.
+     * A broken barrier, a
      * timeout, an interrupt or a {@code reset} returns abnormally, and acquires nothing; the release
      * is withdrawn. Where the fields cannot be read the call is made unchanged and orders nothing.
      *
@@ -527,11 +533,19 @@ public final class AgentConcurrencyUtilHooks {
         try {
             generation = barrierGeneration(receiver);
             HappensBefore.release(generation);
+            if (trips(receiver)) {
+                // Every other party released into this generation under the lock (#1267).
+                HappensBefore.acquire(generation);
+            }
             try {
                 index = receiver.await();
             } catch (InterruptedException | BrokenBarrierException | RuntimeException | Error e) {
                 HappensBefore.retract(generation);
                 throw e;
+            }
+            if (index == 0) {
+                // The tripping party ran the barrier action after its release above (#1267).
+                HappensBefore.release(generation);
             }
         } finally {
             lock.unlock();
@@ -565,6 +579,10 @@ public final class AgentConcurrencyUtilHooks {
         try {
             generation = barrierGeneration(receiver);
             HappensBefore.release(generation);
+            if (trips(receiver)) {
+                // Every other party released into this generation under the lock (#1267).
+                HappensBefore.acquire(generation);
+            }
             try {
                 index = receiver.await(timeout, unit);
             } catch (InterruptedException | BrokenBarrierException | TimeoutException
@@ -572,11 +590,26 @@ public final class AgentConcurrencyUtilHooks {
                 HappensBefore.retract(generation);
                 throw e;
             }
+            if (index == 0) {
+                // The tripping party ran the barrier action after its release above (#1267).
+                HappensBefore.release(generation);
+            }
         } finally {
             lock.unlock();
         }
         HappensBefore.acquire(generation);
         return index;
+    }
+
+    /**
+     * {@return whether the calling party, holding the barrier's lock, is the one whose
+     * {@code await} trips it and runs its action} Every other party is waiting, the barrier is not
+     * broken, and nothing will make this {@code await} throw before it trips: an interrupted
+     * thread's would.
+     */
+    private static boolean trips(CyclicBarrier barrier) {
+        return !barrier.isBroken() && !Thread.currentThread().isInterrupted()
+                && barrier.getNumberWaiting() == barrier.getParties() - 1;
     }
 
     /** {@return the barrier's lock, or {@code null} when it cannot be read} */

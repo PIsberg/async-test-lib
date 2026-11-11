@@ -2077,6 +2077,74 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    /** A round's results, the total of them, and a barrier whose action may compute it. */
+    private static final class Totalled {
+        final PartyResult[] results = new PartyResult[THREADS];
+        int total;
+        final CyclicBarrier barrier;
+
+        Totalled(boolean actionTotals) {
+            for (int i = 0; i < THREADS; i++) {
+                results[i] = new PartyResult();
+            }
+            barrier = actionTotals ? new CyclicBarrier(THREADS, this::sum) : new CyclicBarrier(THREADS);
+        }
+
+        void sum() {
+            int sum = 0;
+            for (PartyResult result : results) {
+                sum += result.value;
+            }
+            total = sum;
+        }
+    }
+
+    private static final Rounds<Totalled> ACTION_TOTALLED = new Rounds<>(() -> new Totalled(true));
+    private static final Rounds<Totalled> PARTY_TOTALLED = new Rounds<>(() -> new Totalled(false));
+
+    /**
+     * Each thread writes its own result and awaits the round's barrier, whose action totals every
+     * result; then each thread reads the total. The memory model orders each write before the
+     * action and the action before every return (#1267).
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_cyclicBarrier_actionTotalsTheResults() {
+        correct(() -> {
+            Turn<Totalled> turn = ACTION_TOTALLED.next();
+            Totalled round = turn.shared();
+            round.results[turn.ticket() % THREADS].value = turn.ticket();
+            try {
+                round.barrier.await();
+            } catch (BrokenBarrierException e) {
+                throw new AssertionError("nothing in this row breaks the barrier", e);
+            }
+            use(round.total);
+        });
+    }
+
+    /**
+     * The same results, with one party totalling them after its own return instead of the action,
+     * while the others read the total after theirs: nothing orders that write before those reads.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_cyclicBarrier_partyTotalsAfterTheAwait() {
+        broken(() -> {
+            Turn<Totalled> turn = PARTY_TOTALLED.next();
+            Totalled round = turn.shared();
+            round.results[turn.ticket() % THREADS].value = turn.ticket();
+            try {
+                round.barrier.await();
+            } catch (BrokenBarrierException e) {
+                throw new AssertionError("nothing in this row breaks the barrier", e);
+            }
+            if (turn.ticket() % THREADS == 0) {
+                round.sum();
+            } else {
+                use(round.total);
+            }
+        });
+    }
+
     // --- 19. A pool's termination: awaitTermination and close (#1266) -------------------------
 
     /**
