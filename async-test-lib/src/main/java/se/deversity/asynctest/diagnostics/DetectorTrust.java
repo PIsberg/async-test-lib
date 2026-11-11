@@ -309,7 +309,7 @@ public final class DetectorTrust {
             row(DetectorType.WEAK_HASH_MAP_SHARED, "WeakHashMapSharedDetector", "WeakHashMapShared", TrustTier.VERDICT, Evidence.CONTEXTUAL),
             row(DetectorType.JDBC_CONNECTION_SHARED, "JdbcConnectionSharedDetector", "JdbcConnectionShared", TrustTier.VERDICT, Evidence.CONTEXTUAL),
             row(DetectorType.SHARED_STATEFUL_CRYPTO, "SharedStatefulCryptoDetector", "SharedStatefulCrypto", TrustTier.VERDICT, Evidence.CONTEXTUAL),
-            row(DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, "NonAtomicConcurrentMapUpdateDetector", "NonAtomicConcurrentMapUpdate", TrustTier.VERDICT, Evidence.CONTEXTUAL),
+            row(DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, "NonAtomicConcurrentMapUpdateDetector", "NonAtomicConcurrentMapUpdate", TrustTier.PROMPT, Evidence.CONTEXTUAL),
             row(DetectorType.SHARED_DEFLATER, "SharedDeflaterDetector", "SharedDeflater", TrustTier.VERDICT, Evidence.CONTEXTUAL),
             row(DetectorType.THIS_ESCAPE, "ThisEscapeDetector", "ThisEscape", TrustTier.PROMPT, Evidence.ASSERTED),
             row(DetectorType.THREAD_LOCAL_RANDOM_MISUSE, "ThreadLocalRandomMisuseDetector", "ThreadLocalRandomMisuse", TrustTier.PROMPT, Evidence.ASSERTED),

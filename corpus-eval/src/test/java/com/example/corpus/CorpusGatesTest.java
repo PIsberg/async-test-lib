@@ -699,8 +699,9 @@ class CorpusGatesTest {
     @Test
     @DisplayName("the idiom lane's lock pair resolves as verdict evidence")
     void idiomLanePairResolvesAsVerdictEvidence() {
-        // The pair CONCURRENT_MAP_CHECK_THEN_ACT's VERDICT rests on since its lockset (#828): the
-        // same containsKey-then-put with and without the map's monitor.
+        // The pair CONCURRENT_MAP_CHECK_THEN_ACT's VERDICT rested on from its lockset (#828) until
+        // its report graded each finding (#1249): the same containsKey-then-put with and without
+        // the map's monitor. The line still resolves; it is kept, commented, in the evidence file.
         assertDoesNotThrow(() -> CorpusGates.everyCorpusBackedVerdictResolvesToItsPair(
                 "CONCURRENT_MAP_CHECK_THEN_ACT = idiom_synchronizedCheckThenAct_withoutTheMonitor, "
                         + "idiom_synchronizedCheckThenAct_onAConcurrentHashMap",

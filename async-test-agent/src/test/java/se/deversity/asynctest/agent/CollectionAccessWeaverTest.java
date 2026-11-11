@@ -56,6 +56,14 @@ class CollectionAccessWeaverTest {
             return receiver.containsKey(key);
         }
 
+        public static int mapSize(Map<Object, Object> receiver) {
+            return receiver.size();
+        }
+
+        public static boolean mapIsEmpty(Map<Object, Object> receiver) {
+            return receiver.isEmpty();
+        }
+
         public static Object mapCompute(Map<Object, Object> receiver, Object key,
                 java.util.function.BiFunction<Object, Object, Object> remapping) {
             return receiver.compute(key, remapping);

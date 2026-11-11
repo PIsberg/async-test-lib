@@ -11,7 +11,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentMap;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.jspecify.annotations.Nullable;
@@ -63,6 +65,15 @@ import org.jspecify.annotations.Nullable;
  * lists are equal, yet the one the map dropped loses whatever its caller adds to it next. So
  * equal immutable values built per caller, such as {@code "v" + i} or a {@code Long} outside the
  * boxing cache, are still reported; a caller that means one value passes one canonical instance.
+ *
+ * <p>With the agent attached, a check that names no key is paired too: {@code if (map.size() <
+ * LIMIT) map.put(k, v)} overfills a bounded map, {@code if (map.isEmpty()) map.put(k, v)} seeds it
+ * twice, and {@code if (map.size() > MAX) map.remove(oldest)} evicts twice, when two threads pass
+ * the check together (#1249). Such a pair is reported when another thread's put or remove on the
+ * map landed between one thread's check and its own put or remove, and no lock was held from the
+ * check through the act. The agent cannot see whether the put depended
+ * on the check, so the finding is graded {@code PROMPT}; a keyed pair stays {@code VERDICT}. See
+ * {@link #agentSizeCheck}.
  *
  * <p>Usage:
  * <pre>{@code
@@ -255,6 +266,62 @@ public final class NonAtomicConcurrentMapUpdateDetector {
     }
 
     /**
+     * Records a check that names no key, a woven {@code size} or {@code isEmpty} on a map whose own
+     * calls are each atomic (#1249).
+     *
+     * <p>Called by the agent's map hooks, never by a test body. It is the check half of
+     * {@code if (map.size() < LIMIT) map.put(k, v)}: the thread's next put or remove on the same
+     * map, in the same round, completes the pair, and the pair is reported when another thread's put or remove
+     * on the map landed between the two and no lock was held across them. A later keyed check does
+     * not replace it, so {@code size} then {@code containsKey} then {@code put} is judged both ways.
+     *
+     * @param map     the map, a {@code ConcurrentMap}, a {@code Hashtable} or a
+     *                {@code Collections.synchronized*} wrapper
+     * @param isEmpty whether the check was {@code isEmpty}, for the report
+     * @since 1.14.3
+     */
+    public void agentSizeCheck(Map<?, ?> map, boolean isEmpty) {
+        if (map == null) return;
+        KeylessState state = keyless.get(new IdentityKey(map));
+        if (state == null) {
+            String label = unnamedLabels.of(map, map.getClass().getSimpleName());
+            state = keyless.computeIfAbsent(new IdentityKey(map), k -> new KeylessState(label));
+        }
+        PendingCheck pending = pendingChecks.get();
+        pending.keyless = state;
+        pending.keylessWrites = state.writes.get();
+        pending.keylessLocks = HeldLocks.intersect(null, map, true);
+        pending.keylessRound = SelfGuard.RoundThreads.roundNow();
+        pending.keylessIsEmpty = isEmpty;
+    }
+
+    /**
+     * Counts a woven put or remove on {@code map} as a write a keyless check can be overtaken by,
+     * and completes this thread's keyless check on the same map (#1249).
+     */
+    private void keylessAct(Map<?, ?> map, boolean remove) {
+        KeylessState state = keyless.get(new IdentityKey(map));
+        if (state == null) {
+            return;
+        }
+        int writesBefore = state.writes.getAndIncrement();
+        PendingCheck pending = pendingChecks.get();
+        if (pending.keyless != state) { // NOPMD CompareObjectsWithEquals - one map's state
+            return;
+        }
+        pending.keyless = null;
+        if (writesBefore == pending.keylessWrites
+                || pending.keylessRound != SelfGuard.RoundThreads.roundNow()
+                || HeldLocks.intersect(pending.keylessLocks, map, true).length > 0) {
+            return;
+        }
+        state.overtaken.incrementAndGet();
+        state.threadNames.add(Thread.currentThread().getName());
+        state.operation = (pending.keylessIsEmpty ? "isEmpty-then-" : "size-then-")
+                + (remove ? "remove" : "put");
+    }
+
+    /**
      * Records the act half: a woven {@code put} or {@code remove} on {@code map}. It completes a
      * check-then-act when the calling thread's last check was on the same map, by identity, and
      * the same key, by the key's equality, in the same round; the check is consumed either way.
@@ -271,6 +338,9 @@ public final class NonAtomicConcurrentMapUpdateDetector {
      */
     @SuppressWarnings("ReferenceEquality") // one map, by identity
     public void agentAct(Map<?, ?> map, @Nullable Object key, @Nullable Object value, boolean remove) {
+        if (map != null && !keyless.isEmpty()) {
+            keylessAct(map, remove);
+        }
         PendingCheck pending = pendingChecks.get();
         Object checkedMap = pending.map;
         if (checkedMap == null) {
@@ -317,6 +387,14 @@ public final class NonAtomicConcurrentMapUpdateDetector {
         @Nullable Object key;
         boolean read;
         int round;
+        /** The map of the thread's last keyless check (#1249), {@code null} when none is pending. */
+        @Nullable KeylessState keyless;
+        /** That map's write count at the check. */
+        int keylessWrites;
+        /** The locks held at the check. */
+        int[] keylessLocks = new int[0];
+        int keylessRound;
+        boolean keylessIsEmpty;
 
         void clear() {
             map = null;
@@ -329,6 +407,28 @@ public final class NonAtomicConcurrentMapUpdateDetector {
      * goes with the run's detector and cannot pair with the next run's act.
      */
     private final ThreadLocal<PendingCheck> pendingChecks = ThreadLocal.withInitial(PendingCheck::new);
+
+    /**
+     * One map a keyless check was made on (#1249): its woven writes, so a check can tell that one
+     * landed after it, and the pairs another thread's write overtook.
+     */
+    private static final class KeylessState {
+        final String label;
+        final AtomicInteger writes = new AtomicInteger();
+        final AtomicInteger overtaken = new AtomicInteger();
+        final Set<String> threadNames = ConcurrentHashMap.newKeySet();
+        volatile String operation = "size-then-put";
+
+        KeylessState(String label) {
+            this.label = label;
+        }
+    }
+
+    /**
+     * The maps a keyless check was made on. Empty until the first one, so a run that never checks a
+     * size pays one {@code isEmpty} per woven put.
+     */
+    private final Map<IdentityKey, KeylessState> keyless = new ConcurrentHashMap<>();
 
     private void record(Map<?, ?> map, @Nullable Object key, @Nullable Object value,
                         String operation, Thread thread) {
@@ -380,15 +480,55 @@ public final class NonAtomicConcurrentMapUpdateDetector {
                             "operation", s.operation,
                             "threadCount", round.threadCount()),
                     Instant.now()));
+            // Two threads were seen racing on one key, under no lock they shared: the lost update.
+            r.grades.add(new GradedFindings.Grade(IssueSeverity.HIGH, TrustTier.VERDICT, msg,
+                    DetectorTrust.Evidence.CONTEXTUAL));
+        }
+        for (KeylessState s : keyless.values()) {
+            int overtaken = s.overtaken.get();
+            if (overtaken == 0) continue;
+            String msg = String.format(
+                    "Non-atomic '%s' on %s: %d time(s) a thread checked the map, another thread "
+                            + "wrote to it, then the first put as if its check still held (%s), with "
+                            + "no lock held across the check and the put. A bounded map overfills "
+                            + "and a one-time seed runs twice. Hold one lock across both, or keep the "
+                            + "count in an AtomicInteger reserved with compareAndSet before the put"
+                            + SelfGuard.REPORT_NOTE + ".",
+                    s.operation, s.label, overtaken, String.join(", ", s.threadNames));
+            r.violations.add(msg);
+            r.structuredViolations.add(new Violation(
+                    "NonAtomicConcurrentMapUpdate",
+                    IssueSeverity.HIGH,
+                    msg,
+                    List.of(),
+                    Map.of(
+                            "map", s.label,
+                            "operation", s.operation,
+                            "threadCount", s.threadNames.size()),
+                    Instant.now()));
+            // Seen, not inferred, but whether the put depended on the check is not: a prompt.
+            r.grades.add(new GradedFindings.Grade(IssueSeverity.HIGH, TrustTier.PROMPT, msg,
+                    DetectorTrust.Evidence.HEURISTIC));
         }
         return DetectorFailurePolicy.checkedReport(this, r);
     }
 
-    public static final class Report {
+    public static final class Report implements GradedFindings {
         /** Findings as human-readable lines, for the text report. */
         public final List<String> violations = new ArrayList<>();
         /** The same findings as {@link se.deversity.asynctest.report.Violation} objects, for machine-readable reports. */
         public final List<Violation> structuredViolations = new ArrayList<>();
+        /** One grade per finding, in the order of {@link #violations}. */
+        final List<GradedFindings.Grade> grades = new ArrayList<>();
+
+        /**
+         * {@return one grade per finding: a keyed pair is a {@code VERDICT}, a size or emptiness
+         * check then a put a {@code PROMPT} (#1249)}
+         *
+         * @since 1.14.3
+         */
+        @Override
+        public List<GradedFindings.Grade> grades() { return List.copyOf(grades); }
 
         /**
          * {@return whether there are issues}
@@ -403,6 +543,7 @@ public final class NonAtomicConcurrentMapUpdateDetector {
             sb.append("  Fix:\n")
               .append("    - Replace containsKey/get-then-put with putIfAbsent or computeIfAbsent.\n")
               .append("    - Replace get-then-put read-modify-write with compute or merge.\n")
+              .append("    - Hold one lock across a size or isEmpty check and the put it decides.\n")
               .append("    - These methods perform the whole compound operation atomically.\n");
             return sb.toString();
         }

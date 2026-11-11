@@ -33,6 +33,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AtomicNonAtomicUpdateDetectorTest` row failed before the rule, and the corpus idiom row
   `idiom_boundedAdmission_checkThenIncrement` was silent before the weaving, beside its
   compare-and-set twin, which stays silent.
+- **A size or isEmpty check then a put on a concurrent map is reported (#1249).** `if (map.size() <
+  LIMIT) map.put(k, v)` on a `ConcurrentHashMap` overfills the map when two threads pass the check
+  together, and drew nothing: `CONCURRENT_MAP_CHECK_THEN_ACT` paired only a keyed check with a put
+  of the same key, and `size` and `isEmpty` were not woven. The agent now substitutes `Map.size` and
+  `Map.isEmpty`, and on a `ConcurrentMap`, `Hashtable` or `Collections.synchronizedMap` the
+  thread's next `put` or `remove` on that map in the same round completes the pair. It is reported
+  when another thread's `put` or `remove` on the map landed between the two and no lock was held
+  from the check through the act, graded `PROMPT` on `HEURISTIC` evidence, since the agent cannot
+  see that the act depended on the check. **Tier change:** the report now grades each finding, so
+  `CONCURRENT_MAP_CHECK_THEN_ACT`'s detector-wide tier is `PROMPT`, its weaker path, and its
+  corpus pair moved to the commented section of `verdict-evidence-corpus`. A keyed pair is still
+  graded `VERDICT` and still trips a `minTrust = VERDICT` gate; what changes is the `trustTier`
+  attribute a listener sees on the detector's report, and the catalog split, now 37 VERDICT and
+  76 PROMPT. Test first: the new `AgentMapCheckThenActHooksTest` rows failed before the rule;
+  breaking the lock excuse turned the monitor twin red, and dropping the `size` weaver row turned
+  `CheckThenActWeavingEndToEndTest` red. The corpus idiom row `idiom_boundedMembership_sizeThenPut`
+  fires, beside its monitor-guarded twin, which stays silent.
 
 - **A `CyclicBarrier`'s barrier action is ordered with the parties (#1267).** The `await` edge
   from #1246 ordered each party's arrival before every return, but the barrier action runs on the

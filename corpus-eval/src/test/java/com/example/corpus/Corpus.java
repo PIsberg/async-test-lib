@@ -6082,6 +6082,22 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "each thread checks the count with get and then calls incrementAndGet, so two "
                             + "threads that pass the check together admit past the limit (#1249)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_boundedMembership_sizeThenPutUnderTheMonitor", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "each thread checks the size and puts under the map's own monitor, so no put "
+                            + "lands between a check and the put it decides"),
+
+            new RecordingSubject("idiom_boundedMembership_sizeThenPut", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "each thread checks the size and then puts its own key, so two threads that "
+                            + "pass the check together overfill the map; no key is shared, so only "
+                            + "the size check ties the calls together (#1249)",
                     IssueSeverity.HIGH)
     );
 

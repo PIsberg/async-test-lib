@@ -340,6 +340,9 @@ final class CollectionAccessWeaver {
             // The conditional two-argument removal, which is a mutation like its sibling (#440).
             Entry.call(Map.class, "remove", "mapRemove", Object.class, Object.class),
             Entry.call(Map.class, "containsKey", "mapContainsKey", Object.class),
+            // The keyless checks of a check-then-act, if (map.size() < LIMIT) map.put(k, v) (#1249).
+            Entry.call(Map.class, "size", "mapSize"),
+            Entry.call(Map.class, "isEmpty", "mapIsEmpty"),
             // The atomic per-key updates (#1245): the hook holds a per-(map, key) stand-in for the
             // lock a ConcurrentHashMap takes inside the JDK, and calls any other map as is.
             Entry.call(Map.class, "compute", "mapCompute", Object.class, BiFunction.class),

@@ -69,6 +69,9 @@
 #   judged per round, and the idiom lane pins it
 #   (idiom_checkThenAct_everyCallerPutsTheRoundsOneInstance silent,
 #   idiom_checkThenAct_everyCallerPutsItsOwnInstance firing).
+#   Since #1249 it also reports a size or isEmpty check then a put, which the agent cannot tie to
+#   the check, as a PROMPT grade; so it grades each finding and its line moved to the last section.
+#   A keyed pair is still graded VERDICT and still trips a minTrust = VERDICT gate.
 #
 # Blank lines and # comments are ignored.
 
@@ -116,7 +119,6 @@ SYSTEM_PROPERTY_MUTATION = recorded_systemProperty_mutatedByEveryThread, recorde
 SHARED_XML_PARSER = recorded_xmlParser_sharedAcrossThreads, recorded_xmlParser_oneInstancePerThread
 SHARED_TIMEZONE = recorded_timeZone_mutatedByEveryThread, recorded_timeZone_oneInstancePerThread
 DAEMON_THREAD_HYGIENE = recorded_thread_leftNonDaemonAndAlive, recorded_thread_leftAsADaemon
-CONCURRENT_MAP_CHECK_THEN_ACT = idiom_synchronizedCheckThenAct_withoutTheMonitor, idiom_synchronizedCheckThenAct_onAConcurrentHashMap
 SHARED_DEFLATER = recorded_deflater_sharedAcrossThreads, recorded_deflater_oneInstancePerThread
 TRY_LOCK_MISUSE = agent_tryLock_unlockedAfterFailing, agent_tryLock_unlockedOnlyWhenAcquired
 SHARED_CHECKSUM = recorded_checksum_sharedAcrossThreads, recorded_checksum_oneInstancePerThread
@@ -248,6 +250,10 @@ FILE_CHANNEL_POSITION_RACE = recorded_fileChannel_seekThenReadShared, recorded_f
 # the weaker path that still caps the detector-wide tier, and a graded detector is not promoted on
 # a pair, so the lines stay.
 #
+# CONCURRENT_MAP_CHECK_THEN_ACT joined them in #1249, the same way: its keyed pair is graded VERDICT
+# on its lockset, and the size or isEmpty check then a put is graded PROMPT, because the agent sees
+# the interleaving but not whether the put depended on the check.
+#
 #   CONCURRENT_MAP_COMPUTE_RECURSION = recorded_caffeineAsMap_recursiveMerge, recorded_caffeineAsMap_selfContainedMerge    [ASSERTED]
 #   SYNCHRONIZED_COLLECTION_ITERATION = recorded_synchronizedCollection_iteratedWithoutLock, recorded_synchronizedCollection_iteratedHoldingLock    [ASSERTED]
 #   MUTABLE_MAP_KEY = recorded_mutableIntKey_mutatedAfterInsertion, recorded_mutableIntKey_neverMutated    [ASSERTED]
@@ -275,3 +281,4 @@ FILE_CHANNEL_POSITION_RACE = recorded_fileChannel_seekThenReadShared, recorded_f
 #   FUTURE_BLOCKING = recorded_future_blockedOnAFullPool, recorded_future_blockedWithThreadsToSpare    [ASSERTED]
 #   LOCK_UPGRADE_DEADLOCK = recorded_readLock_upgradedWithoutReleasing, recorded_readLock_releasedBeforeWriting    [ASSERTED]
 #   VISIBILITY = recorded_field_readInconsistentlyAcrossThreads, recorded_field_readConsistentlyAcrossThreads    [CONTEXT_FREE]
+#   CONCURRENT_MAP_CHECK_THEN_ACT = idiom_synchronizedCheckThenAct_withoutTheMonitor, idiom_synchronizedCheckThenAct_onAConcurrentHashMap    [HEURISTIC]

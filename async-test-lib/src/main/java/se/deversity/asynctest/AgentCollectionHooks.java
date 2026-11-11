@@ -198,6 +198,21 @@ public final class AgentCollectionHooks {
     }
 
     /**
+     * Hands a {@code size} or {@code isEmpty} on a self-synchronized map to the check-then-act
+     * detector as a check that names no key (#1249).
+     *
+     * @param receiver the map
+     * @param isEmpty  whether the call was {@code isEmpty}
+     */
+    private static void keylessCheck(Map<Object, Object> receiver, boolean isEmpty) {
+        NonAtomicConcurrentMapUpdateDetector detector =
+                AsyncTestContext.currentNonAtomicConcurrentMapUpdateDetector();
+        if (detector != null && selfSynchronized(receiver)) {
+            detector.agentSizeCheck(receiver, isEmpty);
+        }
+    }
+
+    /**
      * Hands a {@code put} or {@code remove} on a self-synchronized map to the check-then-act
      * detector, which pairs it with the thread's last check on the same map and key.
      *
@@ -399,6 +414,36 @@ public final class AgentCollectionHooks {
         boolean present = receiver.containsKey(key);
         checkHalf(receiver, key, !present, false);
         return present;
+    }
+
+    /**
+     * Weaves {@code Map.size}, the keyless check of {@code if (map.size() < LIMIT) map.put(k, v)}
+     * (#1249).
+     *
+     * @param receiver the map
+     * @return its size
+     * @since 1.14.3
+     */
+    public static int mapSize(Map<Object, Object> receiver) {
+        ControlledSchedule.point();
+        int size = receiver.size();
+        keylessCheck(receiver, false);
+        return size;
+    }
+
+    /**
+     * Weaves {@code Map.isEmpty}, the keyless check of {@code if (map.isEmpty()) map.put(k, v)}
+     * (#1249).
+     *
+     * @param receiver the map
+     * @return whether it is empty
+     * @since 1.14.3
+     */
+    public static boolean mapIsEmpty(Map<Object, Object> receiver) {
+        ControlledSchedule.point();
+        boolean empty = receiver.isEmpty();
+        keylessCheck(receiver, true);
+        return empty;
     }
 
     // The atomic per-key updates (#1245). A ConcurrentHashMap runs the whole call under a lock
