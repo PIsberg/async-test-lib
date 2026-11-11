@@ -16,6 +16,7 @@ import org.apiguardian.api.API.Status;
 
 import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.diagnostics.LockLeakDetector;
+import se.deversity.asynctest.diagnostics.LockUpgradeDeadlockDetector;
 import se.deversity.asynctest.diagnostics.LockOrderValidator;
 import se.deversity.asynctest.diagnostics.TryLockMisuseDetector;
 import se.deversity.asynctest.telemetry.ControlledSchedule;
@@ -272,8 +273,41 @@ public final class AgentLockHooks {
         }
     }
 
+    /**
+     * Tells {@link LockUpgradeDeadlockDetector} about a write acquire made while this thread holds
+     * the same {@link ReentrantReadWriteLock}'s read lock and not its write lock (#1255). Such an
+     * acquire never succeeds: a blocking one waits forever on the caller's own read hold, a
+     * {@code tryLock} always returns {@code false}. Recorded before the call, because a blocking
+     * one never returns. The lock answers for the calling thread, exactly and without taking
+     * anything, so a write acquire with no read hold, the common case, costs one hold-count read.
+     *
+     * @param lock   the lock the call site named
+     * @param trying whether the call is a {@code tryLock}, which fails instead of blocking
+     */
+    private static void noteWriteAttempt(Lock lock, boolean trying) {
+        if (!(lock instanceof ReentrantReadWriteLock.WriteLock)) {
+            return;
+        }
+        View view = viewOf(lock);
+        if (view == null || !(view.owner() instanceof ReentrantReadWriteLock owner)
+                || owner.getReadHoldCount() == 0 || owner.isWriteLockedByCurrentThread()) {
+            return;
+        }
+        LockUpgradeDeadlockDetector upgrades = AsyncTestContext.currentLockUpgradeDeadlockDetector();
+        if (upgrades == null) {
+            return;
+        }
+        if (trying) {
+            upgrades.recordWriteLockTryAttempt(owner, null, Thread.currentThread());
+        } else {
+            upgrades.recordWriteLockAcquisitionAttempt(owner, "ReentrantReadWriteLock",
+                    Thread.currentThread());
+        }
+    }
+
     /** Weaves {@code Lock.lock()}. @param receiver the lock */
     public static void lock(Lock receiver) {
+        noteWriteAttempt(receiver, false);
         beforeBlockingAcquire(receiver);
         receiver.lock();
         noteAcquired(receiver);
@@ -281,6 +315,7 @@ public final class AgentLockHooks {
 
     /** Weaves {@code Lock.lockInterruptibly()}. @param receiver the lock @throws InterruptedException if interrupted while waiting */
     public static void lockInterruptibly(Lock receiver) throws InterruptedException {
+        noteWriteAttempt(receiver, false);
         beforeBlockingAcquire(receiver);
         try {
             receiver.lockInterruptibly();
@@ -295,6 +330,7 @@ public final class AgentLockHooks {
 
     /** Weaves {@code Lock.tryLock()}. @param receiver the lock @return whether the lock was acquired */
     public static boolean tryLock(Lock receiver) {
+        noteWriteAttempt(receiver, true);
         ControlledSchedule.point();
         boolean acquired = receiver.tryLock();
         if (acquired) {
@@ -317,6 +353,7 @@ public final class AgentLockHooks {
      * @throws InterruptedException if interrupted while waiting
      */
     public static boolean tryLock(Lock receiver, long time, TimeUnit unit) throws InterruptedException {
+        noteWriteAttempt(receiver, true);
         ControlledSchedule.point();
         boolean acquired = receiver.tryLock(time, unit);
         if (acquired) {

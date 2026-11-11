@@ -61,6 +61,10 @@ public final class DetectorFeeds {
             DetectorType.LOCK_ORDER,
             DetectorType.LOCK_LEAKS,
             DetectorType.TRY_LOCK_MISUSE,
+            // A woven write acquire under the caller's own read hold (#1255). The lock answers
+            // getReadHoldCount() for the calling thread, so the hook needs no state of its own,
+            // and the blocking form is recorded before it hangs.
+            DetectorType.LOCK_UPGRADE_DEADLOCK,
             // The shared-instance family. Each of these three JDK types keeps mutable state, is
             // documented as unsafe to share, and is routinely cached in a field because building
             // one is expensive - which is how a confined object becomes a shared one. The

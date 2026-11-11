@@ -20,6 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A read-write lock upgrade is reported with the agent attached (#1255).** A write acquire made
+  while the same thread holds the `ReentrantReadWriteLock`'s read lock never succeeds, and
+  `LOCK_UPGRADE_DEADLOCK` reported it only when the body recorded both locks by hand. The woven
+  lock hooks now ask the lock, before each write acquire, whether the calling thread holds its
+  read lock and not its write lock. A blocking `lock()` or `lockInterruptibly()` is reported as
+  the deadlock, recorded before it hangs; a `tryLock()`, timed or not, as an upgrade that always
+  fails, since the code it guards never runs (also `HIGH`, new `recordWriteLockTryAttempt`). The
+  javadoc's release-then-acquire order, a writer re-entering under its own downgrade, and a try
+  that fails on another thread's read lock stay silent. `LOCK_UPGRADE_DEADLOCK` is now agent-fed
+  (50 agent-fed, 54 that see unmodified code). Test first: three new `AgentLockHooksTest` cases
+  failed before the hook, went red again with the hook dropped, and the silent twin went red with
+  the write-holder exemption removed. New corpus pair `agent_readWriteLock_upgradedUnderRead` /
+  `agent_readWriteLock_releasedBeforeWriting`.
+
 - **A periodic scheduled task that throws is reported (#1254).** A task given to
   `scheduleAtFixedRate` or `scheduleWithFixedDelay` that throws is cancelled for good by its
   executor, and the exception goes into a `ScheduledFuture` nobody reads, because nobody reads a

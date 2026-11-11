@@ -1775,6 +1775,25 @@ final class Corpus {
                             + "matters because the detector keys on the thread's last outcome for "
                             + "the lock and could convict a later honest unlock instead"),
 
+            new RecordingSubject("agent_readWriteLock_upgradedUnderRead", JDK,
+                    "java.util.concurrent.locks.ReentrantReadWriteLock",
+                    DetectorType.LOCK_UPGRADE_DEADLOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "a read-through cache tries for the write lock while still holding the read "
+                            + "lock, and ReentrantReadWriteLock never grants the write lock to a "
+                            + "reader, so the try fails every time and the cache is never filled. "
+                            + "Nothing is recorded: the woven tryLock asks the lock for the "
+                            + "caller's read hold (#1255)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_readWriteLock_releasedBeforeWriting", JDK,
+                    "java.util.concurrent.locks.ReentrantReadWriteLock",
+                    DetectorType.LOCK_UPGRADE_DEADLOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same cache releasing the read lock before trying for the write lock, "
+                            + "the order of the ReentrantReadWriteLock javadoc's CachedData "
+                            + "example; the body asserts the fill ran"),
+
             // --- Through library bytecode. The pairs above call the JDK type from the test, so
             //     the substituted call site is one this module wrote. These call a public method
             //     of Guava, Jackson or HikariCP, and the JDK call that feeds the detector is an

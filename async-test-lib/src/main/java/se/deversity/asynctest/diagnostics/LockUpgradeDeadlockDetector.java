@@ -24,6 +24,12 @@ import org.jspecify.annotations.Nullable;
  * are enabled it forwards what it records here and leaves the finding to this class, so one
  * upgrade produces one finding whichever API a caller instrumented. See {@link
  * LockDowngradeDetector#deferUpgradeReportingTo} and issue #361.
+ *
+ * <p>With the agent attached, a woven write acquire is delivered when the calling thread holds the
+ * same lock's read lock and not its write lock, the lock itself answering (#1255). A blocking
+ * acquire is reported as the deadlock it is; a {@code tryLock}, timed or not, as an upgrade that
+ * always fails, since {@code ReentrantReadWriteLock} never grants the write lock to a reader and
+ * the write branch behind it never runs.
  */
 @AIThreadSafe(strategy = AIThreadSafe.Strategy.OTHER, note = "ConcurrentHashMap tracks read lock ownership and violations.")
 @AITestDriven(
@@ -42,6 +48,8 @@ public final class LockUpgradeDeadlockDetector extends AbstractInstanceDetector<
          */
         final Map<Long, Integer> readHolds = new ConcurrentHashMap<>();
         final Set<String> deadlockedThreads = ConcurrentHashMap.newKeySet();
+        /** Threads whose write {@code tryLock} under their own read hold could only fail (#1255). */
+        final Set<String> failedUpgradeThreads = ConcurrentHashMap.newKeySet();
         /** The name the first named upgrade attempt gave, which the report prints over the label. */
         final AtomicReference<@Nullable String> lockName = new AtomicReference<>();
 
@@ -102,7 +110,7 @@ public final class LockUpgradeDeadlockDetector extends AbstractInstanceDetector<
      *
      * <p>Record only a blocking {@code writeLock().lock()}. A {@code tryLock()} made while holding
      * the read lock returns {@code false} at once and does not deadlock, so recording it here
-     * would report a deadlock that cannot happen.
+     * would report a deadlock that cannot happen; {@link #recordWriteLockTryAttempt} takes it.
      *
      * @param lock the lock being recorded, tracked by identity rather than equality
      * @param lockName a label identifying the lock in the report
@@ -128,6 +136,32 @@ public final class LockUpgradeDeadlockDetector extends AbstractInstanceDetector<
     }
 
     /**
+     * Record a write {@code tryLock}, timed or not, made by the calling thread (#1255).
+     *
+     * <p>Reported when the calling thread holds the read lock and not the write lock, asked of the
+     * lock itself: {@code ReentrantReadWriteLock} never grants the write lock to a thread that
+     * reads, so the try always fails and the write branch behind it never runs. Unlike a blocking
+     * upgrade nothing hangs, which is why it is reported as a failing upgrade, not a deadlock. A
+     * {@code thread} other than the caller is ignored, since only the caller can be asked.
+     *
+     * @param lock the lock being recorded, tracked by identity rather than equality
+     * @param lockName a label identifying the lock in the report, or {@code null}
+     * @param thread the thread making the attempt
+     * @since 1.14.3
+     */
+    public void recordWriteLockTryAttempt(ReentrantReadWriteLock lock, @Nullable String lockName,
+            Thread thread) {
+        if (lock == null || thread == null
+                || thread.threadId() != Thread.currentThread().threadId()
+                || lock.getReadHoldCount() == 0 || lock.isWriteLockedByCurrentThread()) {
+            return;
+        }
+        State s = stateFor(lock, null, "ReentrantReadWriteLock");
+        if (lockName != null) s.lockName.compareAndSet(null, lockName);
+        s.failedUpgradeThreads.add(ReportSections.threadLabel(thread));
+    }
+
+    /**
      * Analyses what has been recorded about the observation and builds the report for it.
      *
      * @return the findings this detector collected during the run
@@ -135,6 +169,23 @@ public final class LockUpgradeDeadlockDetector extends AbstractInstanceDetector<
     public Report analyze() {
         Report r = new Report();
         for (State s : states()) {
+            if (!s.failedUpgradeThreads.isEmpty()) {
+                String failed = String.format(
+                    "Read-Write Lock '%s' upgrade by tryLock detected by threads %s. A write tryLock made while the same thread holds the read lock always fails, because ReentrantReadWriteLock never grants the write lock to a reader, so the code it guards never runs.",
+                    s.reportedName(), String.join(", ", s.failedUpgradeThreads));
+                r.violations.add(failed);
+                r.structuredViolations.add(new Violation(
+                    "LockUpgradeDeadlock",
+                    IssueSeverity.HIGH,
+                    failed,
+                    List.of(),
+                    Map.of(
+                        "lockName", s.reportedName(),
+                        "failedUpgradeThreads", List.copyOf(s.failedUpgradeThreads)
+                    ),
+                    Instant.now()
+                ));
+            }
             if (s.deadlockedThreads.isEmpty()) continue;
             String msg = String.format(
                 "Read-Write Lock '%s' upgrade attempt detected by threads %s. A thread holding a read lock cannot acquire a write lock on the same ReentrantReadWriteLock instance, resulting in a permanent deadlock.",

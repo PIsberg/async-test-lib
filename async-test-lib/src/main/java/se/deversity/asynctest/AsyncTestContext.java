@@ -2295,6 +2295,15 @@ public final class AsyncTestContext {
         return context == null ? null : context.lockLeakDetector;
     }
 
+    /**
+     * {@return the {@link LockUpgradeDeadlockDetector} for the calling thread's test, or
+     * {@code null}}
+     */
+    static @Nullable LockUpgradeDeadlockDetector currentLockUpgradeDeadlockDetector() {
+        AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.lockUpgradeDeadlockDetector;
+    }
+
     /** {@return the {@link TryLockMisuseDetector} for the calling thread's test, or {@code null}} */
     static @Nullable TryLockMisuseDetector currentTryLockMisuseDetector() {
         AsyncTestContext context = CURRENT.get();
