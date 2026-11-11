@@ -1965,6 +1965,51 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 17. Counters kept in a plain array (#1250; this lane runs the agent with arrays=true) --
+
+    private static final Rounds<int[]> SLOTTED_COUNTS = new Rounds<>(() -> new int[THREADS]);
+    private static final Rounds<int[]> SHARED_COUNTS = new Rounds<>(() -> new int[1]);
+
+    /** A histogram and the lock that guards it, one per round. */
+    private static final class Histogram {
+        final long[] buckets = new long[4];
+    }
+
+    private static final Rounds<Histogram> GUARDED_HISTOGRAMS = new Rounds<>(Histogram::new);
+    private static final Rounds<Histogram> RACED_HISTOGRAMS = new Rounds<>(Histogram::new);
+
+    /** Each thread bumps its own slot: no element is touched by two threads. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_intArray_aSlotPerThread() {
+        correct(() -> {
+            Turn<int[]> turn = SLOTTED_COUNTS.next();
+            turn.shared()[turn.ticket() % THREADS]++;
+        });
+    }
+
+    /** Every thread bumps the one slot: the field-counter lost update, moved into an array. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_intArray_everyThreadOnOneSlot() {
+        broken(() -> SHARED_COUNTS.next().shared()[0]++);
+    }
+
+    /** Every thread adds to one bucket, under the histogram's own monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_longArray_bucketUnderItsMonitor() {
+        correct(() -> {
+            Histogram histogram = GUARDED_HISTOGRAMS.next().shared();
+            synchronized (histogram) {
+                histogram.buckets[1] += 3L;
+            }
+        });
+    }
+
+    /** The same add with no monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_longArray_bucketWithoutIt() {
+        broken(() -> RACED_HISTOGRAMS.next().shared().buckets[1] += 3L);
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**

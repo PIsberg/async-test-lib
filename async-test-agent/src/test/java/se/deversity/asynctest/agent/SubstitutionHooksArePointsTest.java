@@ -122,6 +122,23 @@ class SubstitutionHooksArePointsTest {
                 + " INSERTED_OBSERVATIONS with the reason it observes rather than replaces: " + missing);
     }
 
+    /**
+     * The array hooks are observations inserted before an instruction, like a field access, and a
+     * field access is a point; so is an array element access, or a seed could not split a lost
+     * update on {@code counter[0]} (#1250).
+     */
+    @Test
+    void theArrayHooksReachAPoint() {
+        ClassCalls calls = ClassCalls.of(TelemetryRegistry.class);
+        for (String hook : List.of("arrayRead", "arrayWrite")) {
+            String method = hook + ArrayAccessWeaver.HOOK_DESCRIPTOR;
+            assertTrue(calls.publicStatic.contains(method),
+                    "ArrayAccessWeaver calls TelemetryRegistry." + method + ", which does not exist");
+            assertTrue(calls.reachesPoint(method, new HashSet<>()),
+                    method + " never reaches ControlledSchedule.point()");
+        }
+    }
+
     /** Each method's static calls, read from the class file. */
     private static final class ClassCalls {
         final String owner;

@@ -321,7 +321,7 @@
                             <includes>
                                 <include>**/CorpusIdiomLaneTest.java</include>
                             </includes>
-                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=org.apache.maven.surefire,fields=true,collections=true</argLine>
+                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=org.apache.maven.surefire,fields=true,collections=true,arrays=true</argLine>
                             <reportsDirectory>${project.build.directory}/surefire-reports-idioms</reportsDirectory>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>

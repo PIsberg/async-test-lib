@@ -26,6 +26,10 @@ import se.deversity.vibetags.annotations.AIContract;
  *   <li>{@code collections} — a boolean flag ({@code collections=true}) that rewrites
  *       collection calls in instrumented types so the collection instance reaches the
  *       instance-keyed detectors. Off by default.</li>
+ *   <li>{@code arrays} — a boolean flag ({@code arrays=true}) that weaves every array element
+ *       load and store in instrumented types, so a race on an element is judged like one on a
+ *       field (#1250). Off by default: array instructions are far more frequent than field
+ *       instructions.</li>
  *   <li>{@code debug} — a boolean flag ({@code debug=true}) that turns on verbose agent
  *       diagnostics: every successfully instrumented type is logged and instrumentation
  *       errors carry a full stack trace. Any value other than {@code true} (case
@@ -65,14 +69,16 @@ final class AgentOptions {
     private final boolean debug;
     private final boolean fields;
     private final boolean collections;
+    private final boolean arrays;
 
     private AgentOptions(List<String> includes, List<String> excludes, boolean debug,
-                         boolean fields, boolean collections) {
+                         boolean fields, boolean collections, boolean arrays) {
         this.includes = List.copyOf(includes);
         this.excludes = List.copyOf(excludes);
         this.debug = debug;
         this.fields = fields;
         this.collections = collections;
+        this.arrays = arrays;
     }
 
     /**
@@ -92,6 +98,7 @@ final class AgentOptions {
         boolean debug = false;
         boolean fields = false;
         boolean collections = false;
+        boolean arrays = false;
         if (agentArgs != null) {
             String currentKey = null;
             for (String token : agentArgs.split("[,;]")) {
@@ -118,11 +125,13 @@ final class AgentOptions {
                     fields = Boolean.parseBoolean(value);
                 } else if ("collections".equals(currentKey)) {
                     collections = Boolean.parseBoolean(value);
+                } else if ("arrays".equals(currentKey)) {
+                    arrays = Boolean.parseBoolean(value);
                 }
                 // Unknown keys (and bare values before any key) are ignored on purpose.
             }
         }
-        return new AgentOptions(includes, excludes, debug, fields, collections);
+        return new AgentOptions(includes, excludes, debug, fields, collections, arrays);
     }
 
     /**
@@ -188,5 +197,19 @@ final class AgentOptions {
      */
     boolean collections() {
         return collections;
+    }
+
+    /**
+     * {@return whether {@code arrays=true} was supplied}
+     *
+     * <p>Weaves every array element load and store in matched types ({@code ArrayAccessWeaver}),
+     * so a lost update on {@code counter[0]} is judged like one on a field, per element (#1250).
+     * Off by default for the same reason as {@code fields=}, and more so: array instructions
+     * outnumber field instructions in most code.
+     *
+     * @since 1.14.3
+     */
+    boolean arrays() {
+        return arrays;
     }
 }
