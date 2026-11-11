@@ -443,7 +443,10 @@ refused publishes nothing, a value put into and read back from such a map,
 `CountDownLatch.countDown` and an `await` that reached zero, `Semaphore.release` and an acquire that
 took a permit, a `CyclicBarrier.await` and the normal returns from the same generation (#1246; the
 generation is read under the barrier's own lock, which needs `collections=true`, and a barrier
-action's own writes are not covered), and `Thread.start` and a `Thread.join` that returned with the thread finished (every
+action's own writes are not covered), the end of each task a woven `submit` or `execute` wrapped
+and an `ExecutorService.awaitTermination` that returned `true` or a `close` that returned, once the
+executor reports itself terminated (#1266; the common pool never does, so its `close` orders
+nothing), and `Thread.start` and a `Thread.join` that returned with the thread finished (every
 `join` overload is substituted for this). Since #741 also: a `CompletableFuture` completed with
 `complete`, `completeExceptionally` or an `obtrude` call and a `join` or `get` that observed it, where a
 `complete` the future refused publishes nothing; a task handed to `ExecutorService.submit` or

@@ -672,6 +672,16 @@ class DiscardedOfferWeavingTest {
             return receiver.shutdownNow();
         }
 
+        public static boolean awaitTermination(java.util.concurrent.ExecutorService receiver,
+                                               long timeout, java.util.concurrent.TimeUnit unit)
+                throws InterruptedException {
+            return receiver.awaitTermination(timeout, unit);
+        }
+
+        public static void closeExecutor(java.util.concurrent.ExecutorService receiver) {
+            receiver.close();
+        }
+
         public static boolean removeFromPool(java.util.concurrent.ThreadPoolExecutor pool, Runnable task) {
             return pool.remove(task);
         }

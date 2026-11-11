@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reading what a pool's tasks wrote after the pool terminated is no longer reported (#1266).**
+  `awaitTermination` and `ExecutorService.close` were not edges in the happens-before model, so a
+  submitter that read its tasks' results after `awaitTermination` returned `true`, or after a
+  `try (var pool = Executors.newVirtualThreadPerTaskExecutor()) { ... }` block, was reported by
+  `AtomicityValidator` as a race. With `collections=true` each task a woven `submit` or `execute`
+  wraps now releases into its executor as it ends, and both calls are woven to acquire it once the
+  executor reports itself terminated. An `awaitTermination` that returned `false` orders nothing,
+  and so does `close` on the common pool, which waits for nothing. Test first in
+  `TerminationEdgeWeavingTest`, whose three ordered cases reported before the change, with two
+  idiom pairs in the corpus.
 - **Correct `CyclicBarrier` code is no longer reported as a race (#1246).** `await` was not an
   edge in the happens-before model, so threads that each wrote their own field, met at a barrier
   and then read every field were reported by `AtomicityValidator` with the text a real race gets.
@@ -29,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   generation cannot publish into the one a slower party is returning from; a broken barrier, a
   timeout or an interrupt orders nothing. The agent opens `java.util.concurrent` to the library
   under `collections=true` for this read. A barrier action's own writes are still not ordered, and
-  a `Phaser`, `awaitTermination` and `ExecutorService.close` are still not edges. Test first in
+  a `Phaser` is still not an edge (#1265). Test first in
   `BarrierEdgeWeavingTest`, whose two barrier rows reported before the change, with an idiom pair
   in the corpus.
 - **A value mutated inside `ConcurrentHashMap.compute` is no longer reported (#1245).** The map

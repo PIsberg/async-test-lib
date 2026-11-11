@@ -883,6 +883,10 @@ final class CollectionAccessWeaver {
             // On a ThreadPoolExecutor inside a run that wrapper sits in the pool's queue (#1155), so
             // these two give the caller back the task it gave and find it by that task.
             Entry.call(ExecutorService.class, "shutdownNow", "shutdownNow"),
+            // A pool that terminated orders what its wrapped tasks did before the caller (#1266).
+            Entry.call(ExecutorService.class, "awaitTermination", "awaitTermination", long.class,
+                    TimeUnit.class),
+            Entry.call(ExecutorService.class, "close", "closeExecutor"),
             // A task of a pool that calls these waits on tasks of its own pool (#1175).
             Entry.call(ExecutorService.class, "invokeAll", "invokeAll", Collection.class),
             Entry.call(ExecutorService.class, "invokeAll", "invokeAll", Collection.class, long.class,
