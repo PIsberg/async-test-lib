@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`FutureCapture.awaitDone` no longer throws for a cancelled future (#1251).** It called
+  `future.get` and caught only the checked exceptions, so the unchecked `CancellationException`
+  that `get` reports for a cancelled future escaped, and a test that cancelled a future and then
+  inspected the capture died in `awaitDone` before its assertions. The javadoc promises a return
+  once the future completes, with `AssertionError` as the only throw, and a cancelled future has
+  completed. It now returns with the capture failed and `getError()` the `CancellationException`,
+  as the completion callback had already recorded. No signature changes; the behaviour now matches
+  the documented one. A dependent stage cancelled through its source keeps capturing the unwrapped
+  `CancellationException`, and `awaitAsync` keeps rethrowing it; both are now pinned by tests.
+  Test first: `AsyncAssertTest.awaitDone_onACancelledFuture_returnsAndCapturesTheCancellation`
+  failed with the `CancellationException` before the fix.
+
 - **A check then an increment on an atomic is reported (#1249).** `if (n.get() < LIMIT)
   n.incrementAndGet()` admits past the limit when two threads pass the check together, and drew
   nothing: `ATOMIC_NON_ATOMIC_UPDATE` paired a read only with a plain `set`, and `incrementAndGet` was

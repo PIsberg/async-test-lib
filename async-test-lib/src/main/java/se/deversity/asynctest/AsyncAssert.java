@@ -10,6 +10,7 @@ import se.deversity.vibetags.annotations.AIPublicAPI;
 
 import java.time.Duration;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
@@ -221,6 +222,9 @@ public class AsyncAssert {
 
         /**
          * Blocks until the observed future completes, or throws if {@code timeout} elapses first.
+         * A future that failed, including one that was cancelled, has completed: it is captured as
+         * failed, with a cancellation as a {@link CancellationException} in {@link #getError()},
+         * and this method returns normally (#1251).
          *
          * @param timeout maximum time to wait
          * @throws AssertionError if the future does not complete within {@code timeout},
@@ -235,6 +239,10 @@ public class AsyncAssert {
             } catch (ExecutionException e) {
                 Throwable cause = e.getCause();
                 error.set(cause != null ? cause : e);
+            } catch (CancellationException e) {
+                // get() reports a cancelled future unchecked; the completion callback records the
+                // same exception, and whichever of the two gets there first stands.
+                error.compareAndSet(null, e);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new AssertionError("Polling interrupted", e);
@@ -255,7 +263,8 @@ public class AsyncAssert {
          * Get error.
          *
          * @return the exception the future completed with, or {@code null} if it has not
-         *         completed exceptionally
+         *         completed exceptionally; a {@link CancellationException} for a cancelled
+         *         future, or for a dependent stage whose source was cancelled
          */
         public @Nullable Throwable getError() { return error.get(); }
 
