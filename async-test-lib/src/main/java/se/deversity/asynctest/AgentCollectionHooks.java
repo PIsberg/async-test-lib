@@ -11,13 +11,17 @@ import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 import org.jspecify.annotations.Nullable;
 
+import se.deversity.asynctest.diagnostics.AtomicMapUpdateTokens;
 import se.deversity.asynctest.diagnostics.HappensBefore;
+import se.deversity.asynctest.diagnostics.HeldLocks;
 import se.deversity.asynctest.diagnostics.NonAtomicConcurrentMapUpdateDetector;
 import se.deversity.asynctest.diagnostics.SharedCollectionDetector;
 import se.deversity.asynctest.diagnostics.SynchronizedCollectionIterationDetector;
@@ -395,6 +399,62 @@ public final class AgentCollectionHooks {
         boolean present = receiver.containsKey(key);
         checkHalf(receiver, key, !present, false);
         return present;
+    }
+
+    // The atomic per-key updates (#1245). A ConcurrentHashMap runs the whole call under a lock
+    // inside the JDK the lockset cannot see, so the call holds a per-(map, key) stand-in for it,
+    // and a value mutated inside the function reads as guarded. Any other map is called as is.
+
+    /** Weaves {@code Map.compute}. @param receiver the map @param key the key @param remapping the function @return the new value */
+    public static @Nullable Object mapCompute(Map<Object, Object> receiver, Object key,
+            BiFunction<Object, Object, Object> remapping) {
+        ControlledSchedule.point();
+        Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
+        HeldLocks.acquired(token);
+        try {
+            return receiver.compute(key, remapping);
+        } finally {
+            HeldLocks.released(token);
+        }
+    }
+
+    /** Weaves {@code Map.computeIfPresent}. @param receiver the map @param key the key @param remapping the function @return the new value */
+    public static @Nullable Object mapComputeIfPresent(Map<Object, Object> receiver, Object key,
+            BiFunction<Object, Object, Object> remapping) {
+        ControlledSchedule.point();
+        Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
+        HeldLocks.acquired(token);
+        try {
+            return receiver.computeIfPresent(key, remapping);
+        } finally {
+            HeldLocks.released(token);
+        }
+    }
+
+    /** Weaves {@code Map.computeIfAbsent}. @param receiver the map @param key the key @param mapping the function @return the current or computed value */
+    public static @Nullable Object mapComputeIfAbsent(Map<Object, Object> receiver, Object key,
+            Function<Object, Object> mapping) {
+        ControlledSchedule.point();
+        Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
+        HeldLocks.acquired(token);
+        try {
+            return receiver.computeIfAbsent(key, mapping);
+        } finally {
+            HeldLocks.released(token);
+        }
+    }
+
+    /** Weaves {@code Map.merge}. @param receiver the map @param key the key @param value the value to merge @param remapping the function @return the new value */
+    public static @Nullable Object mapMerge(Map<Object, Object> receiver, Object key, Object value,
+            BiFunction<Object, Object, Object> remapping) {
+        ControlledSchedule.point();
+        Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
+        HeldLocks.acquired(token);
+        try {
+            return receiver.merge(key, value, remapping);
+        } finally {
+            HeldLocks.released(token);
+        }
     }
 
     /** Weaves {@code Collection.add}. @param receiver the collection @param element the element @return whether it changed */

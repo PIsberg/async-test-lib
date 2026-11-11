@@ -5924,7 +5924,22 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same two orders with lock() for both: each thread can wait holding the "
                             + "lock the other wants",
-                    IssueSeverity.CRITICAL)
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("idiom_concurrentHashMap_computeMutatesTheValue", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a count bumped inside compute, which the ConcurrentHashMap javadoc makes atomic "
+                            + "for the key, so the value's read and write are one step (#1245)"),
+
+            new RecordingSubject("idiom_concurrentHashMap_getThenMutatesTheValue", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same bump on the value a get returned: the map is safe and the value it "
+                            + "hands out is not, so six threads lose increments",
+                    IssueSeverity.HIGH)
     );
 
     /**

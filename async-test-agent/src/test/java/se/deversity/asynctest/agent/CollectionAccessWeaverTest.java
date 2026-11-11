@@ -56,6 +56,26 @@ class CollectionAccessWeaverTest {
             return receiver.containsKey(key);
         }
 
+        public static Object mapCompute(Map<Object, Object> receiver, Object key,
+                java.util.function.BiFunction<Object, Object, Object> remapping) {
+            return receiver.compute(key, remapping);
+        }
+
+        public static Object mapComputeIfPresent(Map<Object, Object> receiver, Object key,
+                java.util.function.BiFunction<Object, Object, Object> remapping) {
+            return receiver.computeIfPresent(key, remapping);
+        }
+
+        public static Object mapComputeIfAbsent(Map<Object, Object> receiver, Object key,
+                java.util.function.Function<Object, Object> mapping) {
+            return receiver.computeIfAbsent(key, mapping);
+        }
+
+        public static Object mapMerge(Map<Object, Object> receiver, Object key, Object value,
+                java.util.function.BiFunction<Object, Object, Object> remapping) {
+            return receiver.merge(key, value, remapping);
+        }
+
         public static java.util.Iterator<Object> iterableIterator(Iterable<Object> receiver) {
             return receiver.iterator();
         }

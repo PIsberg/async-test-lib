@@ -1926,6 +1926,45 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 16. A mutable value updated inside ConcurrentHashMap.compute ----------------------
+
+    private static final class Tally {
+        int hits;
+    }
+
+    private static final Rounds<ConcurrentHashMap<String, Tally>> COMPUTED_TALLIES =
+            new Rounds<>(ConcurrentHashMap::new);
+    private static final Rounds<ConcurrentHashMap<String, Tally>> FETCHED_TALLIES = new Rounds<>(() -> {
+        ConcurrentHashMap<String, Tally> tallies = new ConcurrentHashMap<>();
+        tallies.put("k", new Tally());
+        return tallies;
+    });
+
+    /**
+     * Every thread bumps the count inside compute, which ConcurrentHashMap documents as atomic
+     * for the key: the read and the write of the value are one step (#1245).
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentHashMap_computeMutatesTheValue() {
+        correct(() -> {
+            ConcurrentHashMap<String, Tally> tallies = COMPUTED_TALLIES.next().shared();
+            tallies.compute("k", (key, tally) -> {
+                Tally t = tally == null ? new Tally() : tally;
+                t.hits++;
+                return t;
+            });
+        });
+    }
+
+    /** The same bump after a get: the map hands the value out and nothing holds the bump together. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentHashMap_getThenMutatesTheValue() {
+        broken(() -> {
+            ConcurrentHashMap<String, Tally> tallies = FETCHED_TALLIES.next().shared();
+            tallies.get("k").hits++;
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**

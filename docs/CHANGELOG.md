@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A value mutated inside `ConcurrentHashMap.compute` is no longer reported (#1245).** The map
+  runs `compute`, `computeIfPresent`, `computeIfAbsent` and `merge` atomically for the key under a
+  lock inside the JDK the lockset cannot see, so `AtomicityValidator` reported a value bumped inside
+  the function with the same text as the broken twin that bumps it after a `get`. With
+  `collections=true` the four calls are now woven, and on a `ConcurrentHashMap` the hook holds a
+  per-(map, key) stand-in lock for the call (`AtomicMapUpdateTokens`). Two keys sharing one value,
+  `ConcurrentSkipListMap.compute` and every other map get no stand-in and still report. Test first
+  in `AtomicMapUpdateWeavingTest`, which failed on the three correct shapes before the change, with
+  an idiom pair in the corpus.
+
 - **`LockOrderValidator` no longer reports lock orders that cannot deadlock (#1242).** It unioned
   every thread's nesting edges and reported any pair seen both ways round, at `VERDICT` tier and
   `CRITICAL` severity, so a correct build failed under `failOn = CRITICAL, minTrust = VERDICT` for
