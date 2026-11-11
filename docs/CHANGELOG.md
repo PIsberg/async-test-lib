@@ -20,6 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An `if`-guarded `Object.wait` is reported with the agent attached (#1255).**
+  `SPURIOUS_WAKEUP_HAZARD` reported a wait outside a condition loop only when the body recorded
+  it with `recordWait`. It now reads the woven `wait` and the loop back-edge the weaver already
+  marks for `MISSED_SIGNAL`, with its own record of each thread's latest wakeup, so it works with
+  `MISSED_SIGNAL` off: a wait that returned and whose thread waited again, or whose round ended,
+  with no back-edge in between was an `if`'s. A wait that ends in `InterruptedException` is not
+  judged. Known limits, documented in the catalog: a loop in one method around a bare `wait()`
+  in another, and a timed `wait` used as a delay, are reported; `Condition.await` is still
+  recording-only. `SPURIOUS_WAKEUP_HAZARD` is now agent-fed (51 agent-fed, 55 that see
+  unmodified code). Test first: two new `AgentMonitorHooksTest` cases failed before the hook;
+  recording the wakeup from a `finally` turned the interrupt twin red, and skipping the
+  round-start settle turned the round case red. New corpus pair `agent_wait_gateCheckedOnce` /
+  `agent_wait_gateRecheckedInALoop`.
+
 - **A read-write lock upgrade is reported with the agent attached (#1255).** A write acquire made
   while the same thread holds the `ReentrantReadWriteLock`'s read lock never succeeds, and
   `LOCK_UPGRADE_DEADLOCK` reported it only when the body recorded both locks by hand. The woven

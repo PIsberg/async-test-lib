@@ -195,6 +195,10 @@ class DetectorEvidenceMatchesCodeTest {
                     + "caller's own read hold, but recordReadLockAcquired and a write attempt "
                     + "recorded for another thread still take the caller's word for the hold; the "
                     + "report does not grade the two apart"),
+            entry(DetectorType.SPURIOUS_WAKEUP_HAZARD, "the woven wait is judged by whether its "
+                    + "thread reaches the loop's back-edge, but recordWait still takes the caller's "
+                    + "word for whether the wait sits in a loop; the report does not grade the two "
+                    + "apart"),
             entry(DetectorType.FUTURE_IGNORED, "a dropped submit is judged by the future's own "
                     + "state, but recordSubmit and recordInspect still report a future the caller "
                     + "says nobody inspected; the report does not grade the two apart"),
@@ -224,7 +228,7 @@ class DetectorEvidenceMatchesCodeTest {
                     + "recordStreamTaken takes the caller's word for the take itself"));
 
     /** How many entries {@link #FED_BELOW_OBSERVED} may hold; lower it when an entry leaves. */
-    private static final int FED_BELOW_OBSERVED_CEILING = 17;
+    private static final int FED_BELOW_OBSERVED_CEILING = 18;
 
     /**
      * Ungraded detectors above the PROMPT cap that name a threshold, each with why the threshold
