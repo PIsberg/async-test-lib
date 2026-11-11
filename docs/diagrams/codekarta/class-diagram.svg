@@ -980,7 +980,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">WAIT_FOR_DURATION: MethodH…</text>
   <text x="3376.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">COMMON_POOL_TASK: ThreadLo…</text>
   <text x="3376.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">STACK: StackWalker</text>
-  <text x="3376.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+12 more)</text>
+  <text x="3376.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+13 more)</text>
   <line x1="3368.0" y1="185.0" x2="3548.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="3376.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object): ABAProble…</text>
   <text x="3376.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object, Object): A…</text>
@@ -988,7 +988,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquire(Semaphore): void</text>
   <text x="3376.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">tryAcquire(Semaphore): boo…</text>
   <text x="3376.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">release(Semaphore): void</text>
-  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+393 more)</text>
+  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+394 more)</text>
 </g>
 <g id="AgentConstructionHooks">
   <title>AgentConstructionHooks [CLASS]</title>

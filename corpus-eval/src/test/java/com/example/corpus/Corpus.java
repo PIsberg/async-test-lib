@@ -6032,6 +6032,23 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same writes and arrival with every result read before it, so nothing "
                             + "orders another thread's write before the read",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_singleThreadExecute_readsAfterAwaitTermination", JDK,
+                    "java.util.concurrent.Executors",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a task given to execute on newSingleThreadExecutor writes the output, the "
+                            + "body shuts the executor down, awaits its termination and reads it "
+                            + "(#1269)"),
+
+            new RecordingSubject("idiom_singleThreadExecute_readsBeforeAwaitTermination", JDK,
+                    "java.util.concurrent.Executors",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same task with the output read before the shutdown, so nothing orders "
+                            + "the task's write before the read; silent before #1269, when the "
+                            + "task's accesses never reached the run",
                     IssueSeverity.HIGH)
     );
 

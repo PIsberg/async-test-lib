@@ -1,6 +1,8 @@
 package com.example.agentfixture;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
@@ -110,6 +112,38 @@ public class SpawnedWorkBean {
         int read = box.value;
         task.get();
         return read;
+    }
+
+    /**
+     * Executes a task that writes a fresh box and counts down a latch, awaits the latch, and reads
+     * the box (#1269): the latch orders the write before the read, once the task's thread is
+     * attributed to the run.
+     */
+    public int executedReadAfterLatch(Executor executor, int value) throws InterruptedException {
+        Box box = new Box();
+        CountDownLatch done = new CountDownLatch(1);
+        executor.execute(() -> {
+            box.value = value;
+            done.countDown();
+        });
+        done.await();
+        return box.value;
+    }
+
+    /**
+     * Executes a task that writes a fresh box and runs {@code written}, and reads the box once
+     * {@code awaitWritten} returns, through code the weaver does not see, so nothing orders the
+     * write before the read (#1269).
+     */
+    public int executedReadUnordered(Executor executor, int value, Runnable written,
+                                     Runnable awaitWritten) {
+        Box box = new Box();
+        executor.execute(() -> {
+            box.value = value;
+            written.run();
+        });
+        awaitWritten.run();
+        return box.value;
     }
 
     /** {@return a fresh box} */

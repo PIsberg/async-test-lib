@@ -44,6 +44,7 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   to a JDK executor (#745), registered as a dependent `CompletableFuture` stage, or executed on a
   `ThreadPoolExecutor` (#1155), `ForkJoinPool`, `ScheduledThreadPoolExecutor` or virtual-thread-per-task
   executor (#741), or an `Executors.unconfigurable*` wrapper around one that a woven call made (#1107),
+  or a wrapper an `Executors` factory built around one, such as `newSingleThreadExecutor`'s (#1269),
   or helping a parallel stream the run started: the `map`, `filter`, `peek` and `mapToObj` lambdas of a
   `Stream`, `IntStream`, `LongStream` or `DoubleStream`, its `flatMap`, `mapMulti`, `takeWhile`,
   `dropWhile` and `sorted` comparator, and the lambdas of its woven terminal operations (`forEach`,

@@ -4215,7 +4215,8 @@ public final class AgentConcurrencyUtilHooks {
      * by exact class: the first runs it inside its own adapter and returns no queued task from
      * {@code shutdownNow}, the second queues its own futures, and the third queues nothing. A
      * {@code ThreadPoolExecutor} qualifies too, inside a run (#1155), and so does a subclass that
-     * overrides none of the methods a task reaches (#1173); see {@link #executesInvisibly}. Any
+     * overrides none of the methods a task reaches (#1173), and a wrapper {@code Executors} built
+     * around any of these (#1107, #1269); see {@link #executesInvisibly}. Any
      * other subclass's tasks are left alone, since its {@code beforeExecute} would see the wrapper,
      * as are those of any executor outside the JDK's.
      *
@@ -7351,8 +7352,11 @@ public final class AgentConcurrencyUtilHooks {
      * outside a run nothing is wrapped.
      *
      * <p>An {@code Executors.unconfigurable*} wrapper hands back only what the executor behind it
-     * hands back, so it is judged by that executor, when a woven call made it (#1107). The map is
-     * consulted only for the JDK's own wrapper classes, so no other execute pays for the lookup.
+     * hands back, so it is judged by that executor, when a woven call made it (#1107). A wrapper a
+     * factory builds inside the JDK, such as the one {@code Executors.newSingleThreadExecutor()}
+     * returns, is judged the same way by the executor its {@code e} field holds, where
+     * {@code java.util.concurrent} is open to this library (#1269). Both are consulted only for
+     * the JDK's own wrapper classes, so no other execute pays for the lookup.
      */
     private static boolean executesInvisibly(Executor executor) {
         Class<?> type = executor.getClass();
@@ -7370,7 +7374,40 @@ public final class AgentConcurrencyUtilHooks {
             return false;
         }
         Executor behind = UNCONFIGURABLE.get(executor);
+        if (behind == null) {
+            behind = delegate(executor);
+        }
         return behind != null && executesInvisibly(behind);
+    }
+
+    /**
+     * {@code Executors$DelegatedExecutorService}'s private {@code e} field, the executor every
+     * wrapper an {@code Executors} factory builds forwards to, or {@code null} until it has been
+     * opened for reading, which needs {@code java.util.concurrent} open to this library. The agent
+     * opens it under collection weaving, the mode that weaves {@code execute} (#1269).
+     */
+    private static volatile @Nullable Field delegateField;
+
+    /** {@return the executor {@code wrapper} forwards to, or {@code null} if it cannot be read} */
+    private static @Nullable Executor delegate(Executor wrapper) {
+        Field field = delegateField;
+        if (field == null) {
+            try {
+                field = Class.forName("java.util.concurrent.Executors$DelegatedExecutorService")
+                        .getDeclaredField("e");
+                if (!ExecutorService.class.isAssignableFrom(field.getType()) || !field.trySetAccessible()) {
+                    return null;
+                }
+                delegateField = field;
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError e) { // NOPMD - a closed package or another JDK's layout leaves the wrapper unjudged
+                return null;
+            }
+        }
+        try {
+            return field.getDeclaringClass().isInstance(wrapper) ? (Executor) field.get(wrapper) : null;
+        } catch (IllegalAccessException | RuntimeException e) { // NOPMD - unreadable means unwrapped, as before #1269
+            return null;
+        }
     }
 
     /**

@@ -20,6 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A task executed on `Executors.newSingleThreadExecutor()` is part of the run (#1269).** On
+  JDK 21+ that factory returns a delegating wrapper the JDK builds itself, and the woven `execute`
+  looked through such a wrapper only when a woven `unconfigurable*` call had made it (#1107), so
+  the task ran unwrapped, its pool thread was never attributed to the run and every access it made
+  was dropped: a race between a test body and the task was never reported. With
+  `collections=true` the executor behind any JDK-built wrapper is now read from its own field and
+  judged as if called directly. Test first in `SpawnedWorkAttributionWeavingTest`, whose two new
+  cases failed before the change (the race was silent, the ordered case dropped the task's
+  write), with the idiom pair `idiom_singleThreadExecute_readsAfterAwaitTermination` /
+  `idiom_singleThreadExecute_readsBeforeAwaitTermination`.
+
 - **Correct `Phaser` code is no longer reported as a race (#1265).** A phase advance was not an
   edge in the happens-before model, so a worker that wrote a plain field, called
   `arriveAndAwaitAdvance` and then read what the other parties wrote was reported by
