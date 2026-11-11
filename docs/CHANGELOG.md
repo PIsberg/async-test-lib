@@ -20,6 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The JVM's own call-site linkage no longer reports a virtual-thread pin (#1248).** On correct code
+  that takes no lock, `VIRTUAL_THREAD_PINNING` intermittently reported FACT/MEDIUM for
+  `Native or VM frame on stack (Contended monitor enter)` in `ConcurrentHashMap.putVal` under
+  `ReferencedKeyMap.internKey`: the JDK interning a `MethodType` while it linked a method reference
+  on first use, so a `failOn = MEDIUM` build flaked. That reason on a JDK lock, with no native
+  method outside the JDK on the stack, is now withheld and counted at DEBUG in
+  `runner.pinning.vm-upcall`; a native method the code declared still makes it the code's pin. The
+  stream keeps a JFR `Native` frame as a native `StackTraceElement` to tell them apart (`Native` on
+  JDK 21.0.9, 24.0.1, 25.0.5 and 26, checked with a JFR probe). Test first in
+  `JfrPinningStreamTest`: the linkage stack failed before the rule; two twins, a contended enter and
+  a park under a user's native method, still report, and neutralizing the native check reddened the
+  first.
+
 - **A lost `Condition` signal is reported with the agent attached (#1255).** `CONDITION_VARIABLES`
   reported only a waiter the lock shows parked, so `signalAll()` before anyone waits followed by
   `if (!ready) condition.await(30, MILLISECONDS)` was silent. The five `Condition.await` forms moved

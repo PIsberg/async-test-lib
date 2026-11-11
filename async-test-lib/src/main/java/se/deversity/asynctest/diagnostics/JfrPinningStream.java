@@ -75,6 +75,13 @@ import java.util.regex.Pattern;
  * (#1028). The same reason with the body's frame on top, a loader the code wrote taking a monitor
  * of its own, is the code's lock and goes through the two-round rule like any other pin.
  *
+ * <p>The same holds when the JVM calls into Java for itself: linking a lambda or method reference
+ * on first use, it interns a {@code MethodType} through a {@code ConcurrentHashMap}, and a
+ * contended bin there is reported on JDK 24-26 as {@code Native or VM frame on stack (Contended
+ * monitor enter)}, the VM frame being the JVM's own (#1248). With a JDK frame on top and no native
+ * method outside the JDK on the stack, such a pin is counted in {@link #vmUpcallEvents()} and not
+ * reported. A native method the code declared, a JNI call back into Java, keeps the pin the code's.
+ *
  * <p>JFR hands every event to every open stream, so two runs in parallel each see the other's
  * pins. Only events on a thread in the run's worker set, or on a thread one of the run's threads
  * started through a woven {@code Thread.start} (the agent records those, #983), are kept; the rest
@@ -167,6 +174,11 @@ public final class JfrPinningStream implements AutoCloseable {
         return live.delivery.criticalSectionPins();
     }
 
+    /** {@return how many pins on this run's workers were a JDK lock contended under the JVM's own call into Java, with no native method of the code's on the stack, and so were not reported} */
+    public int vmUpcallEvents() {
+        return live.delivery.vmUpcallPins();
+    }
+
     /**
      * Stops the stream, receives every event it still holds, and hands the detector the pins of
      * each site seen in two rounds or more. Idempotent, and never throws: a stream that fails to
@@ -199,7 +211,7 @@ public final class JfrPinningStream implements AutoCloseable {
         private final Queue<Pin> pins = new ConcurrentLinkedQueue<>();
         private final AtomicInteger held = new AtomicInteger();
         /** Written once by close(), on the runner thread, and read after it on the same thread. */
-        private Delivery delivery = new Delivery(0, 0);
+        private Delivery delivery = new Delivery(0, 0, 0);
 
         private Live(RecordingStream stream, VirtualThreadPinningDetector target, Set<Long> workers,
                      Set<Long> spawned, String testName) {
@@ -310,10 +322,16 @@ public final class JfrPinningStream implements AutoCloseable {
                 if (out.isEmpty() && ("java.lang.VirtualThread".equals(type) || type.startsWith("jdk.internal."))) {
                     continue;
                 }
-                out.add(new StackTraceElement(type, frame.getMethod().getName(), null, frame.getLineNumber()));
+                // A native method keeps StackTraceElement's own marker, line -2, so deliver can tell
+                // a user's native frame from the JVM's upcall (#1248). JFR types it "Native" on 21-26.
+                int line = "Native".equals(frame.getType()) ? NATIVE_METHOD_LINE : frame.getLineNumber();
+                out.add(new StackTraceElement(type, frame.getMethod().getName(), null, line));
             }
             return out.toArray(new StackTraceElement[0]);
         }
+
+        /** The line number that makes {@link StackTraceElement#isNativeMethod()} true. */
+        private static final int NATIVE_METHOD_LINE = -2;
 
         /** The agent's package, whose code runs only inside its transformer and install. */
         private static final String AGENT_PACKAGE = "se.deversity.asynctest.agent.";
@@ -433,21 +451,27 @@ public final class JfrPinningStream implements AutoCloseable {
             Pattern.compile("Waited for initialization of (\\S+) by another thread");
 
     /** What {@link #deliver} withheld from the detector, for the run's DEBUG lines. */
-    record Delivery(int singleRoundSites, int criticalSectionPins) {
+    record Delivery(int singleRoundSites, int criticalSectionPins, int vmUpcallPins) {
     }
 
     /**
      * Hands {@code target} one pin per thread and site, for each site seen pinning at the same
      * frame in two rounds, where {@code roundOf} gives each worker's round, leaving out every pin
-     * on a JDK lock the JVM contended on inside its own critical section, and {@return how many
-     * site and frame pairs pinned in one round only, and how many pins were left out}.
+     * on a JDK lock the JVM contended on inside its own critical section or under its own upcall
+     * into Java, and {@return how many site and frame pairs pinned in one round only, and how many
+     * pins of each of the two JVM-internal shapes were left out}.
      */
     static Delivery deliver(Iterable<Pin> pins, Map<Long, Integer> roundOf, VirtualThreadPinningDetector target) {
         Map<String, Set<Integer>> roundsByPin = new HashMap<>();
         int criticalSection = 0;
+        int vmUpcall = 0;
         for (Pin pin : pins) {
             if (jdkCriticalSectionEnter(pin)) {
                 criticalSection++;
+                continue;
+            }
+            if (jdkEnterUnderVmUpcall(pin)) {
+                vmUpcall++;
                 continue;
             }
             roundsByPin.computeIfAbsent(recurrenceKey(pin), s -> new HashSet<>())
@@ -457,7 +481,7 @@ public final class JfrPinningStream implements AutoCloseable {
         for (Pin pin : pins) {
             // A timed park re-parks for its remainder, one event each: keep the first.
             if (roundsByPin.getOrDefault(recurrenceKey(pin), Set.of()).size() >= 2 && !jdkCriticalSectionEnter(pin)
-                    && delivered.add(pin.threadId + "@" + pin.site)) {
+                    && !jdkEnterUnderVmUpcall(pin) && delivered.add(pin.threadId + "@" + pin.site)) {
                 target.recordObservedPinning(pin.threadId, pin.threadName, pin.reason, pin.cause,
                         pin.durationMillis, pin.frames);
             }
@@ -468,7 +492,7 @@ public final class JfrPinningStream implements AutoCloseable {
                 single++;
             }
         }
-        return new Delivery(single, criticalSection);
+        return new Delivery(single, criticalSection, vmUpcall);
     }
 
     /**
@@ -482,6 +506,28 @@ public final class JfrPinningStream implements AutoCloseable {
         return (reason.contains("freeze or preempt failed (2)") || reason.contains("in critical section"))
                 && reason.contains("contended monitor enter")
                 && pin.frames.length > 0 && isJdk(pin.frames[0].getClassName());
+    }
+
+    /**
+     * Whether the JVM pinned under its own call into Java: a contended monitor enter, JDK 24+'s
+     * {@code Native or VM frame on stack}, on a JDK lock, with no native method outside the JDK on
+     * the stack. Then the VM frame is the JVM's own upcall, such as interning a {@code MethodType}
+     * while it links a lambda or method reference on first use (#1248), which the code can neither
+     * see nor change. A native method the code declared is a JNI call back into Java, its own pin.
+     * JDK 21-23 record no reason and so are never matched.
+     */
+    private static boolean jdkEnterUnderVmUpcall(Pin pin) {
+        String reason = pin.reason.toLowerCase(Locale.ROOT);
+        if (!reason.contains("native or vm frame") || !reason.contains("contended monitor enter")
+                || pin.frames.length == 0 || !isJdk(pin.frames[0].getClassName())) {
+            return false;
+        }
+        for (StackTraceElement frame : pin.frames) {
+            if (frame.isNativeMethod() && !isJdk(frame.getClassName())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

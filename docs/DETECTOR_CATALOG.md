@@ -588,7 +588,12 @@ enter), is the instrumentation's, so it is counted at DEBUG in
 call goes through, so two call sites do not merge into one under the agent (#984). A monitor enter
 the JVM could not preempt inside its own critical section (`Freeze or preempt failed (2)`, while it
 loads or initializes a class) with a JDK frame on top is the JDK's lock, not the code's, so it is
-counted at DEBUG in `runner.pinning.critical-section` and not reported (#1028). The event is
+counted at DEBUG in `runner.pinning.critical-section` and not reported (#1028). So is a contended
+enter on a JDK lock under the JVM's own call into Java (`Native or VM frame on stack (Contended
+monitor enter)` with a JDK frame on top and no native method outside the JDK on the stack), such as
+the `ConcurrentHashMap` the JDK interns a `MethodType` in while it links a lambda or method
+reference on first use: counted in `runner.pinning.vm-upcall` (#1248). A native method the code
+declared on that stack, a JNI call back into Java, keeps the pin the code's. The event is
 the running JDK's own verdict, so it
 fires for a blocking `synchronized` block up to JDK 23 and not from 24 (JEP 491), and for blocking
 inside a class initializer or under a native frame on every JDK. Without a usable JFR (a runtime
