@@ -13,6 +13,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * Detects lock ordering violations that can cause deadlocks.
@@ -37,7 +40,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>With the agent, {@code synchronized} blocks and methods are delivered too (#1243). A
  * synchronized method's exit is not woven on an exception, so a method monitor's hold is
  * re-confirmed with {@link Thread#holdsLock} before it is allowed to nest anything, and
- * {@code Object.wait} hands every hold of its monitor back and takes them again after.
+ * {@code Object.wait} hands every hold of its monitor back and takes them again after. A woven
+ * {@code Condition.await} does the same for its lock, found by {@link #heldLockOf} (#1256).
  *
  * <p>What it cannot see, and therefore may still report: two threads whose opposite nestings are
  * ordered by something other than a common lock, a join, a latch, a hand-off. Those cannot
@@ -440,6 +444,49 @@ public class LockOrderValidator {
         }
         synchronized (sequence) {
             return sequence.releaseAll(monitor);
+        }
+    }
+
+    /**
+     * {@return the lock {@code condition} belongs to among those the calling thread is recorded
+     * holding, or {@code null}} For a woven {@code Condition.await}, which lets that lock go for
+     * the wait (#1256): pass it to {@link #recordReleaseForWait} and
+     * {@link #recordReacquireAfterWait}.
+     *
+     * <p>A {@code ReentrantLock}, or a {@code ReentrantReadWriteLock}, which is the validator's
+     * identity for both of its views, answers {@code hasWaiters} for its own conditions and throws
+     * {@code IllegalArgumentException} for any other, so the owner is found without weaving
+     * {@code newCondition}, as {@code ControlledSchedule.lockOf} finds it. The newest hold is asked
+     * first: a condition is almost always awaited on the lock taken last, so the probe rarely
+     * throws. Each candidate is asked only while the calling thread holds it, which
+     * {@code hasWaiters} requires.
+     *
+     * @param condition the condition about to be awaited
+     * @since 1.14.3
+     */
+    public @Nullable Object heldLockOf(Condition condition) {
+        if (!enabled || condition == null) return null;
+        LockSequence sequence = existingSequence();
+        if (sequence == null) {
+            return null;
+        }
+        synchronized (sequence) {
+            for (int i = sequence.size - 1; i >= 0; i--) {
+                Object held = sequence.heldLocks[i];
+                try {
+                    if (held instanceof ReentrantLock lock && lock.isHeldByCurrentThread()) {
+                        lock.hasWaiters(condition);
+                        return lock;
+                    }
+                    if (held instanceof ReentrantReadWriteLock lock && lock.isWriteLockedByCurrentThread()) {
+                        lock.hasWaiters(condition);
+                        return lock;
+                    }
+                } catch (IllegalArgumentException notItsOwn) { // NOPMD - the probe: another lock's condition
+                    // keep looking
+                }
+            }
+            return null;
         }
     }
 

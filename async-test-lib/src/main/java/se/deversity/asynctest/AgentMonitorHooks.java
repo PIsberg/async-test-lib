@@ -163,9 +163,11 @@ public final class AgentMonitorHooks {
 
     // ------------------------------------------------------------------------------------------
     // Condition.await (#1048): the wait lets the condition's lock go, as Object.wait lets a
-    // monitor go, so a controlled schedule's record of the hold is handed back for the wait.
-    // Nothing else is recorded: the lockset and the lock detectors see the thread still inside
-    // lock()/unlock(), which is where the condition's lock is held when await returns.
+    // monitor go, so a controlled schedule's record of the hold is handed back for the wait, and
+    // so is LockOrderValidator's (#1256): taking the lock back blocks, so it is nested inside
+    // whatever else the thread still holds. Each finds the lock among its own record of holds.
+    // Nothing else is recorded: the lockset and the other lock detectors see the thread still
+    // inside lock()/unlock(), which is where the condition's lock is held when await returns.
     // ------------------------------------------------------------------------------------------
 
     /** Weaves {@code Condition.await()}. @param receiver the condition @throws InterruptedException if interrupted while waiting */
@@ -173,11 +175,16 @@ public final class AgentMonitorHooks {
         ConditionVariableDetector conditions = observingAwait(receiver);
         Object owner = ControlledSchedule.lockOf(receiver);
         int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        Object orderOwner = orderLockOf(receiver);
+        int orderHolds = orderOwner == null ? 0 : releasingOrderForWait(orderOwner);
         try {
             receiver.await();
         } finally {
             if (conditions != null) {
                 conditions.recordObservedAwaitExit(receiver);
+            }
+            if (orderOwner != null) {
+                reacquiredOrderAfterWait(orderOwner, orderHolds);
             }
             if (owner != null) {
                 ControlledSchedule.reacquiredAfterWait(owner, holds);
@@ -190,11 +197,16 @@ public final class AgentMonitorHooks {
         ConditionVariableDetector conditions = observingAwait(receiver);
         Object owner = ControlledSchedule.lockOf(receiver);
         int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        Object orderOwner = orderLockOf(receiver);
+        int orderHolds = orderOwner == null ? 0 : releasingOrderForWait(orderOwner);
         try {
             return receiver.await(time, unit);
         } finally {
             if (conditions != null) {
                 conditions.recordObservedAwaitExit(receiver);
+            }
+            if (orderOwner != null) {
+                reacquiredOrderAfterWait(orderOwner, orderHolds);
             }
             if (owner != null) {
                 ControlledSchedule.reacquiredAfterWait(owner, holds);
@@ -207,11 +219,16 @@ public final class AgentMonitorHooks {
         ConditionVariableDetector conditions = observingAwait(receiver);
         Object owner = ControlledSchedule.lockOf(receiver);
         int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        Object orderOwner = orderLockOf(receiver);
+        int orderHolds = orderOwner == null ? 0 : releasingOrderForWait(orderOwner);
         try {
             return receiver.awaitNanos(nanosTimeout);
         } finally {
             if (conditions != null) {
                 conditions.recordObservedAwaitExit(receiver);
+            }
+            if (orderOwner != null) {
+                reacquiredOrderAfterWait(orderOwner, orderHolds);
             }
             if (owner != null) {
                 ControlledSchedule.reacquiredAfterWait(owner, holds);
@@ -224,11 +241,16 @@ public final class AgentMonitorHooks {
         ConditionVariableDetector conditions = observingAwait(receiver);
         Object owner = ControlledSchedule.lockOf(receiver);
         int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        Object orderOwner = orderLockOf(receiver);
+        int orderHolds = orderOwner == null ? 0 : releasingOrderForWait(orderOwner);
         try {
             receiver.awaitUninterruptibly();
         } finally {
             if (conditions != null) {
                 conditions.recordObservedAwaitExit(receiver);
+            }
+            if (orderOwner != null) {
+                reacquiredOrderAfterWait(orderOwner, orderHolds);
             }
             if (owner != null) {
                 ControlledSchedule.reacquiredAfterWait(owner, holds);
@@ -241,11 +263,16 @@ public final class AgentMonitorHooks {
         ConditionVariableDetector conditions = observingAwait(receiver);
         Object owner = ControlledSchedule.lockOf(receiver);
         int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
+        Object orderOwner = orderLockOf(receiver);
+        int orderHolds = orderOwner == null ? 0 : releasingOrderForWait(orderOwner);
         try {
             return receiver.awaitUntil(deadline);
         } finally {
             if (conditions != null) {
                 conditions.recordObservedAwaitExit(receiver);
+            }
+            if (orderOwner != null) {
+                reacquiredOrderAfterWait(orderOwner, orderHolds);
             }
             if (owner != null) {
                 ControlledSchedule.reacquiredAfterWait(owner, holds);
@@ -390,6 +417,12 @@ public final class AgentMonitorHooks {
     private static int releasingOrderForWait(Object receiver) {
         LockOrderValidator order = AsyncTestContext.currentLockOrderValidator();
         return order == null ? 0 : order.recordReleaseForWait(receiver);
+    }
+
+    /** The lock a condition belongs to, among those the validator sees the thread holding (#1256). */
+    private static @Nullable Object orderLockOf(Condition receiver) {
+        LockOrderValidator order = AsyncTestContext.currentLockOrderValidator();
+        return order == null ? null : order.heldLockOf(receiver);
     }
 
     /** Taking the monitor back after {@code wait} blocks, so it is nested by what else is held. */

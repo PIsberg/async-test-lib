@@ -20,6 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `Condition.await` lets its lock go for `LOCK_ORDER` (#1256).** With the agent attached, the
+  validator kept a condition's lock held through the await, so a thread that awaited it while
+  holding another lock took it back inside that lock without recording the edge. Two threads
+  doing that can deadlock, and nothing was reported. The five woven `await` forms now hand the
+  lock's holds back to the validator for the wait and take them again after, as `Object.wait` has
+  since #1243; the validator finds the lock among its recorded holds
+  (`LockOrderValidator.heldLockOf`, a `ReentrantLock`, or a `ReentrantReadWriteLock` for its write
+  lock's conditions). `ControlledSchedule.lockOf` could not be reused: it answers only while a
+  controlled schedule is open. Test first in `ConditionAwaitFeedsLockOrderTest`: the inversion was
+  silent before the change; the twin, awaiting the innermost lock, stays silent.
+
 - **The JVM's own call-site linkage no longer reports a virtual-thread pin (#1248).** On correct code
   that takes no lock, `VIRTUAL_THREAD_PINNING` intermittently reported FACT/MEDIUM for
   `Native or VM frame on stack (Contended monitor enter)` in `ConcurrentHashMap.putVal` under
