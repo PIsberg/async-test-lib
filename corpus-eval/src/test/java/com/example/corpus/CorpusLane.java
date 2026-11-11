@@ -89,10 +89,11 @@ enum CorpusLane {
      * result is read. The false positives fixed for 1.12.3 lived in exactly those bodies, and a
      * throwaway probe found them. This lane keeps the probe.
      *
-     * <p>The agent is attached as in lane four, and the bodies record nothing except in the rows
-     * {@link Corpus#idiomManualApiRows()} names, where the idiom can only be seen through the
-     * manual API. A correct row's bar is neither of the other two lanes': nothing at {@code FACT}
-     * tier or above from any detector, and nothing at any tier from the detector the row names.
+     * <p>The agent is attached as in lane four plus {@code arrays=true} (#1250), and the bodies
+     * record nothing except in the rows {@link Corpus#idiomManualApiRows()} names, where the idiom
+     * can only be seen through the manual API. A correct row's bar is neither of the other two
+     * lanes': nothing at {@code FACT} tier or above from any detector, and nothing at any tier from
+     * the detector the row names.
      * See {@link CorpusGates#checkIdiomLane}.
      */
     IDIOMS("idioms", "corpus-eval-idioms.md");

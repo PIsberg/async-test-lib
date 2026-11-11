@@ -56,7 +56,8 @@ import java.util.stream.IntStream;
  * kept and gated.
  *
  * <p><strong>How a row works.</strong> Every body is written the way a user writes it, with
- * {@code detectAll = true} and the agent attached as {@code fields=true,collections=true}, and
+ * {@code detectAll = true} and the agent attached as
+ * {@code fields=true,collections=true,arrays=true}, and
  * records nothing, except where the idiom is only observable through the manual API. Those rows
  * are named in {@link Corpus#idiomManualApiRows()} with the reason, and {@link IdiomRowPremise}
  * fails the lane if any other body touches {@code AsyncTestContext}. Each correct row has a broken
