@@ -411,6 +411,52 @@ class AgentExecutorHooksTest {
         }
     }
 
+    @Test
+    @DisplayName("a woven awaitTermination that gives up is named in the still-running finding (#1271)")
+    void awaitTerminationThatTimesOutIsNamed() throws InterruptedException {
+        installed();
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            ExecutorService pool = kept(AgentConcurrencyUtilHooks.newFixedThreadPool(1));
+            AgentConcurrencyUtilHooks.submit(pool, (Runnable) () -> {
+                try {
+                    release.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            pool.shutdown();
+            assertFalse(AgentConcurrencyUtilHooks.awaitTermination(pool, 1, TimeUnit.MILLISECONDS),
+                    "the task is still blocked, so the wait must time out");
+
+            String report = AsyncTestContext.executorShutdownDetector().analyze().toString();
+            assertTrue(report.contains("still running")
+                            && report.contains("awaitTermination() was called, so the wait timed out"),
+                    "the woven awaitTermination is the only record of the wait; without it the "
+                            + "finding cannot tell a pool nobody waited for from one whose wait "
+                            + "was too short: " + report);
+        } finally {
+            release.countDown();
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("a pool closed through the woven close stays silent (#1271)")
+    void poolClosedThroughTheWovenCloseIsSilent() {
+        installed();
+        try {
+            ExecutorService pool = kept(AgentConcurrencyUtilHooks.newFixedThreadPool(2));
+            AgentConcurrencyUtilHooks.submit(pool, (Runnable) () -> { });
+            AgentConcurrencyUtilHooks.closeExecutor(pool);
+
+            assertFalse(AsyncTestContext.executorShutdownDetector().analyze().hasIssues(),
+                    "close shuts the pool down and waits for its tasks");
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
     /** A pool held in a static field, built the first time the class is used. */
     static final class StaticPool {
         static final ExecutorService POOL = AgentConcurrencyUtilHooks.newSingleThreadExecutor();

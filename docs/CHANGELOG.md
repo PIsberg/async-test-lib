@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A woven `awaitTermination` or `close` is recorded by `EXECUTOR_SHUTDOWN` (#1271).** With
+  `collections=true` both calls were woven for the happens-before model (#1266), but the shutdown
+  detector learned of a wait only through the recording API. A pool shut down, awaited too briefly
+  and still running at analysis was reported without the note that `awaitTermination()` was
+  called and timed out, so the finding read like a pool nobody waited for. Only the wording
+  changes: the detector judges by the pool's own `isShutdown()` and `isTerminated()`, so no verdict
+  can flip, and a pool the run did not create is still ignored. Test first in
+  `AgentExecutorHooksTest`: the timed-out wait lacked the note before the change; a pool closed
+  through the woven `close` stays silent.
+
 - **A `ConcurrentHashMap` subclass that overrides none of the per-key updates is guarded like
   the map (#1259).** Since #1245 only a map whose class was exactly `ConcurrentHashMap` got the
   per-key stand-in lock, so a value mutated inside `compute` on a subclass was still reported. A
