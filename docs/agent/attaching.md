@@ -462,7 +462,8 @@ stream the accessing thread's clock is stamped at publish time and travels throu
 the event, since the drain thread's own clock orders nothing. The edges are the ones the Java memory
 model names for the woven calls: an element offered to and taken from a `java.util.concurrent` queue
 (or any `BlockingQueue` or `ConcurrentMap`, and the synchronized wrappers), where an offer the queue
-refused publishes nothing, a value put into and read back from such a map,
+refused publishes nothing, and a `BlockingQueue.drainTo` into a `List` takes each element it moved
+(#1295; a drain into any other collection orders nothing), a value put into and read back from such a map,
 `CountDownLatch.countDown` and an `await` that reached zero, `Semaphore.release` and an acquire that
 took a permit, a `CyclicBarrier.await` and the normal returns from the same generation (#1246; the
 generation is read under the barrier's own lock, which needs `collections=true`), with the

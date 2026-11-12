@@ -83,6 +83,55 @@ class AgentHappensBeforeFeedTest {
         assertTrue(handOffReported(false), "the unwoven twin: nothing told the model");
     }
 
+    /**
+     * The hand-off of {@link #handOffReported}, taken out with a drain (#1295): 0 through the
+     * woven {@code drainTo(Collection)}, 1 through the woven {@code drainTo(Collection, int)},
+     * 2 through the plain call. The put is woven in all three.
+     */
+    private static boolean drainHandOffReported(int how) throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        BlockingQueue<Object> queue = new LinkedBlockingQueue<>();
+        Box box = new Box();
+        Thread producer = new Thread(() -> {
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            try {
+                AgentConcurrencyUtilHooks.put(queue, box);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        Thread consumer = new Thread(() -> {
+            List<Object> drained = new java.util.ArrayList<>();
+            drained.add("already there"); // only what the drain moved is received
+            while (drained.size() == 1) {
+                switch (how) {
+                    case 0 -> AgentConcurrencyUtilHooks.drainTo(queue, drained);
+                    case 1 -> AgentConcurrencyUtilHooks.drainTo(queue, drained, 1);
+                    default -> queue.drainTo(drained);
+                }
+                Thread.onSpinWait();
+            }
+            Box taken = (Box) drained.get(1);
+            detector.recordFieldRead(taken, "value");
+            taken.value++;
+            detector.recordFieldWrite(taken, "value");
+        });
+        consumer.start();
+        producer.start();
+        producer.join();
+        consumer.join();
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a woven BlockingQueue drainTo receives each element it moved into a list")
+    void wovenDrainHandOff() throws InterruptedException {
+        assertFalse(drainHandOffReported(0), "the drain received what the put published");
+        assertFalse(drainHandOffReported(1), "the bounded drain did too");
+        assertTrue(drainHandOffReported(2), "the unwoven twin: nothing told the model");
+    }
+
     private static boolean startJoinReported(boolean woven) throws InterruptedException {
         RaceConditionDetector detector = new RaceConditionDetector();
         Box box = new Box();

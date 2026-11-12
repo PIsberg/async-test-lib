@@ -2545,6 +2545,64 @@ class CorpusIdiomLaneTest {
         broken(() -> UNSIGNALLED.next().shared().acquire());
     }
 
+    // --- 26. A mutable object handed off through a drain (#1295) ------------------------------
+
+    private static final Rounds<BlockingQueue<Order>> DRAINED_ORDERS = new Rounds<>(LinkedBlockingQueue::new);
+    private static final Rounds<BlockingQueue<Order>> KEPT_ORDERS = new Rounds<>(LinkedBlockingQueue::new);
+
+    /** Drains one order into a fresh batch, spinning until a producer's put has landed. */
+    private static Order drainOne(BlockingQueue<Order> orders) {
+        List<Order> batch = new ArrayList<>();
+        while (batch.isEmpty()) {
+            orders.drainTo(batch, 1);
+            Thread.onSpinWait();
+        }
+        return batch.get(0);
+    }
+
+    /**
+     * The hand-off of row 1 with a batch consumer: half the threads put an order, the other half
+     * drain one into a list and update it. The drain is the take, and the taker owns what it got.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_drainTo_handsOffAMutableObject() {
+        correct(() -> {
+            Turn<BlockingQueue<Order>> turn = DRAINED_ORDERS.next();
+            if (turn.ticket() % 2 == 0) {
+                Order order = new Order();
+                order.item = "widget";
+                order.quantity = turn.ticket();
+                turn.shared().put(order);
+            } else {
+                Order order = drainOne(turn.shared());
+                order.quantity++;
+                use(order.item.length() + order.quantity);
+            }
+        });
+    }
+
+    /**
+     * The producer keeps the order it put and goes on updating it, so its update and the
+     * drainer's are two unordered writes of one field: the put handed over nothing it kept.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_drainTo_producerKeepsWritingAfterThePut() {
+        broken(() -> {
+            Turn<BlockingQueue<Order>> turn = KEPT_ORDERS.next();
+            if (turn.ticket() % 2 == 0) {
+                Order order = new Order();
+                order.item = "widget";
+                order.quantity = turn.ticket();
+                turn.shared().put(order);
+                order.quantity++;
+            } else {
+                Order order = drainOne(turn.shared());
+                order.quantity++;
+                use(order.item.length() + order.quantity);
+            }
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**

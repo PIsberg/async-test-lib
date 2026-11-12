@@ -1012,7 +1012,8 @@ public final class AgentConcurrencyUtilHooks {
      * Weaves {@code BlockingQueue.drainTo(Collection)}.
      *
      * <p>The elements move into {@code target} without being named one by one, so the drain is
-     * reported as a whole: every offer into this queue recorded before it is stale (#664).
+     * reported as a whole: every offer into this queue recorded before it is stale (#664). The
+     * happens-before model is told per element where the target is a list (#1295).
      *
      * @param receiver the queue
      * @param target   the collection the elements move to
@@ -1027,7 +1028,33 @@ public final class AgentConcurrencyUtilHooks {
         }
         int drained = receiver.drainTo(target);
         TelemetryRegistry.ownershipDrained(receiver);
+        receiveDrained(receiver, target, drained);
         return drained;
+    }
+
+    /**
+     * The acquire half of a drain (#1295): the calling thread receives what each element's offer
+     * published, as a {@code take} of it would have.
+     *
+     * <p>Only a {@code List} target says which elements moved: a drain appends, so they are its
+     * last {@code drained}. Any other target acquires nothing, as every target did before, which
+     * leaves the detectors with the answer they had. A target another thread changes during the
+     * drain may name the wrong elements; the drain's own contract already leaves that undefined.
+     */
+    private static void receiveDrained(BlockingQueue<Object> receiver, @Nullable Collection<Object> target,
+                                       int drained) {
+        if (drained <= 0 || !(target instanceof List<Object> list)
+                || !HappensBefore.publishesElements(receiver)) {
+            return;
+        }
+        try {
+            int size = list.size();
+            for (Iterator<Object> moved = list.listIterator(Math.max(0, size - drained)); moved.hasNext();) {
+                HappensBefore.acquire(moved.next());
+            }
+        } catch (RuntimeException ignored) { // NOPMD - recording never fails the caller
+            // A list that cannot be walked now leaves the drain as it was before #1295.
+        }
     }
 
     /**
@@ -1048,6 +1075,7 @@ public final class AgentConcurrencyUtilHooks {
         }
         int drained = receiver.drainTo(target, maxElements);
         TelemetryRegistry.ownershipDrained(receiver);
+        receiveDrained(receiver, target, drained);
         return drained;
     }
 

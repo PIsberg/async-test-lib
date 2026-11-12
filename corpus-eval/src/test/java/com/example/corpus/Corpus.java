@@ -6201,6 +6201,22 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "every thread acquires a permit and nothing releases one, so acquisitions "
                             + "exceed releases by one per thread",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_drainTo_handsOffAMutableObject", JDK,
+                    "java.util.concurrent.LinkedBlockingQueue",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the producer writes the order before put() and the consumer writes it after "
+                            + "draining it into a list. A drain is a removal like take, so the "
+                            + "same happens-before edge orders the two threads' writes (#1295)"),
+
+            new RecordingSubject("idiom_drainTo_producerKeepsWritingAfterThePut", JDK,
+                    "java.util.concurrent.LinkedBlockingQueue",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the producer updates the order after putting it, so that write and the "
+                            + "drainer's are unordered: the put published only what came before it",
                     IssueSeverity.HIGH)
     );
 
