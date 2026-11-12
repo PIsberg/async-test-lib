@@ -204,7 +204,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 19. Semaphore Misuse Detector
 * **Severity**: `HIGH`
-* **Description**: Tracks `acquire()`/`release()` pairs per `Semaphore` to catch permit leaks (acquire without a matching release), over-release (releasing more permits than were acquired), and permits still outstanding at test completion.
+* **Description**: Tracks `acquire()`/`release()` pairs per `Semaphore` to catch permit leaks (acquire without a matching release), over-release (releasing more permits than were acquired), and permits still outstanding at test completion. Releases are counted from the first one seen, so a semaphore used as a signal, released by one thread and acquired by another, balances. A semaphore the run released before it ever acquired it is such a signal, and a surplus on it is not reported as an over-release unless the test registered its permit count with `registerSemaphore`.
 * **Buggy Code**:
   ```java
   semaphore.acquire();

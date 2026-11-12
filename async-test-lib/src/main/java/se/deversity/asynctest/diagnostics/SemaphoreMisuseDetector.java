@@ -17,6 +17,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Common semaphore issues detected:
  * - Permit leaks: acquire() without matching release()
  * - Over-release: release() called more times than acquire()
+ *   (not concluded for a semaphore the run released before it ever acquired it, unless the test
+ *   registered its permits: that is how a signal looks, one thread releasing and another
+ *   acquiring, and a signal nobody has awaited yet is a surplus, not a permit returned twice)
  * - Unreleased permits at test completion
  * - Concurrent access patterns that may cause starvation
  * 
@@ -49,6 +52,12 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
         final Set<Long> releasingThreads = ConcurrentHashMap.newKeySet();
         final AtomicInteger maxConcurrentAcquires = new AtomicInteger(0);
         final AtomicInteger currentAcquires = new AtomicInteger(0);
+        /**
+         * Whether a release was recorded while no acquisition had been. A holder records its
+         * acquisition before its release, so this is a release by a thread that holds nothing: a
+         * signal, sent ahead of whoever waits for it.
+         */
+        volatile boolean releasedBeforeAcquired;
 
         SemaphoreState(Semaphore semaphore, String name, int permits) {
             this.semaphore = semaphore;
@@ -111,12 +120,16 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
         if (!enabled || semaphore == null) {
             return;
         }
-        SemaphoreState state = trackedState(semaphore);
-        if (state != null) {
-            state.releaseCount.incrementAndGet();
-            state.releasingThreads.add(Thread.currentThread().threadId());
-            state.currentAcquires.decrementAndGet();
+        // Registered on first sight, like an acquisition. A release used to count only against a
+        // semaphore an acquisition had already registered, so the releases of a signal, which
+        // come before the acquisitions they wake, were dropped and balanced use read as a leak.
+        SemaphoreState state = stateFor(semaphore, name, "semaphore");
+        if (state.acquireCount.get() == 0) {
+            state.releasedBeforeAcquired = true;
         }
+        state.releaseCount.incrementAndGet();
+        state.releasingThreads.add(Thread.currentThread().threadId());
+        state.currentAcquires.decrementAndGet();
     }
 
     /**
@@ -141,8 +154,11 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
                     state.name, acquires, releases, acquires - releases));
             }
 
-            // Check for over-release (more releases than acquires)
-            if (releases > acquires) {
+            // Check for over-release (more releases than acquires). With no declared capacity
+            // to hold it to, a semaphore released before it was ever acquired is a signal, and
+            // its surplus is a signal not yet awaited.
+            boolean signal = initialPermits < 0 && state.releasedBeforeAcquired;
+            if (releases > acquires && !signal) {
                 report.overReleases.add(String.format(
                     "%s: released %d times but acquired only %d times (%d extra releases)",
                     state.name, releases, acquires, releases - acquires));

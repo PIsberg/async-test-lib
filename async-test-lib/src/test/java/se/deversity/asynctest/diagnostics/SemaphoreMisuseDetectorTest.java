@@ -189,4 +189,87 @@ public class SemaphoreMisuseDetectorTest {
         assertTrue(report.contains("pool: 1 threads acquired, 0 threads released, max concurrent: 2"),
                 "the held semaphore's line survives beside the balanced one's: " + report);
     }
+
+    // A semaphore that starts empty is a signal: one thread releases, another acquires. The agent
+    // registers nothing up front, so the first event such a semaphore produces is a release.
+
+    /**
+     * Three signals sent, three awaited. The releases come first, and they used to be dropped
+     * because nothing had registered the semaphore yet, so balanced use read as three leaks.
+     */
+    @Test
+    void releasesRecordedBeforeTheFirstAcquireAreCounted() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore signal = new Semaphore(0);
+        for (int i = 0; i < 3; i++) {
+            detector.recordRelease(signal, "signal");
+        }
+        for (int i = 0; i < 3; i++) {
+            detector.recordAcquire(signal, "signal");
+        }
+
+        SemaphoreMisuseDetector.SemaphoreMisuseReport report = detector.analyze();
+
+        assertFalse(report.hasIssues(), "three signals, three awaited: " + report);
+    }
+
+    /** A signal nobody has awaited yet is a surplus, not an over-release: no holder returned it. */
+    @Test
+    void aSignalSentAheadOfItsWaiterMayEndWithASurplus() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore signal = new Semaphore(0);
+        for (int i = 0; i < 3; i++) {
+            detector.recordRelease(signal, "signal");
+        }
+        detector.recordAcquire(signal, "signal");
+        detector.recordAcquire(signal, "signal");
+
+        SemaphoreMisuseDetector.SemaphoreMisuseReport report = detector.analyze();
+
+        assertFalse(report.hasIssues(), "three signals, two awaited: " + report);
+    }
+
+    /** The other direction: more permits taken than were ever sent or returned is still a leak. */
+    @Test
+    void aSignalAwaitedMoreOftenThanItWasSentStillLeaks() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore signal = new Semaphore(2);
+        detector.recordRelease(signal, "signal");
+        detector.recordAcquire(signal, "signal");
+        detector.recordAcquire(signal, "signal");
+        detector.recordAcquire(signal, "signal");
+
+        SemaphoreMisuseDetector.SemaphoreMisuseReport report = detector.analyze();
+
+        assertEquals(1, report.permitLeaks.size(), report.toString());
+        assertTrue(report.permitLeaks.get(0).contains("acquired 3 times but released only 1 times"),
+                "the early release is in the balance: " + report);
+    }
+
+    /** A holder that returns its permit twice is an over-release, with or without registration. */
+    @Test
+    void aPermitReturnedTwiceByItsHolderIsStillAnOverRelease() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore mutex = new Semaphore(1);
+        detector.recordAcquire(mutex, "mutex");
+        detector.recordRelease(mutex, "mutex");
+        detector.recordRelease(mutex, "mutex");
+
+        SemaphoreMisuseDetector.SemaphoreMisuseReport report = detector.analyze();
+
+        assertEquals(1, report.overReleases.size(), report.toString());
+    }
+
+    /** A registered capacity is the caller's own statement, so a surplus over it is reported. */
+    @Test
+    void aRegisteredSemaphoreReleasedFirstIsHeldToItsDeclaredPermits() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore pool = new Semaphore(1);
+        detector.registerSemaphore(pool, "pool", 1);
+        detector.recordRelease(pool, "pool");
+
+        SemaphoreMisuseDetector.SemaphoreMisuseReport report = detector.analyze();
+
+        assertEquals(1, report.overReleases.size(), report.toString());
+    }
 }
