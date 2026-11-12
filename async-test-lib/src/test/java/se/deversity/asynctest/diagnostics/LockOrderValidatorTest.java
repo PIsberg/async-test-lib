@@ -2,6 +2,10 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class LockOrderValidatorTest {
@@ -526,5 +530,39 @@ class LockOrderValidatorTest {
 
         LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
         assertEquals(1, report.inconsistentOrderings.size(), report.toString());
+    }
+
+    /** A condition's lock is found among the recorded holds, past a newer one it does not belong to (#1256). */
+    @Test
+    void aConditionsLockIsFoundAmongTheHolds() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        ReentrantLock outer = new ReentrantLock();
+        ReentrantLock inner = new ReentrantLock();
+        ReentrantReadWriteLock readWrite = new ReentrantReadWriteLock();
+        Condition outerReady = outer.newCondition();
+        Condition writeReady = readWrite.writeLock().newCondition();
+        Condition unheld = new ReentrantLock().newCondition();
+        Object[] found = new Object[3];
+        onNewThread(() -> {
+            outer.lock();
+            inner.lock();
+            readWrite.writeLock().lock();
+            try {
+                validator.recordLockAcquisition(outer);
+                validator.recordLockAcquisition(inner);
+                validator.recordLockAcquisition(readWrite); // the validator's identity for a view
+                found[0] = validator.heldLockOf(outerReady);
+                found[1] = validator.heldLockOf(writeReady);
+                found[2] = validator.heldLockOf(unheld);
+            } finally {
+                readWrite.writeLock().unlock();
+                inner.unlock();
+                outer.unlock();
+            }
+        });
+
+        assertSame(outer, found[0], "asked past inner and the read-write lock, which throw for it");
+        assertSame(readWrite, found[1], "a write lock's condition belongs to its owner");
+        assertNull(found[2], "a lock the thread does not hold is not its condition's lock here");
     }
 }

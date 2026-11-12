@@ -20,6 +20,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `Condition.await` lets its lock go for `LOCK_ORDER` (#1256).** With the agent attached, the
+  validator kept a condition's lock held through the await, so a thread that awaited it while
+  holding another lock took it back inside that lock without recording the edge. Two threads
+  doing that can deadlock, and nothing was reported. The five woven `await` forms now hand the
+  lock's holds back to the validator for the wait and take them again after, as `Object.wait` has
+  since #1243; the validator finds the lock among its recorded holds
+  (`LockOrderValidator.heldLockOf`, a `ReentrantLock`, or a `ReentrantReadWriteLock` for its write
+  lock's conditions). `ControlledSchedule.lockOf` could not be reused: it answers only while a
+  controlled schedule is open. Test first in `ConditionAwaitFeedsLockOrderTest`: the inversion was
+  silent before the change; the twin, awaiting the innermost lock, stays silent.
+
+- **The JVM's own call-site linkage no longer reports a virtual-thread pin (#1248).** On correct code
+  that takes no lock, `VIRTUAL_THREAD_PINNING` intermittently reported FACT/MEDIUM for
+  `Native or VM frame on stack (Contended monitor enter)` in `ConcurrentHashMap.putVal` under
+  `ReferencedKeyMap.internKey`: the JDK interning a `MethodType` while it linked a method reference
+  on first use, so a `failOn = MEDIUM` build flaked. That reason on a JDK lock, with no native
+  method outside the JDK on the stack, is now withheld and counted at DEBUG in
+  `runner.pinning.vm-upcall`; a native method the code declared still makes it the code's pin. The
+  stream keeps a JFR `Native` frame as a native `StackTraceElement` to tell them apart (`Native` on
+  JDK 21.0.9, 24.0.1, 25.0.5 and 26, checked with a JFR probe). Test first in
+  `JfrPinningStreamTest`: the linkage stack failed before the rule; two twins, a contended enter and
+  a park under a user's native method, still report, and neutralizing the native check reddened the
+  first.
+  A pin's report also printed only its top three frames, which for a pin inside JDK code are all the
+  JDK's; it now ends on the first frame outside the JDK, after a count of the JDK frames between
+  (`VirtualThreadPinningDetectorTest.observedPin_printsTheFirstFrameOutsideTheJdk`, red first).
+
 - **A lost `Condition` signal is reported with the agent attached (#1255).** `CONDITION_VARIABLES`
   reported only a waiter the lock shows parked, so `signalAll()` before anyone waits followed by
   `if (!ready) condition.await(30, MILLISECONDS)` was silent. The five `Condition.await` forms moved

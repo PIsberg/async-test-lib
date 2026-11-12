@@ -79,7 +79,11 @@ transformer, or inside the library's own bookkeeping rather than a woven hook de
 call, is the instrumentation's rather than the code's and is counted at DEBUG in `runner.pinning.instrumentation test=... events=<n>`. A JDK lock
 the JVM contended on inside its own critical section, while it loaded or initialized a class
 (`Freeze or preempt failed (2) (Contended monitor enter)` with a JDK frame on top), is the JDK's and
-is counted at DEBUG in `runner.pinning.critical-section test=... events=<n>`. A JVM without a usable JFR logs
+is counted at DEBUG in `runner.pinning.critical-section test=... events=<n>`. So is a contended enter
+on a JDK lock under the JVM's own upcall into Java, call-site linkage interning a `MethodType` for a
+lambda on first use (`Native or VM frame on stack (Contended monitor enter)`, a JDK frame on top, no
+native method outside the JDK on the stack), in `runner.pinning.vm-upcall test=... events=<n>` (#1248).
+A JVM without a usable JFR logs
 `pinning.jfr.unavailable` once at DEBUG, and the detector keeps its recording feed.
 
 ### When a detector leaves a note

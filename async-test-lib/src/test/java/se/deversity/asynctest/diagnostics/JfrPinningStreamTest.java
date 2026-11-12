@@ -143,6 +143,82 @@ class JfrPinningStreamTest {
         assertEquals(2, detector.analyzePinning().getEvents().size(), "the code's own monitor, in two rounds");
     }
 
+    @Test
+    void aJdkLockTheVmContendsOnWhileLinkingACallSiteIsNotTheCodes() {
+        // The correctness sweep's report on correct CompletableFuture code (#1248): the first use of
+        // a method reference links its call site, the VM calls into Java to intern a MethodType,
+        // and a contended ConcurrentHashMap bin under that VM frame pins. Nothing on the stack is
+        // native code the user wrote, so the VM frame is the JVM's own upcall.
+        VirtualThreadPinningDetector detector = monitoring();
+        List<JfrPinningStream.Pin> pins = List.of(
+                pin(1L, VM_FRAME_ENTER, LINKAGE), pin(2L, VM_FRAME_ENTER, LINKAGE));
+
+        var delivery = JfrPinningStream.deliver(pins, Map.of(1L, 0, 2L, 1), detector);
+
+        var report = detector.analyzePinning();
+        assertFalse(report.hasIssues(), "the JVM's call-site linkage is not the body's pin: " + report);
+        assertEquals(2, delivery.vmUpcallPins(), "counted for the DEBUG line, not dropped silently");
+        assertEquals(0, delivery.criticalSectionPins(), "a different shape, counted apart");
+    }
+
+    @Test
+    void aJdkLockContendedUnderTheCodesOwnNativeMethodIsStillReported() {
+        // The same reason and the same JDK frame on top, but a native method the user wrote is on
+        // the stack: a JNI call back into Java. That frame is the code's, so the pin is too.
+        VirtualThreadPinningDetector detector = monitoring();
+        StackTraceElement[] frames = {
+            frame("java.util.concurrent.ConcurrentHashMap", "putVal", 1075),
+            frame("java.util.concurrent.ConcurrentHashMap", "putIfAbsent", 1541),
+            frame("com.example.Codec", "onDecoded", 88),
+            frame("com.example.Codec", "decode0", NATIVE),
+            frame("com.example.Codec", "decode", 40)
+        };
+        List<JfrPinningStream.Pin> pins = List.of(pin(1L, VM_FRAME_ENTER, frames), pin(2L, VM_FRAME_ENTER, frames));
+
+        var delivery = JfrPinningStream.deliver(pins, Map.of(1L, 0, 2L, 1), detector);
+
+        assertEquals(2, detector.analyzePinning().getEvents().size(), "the code's own native frame, in two rounds");
+        assertEquals(0, delivery.vmUpcallPins());
+    }
+
+    @Test
+    void aParkUnderTheCodesOwnNativeMethodIsStillReported() {
+        // Blocking, not a contended enter, under a native method the user wrote: the code's pin
+        // whatever is on top.
+        VirtualThreadPinningDetector detector = monitoring();
+        StackTraceElement[] frames = {
+            frame("java.util.concurrent.locks.LockSupport", "park", 221),
+            frame("java.util.concurrent.CompletableFuture", "join", 2163),
+            frame("com.example.Codec", "onDecoded", 90),
+            frame("com.example.Codec", "decode0", NATIVE),
+            frame("com.example.Codec", "decode", 40)
+        };
+        String reason = "Native or VM frame on stack (LockSupport.park)";
+        List<JfrPinningStream.Pin> pins = List.of(pin(1L, reason, frames), pin(2L, reason, frames));
+
+        JfrPinningStream.deliver(pins, Map.of(1L, 0, 2L, 1), detector);
+
+        assertEquals(2, detector.analyzePinning().getEvents().size());
+    }
+
+    /** {@link StackTraceElement}'s line number for a native method, which the stream gives a JFR {@code Native} frame. */
+    private static final int NATIVE = -2;
+
+    /** JDK 24+'s reason for a contended monitor enter under a native or VM frame. */
+    private static final String VM_FRAME_ENTER = "Native or VM frame on stack (Contended monitor enter)";
+
+    /** The stack of the sweep's report (#1248): a MethodType interned while a method reference links. */
+    private static final StackTraceElement[] LINKAGE = {
+        frame("java.util.concurrent.ConcurrentHashMap", "putVal", 1075),
+        frame("java.util.concurrent.ConcurrentHashMap", "putIfAbsent", 1541),
+        frame("jdk.internal.util.ReferencedKeyMap", "internKey", 344),
+        frame("jdk.internal.util.ReferencedKeySet", "intern", 184),
+        frame("java.lang.invoke.MethodType$ConcurrentWeakInternSet", "add", 1420),
+        frame("java.lang.invoke.MethodType", "makeImpl", 358),
+        frame("java.lang.invoke.MethodHandleNatives", "findMethodHandleType", 391),
+        frame("com.example.Sums", "thenCombineInsteadOfJoin", 27)
+    };
+
     /** The frames of a wait for a class initializer through {@code Class.forName}, every class at one native frame. */
     private static final StackTraceElement[] FOR_NAME = {
         frame("java.lang.Class", "forName0", -1),

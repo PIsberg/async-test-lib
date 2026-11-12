@@ -501,6 +501,38 @@ public class VirtualThreadPinningDetector {
             }
         }
 
+        /**
+         * The first {@value #SHOWN_FRAMES} frames, and when they are all the JDK's, the first frame
+         * outside it after a count of the JDK frames between: a pin inside the JDK's own code
+         * otherwise never shows the line of the code that reached it (#1248).
+         */
+        private static void appendFrames(StringBuilder sb, StackTraceElement[] frames) {
+            int shown = Math.min(SHOWN_FRAMES, frames.length);
+            for (int j = 0; j < shown; j++) {
+                sb.append("\n        at ").append(frames[j]);
+                if (!isJdkFrame(frames[j])) {
+                    return;
+                }
+            }
+            for (int j = shown; j < frames.length; j++) {
+                if (!isJdkFrame(frames[j])) {
+                    if (j > shown) {
+                        sb.append("\n        ... ").append(j - shown).append(" JDK frames");
+                    }
+                    sb.append("\n        at ").append(frames[j]);
+                    return;
+                }
+            }
+        }
+
+        /** How many frames a pin prints before it looks for the code's own. */
+        private static final int SHOWN_FRAMES = 3;
+
+        private static boolean isJdkFrame(StackTraceElement frame) {
+            String type = frame.getClassName();
+            return type.startsWith("java.") || type.startsWith("jdk.") || type.startsWith("sun.");
+        }
+
         @Override
         public String toString() {
             if (!virtualThreadSupported) {
@@ -540,9 +572,7 @@ public class VirtualThreadPinningDetector {
 
                 if (event.stackTrace != null && event.stackTrace.length > 0) {
                     sb.append("\n      Stack trace:");
-                    for (int j = 0; j < Math.min(3, event.stackTrace.length); j++) {
-                        sb.append("\n        at ").append(event.stackTrace[j]);
-                    }
+                    appendFrames(sb, event.stackTrace);
                 }
             }
 

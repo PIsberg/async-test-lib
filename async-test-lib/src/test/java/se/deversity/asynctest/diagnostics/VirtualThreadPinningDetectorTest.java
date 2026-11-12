@@ -490,6 +490,32 @@ class VirtualThreadPinningDetectorTest {
     }
 
     @Test
+    void observedPin_printsTheFirstFrameOutsideTheJdk() {
+        // #1248's report printed three frames, all the JDK's, so the code's own line never showed.
+        VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
+        detector.startMonitoring();
+        StackTraceElement[] frames = {
+            new StackTraceElement("java.util.concurrent.ConcurrentHashMap", "putVal", null, 1075),
+            new StackTraceElement("java.util.concurrent.ConcurrentHashMap", "putIfAbsent", null, 1541),
+            new StackTraceElement("jdk.internal.util.ReferencedKeyMap", "internKey", null, 344),
+            new StackTraceElement("jdk.internal.util.ReferencedKeySet", "intern", null, 184),
+            new StackTraceElement("java.lang.invoke.MethodType", "makeImpl", null, 358),
+            new StackTraceElement("com.example.Sums", "combine", null, 27),
+            new StackTraceElement("com.example.Sums", "caller", null, 40)
+        };
+        detector.recordObservedPinning(42L, "worker-1",
+                "JFR jdk.VirtualThreadPinned: Native or VM frame on stack (LockSupport.park)",
+                VirtualThreadPinningDetector.PinningCause.NATIVE, 5L, frames);
+
+        String text = detector.analyzePinning().toString();
+
+        assertTrue(text.contains("at jdk.internal.util.ReferencedKeyMap.internKey"), text);
+        assertTrue(text.contains("... 2 JDK frames"), "the JDK frames between are elided, counted: " + text);
+        assertTrue(text.contains("at com.example.Sums.combine"), "the code's own frame: " + text);
+        assertFalse(text.contains("com.example.Sums.caller"), "and nothing below it: " + text);
+    }
+
+    @Test
     void observedPin_isDroppedWhileMonitoringIsOff() {
         VirtualThreadPinningDetector detector = new VirtualThreadPinningDetector();
         detector.stopMonitoring();

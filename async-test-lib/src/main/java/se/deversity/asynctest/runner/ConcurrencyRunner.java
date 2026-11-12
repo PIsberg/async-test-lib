@@ -755,6 +755,11 @@ public class ConcurrencyRunner {
                     log.debug("runner.pinning.critical-section test={} events={}",
                         testMethod.getName(), pinningStream.criticalSectionEvents());
                 }
+                // DEBUG: a JDK lock contended under the JVM's own upcall, call-site linkage (#1248).
+                if (pinningStream.vmUpcallEvents() > 0) {
+                    log.debug("runner.pinning.vm-upcall test={} events={}",
+                        testMethod.getName(), pinningStream.vmUpcallEvents());
+                }
                 // DEBUG, not INFO: nearly every run has some, from class loading on first use.
                 if (pinningStream.singleRoundSites() > 0) {
                     log.debug("runner.pinning.single-round test={} sites={}",
