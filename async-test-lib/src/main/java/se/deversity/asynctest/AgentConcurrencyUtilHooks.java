@@ -7049,6 +7049,7 @@ public final class AgentConcurrencyUtilHooks {
     public static boolean awaitTermination(ExecutorService receiver, long timeout, TimeUnit unit)
             throws InterruptedException {
         ControlledSchedule.point();
+        awaited(receiver);
         boolean terminated = receiver.awaitTermination(timeout, unit);
         if (terminated) {
             poolTerminated(receiver);
@@ -7067,8 +7068,22 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static void closeExecutor(ExecutorService receiver) {
         ControlledSchedule.point();
+        awaited(receiver);
         receiver.close();
         poolTerminated(receiver);
+    }
+
+    /**
+     * Tells the shutdown detector that the run waited for {@code pool} to end (#1271), so a pool
+     * still running at analysis is reported as a wait that timed out, not as one nobody made. It
+     * changes only that wording: the detector judges by the pool's own state, and ignores a pool
+     * the run did not create.
+     */
+    private static void awaited(ExecutorService pool) {
+        ExecutorShutdownDetector detector = AsyncTestContext.currentExecutorShutdownDetector();
+        if (detector != null) {
+            detector.recordAwaitTerminationCalled(pool);
+        }
     }
 
     /**
