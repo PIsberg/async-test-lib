@@ -169,4 +169,57 @@ class AtomicMapUpdateWeavingTest {
         assertTrue(mentionsHits(findings),
                 "compute on two keys runs concurrently, so the token is per key: " + findings);
     }
+
+    /** A subclass that changes nothing about the per-key updates. */
+    static class PlainSubclass<K, V> extends ConcurrentHashMap<K, V> {
+        private static final long serialVersionUID = 1L;
+    }
+
+    /** One more level down, still overriding nothing. */
+    static final class PlainGrandchild<K, V> extends PlainSubclass<K, V> {
+        private static final long serialVersionUID = 1L;
+    }
+
+    /** A subclass whose {@code compute} runs the function between a get and a put, under no lock. */
+    static class NonAtomicCompute<K, V> extends ConcurrentHashMap<K, V> {
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        public V compute(K key, java.util.function.BiFunction<? super K, ? super V, ? extends V> remapping) {
+            V updated = remapping.apply(key, get(key));
+            if (updated == null) {
+                remove(key);
+            } else {
+                put(key, updated);
+            }
+            return updated;
+        }
+    }
+
+    /** Overrides nothing itself, but inherits the non-atomic {@code compute}. */
+    static final class BelowNonAtomicCompute<K, V> extends NonAtomicCompute<K, V> {
+        private static final long serialVersionUID = 1L;
+    }
+
+    @Test
+    @DisplayName("a subclass that overrides none of the updates is guarded like ConcurrentHashMap (#1259)")
+    void computeOnANonOverridingSubclassIsSilent() throws InterruptedException {
+        Map<String, Tally> plain = seeded(new PlainSubclass<>());
+        Map<String, Tally> grandchild = seeded(new PlainGrandchild<>());
+        List<String> findings = findings(w -> ComputeTallyBean.compute(w % 2 == 0 ? plain : grandchild, KEY));
+        assertFalse(mentionsHits(findings),
+                "neither class overrides compute, so ConcurrentHashMap's own atomic compute runs: "
+                        + findings);
+    }
+
+    @Test
+    @DisplayName("a subclass whose compute is not atomic is a race, at any depth (#1259)")
+    void computeOnAnOverridingSubclassFires() throws InterruptedException {
+        Map<String, Tally> overriding = seeded(new NonAtomicCompute<>());
+        assertTrue(mentionsHits(findings(w -> ComputeTallyBean.compute(overriding, KEY))),
+                "NonAtomicCompute runs the function outside any lock, so it must not get the token");
+        Map<String, Tally> below = seeded(new BelowNonAtomicCompute<>());
+        assertTrue(mentionsHits(findings(w -> ComputeTallyBean.compute(below, KEY))),
+                "BelowNonAtomicCompute inherits the non-atomic compute from a level above it");
+    }
 }
