@@ -57,6 +57,45 @@ class AtomicityVerdictCountsTest {
     }
 
     @Test
+    @DisplayName("a volatile field several threads only write is silent: there is no check to lose (#1296)")
+    void volatileBlindWritesAreSilent() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.recordFieldAccessUnderLocks(FIELD, null, true, 101L, 0L, true);
+        validator.recordFieldAccessUnderLocks(FIELD, null, true, 202L, 0L, true);
+        validator.recordFieldAccessUnderLocks(FIELD, null, true, 303L, 0L, true);
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertTrue(!report.hasIssues(), "a last-writer-wins store has no check/use window: " + report);
+        assertEquals(Map.of("volatileBlindWrites", 1), validator.verdictCounts(FIELD));
+    }
+
+    @Test
+    @DisplayName("a volatile field two threads read and then write still reports: volatile count++")
+    void volatileReadThenWriteOnTwoThreadsStillReports() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.recordFieldAccessUnderLocks(FIELD, null, false, 101L, 0L, true);
+        validator.recordFieldAccessUnderLocks(FIELD, null, true, 101L, 0L, true);
+        validator.recordFieldAccessUnderLocks(FIELD, null, false, 202L, 0L, true);
+        validator.recordFieldAccessUnderLocks(FIELD, null, true, 202L, 0L, true);
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertTrue(!report.unsafeFieldAccesses.isEmpty(), "the lost update is still a finding");
+        assertTrue(!report.totcouRaces.isEmpty(), "and so is its check/use window");
+        assertEquals(Map.of("reported", 1), validator.verdictCounts(FIELD));
+    }
+
+    @Test
+    @DisplayName("a plain field several threads only write still reports: unordered writes")
+    void plainBlindWritesStillReport() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.recordFieldAccessUnderLocks(FIELD, null, true, 101L, 0L);
+        validator.recordFieldAccessUnderLocks(FIELD, null, true, 202L, 0L);
+
+        assertTrue(validator.analyzeAtomicity().hasIssues(), "no volatile, no order between the writes");
+        assertEquals(Map.of("reported", 1), validator.verdictCounts(FIELD));
+    }
+
+    @Test
     @DisplayName("groups are counted per round, a one-thread round under its own key")
     void countsPerRound() {
         AtomicityValidator validator = new AtomicityValidator();

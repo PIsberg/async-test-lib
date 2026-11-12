@@ -2603,6 +2603,36 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 27. A volatile field every thread only writes (#1296) --------------------------------
+
+    private static final class Status {
+        volatile int last;
+    }
+
+    private static final Rounds<Status> STATUSES = new Rounds<>(Status::new);
+    private static final Rounds<Status> COUNTED_STATUSES = new Rounds<>(Status::new);
+
+    /**
+     * Last writer wins: every thread stores its own value and none reads the field first. There
+     * is no check for another thread's store to invalidate, and the volatile orders the stores.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_volatileStatus_lastWriterWins() {
+        correct(() -> {
+            Turn<Status> turn = STATUSES.next();
+            turn.shared().last = turn.ticket();
+        });
+    }
+
+    /** The same field read and then written: a volatile makes each step visible, not the pair atomic. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_volatileStatus_countsWithReadThenWrite() {
+        broken(() -> {
+            Status status = COUNTED_STATUSES.next().shared();
+            status.last = status.last + 1;
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**

@@ -6217,6 +6217,22 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the producer updates the order after putting it, so that write and the "
                             + "drainer's are unordered: the put published only what came before it",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_volatileStatus_lastWriterWins", JDK,
+                    IDIOM_LANE + "Status",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread stores its own value into one volatile field and none reads "
+                            + "it first. A blind store makes no check, so there is no check/use "
+                            + "window, and the volatile orders the stores (#1296)"),
+
+            new RecordingSubject("idiom_volatileStatus_countsWithReadThenWrite", JDK,
+                    IDIOM_LANE + "Status",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same volatile field read and then written by six threads: each step "
+                            + "is visible and the pair is not atomic, so an increment is lost",
                     IssueSeverity.HIGH)
     );
 
