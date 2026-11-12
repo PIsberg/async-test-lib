@@ -292,6 +292,11 @@ public final class AgentCollectionHooks {
      * Weaves {@code Iterable.iterator()}, the call a for-each loop compiles to: an iteration of a
      * {@code Collections.synchronized*} wrapper is judged against the monitor it needs held.
      *
+     * <p>Over a container that orders what passes through it, the iterator returned wraps the
+     * container's own and tells the happens-before model about each element as it hands it out
+     * (#1294). It delegates every call, so it behaves as the original does, but it is not the
+     * original's class. Any other iterable gets its own iterator back.
+     *
      * @param receiver the iterable
      * @return its iterator
      * @since 1.13.2
@@ -299,7 +304,11 @@ public final class AgentCollectionHooks {
     public static java.util.Iterator<Object> iterableIterator(Iterable<Object> receiver) {
         ControlledSchedule.point();
         iterated(receiver);
-        return receiver.iterator();
+        java.util.Iterator<Object> elements = receiver.iterator();
+        // Each element is received as the loop reaches it (#1294). A container that orders
+        // nothing keeps its own iterator.
+        return elements != null && HappensBefore.publishesElements(receiver)
+                ? new ReceivingIterator(elements) : elements;
     }
 
     /**
@@ -382,12 +391,78 @@ public final class AgentCollectionHooks {
         return received(receiver, receiver.remove(key));
     }
 
-    /** {@return {@code value}, after acquiring what its put published when the map orders it} */
-    private static @Nullable Object received(Map<Object, Object> receiver, @Nullable Object value) {
+    /** {@return {@code value}, after acquiring what its entry published when the container orders it} */
+    private static @Nullable Object received(Object receiver, @Nullable Object value) {
         if (value != null && HappensBefore.publishesElements(receiver)) {
             HappensBefore.acquire(value);
         }
         return value;
+    }
+
+    /**
+     * Releases {@code element} on its way into {@code receiver}, when that container orders what
+     * passes through it (#1294). Before the call, so every read that can return the element finds
+     * the release.
+     *
+     * @return whether a release was made, for the caller to withdraw if the element did not go in
+     */
+    private static boolean publishing(Object receiver, @Nullable Object element) {
+        if (element != null && HappensBefore.publishesElements(receiver)) {
+            HappensBefore.release(element);
+            return true;
+        }
+        return false;
+    }
+
+    /** {@return {@code remapping}, releasing what it returns before the map stores it (#1294)} */
+    private static BiFunction<Object, Object, Object> publishing(Map<Object, Object> receiver,
+            BiFunction<Object, Object, Object> remapping) {
+        if (remapping == null || !HappensBefore.publishesElements(receiver)) {
+            return remapping;
+        }
+        return (key, old) -> {
+            Object stored = remapping.apply(key, old);
+            HappensBefore.release(stored);
+            return stored;
+        };
+    }
+
+    /**
+     * An iterator over a container that orders its elements, acquiring each as it hands it out
+     * (#1294): a for-each is a read of every element it visits.
+     */
+    private static final class ReceivingIterator implements java.util.Iterator<Object> {
+        private final java.util.Iterator<Object> delegate;
+
+        ReceivingIterator(java.util.Iterator<Object> delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return delegate.hasNext();
+        }
+
+        @Override
+        public @Nullable Object next() {
+            Object element = delegate.next();
+            HappensBefore.acquire(element);
+            return element;
+        }
+
+        @Override
+        public void remove() {
+            delegate.remove();
+        }
+
+        @Override
+        public void forEachRemaining(java.util.function.Consumer<? super Object> action) {
+            Objects.requireNonNull(action);
+            delegate.forEachRemaining(element -> {
+                HappensBefore.acquire(element);
+                action.accept(element);
+            });
+        }
     }
 
     /**
@@ -459,7 +534,7 @@ public final class AgentCollectionHooks {
         Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
         HeldLocks.acquired(token);
         try {
-            return receiver.compute(key, remapping);
+            return received(receiver, receiver.compute(key, publishing(receiver, remapping)));
         } finally {
             HeldLocks.released(token);
         }
@@ -472,7 +547,7 @@ public final class AgentCollectionHooks {
         Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
         HeldLocks.acquired(token);
         try {
-            return receiver.computeIfPresent(key, remapping);
+            return received(receiver, receiver.computeIfPresent(key, publishing(receiver, remapping)));
         } finally {
             HeldLocks.released(token);
         }
@@ -485,20 +560,37 @@ public final class AgentCollectionHooks {
         Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
         HeldLocks.acquired(token);
         try {
-            return receiver.computeIfAbsent(key, mapping);
+            Function<Object, Object> publishing = mapping;
+            if (mapping != null && HappensBefore.publishesElements(receiver)) {
+                publishing = absent -> {
+                    Object stored = mapping.apply(absent);
+                    HappensBefore.release(stored);
+                    return stored;
+                };
+            }
+            return received(receiver, receiver.computeIfAbsent(key, publishing));
         } finally {
             HeldLocks.released(token);
         }
     }
 
     /** Weaves {@code Map.merge}. @param receiver the map @param key the key @param value the value to merge @param remapping the function @return the new value */
+    @SuppressWarnings("ReferenceEquality") // the same object went in, or it did not
     public static @Nullable Object mapMerge(Map<Object, Object> receiver, Object key, Object value,
             BiFunction<Object, Object, Object> remapping) {
         ControlledSchedule.point();
         Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
         HeldLocks.acquired(token);
         try {
-            return receiver.merge(key, value, remapping);
+            // An absent key stores the value itself, so it is released first; a present one
+            // stores what the function returns, and the value's release is withdrawn if no other
+            // release followed it.
+            boolean published = publishing(receiver, value);
+            Object merged = receiver.merge(key, value, publishing(receiver, remapping));
+            if (published && merged != value) { // NOPMD CompareObjectsWithEquals - the same object went in, or it did not
+                HappensBefore.retract(value);
+            }
+            return received(receiver, merged);
         } finally {
             HeldLocks.released(token);
         }
@@ -528,7 +620,16 @@ public final class AgentCollectionHooks {
             }
             return added;
         }
-        return receiver.add(element);
+        boolean published = publishing(receiver, element);
+        boolean added = false;
+        try {
+            added = receiver.add(element);
+        } finally {
+            if (published && !added) { // a set that already held an equal one: nothing went in
+                HappensBefore.retract(element);
+            }
+        }
+        return added;
     }
 
     /** Weaves {@code Collection.remove}. @param receiver the collection @param element the element @return whether it changed */
@@ -613,6 +714,15 @@ public final class AgentCollectionHooks {
                 if (!completed) {
                     withdrawWhatDidNotGoIn(receiver, elements);
                 }
+            }
+        }
+        if (elements != null && HappensBefore.publishesElements(receiver)) {
+            try {
+                for (Object element : elements) {
+                    HappensBefore.release(element);
+                }
+            } catch (RuntimeException ignored) { // NOPMD - recording never fails the caller
+                // addAll below reads the same source and reports what is wrong with it.
             }
         }
         return receiver.addAll(elements);
@@ -716,13 +826,14 @@ public final class AgentCollectionHooks {
     public static @Nullable Object listGet(List<Object> receiver, int index) {
         ControlledSchedule.point();
         record(receiver, "get", false);
-        return receiver.get(index);
+        return received(receiver, receiver.get(index));
     }
 
     /** Weaves {@code List.set}. @param receiver the list @param index the index @param element the element @return the previous element */
     public static @Nullable Object listSet(List<Object> receiver, int index, Object element) {
         ControlledSchedule.point();
         record(receiver, "set", true);
+        publishing(receiver, element);
         return receiver.set(index, element);
     }
 
@@ -796,7 +907,7 @@ public final class AgentCollectionHooks {
         if (detector != null) {
             detector.agentHeadTaken(receiver, head, true);
         }
-        return head;
+        return Objects.requireNonNull(received(receiver, head));
     }
 
     /**
@@ -821,7 +932,7 @@ public final class AgentCollectionHooks {
         if (detector != null) {
             detector.agentHeadCheck(receiver, head, true);
         }
-        return head;
+        return received(receiver, head);
     }
 
     // ---- The entry and removal forms #664 left unwoven (#692). Offers publish before the

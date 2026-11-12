@@ -64,7 +64,9 @@ import org.jspecify.annotations.Nullable;
  *       {@code AtomicReference}, where an offer the container refused or a failed
  *       {@code compareAndSet} is withdrawn with {@link #retract} and publishes nothing; a
  *       {@code BlockingQueue.drainTo} whose target is a {@code List}, which acquires each element
- *       it moved, the last ones of the list (#1295);
+ *       it moved, the last ones of the list (#1295); an element added to a collection that
+ *       publishes its elements and read back by index, by a peek or by an iterator, and the
+ *       value a {@code compute}-family call stores and returns (#1294);
  *       {@code CountDownLatch.countDown} and a successful {@code await};
  *       {@code Semaphore.release} and a successful acquire; a {@code CyclicBarrier.await},
  *       which releases into the generation it arrives in and, on a normal return, acquires it

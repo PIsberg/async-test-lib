@@ -2633,6 +2633,103 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 28. A lazily built value in a ConcurrentHashMap.computeIfAbsent cache (#1294) --------
+
+    private static final class Limits {
+        int limit;
+    }
+
+    private static final Rounds<ConcurrentHashMap<String, Limits>> LIMITS =
+            new Rounds<>(ConcurrentHashMap::new);
+    private static final Rounds<ConcurrentHashMap<String, Limits>> LATE_LIMITS =
+            new Rounds<>(ConcurrentHashMap::new);
+
+    /**
+     * The lazy cache: every thread asks for the one entry, the first builds it inside the
+     * function, and all of them read what the call returned. The map publishes what it stores.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_computeIfAbsent_buildsACachedValueOnce() {
+        correct(() -> {
+            Limits limits = LIMITS.next().shared().computeIfAbsent("default", key -> {
+                Limits built = new Limits();
+                built.limit = 10;
+                return built;
+            });
+            use(limits.limit);
+        });
+    }
+
+    /** The same cache, with the value filled in after the call that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_computeIfAbsent_fillsTheValueInAfterPublishingIt() {
+        broken(() -> {
+            Turn<ConcurrentHashMap<String, Limits>> turn = LATE_LIMITS.next();
+            Limits limits = turn.shared().computeIfAbsent("default", key -> new Limits());
+            if (turn.opensTheRound()) {
+                limits.limit = 10;
+            }
+            use(limits.limit);
+        });
+    }
+
+    // --- 29. Listeners registered in a CopyOnWriteArrayList and walked by a for-each (#1294) --
+
+    private static final class Listener {
+        int priority;
+    }
+
+    private static final Rounds<CopyOnWriteArrayList<Listener>> LISTENERS =
+            new Rounds<>(CopyOnWriteArrayList::new);
+    private static final Rounds<CopyOnWriteArrayList<Listener>> LATE_LISTENERS =
+            new Rounds<>(CopyOnWriteArrayList::new);
+
+    /** Spins until the round's registration is visible, so every reader walks a listener. */
+    private static void awaitARegistration(List<Listener> listeners) {
+        while (listeners.isEmpty()) {
+            Thread.onSpinWait();
+        }
+    }
+
+    /**
+     * One thread configures a listener and registers it; the others walk the list and read it.
+     * The add publishes what was written before it, to every later traversal.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_copyOnWriteListeners_registeredThenWalked() {
+        correct(() -> {
+            Turn<CopyOnWriteArrayList<Listener>> turn = LISTENERS.next();
+            if (turn.opensTheRound()) {
+                Listener listener = new Listener();
+                listener.priority = 3;
+                turn.shared().add(listener);
+            } else {
+                awaitARegistration(turn.shared());
+                for (Listener listener : turn.shared()) {
+                    use(listener.priority);
+                }
+            }
+        });
+    }
+
+    /** The same registration, with the listener configured after the add that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_copyOnWriteListeners_configuredAfterRegistering() {
+        broken(() -> {
+            Turn<CopyOnWriteArrayList<Listener>> turn = LATE_LISTENERS.next();
+            if (turn.opensTheRound()) {
+                Listener listener = new Listener();
+                turn.shared().add(listener);
+                listener.priority = 3;
+            } else {
+                awaitARegistration(turn.shared());
+                for (Listener listener : turn.shared()) {
+                    use(listener.priority);
+                }
+            }
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**

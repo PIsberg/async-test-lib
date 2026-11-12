@@ -1,12 +1,20 @@
 package se.deversity.asynctest;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Exchanger;
 import java.util.concurrent.ExecutorService;
@@ -14,10 +22,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.RaceConditionDetector;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
@@ -130,6 +141,160 @@ class AgentHappensBeforeFeedTest {
         assertFalse(drainHandOffReported(0), "the drain received what the put published");
         assertFalse(drainHandOffReported(1), "the bounded drain did too");
         assertTrue(drainHandOffReported(2), "the unwoven twin: nothing told the model");
+    }
+
+    /**
+     * One thread builds a box, writes it and publishes it with {@code publish}; when that thread
+     * has ended, a second fetches it with {@code fetch}, reads it and writes it (#1294). Nothing
+     * tells the model about the threads' lifecycle, so the container is the only edge there is.
+     */
+    private static boolean containerHandOffReported(Consumer<Box> publish, Supplier<Object> fetch)
+            throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Thread producer = new Thread(() -> {
+            Box box = new Box();
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            publish.accept(box);
+        });
+        producer.start();
+        producer.join();
+        Thread consumer = new Thread(() -> {
+            Box taken = (Box) fetch.get();
+            detector.recordFieldRead(taken, "value");
+            taken.value++;
+            detector.recordFieldWrite(taken, "value");
+        });
+        consumer.start();
+        consumer.join();
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    /** The last element a for-each over {@code iterable} sees, through the woven call or the plain one. */
+    private static Object lastOf(Iterable<Object> iterable, boolean woven) {
+        Iterator<Object> each = woven ? AgentCollectionHooks.iterableIterator(iterable) : iterable.iterator();
+        Object last = null;
+        while (each.hasNext()) {
+            last = each.next();
+        }
+        return last;
+    }
+
+    @Test
+    @DisplayName("a woven add, addAll or set on a concurrent list publishes to a woven get and for-each (#1294)")
+    void wovenListPublication() throws InterruptedException {
+        List<Object> list = new CopyOnWriteArrayList<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(list, b),
+                () -> AgentCollectionHooks.listGet(list, list.size() - 1)), "add then get");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(list, b),
+                () -> lastOf(list, true)), "add then for-each");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.listSet(list, 0, b),
+                () -> AgentCollectionHooks.listGet(list, 0)), "set then get");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAddAll(list, List.of(b)),
+                () -> AgentCollectionHooks.listGet(list, list.size() - 1)), "addAll then get");
+
+        assertTrue(containerHandOffReported(list::add,
+                () -> AgentCollectionHooks.listGet(list, list.size() - 1)), "the unwoven add published nothing");
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(list, b),
+                () -> list.get(list.size() - 1)), "the unwoven get received nothing");
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(list, b),
+                () -> lastOf(list, false)), "nor did the unwoven for-each");
+    }
+
+    @Test
+    @DisplayName("a plain list publishes nothing however it is woven (#1294)")
+    void plainListPublishesNothing() throws InterruptedException {
+        List<Object> list = new ArrayList<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(list, b),
+                () -> AgentCollectionHooks.listGet(list, 0)), "an ArrayList orders nothing");
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.listSet(list, 0, b),
+                () -> lastOf(list, true)), "nor does iterating it");
+    }
+
+    /** A concurrent set that refuses every add, as one already holding an equal element does. */
+    private static final class Refusing extends CopyOnWriteArraySet<Object> {
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        public boolean add(Object element) {
+            return false;
+        }
+    }
+
+    @Test
+    @DisplayName("a concurrent set's add publishes to a for-each, and a refused add publishes nothing (#1294)")
+    void wovenSetPublication() throws InterruptedException {
+        Set<Object> set = ConcurrentHashMap.newKeySet();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(set, b),
+                () -> lastOf(set, true)), "add then for-each");
+
+        Set<Object> refusing = new Refusing();
+        AtomicReference<Object> leaked = new AtomicReference<>();
+        assertTrue(containerHandOffReported(b -> {
+            leaked.setPlain(b);
+            AgentCollectionHooks.collectionAdd(refusing, b);
+        }, () -> {
+            HappensBefore.acquire(leaked.getPlain());
+            return leaked.getPlain();
+        }), "the refused add withdrew its release, so an acquire of the element receives nothing");
+    }
+
+    @Test
+    @DisplayName("a concurrent queue's woven peek and element receive what the offer published (#1294)")
+    void wovenQueuePeek() throws InterruptedException {
+        Queue<Object> queue = new ConcurrentLinkedQueue<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.queueOffer(queue, b),
+                () -> AgentCollectionHooks.queuePeek(queue)), "offer then peek");
+        queue.clear();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.queueOffer(queue, b),
+                () -> AgentCollectionHooks.queueElement(queue)), "offer then element");
+        queue.clear();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.queueOffer(queue, b), queue::peek),
+                "the unwoven peek received nothing");
+
+        Queue<Object> plain = new ArrayDeque<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.queueOffer(plain, b),
+                () -> AgentCollectionHooks.queuePeek(plain)), "an ArrayDeque orders nothing");
+    }
+
+    @Test
+    @DisplayName("a value a woven compute, computeIfAbsent, computeIfPresent or merge stores is published (#1294)")
+    void wovenComputePublication() throws InterruptedException {
+        Map<Object, Object> map = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapComputeIfAbsent(map, "a", k -> b),
+                () -> AgentCollectionHooks.mapGet(map, "a")), "computeIfAbsent then get");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapCompute(map, "b", (k, v) -> b),
+                () -> AgentCollectionHooks.mapGet(map, "b")), "compute then get");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapMerge(map, "c", b, (old, v) -> v),
+                () -> AgentCollectionHooks.mapGet(map, "c")), "merge of an absent key then get");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapMerge(map, "c", "x", (old, v) -> b),
+                () -> AgentCollectionHooks.mapGet(map, "c")), "merge through the function then get");
+        map.put("d", "old");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapComputeIfPresent(map, "d", (k, v) -> b),
+                () -> AgentCollectionHooks.mapGet(map, "d")), "computeIfPresent then get");
+
+        assertTrue(containerHandOffReported(b -> map.computeIfAbsent("u", k -> b),
+                () -> AgentCollectionHooks.mapGet(map, "u")), "the unwoven computeIfAbsent published nothing");
+    }
+
+    @Test
+    @DisplayName("the lazy cache: a thread reads what its own computeIfAbsent or merge returned (#1294)")
+    void wovenComputeReturn() throws InterruptedException {
+        Map<Object, Object> map = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapComputeIfAbsent(map, "k", k -> b),
+                () -> AgentCollectionHooks.mapComputeIfAbsent(map, "k", k -> new Box())),
+                "the second caller received the first one's value");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapComputeIfAbsent(map, "m", k -> b),
+                () -> AgentCollectionHooks.mapMerge(map, "m", "x", (old, v) -> old)),
+                "a merge that keeps the old value returns it received");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapComputeIfAbsent(map, "p", k -> b),
+                () -> AgentCollectionHooks.mapCompute(map, "p", (k, old) -> old)),
+                "and so does a compute that keeps it");
+
+        Map<Object, Object> plain = new HashMap<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.mapComputeIfAbsent(plain, "k", k -> b),
+                () -> AgentCollectionHooks.mapComputeIfAbsent(plain, "k", k -> new Box())),
+                "a HashMap orders nothing");
     }
 
     private static boolean startJoinReported(boolean woven) throws InterruptedException {
