@@ -3766,15 +3766,19 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="AtomicMapUpdateTokens">
   <title>AtomicMapUpdateTokens [CLASS]</title>
-  <rect class="node-rect" x="8992.0" y="114.0" width="180.0" height="145.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="8992.0" y="114.0" width="180.0" height="205.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="9082.0" y="136.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12.9" font-weight="bold" fill="#1f2937">AtomicMapUpdateTokens</text>
   <line x1="8992.0" y1="158.0" x2="9172.0" y2="158.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="9000.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">MAX_KEYS_PER_MAP: int</text>
   <text x="9000.0" y="186.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">TOKENS: Map&lt;Object,Map&lt;Obj…</text>
-  <text x="9000.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">COLLECTED: ReferenceQueue&lt;…</text>
-  <line x1="8992.0" y1="215.0" x2="9172.0" y2="215.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="9000.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">tokenFor(Map&lt;?,?&gt;, Object)…</text>
-  <text x="9000.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">expungeCollected(): void</text>
+  <text x="9000.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UPDATE_PARAMETERS: Class&lt;?&gt;</text>
+  <text x="9000.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UPDATE_NAMES: String</text>
+  <text x="9000.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">INHERITS_ATOMIC_UPDATES: C…</text>
+  <text x="9000.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">COLLECTED: ReferenceQueue&lt;…</text>
+  <line x1="8992.0" y1="260.0" x2="9172.0" y2="260.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="9000.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isAnUpdate(Method): boolean</text>
+  <text x="9000.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">tokenFor(Map&lt;?,?&gt;, Object)…</text>
+  <text x="9000.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">expungeCollected(): void</text>
 </g>
 <g id="AutoFix">
   <title>AutoFix [CLASS]</title>

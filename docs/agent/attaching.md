@@ -252,11 +252,13 @@ and the `Deque` end-specific offers and takes. Each call becomes a
 call to a hook that records and then performs the original operation, so behaviour is unchanged;
 `CollectionWeavingEndToEndTest` pins that a woven program still computes the same values.
 
-On a `ConcurrentHashMap` (that exact class) a woven `compute`, `computeIfPresent`,
-`computeIfAbsent` or `merge` holds a per-key stand-in for the lock the map takes inside the JDK, so
-a value mutated inside the function reads as guarded, while the same mutation after a `get` still
-reports (#1245). A `ConcurrentSkipListMap`, whose `compute` may run the function concurrently, and
-any other map get no stand-in.
+On a `ConcurrentHashMap` a woven `compute`, `computeIfPresent`, `computeIfAbsent` or `merge` holds
+a per-key stand-in for the lock the map takes inside the JDK, so a value mutated inside the function
+reads as guarded, while the same mutation after a `get` still reports (#1245). A subclass gets the
+stand-in only when no class below `ConcurrentHashMap` declares any of the four methods, so the
+JDK's own atomic update is the one that runs (#1259). A subclass that overrides one, a
+`ConcurrentSkipListMap`, whose `compute` may run the function concurrently, and any other map get
+no stand-in.
 
 A map whose calls are each atomic, a `ConcurrentHashMap`, a `Hashtable` or a
 `Collections.synchronizedMap` wrapper, is not a data race on any one call, so

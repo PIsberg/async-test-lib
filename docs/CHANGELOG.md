@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `ConcurrentHashMap` subclass that overrides none of the per-key updates is guarded like
+  the map (#1259).** Since #1245 only a map whose class was exactly `ConcurrentHashMap` got the
+  per-key stand-in lock, so a value mutated inside `compute` on a subclass was still reported. A
+  subclass now gets it when no class below `ConcurrentHashMap` declares `compute`,
+  `computeIfPresent`, `computeIfAbsent` or `merge`, checked once per class with a `ClassValue`. One
+  that overrides any of them, at any depth, still gets none, since its update may run the function
+  outside the map's lock. Test first in `AtomicMapUpdateWeavingTest`: the non-overriding subclass
+  was reported before the change; an overriding one and a class below it still fire. The new
+  `AtomicMapUpdateTokensTest` covers each of the four methods in the fast tier.
+
 - **A `Condition.await` lets its lock go for `LOCK_ORDER` (#1256).** With the agent attached, the
   validator kept a condition's lock held through the await, so a thread that awaited it while
   holding another lock took it back inside that lock without recording the edge. Two threads
