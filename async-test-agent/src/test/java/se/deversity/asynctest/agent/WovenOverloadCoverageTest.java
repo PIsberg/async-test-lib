@@ -74,11 +74,12 @@ class WovenOverloadCoverageTest {
                 "the ranged form; append(CharSequence) covers the whole-sequence case a shared "
                         + "builder is used for");
         decided("java.text.NumberFormat#format(java.lang.Object)",
-                "declared final on java.text.Format, not on NumberFormat, so a call site's owner "
-                        + "is the parent and an entry here would match a different type than it "
-                        + "names");
+                "inherited from java.text.Format, where it is woven: a call site typed to this "
+                        + "class is assignable to the Format.format(Object) entry, whose hook "
+                        + "records by the receiver's runtime type (#1319)");
         decided("java.text.SimpleDateFormat#format(java.lang.Object)",
-                "declared final on java.text.Format; same reason as NumberFormat.format(Object)");
+                "inherited from java.text.Format, where it is woven; same as "
+                        + "NumberFormat.format(Object)");
         decided("java.text.NumberFormat#format(double, java.lang.StringBuffer, "
                         + "java.text.FieldPosition)",
                 "the Format SPI, called by the JDK's own formatting machinery rather than by "
@@ -97,7 +98,19 @@ class WovenOverloadCoverageTest {
                         + "java.text.FieldPosition)",
                 "the Format SPI; same reason as the Date form");
         decided("java.text.DateFormat#format(java.lang.Object)",
-                "declared final on java.text.Format; same reason as NumberFormat.format(Object)");
+                "inherited from java.text.Format, where it is woven; same as "
+                        + "NumberFormat.format(Object)");
+        decided("java.text.Format#format(java.lang.Object, java.lang.StringBuffer, "
+                        + "java.text.FieldPosition)",
+                "the Format SPI every subclass implements and format(Object) calls itself; "
+                        + "application code reaches a shared format through format(Object), "
+                        + "which is woven (#1319)");
+        decided("java.text.Format#parseObject(java.lang.String, java.text.ParsePosition)",
+                "the Format SPI parseObject(String) calls itself; same reason as the "
+                        + "three-argument format");
+        decided("java.text.MessageFormat#parse(java.lang.String, java.text.ParsePosition)",
+                "the positional form parse(String) calls itself; a shared MessageFormat is "
+                        + "parsed through parse(String), which is woven (#1319)");
         decided("java.text.DateFormat#format(java.util.Date, java.lang.StringBuffer, "
                         + "java.text.FieldPosition)",
                 "the Format SPI a DateFormat subclass implements, and the one format(Date) calls "

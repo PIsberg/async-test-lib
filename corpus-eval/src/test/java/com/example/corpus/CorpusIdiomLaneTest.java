@@ -3027,6 +3027,49 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- A format reached through the calls java.text.Format declares (#1319) -----------------
+
+    private static final java.text.DecimalFormat SHARED_MONEY = new java.text.DecimalFormat("#,##0.00");
+    private static final ThreadLocal<java.text.DecimalFormat> MONEY_PER_THREAD =
+            ThreadLocal.withInitial(() -> new java.text.DecimalFormat("#,##0.00"));
+    private static final java.text.MessageFormat SHARED_MESSAGE =
+            new java.text.MessageFormat("{0} has {1} items", java.util.Locale.ROOT);
+    private static final java.text.MessageFormat GUARDED_MESSAGE =
+            new java.text.MessageFormat("{0} has {1} items", java.util.Locale.ROOT);
+
+    /** A DecimalFormat per thread formatting a BigDecimal, the documented way to reuse one. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_sharedFormat_perThreadFormatsABigDecimal() {
+        correct(() -> use(MONEY_PER_THREAD.get().format(new java.math.BigDecimal("12.50")).length()));
+    }
+
+    /**
+     * The same call on one static DecimalFormat shared by every thread.
+     *
+     * <p>{@code format(Object)} is the call a BigDecimal takes, and it was not woven while
+     * {@code format(double)} was, so this row was silent.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_sharedFormat_formatsABigDecimal() {
+        broken(() -> use(SHARED_MONEY.format(new java.math.BigDecimal("12.50")).length()));
+    }
+
+    /** One static MessageFormat formatting under its own monitor on every thread. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_sharedMessageFormat_underItsMonitor() {
+        correct(() -> {
+            synchronized (GUARDED_MESSAGE) {
+                use(GUARDED_MESSAGE.format(new Object[] {"cart", 3}).length());
+            }
+        });
+    }
+
+    /** The same call with no monitor held. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_sharedMessageFormat_formats() {
+        broken(() -> use(SHARED_MESSAGE.format(new Object[] {"cart", 3}).length()));
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**

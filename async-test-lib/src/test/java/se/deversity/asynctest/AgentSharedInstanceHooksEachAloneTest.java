@@ -114,7 +114,11 @@ class AgentSharedInstanceHooksEachAloneTest {
         if (type == StringBuilder.class || type == Appendable.class) {
             return new StringBuilder();
         }
-        if (type == NumberFormat.class) {
+        if (type == java.text.MessageFormat.class) {
+            return new java.text.MessageFormat("{0}", Locale.ROOT);
+        }
+        // Format: the hooks record by runtime type, and a DecimalFormat is one they record (#1319).
+        if (type == NumberFormat.class || type == java.text.Format.class) {
             return new DecimalFormat("#,##0.00", DecimalFormatSymbols.getInstance(Locale.ROOT));
         }
         if (type == Formatter.class) {
@@ -249,7 +253,7 @@ class AgentSharedInstanceHooksEachAloneTest {
             if (receiver instanceof StringBuilder) {
                 return AsyncTestContext.stringBuilderDetector().analyze().hasIssues();
             }
-            if (receiver instanceof NumberFormat) {
+            if (receiver instanceof NumberFormat || receiver instanceof java.text.MessageFormat) {
                 return AsyncTestContext.sharedDecimalFormatDetector().analyze().hasIssues();
             }
             if (receiver instanceof Formatter) {

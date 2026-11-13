@@ -8,13 +8,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Detects {@link java.text.DecimalFormat} and {@link java.text.NumberFormat} instances
- * accessed from more than one thread.
+ * Detects {@link java.text.DecimalFormat}, {@link java.text.NumberFormat} and
+ * {@link java.text.MessageFormat} instances accessed from more than one thread.
  *
  * <p>Neither {@code DecimalFormat} nor its parent {@code NumberFormat} is thread-safe.
  * Unsynchronized concurrent {@code format()} / {@code parse()} calls corrupt internal multiplier and
  * grouping state, producing garbled output or {@link java.text.ParseException}.
- * This is the numeric-formatting equivalent of {@code SimpleDateFormat} misuse.
+ * This is the numeric-formatting equivalent of {@code SimpleDateFormat} misuse. A
+ * {@code MessageFormat} is reported here too (#1319): its javadoc states that message formats are
+ * not synchronized, and it formats its arguments through number and date formats it owns.
  *
  * <p>Synchronization awareness is partial. An access recorded while the accessing thread holds the
  * instance's own monitor - the {@code synchronized (format)} idiom - counts as guarded, and an
@@ -36,19 +38,26 @@ public class SharedDecimalFormatDetector
 
     static final class FormatState extends SelfGuard.ThreadTrackedInstance {
         final String      name;
+        /** What the finding calls the instance's kind. */
+        final String      kind;
 
-        FormatState(String name) { this.name = name; }
+        FormatState(String name, String kind) {
+            this.name = name;
+            this.kind = kind;
+        }
     }
 
     @Override
     FormatState newState(Object instance, String label) {
-        return new FormatState(label);
+        return new FormatState(label, instance instanceof java.text.MessageFormat
+                ? "MessageFormat" : "DecimalFormat/NumberFormat");
     }
 
     /**
-     * Record an access (format/parse/applyPattern) to a DecimalFormat or NumberFormat instance.
+     * Record an access (format/parse/applyPattern) to a DecimalFormat, NumberFormat or
+     * MessageFormat instance.
      *
-     * @param format the DecimalFormat or NumberFormat being accessed (null-safe)
+     * @param format the DecimalFormat, NumberFormat or MessageFormat being accessed (null-safe)
      * @param name   descriptive label for reports
      * @param thread the accessing thread
      */
@@ -65,10 +74,10 @@ public class SharedDecimalFormatDetector
         for (FormatState s : states()) {
             if (s.sharedAndUnguarded()) {
                 String finding = String.format(
-                        "'%s' accessed from %d threads (%s) — DecimalFormat/NumberFormat is not thread-safe"
+                        "'%s' accessed from %d threads (%s) — %s is not thread-safe"
                                 + SelfGuard.REPORT_NOTE,
                         s.name, s.threadCount(),
-                        String.join(", ", s.threadNames()));
+                        String.join(", ", s.threadNames()), s.kind);
                 r.violations.add(finding);
                 r.structuredViolations.add(new Violation("SharedDecimalFormat", IssueSeverity.HIGH,
                         finding, List.of(), Map.of(), Instant.now()));
