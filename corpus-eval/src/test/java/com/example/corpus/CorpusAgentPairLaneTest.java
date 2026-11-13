@@ -849,9 +849,9 @@ class CorpusAgentPairLaneTest {
     // --- AtomicReference compare-and-set, the A-B-A (#817) -------------------------------------
 
     /**
-     * A lock-free stack node. Its {@code next} is written once, before any worker runs, and only
-     * read after that; a node pushed back keeps its {@code next}, which is what an A-B-A of the
-     * head leaves stale.
+     * A lock-free stack node. A stack that reuses its nodes rewrites {@code next} when it pushes
+     * one back, and a node that comes back over a different {@code next} is what makes an A-B-A of
+     * the head hurt: a swap computed from the old {@code next} puts a popped node back (#1325).
      */
     private static final class AbaNode {
 
@@ -869,7 +869,9 @@ class CorpusAgentPairLaneTest {
         }
     }
 
-    private static final AbaNode ABA_B = new AbaNode("B", null);
+    private static final AbaNode ABA_C = new AbaNode("C", null);
+
+    private static final AbaNode ABA_B = new AbaNode("B", ABA_C);
 
     private static final AbaNode ABA_A = new AbaNode("A", ABA_B);
 
@@ -880,52 +882,74 @@ class CorpusAgentPairLaneTest {
     private static final AtomicInteger ABA_TICKETS = new AtomicInteger();
 
     /**
-     * One round of the A-B-A: one worker pops the head and pushes the same node back, the others
-     * read the head and then swap it for its {@code next}, and {@code toggleFirst} says whether the
-     * pop and push run before the reads or between the reads and the swaps.
+     * One round of the A-B-A: one worker takes the head away and brings it back, the others read
+     * the head and its {@code next} and then swap the head for that {@code next}, as a pop does.
+     * {@code toggle} is how the head goes and comes back, and {@code toggleFirst} whether that
+     * runs before the reads or between the reads and the swaps.
      *
-     * <p>The first swap of a round succeeds and the rest fail. The head is put back afterwards, so
-     * every round starts from the same stack. Nothing is recorded: the woven {@code get},
+     * <p>The first swap of a round succeeds and the rest fail. The stack is put back afterwards,
+     * so every round starts from A, B, C. Nothing is recorded: the woven {@code get},
      * {@code compareAndSet} and {@code set} are the detector's only input.
      */
-    private static void abaRound(boolean toggleFirst) throws InterruptedException {
+    private static void abaRound(Runnable toggle, boolean toggleFirst) throws InterruptedException {
         boolean toggler = ABA_TICKETS.getAndIncrement() % THREADS == 0;
         if (toggler && toggleFirst) {
-            popAndPushBack();
+            toggle.run();
         }
         everyWorkerIsHere();
         AbaNode seen = ABA_HEAD.get();
+        AbaNode next = seen.next;
         everyWorkerIsHere();
         if (toggler && !toggleFirst) {
-            popAndPushBack();
+            toggle.run();
         }
         everyWorkerIsHere();
         if (!toggler) {
-            ABA_HEAD.compareAndSet(seen, seen.next);
+            ABA_HEAD.compareAndSet(seen, next);
         }
         everyWorkerIsHere();
         if (toggler) {
+            ABA_A.next = ABA_B;
             ABA_HEAD.set(ABA_A);
         }
         everyWorkerIsHere();
     }
 
-    /** Pops the head and pushes the same node back, which is the A-B-A. */
-    private static void popAndPushBack() {
-        AbaNode popped = ABA_HEAD.get();
-        ABA_HEAD.compareAndSet(popped, popped.next);
-        ABA_HEAD.compareAndSet(popped.next, popped);
+    /**
+     * Pops A and B and pushes A back over C, as a stack that reuses its nodes does. A swap of the
+     * head for the {@code next} read before this puts the popped B back on the stack.
+     */
+    private static void popTwoAndPushTheFirstBack() {
+        AbaNode first = ABA_HEAD.get();
+        ABA_HEAD.compareAndSet(first, first.next);
+        AbaNode second = ABA_HEAD.get();
+        ABA_HEAD.compareAndSet(second, second.next);
+        AbaNode rest = ABA_HEAD.get();
+        first.next = rest;
+        ABA_HEAD.compareAndSet(rest, first);
     }
 
     /**
-     * Reads the head, lets another worker pop it and push the same node back, then swaps.
+     * Pushes a new node and pops it again, as two operations of a stack that allocates a node
+     * per push. The head comes back to the node it was, and that node is untouched.
+     */
+    private static void pushAFreshNodeAndPopIt() {
+        AbaNode head = ABA_HEAD.get();
+        AbaNode fresh = new AbaNode("fresh", head);
+        ABA_HEAD.compareAndSet(head, fresh);
+        ABA_HEAD.compareAndSet(fresh, fresh.next);
+    }
+
+    /**
+     * Reads the head and its next, lets another worker pop two nodes and push the first back,
+     * then swaps.
      *
      * <p>The swap expects the node it read and finds it, although the stack moved underneath it:
      * the A-B-A a stack that reuses nodes suffers.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_abaStack_nodePushedBackAfterTheRead() {
-        counted(() -> abaRound(false));
+        counted(() -> abaRound(CorpusAgentPairLaneTest::popTwoAndPushTheFirstBack, false));
     }
 
     /**
@@ -936,7 +960,19 @@ class CorpusAgentPairLaneTest {
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_abaStack_nodePushedBackBeforeTheRead() {
-        counted(() -> abaRound(true));
+        counted(() -> abaRound(CorpusAgentPairLaneTest::popTwoAndPushTheFirstBack, true));
+    }
+
+    /**
+     * The head goes away and comes back between the read and the swap, as in the firing row, but
+     * by a push of a new node and a pop of it (#1325).
+     *
+     * <p>This is every pop of a stack that allocates a node per push: the head it read came back,
+     * and the node's {@code next} is what it read, so the swap is right.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_abaStack_freshNodePushedAndPoppedAfterTheRead() {
+        counted(() -> abaRound(CorpusAgentPairLaneTest::pushAFreshNodeAndPopIt, false));
     }
 
     // --- synchronized on a non-final instance field (#793) --------------------------------------

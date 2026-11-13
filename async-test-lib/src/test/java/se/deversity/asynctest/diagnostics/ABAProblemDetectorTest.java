@@ -497,7 +497,10 @@ class ABAProblemDetectorTest {
         ABAProblemDetector.AgentSlot slot2 = ranAfter.agentSlot(head2);
         Object seen2 = slot2.get(head2);                  // this read ...
         onAnotherThread(() -> slot2.set(head2, b));       // ... then the whole toggle
-        onAnotherThread(() -> slot2.compareAndSet(head2, b, a));
+        onAnotherThread(() -> {
+            a.next = b;                                   // A comes back over a different node (#1325)
+            slot2.compareAndSet(head2, b, a);
+        });
         assertTrue(slot2.compareAndSet(head2, seen2, c));
         assertTrue(ranAfter.analyzeABA().hasIssues(), "the real ABA: " + ranAfter.analyzeABA());
         assertTrue(ranAfter.analyzeABA().toString().contains("expected A, set to C"),
@@ -519,6 +522,74 @@ class ABAProblemDetectorTest {
             assertTrue(slot.compareAndSet(state, seen, "busy"));
             assertFalse(detector.analyzeABA().hasIssues(),
                 idle.getClass().getSimpleName() + " carries no state: " + detector.analyzeABA());
+        }
+    }
+
+    /**
+     * A Treiber stack that allocates a node per push: a thread reads the head, another pushes a
+     * node on top and pops it again, and the first thread's pop succeeds. The head left and came
+     * back, and the node it names is as it was read, so the swap's premise holds.
+     */
+    @Test
+    void underTheAgentAHeadThatComesBackUnchangedIsNotAnABA() throws InterruptedException {
+        Node b = new Node("B");
+        Node a = new Node("A");
+        a.next = b;
+        ABAProblemDetector detector = new ABAProblemDetector();
+        AtomicReference<Object> head = erased(new AtomicReference<>(a));
+        ABAProblemDetector.AgentSlot slot = detector.agentSlot(head);
+
+        Object seen = slot.get(head);                               // a pop reads the head ...
+        Node next = ((Node) seen).next;
+        onAnotherThread(() -> {
+            Node c = new Node("C");
+            c.next = a;
+            slot.compareAndSet(head, a, c);                         // ... a push lands on top ...
+            slot.compareAndSet(head, c, c.next);                    // ... and is popped again
+        });
+        assertTrue(slot.compareAndSet(head, seen, next));
+        assertFalse(detector.analyzeABA().hasIssues(),
+            "A.next is what the pop read, so swapping the head for it is right: " + detector.analyzeABA());
+    }
+
+    /** The same stack reusing its nodes: A comes back on top of a different node. */
+    @Test
+    void underTheAgentANodePushedBackOverADifferentNextIsTheABA() throws InterruptedException {
+        Node c = new Node("C");
+        Node b = new Node("B");
+        Node a = new Node("A");
+        b.next = c;
+        a.next = b;
+        ABAProblemDetector detector = new ABAProblemDetector();
+        AtomicReference<Object> head = erased(new AtomicReference<>(a));
+        ABAProblemDetector.AgentSlot slot = detector.agentSlot(head);
+
+        Object seen = slot.get(head);
+        Node next = ((Node) seen).next;                             // B, about to leave the stack
+        onAnotherThread(() -> {
+            slot.compareAndSet(head, a, b);                         // pop A
+            slot.compareAndSet(head, b, c);                         // pop B
+            a.next = c;
+            slot.compareAndSet(head, c, a);                         // push A back, over C
+        });
+        assertTrue(slot.compareAndSet(head, seen, next), "the swap puts the popped B back on the stack");
+        assertTrue(detector.analyzeABA().toString().contains("expected A, set to B"),
+            detector.analyzeABA().toString());
+    }
+
+    /** A value whose state cannot be compared is judged as before: it may have changed. */
+    @Test
+    void underTheAgentAValueWhoseStateCannotBeReadKeepsItsFinding() throws InterruptedException {
+        for (Object value : List.of(new ArrayList<>(List.of("x")), new int[] {1}, new Basket(new ArrayList<>()))) {
+            ABAProblemDetector detector = new ABAProblemDetector();
+            AtomicReference<Object> ref = erased(new AtomicReference<>(value));
+            ABAProblemDetector.AgentSlot slot = detector.agentSlot(ref);
+            Object seen = slot.get(ref);
+            onAnotherThread(() -> slot.set(ref, "elsewhere"));
+            onAnotherThread(() -> slot.set(ref, value));
+            assertTrue(slot.compareAndSet(ref, seen, "next"));
+            assertTrue(detector.analyzeABA().hasIssues(),
+                value.getClass().getSimpleName() + " may have changed while it was away");
         }
     }
 
@@ -584,7 +655,10 @@ class ABAProblemDetectorTest {
         ABAProblemDetector.AgentSlot slot = agent.agentSlot(head);
         Object seen = slot.get(head);
         onAnotherThread(() -> slot.set(head, new Node("B")));
-        onAnotherThread(() -> slot.set(head, a));
+        onAnotherThread(() -> {
+            a.next = new Node("X");                       // what makes the A-B-A one that hurts (#1325)
+            slot.set(head, a);
+        });
         assertTrue(slot.compareAndSet(head, seen, new Node("C")));
         List<GradedFindings.Grade> observed = DetectorTrust.clampToCap("ABAProblemDetector",
                 ((GradedFindings) (Object) agent.analyzeABA()).grades());

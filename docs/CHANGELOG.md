@@ -20,6 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A lock-free stack that allocates a node per push is no longer reported as an ABA (#1325).**
+  With the agent attached, a thread that read the head, saw another thread push a node on top and
+  pop it again, and then swapped the head drew `CAS succeeded despite ABA` at `VERDICT`: 26
+  findings in one run of the stack from *Java Concurrency in Practice* listing 15.6. The head did
+  leave and come back, but the node is never pushed twice and its `next` is never rewritten, so
+  the swap is right. `ABAProblemDetector` now reads the expected value's own mutable fields when
+  a thread reads it and again when that thread's compare-and-set finds it back, and reports only
+  when they differ or cannot be compared (an array, a JDK collection, a value of final fields
+  reaching mutable state, a reused stamp). A stack that pushes a popped node back over a
+  different `next` is still reported. What this gives up: a node pushed back over the same
+  `next` is now silent, and so is a compare-and-set whose new value was derived two references
+  away. The hand-recorded path (`recordRead`, `recordCASAttempt`) is unchanged.
+
 - **A shared `Mac`, `Signature` or `Cipher` is now reported with the agent attached (#1321).**
   `SharedStatefulCryptoDetector` had no agent feed, so it fired only when the test body called
   the recording API. A static `Mac` used by 6 threads threw `ArrayIndexOutOfBoundsException` from

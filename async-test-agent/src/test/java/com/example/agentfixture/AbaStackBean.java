@@ -9,7 +9,10 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class AbaStackBean {
 
-    /** A stack node; its mutable {@code next} is what an A-B-A of the head leaves stale. */
+    /**
+     * A stack node. Its mutable {@code next} is what an A-B-A of the head leaves stale, when the
+     * node comes back over a different one (#1325).
+     */
     public static final class Node {
 
         Node next;
@@ -17,6 +20,11 @@ public class AbaStackBean {
 
         public Node(String name) {
             this.name = name;
+        }
+
+        /** Puts this node on top of {@code below}, as a push of a reused node does. */
+        public void pushOver(Node below) {
+            next = below;
         }
 
         @Override

@@ -1267,21 +1267,33 @@ final class Corpus {
                     "java.util.concurrent.atomic.AtomicReference",
                     DetectorType.ABA_PROBLEM, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_FIRE,
-                    "five workers read a stack head, a sixth pops it and pushes the same node "
-                            + "back, and the first of the five to swap the head for the node's "
-                            + "next succeeds on a premise the stack no longer holds. Nothing is "
-                            + "recorded: the woven get, compareAndSet and set run through the "
-                            + "detector, which records each inside its operation (#817)",
+                    "five workers read a stack head and its next, a sixth pops two nodes and "
+                            + "pushes the first back over the third, and the first of the five to "
+                            + "swap the head for the next it read succeeds and puts a popped node "
+                            + "back on the stack. Nothing is recorded: the woven get, "
+                            + "compareAndSet and set run through the detector, which records each "
+                            + "inside its operation (#817) and reads the node's next at the read "
+                            + "and at the swap (#1325)",
                     IssueSeverity.HIGH),
 
             new RecordingSubject("agent_abaStack_nodePushedBackBeforeTheRead", JDK,
                     "java.util.concurrent.atomic.AtomicReference",
                     DetectorType.ABA_PROBLEM, Contract.THREAD_SAFE,
                     RecordingSubject.Expectation.MUST_STAY_SILENT,
-                    "the same pop, push back, reads and swaps, with the pop and push back "
+                    "the same pops, push back, reads and swaps, with the pops and push back "
                             + "before the reads, so every premise is read after the toggle. "
                             + "Recorded by hand that history reads as its twin (#810); woven, the "
                             + "records are in the order the operations ran"),
+
+            new RecordingSubject("agent_abaStack_freshNodePushedAndPoppedAfterTheRead", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ABA_PROBLEM, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the firing row's reads and swaps, with the head taken away and brought back "
+                            + "between them by a push of a new node and a pop of it. That is the "
+                            + "stack of Java Concurrency in Practice listing 15.6, which never "
+                            + "pushes a node twice: the head is the node the swap read and its "
+                            + "next is what the swap read, so the swap is right (#1325)"),
 
             new RecordingSubject("agent_synchronized_onALockOneOwnerReassigns", JDK,
                     "java.lang.Object",
