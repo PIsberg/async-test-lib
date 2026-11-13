@@ -66,9 +66,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release that stored the object it returned, through the slot it read, so a failed swap
   publishes nothing, as before. Covers `AtomicReference`, `AtomicReferenceArray`,
   `AtomicReferenceFieldUpdater`, `AtomicStampedReference` and reference `VarHandle` swaps.
-  What is left is in the limits of `HappensBefore`: a swapping thread that loses its processor
-  for more than a millisecond between its store and its release, a ninth thread swapping one
-  slot at once, and sixteen completed swaps between a read and its lookup.
+  A swapping thread that loses its processor for more than that millisecond between its store
+  and its release no longer leaves its reader unordered (#1334): the read takes the clock of the
+  thread whose swap of that object is still announced. On four cores this was one report in
+  about eight runs of a 40-round, six-thread row, and it failed the Java 26 corpus job once.
+  What is left is in the limits of `HappensBefore`: a ninth thread swapping one slot at once,
+  and sixteen completed swaps between a read and its lookup.
 
 - **A lock-free stack that allocates a node per push is no longer reported as an ABA (#1325).**
   With the agent attached, a thread that read the head, saw another thread push a node on top and

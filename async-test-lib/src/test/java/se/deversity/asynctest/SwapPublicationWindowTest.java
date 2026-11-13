@@ -309,8 +309,8 @@ class SwapPublicationWindowTest {
     }
 
     @Test
-    @DisplayName("a get does not wait on a swap that never ends, and takes nothing from it")
-    void anUnfinishedSwapIsWaitedForBrieflyAndPublishesNothing() throws InterruptedException {
+    @DisplayName("a get does not wait on a swap that stalls after its store, and is ordered after what the swapper did before it")
+    void aSwapStalledAfterItsStoreIsWaitedForBrieflyAndStillOrdersItsReader() throws InterruptedException {
         RaceConditionDetector detector = new RaceConditionDetector();
         Box box = new Box();
         AtomicReference<Object> slot = new AtomicReference<>();
@@ -357,9 +357,79 @@ class SwapPublicationWindowTest {
         assertTrue(returned, "the get must return although the swap it waited for never ended");
         assertTrue(waitedNanos[0] < TimeUnit.SECONDS.toNanos(5),
                 "the wait is bounded at a millisecond; this get took " + waitedNanos[0] + " ns");
-        assertTrue(detector.analyzeRaceConditions().hasIssues(),
-                "No release of the box ever landed, so the reader took nothing: an announcement "
-                        + "is not a release, and waiting for one orders nothing.");
+        assertFalse(detector.analyzeRaceConditions().hasIssues(),
+                "The reader's get returned the box while its swap was still announced and no "
+                        + "release had stored it, so that swap put it there: what the swapper did "
+                        + "before announcing is ordered before the read, however long the swapper "
+                        + "then stays off its processor (a runner under load exceeds the "
+                        + "millisecond the reader waits).");
+    }
+
+    /**
+     * Runs a writer that sets {@code box.value}, announces a swap of {@code box} into
+     * {@code slot} and stalls there without storing or releasing, and a reader that gets from
+     * the slot while the writer is stalled and then uses {@code box}.
+     *
+     * @return whether the detector reported the reader's use of the box
+     */
+    private static boolean reportedWithAStalledAnnouncement(AtomicReference<Object> slot, Box box,
+                                                            RaceConditionDetector detector)
+            throws InterruptedException {
+        CountDownLatch announced = new CountDownLatch(1);
+        CountDownLatch read = new CountDownLatch(1);
+        Thread writer = new Thread(() -> {
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            HappensBefore.swapping(slot, "value", box);
+            announced.countDown();
+            try {
+                read.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            HappensBefore.swapEnded();
+        });
+        Thread reader = new Thread(() -> {
+            try {
+                announced.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            TelemetryRegistry.getAtomicReference(slot);
+            detector.recordFieldRead(box, "value");
+            box.value++;
+            detector.recordFieldWrite(box, "value");
+            read.countDown();
+        });
+        writer.start();
+        reader.start();
+        reader.join(TimeUnit.SECONDS.toMillis(30));
+        read.countDown();
+        writer.join();
+        reader.join();
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a stalled swap of another object orders nothing for a get that returned something else")
+    void aStalledSwapOfAnotherObjectPublishesNothing() throws InterruptedException {
+        AtomicReference<Object> slot = new AtomicReference<>(new Box());
+        assertTrue(reportedWithAStalledAnnouncement(slot, new Box(), new RaceConditionDetector()),
+                "The get returned the object the slot already held, not the one being swapped "
+                        + "in, so the announced swap never reached this reader.");
+    }
+
+    @Test
+    @DisplayName("a get takes the release that stored its object, not a stalled announcement of the same object")
+    void aReleaseThatStoredTheObjectWinsOverAStalledAnnouncementOfIt() throws InterruptedException {
+        Box box = new Box();
+        AtomicReference<Object> slot = new AtomicReference<>();
+        TelemetryRegistry.setAtomicReference(slot, box); // this thread's store put the box there
+        assertTrue(reportedWithAStalledAnnouncement(slot, box, new RaceConditionDetector()),
+                "The box was stored and released by this thread. The other thread's swap of the "
+                        + "same box is only announced, so its write to the box is ordered before "
+                        + "nothing the reader does.");
     }
 
     /**
