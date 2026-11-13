@@ -2689,6 +2689,36 @@ class CorpusIdiomLaneTest {
         broken(() -> UNSIGNALLED.next().shared().acquire());
     }
 
+    /**
+     * The signal comes from a thread the body starts, which is not one of the run's workers: the
+     * body waits on the semaphore for the helper to finish, the way a test waits for a callback.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_semaphore_signalledByAThreadTheBodyStarted() {
+        correct(() -> {
+            Semaphore done = new Semaphore(0);
+            Thread helper = new Thread(() -> done.release());
+            helper.start();
+            done.acquire();
+            helper.join();
+        });
+    }
+
+    /**
+     * The body takes the only permit and hands the work to a helper that never returns it, so
+     * the next caller of this gate would wait for ever.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_semaphore_helperNeverReturnsThePermit() {
+        broken(() -> {
+            Semaphore gate = new Semaphore(1);
+            gate.acquire();
+            Thread helper = new Thread(() -> use(gate.availablePermits()));
+            helper.start();
+            helper.join();
+        });
+    }
+
     // --- 26. A mutable object handed off through a drain (#1295) ------------------------------
 
     private static final Rounds<BlockingQueue<Order>> DRAINED_ORDERS = new Rounds<>(LinkedBlockingQueue::new);

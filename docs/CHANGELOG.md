@@ -20,6 +20,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A semaphore released by a pool task, a callback or a started thread is no longer a leaked
+  permit (#1333).** With the agent attached, a body that waits on a `Semaphore` for a helper
+  thread, `done.acquire()` after `pool.execute(done::release)`, `CompletableFuture.runAsync` or
+  a `new Thread` it started, was reported by `SemaphoreMisuseDetector` as `acquired 1 times but
+  released only 0 times`, at `VERDICT` trust, on every execution: five of five measured
+  variants. The woven hooks looked the detector up for the run's own worker threads only, so
+  the helper's release was dropped while the worker's acquisition was counted. What such a
+  thread takes and returns is now counted apart (`recordHelperAcquire`, `recordHelperRelease`):
+  a release beyond what helper threads took themselves balances a worker's acquisition, and
+  an acquisition beyond what they returned balances a worker's release. What a helper thread
+  does alone is never a finding, so one that outlives the run holding a permit is still not
+  the run's leak. The new idiom pair `idiom_semaphore_signalledByAThreadTheBodyStarted` and
+  `idiom_semaphore_helperNeverReturnsThePermit` pins both directions; the correct row failed
+  the idioms lane with the helper lookup disabled.
+
 - **An object read out of an atomic right after the `compareAndSet` that stored it is ordered
   (#1328).** With the agent attached, `ref.compareAndSet(null, created)` followed by another
   thread's `ref.get().field` could be reported by `AtomicityValidator` and

@@ -71,9 +71,11 @@ class CorpusGatesTest {
     @Test
     @DisplayName("the thread sampler reports a busy thread outside platform code")
     void theSamplerSeesABusyThread() throws InterruptedException {
-        java.util.concurrent.atomic.AtomicBoolean stop = new java.util.concurrent.atomic.AtomicBoolean();
+        // Stopped by interrupt, not by a flag: this class is woven, so a loop polling an
+        // AtomicBoolean or a volatile spends its time in the library's read hook, and a full
+        // corpus run once took 18 of 19 samples there and none in this class.
         Thread busy = new Thread(() -> {
-            while (!stop.get()) {
+            while (!Thread.currentThread().isInterrupted()) {
                 Math.sqrt(System.nanoTime());
             }
         }, "sampler-probe-7");
@@ -83,7 +85,7 @@ class CorpusGatesTest {
             String seen = CorpusGates.threadsInsideNonPlatformCode(20, 2);
             assertTrue(seen.contains("sampler-probe-N in com.example.corpus.CorpusGatesTest"), seen);
         } finally {
-            stop.set(true);
+            busy.interrupt();
             busy.join(1_000);
         }
     }
