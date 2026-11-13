@@ -785,7 +785,9 @@ public final class AsyncTestContext {
      * is running; else the run whose thread started this one through a woven {@code Thread.start}.
      * A run whose analysis has started lends nothing. Reads only; installs nothing.
      *
-     * <p>Only the shared-instance accessors use it, whose detectors judge overlap. A detector that
+     * <p>Only the shared-instance accessors use it, whose detectors judge overlap, and
+     * {@link #helperSemaphoreMisuseDetector}, whose helper counts are never a finding alone. A
+     * detector that
      * judges what never happened during the run, such as a latch never counted down, would read a
      * started thread that outlives the run as the run's own: the corpus agent-pair lane caught a
      * daemon thread waiting on a latch counted down after the run reported as latch misuse.
@@ -2405,6 +2407,22 @@ public final class AsyncTestContext {
     /** {@return the {@link SemaphoreMisuseDetector} for the calling thread's test, or {@code null}} */
     static @Nullable SemaphoreMisuseDetector currentSemaphoreMisuseDetector() {
         AsyncTestContext context = CURRENT.get();
+        return context == null ? null : context.semaphoreMisuseDetector;
+    }
+
+    /**
+     * {@return the {@link SemaphoreMisuseDetector} of the run the calling thread works for
+     * without being one of its workers, or {@code null}, also on a worker}
+     *
+     * <p>For the detector's helper counts only: a permit such a thread takes or returns balances
+     * what the run's workers did and is never a finding alone, which is what keeps a started
+     * thread that outlives the run from being read as the run's leak ({@link #agentContext}).
+     */
+    static @Nullable SemaphoreMisuseDetector helperSemaphoreMisuseDetector() {
+        if (CURRENT.get() != null) {
+            return null;
+        }
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.semaphoreMisuseDetector;
     }
 

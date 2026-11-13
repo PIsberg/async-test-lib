@@ -6290,6 +6290,22 @@ final class Corpus {
                             + "exceed releases by one per thread",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_semaphore_signalledByAThreadTheBodyStarted", JDK,
+                    "java.util.concurrent.Semaphore",
+                    DetectorType.SEMAPHORE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the body waits on a semaphore that a thread it started releases; the "
+                            + "release is on a thread that is not a worker, and was dropped, so "
+                            + "every such signal read as a leaked permit at VERDICT trust"),
+
+            new RecordingSubject("idiom_semaphore_helperNeverReturnsThePermit", JDK,
+                    "java.util.concurrent.Semaphore",
+                    DetectorType.SEMAPHORE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the body takes the only permit and the helper it hands the work to never "
+                            + "releases it",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_drainTo_handsOffAMutableObject", JDK,
                     "java.util.concurrent.LinkedBlockingQueue",
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,

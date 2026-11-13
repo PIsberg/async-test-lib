@@ -272,4 +272,80 @@ public class SemaphoreMisuseDetectorTest {
 
         assertEquals(1, report.overReleases.size(), report.toString());
     }
+
+    /**
+     * The run's thread waits on a signal that a pool thread, a callback or a thread the body
+     * started sends: the permit it took came from that release, so nothing leaked.
+     */
+    @Test
+    void aPermitTheRunTookAndAHelperThreadSentIsNotALeak() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore done = new Semaphore(0);
+        detector.recordHelperRelease(done, "done");
+        detector.recordAcquire(done, "done");
+
+        SemaphoreMisuseDetector.SemaphoreMisuseReport report = detector.analyze();
+
+        assertFalse(report.hasIssues(), report.toString());
+    }
+
+    /** The same hand-over with the permit taken first and returned by the helper afterwards. */
+    @Test
+    void aPermitTheRunTookAndAHelperThreadReturnedIsNotALeak() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore mutex = new Semaphore(1);
+        detector.recordAcquire(mutex, "mutex");
+        detector.recordHelperRelease(mutex, "mutex");
+
+        SemaphoreMisuseDetector.SemaphoreMisuseReport report = detector.analyze();
+
+        assertFalse(report.hasIssues(), report.toString());
+    }
+
+    /**
+     * A helper thread may outlive the run, so a permit it holds when the run is analysed is not
+     * the run's leak, and a signal it sent that nobody awaited is not a permit returned twice.
+     */
+    @Test
+    void whatAHelperThreadTakesOrSendsAloneIsNeverAFinding() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore held = new Semaphore(1);
+        Semaphore unawaited = new Semaphore(0);
+        detector.recordHelperAcquire(held, "held");
+        detector.recordHelperRelease(unawaited, "unawaited");
+        detector.recordHelperRelease(unawaited, "unawaited");
+
+        SemaphoreMisuseDetector.SemaphoreMisuseReport report = detector.analyze();
+
+        assertFalse(report.hasIssues(), report.toString());
+    }
+
+    /** A helper that takes a permit and returns it has returned its own, not the run's. */
+    @Test
+    void aHelperThreadsOwnAcquireAndReleaseDoNotCoverTheRunsLeak() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore pool = new Semaphore(2);
+        detector.recordAcquire(pool, "pool");
+        detector.recordHelperAcquire(pool, "pool");
+        detector.recordHelperRelease(pool, "pool");
+
+        SemaphoreMisuseDetector.SemaphoreMisuseReport report = detector.analyze();
+
+        assertEquals(1, report.permitLeaks.size(), report.toString());
+    }
+
+    /** A permit a helper took and the run's thread returned is a hand-over, not an over-release. */
+    @Test
+    void aPermitAHelperThreadTookAndTheRunReturnedIsNotAnOverRelease() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore mutex = new Semaphore(2);
+        detector.recordAcquire(mutex, "mutex");
+        detector.recordRelease(mutex, "mutex");
+        detector.recordHelperAcquire(mutex, "mutex");
+        detector.recordRelease(mutex, "mutex");
+
+        SemaphoreMisuseDetector.SemaphoreMisuseReport report = detector.analyze();
+
+        assertFalse(report.hasIssues(), report.toString());
+    }
 }

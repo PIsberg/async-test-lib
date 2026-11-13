@@ -231,11 +231,7 @@ public final class AgentConcurrencyUtilHooks {
     public static void acquire(Semaphore receiver) throws InterruptedException {
         ControlledSchedule.point();
         receiver.acquire();
-        HappensBefore.acquire(receiver);
-        SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
-        if (detector != null) {
-            detector.recordAcquire(receiver, receiver.getClass().getName());
-        }
+        recordAcquired(receiver, 1);
     }
 
     /**
@@ -248,11 +244,7 @@ public final class AgentConcurrencyUtilHooks {
         ControlledSchedule.point();
         boolean acquired = receiver.tryAcquire();
         if (acquired) {
-            HappensBefore.acquire(receiver);
-            SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
-            if (detector != null) {
-                detector.recordAcquire(receiver, receiver.getClass().getName());
-            }
+            recordAcquired(receiver, 1);
         }
         return acquired;
     }
@@ -314,10 +306,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static void release(Semaphore receiver) {
         ControlledSchedule.point();
-        SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
-        if (detector != null) {
-            detector.recordRelease(receiver, receiver.getClass().getName());
-        }
+        recordReleasing(receiver, 1);
         HappensBefore.release(receiver);
         receiver.release();
     }
@@ -405,22 +394,50 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static void release(Semaphore receiver, int permits) {
         ControlledSchedule.point();
-        SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
-        if (detector != null) {
-            for (int i = 0; i < permits; i++) {
-                detector.recordRelease(receiver, receiver.getClass().getName());
-            }
-        }
+        recordReleasing(receiver, permits);
         HappensBefore.release(receiver);
         receiver.release(permits);
     }
 
+    /**
+     * Records permits taken. On a worker they are the run's own; on a thread that only works
+     * for the run, a pool thread with a handed task or a thread the body started, they go to
+     * the helper count, which is never a finding by itself.
+     */
     private static void recordAcquired(Semaphore receiver, int permits) {
         HappensBefore.acquire(receiver);
         SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
         if (detector != null) {
             for (int i = 0; i < permits; i++) {
                 detector.recordAcquire(receiver, receiver.getClass().getName());
+            }
+            return;
+        }
+        detector = AsyncTestContext.helperSemaphoreMisuseDetector();
+        if (detector != null) {
+            for (int i = 0; i < permits; i++) {
+                detector.recordHelperAcquire(receiver, receiver.getClass().getName());
+            }
+        }
+    }
+
+    /**
+     * Records permits about to be returned, the way {@link #recordAcquired} records them taken.
+     * A release on a helper thread used to be dropped, so a worker waiting on a signal that a
+     * pool task or a started thread sent was reported as leaking the permit it took.
+     */
+    private static void recordReleasing(Semaphore receiver, int permits) {
+        SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
+        if (detector != null) {
+            for (int i = 0; i < permits; i++) {
+                detector.recordRelease(receiver, receiver.getClass().getName());
+            }
+            return;
+        }
+        detector = AsyncTestContext.helperSemaphoreMisuseDetector();
+        if (detector != null) {
+            for (int i = 0; i < permits; i++) {
+                detector.recordHelperRelease(receiver, receiver.getClass().getName());
             }
         }
     }

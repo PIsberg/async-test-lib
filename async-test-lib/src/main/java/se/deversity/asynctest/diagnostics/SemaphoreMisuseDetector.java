@@ -48,6 +48,14 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
         final AtomicInteger initialPermits;
         final AtomicInteger acquireCount = new AtomicInteger(0);
         final AtomicInteger releaseCount = new AtomicInteger(0);
+        /**
+         * Permits taken and returned on threads that work for the run without being its workers:
+         * a pool thread running a handed task, a thread the body started. Kept apart because
+         * such a thread may outlive the run, so what it does alone is never a finding; it only
+         * balances what the run's own threads did (see {@link #recordHelperRelease}).
+         */
+        final AtomicInteger helperAcquireCount = new AtomicInteger(0);
+        final AtomicInteger helperReleaseCount = new AtomicInteger(0);
         final Set<Long> acquiringThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> releasingThreads = ConcurrentHashMap.newKeySet();
         final AtomicInteger maxConcurrentAcquires = new AtomicInteger(0);
@@ -133,6 +141,41 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
     }
 
     /**
+     * Record a permit acquired on a thread that works for the run without being one of its
+     * workers. It is not held against the run, since the thread may still hold it when the run
+     * is analysed; it only accounts for a release the run's own thread makes of that permit,
+     * which would otherwise read as an over-release.
+     *
+     * @param semaphore the semaphore being recorded, tracked by identity
+     * @param name the semaphore name
+     * @since 1.14.3
+     */
+    public void recordHelperAcquire(Semaphore semaphore, String name) {
+        if (!enabled || semaphore == null) {
+            return;
+        }
+        stateFor(semaphore, name, "semaphore").helperAcquireCount.incrementAndGet();
+    }
+
+    /**
+     * Record a permit released on a thread that works for the run without being one of its
+     * workers: the signal a pool task, a callback or a started thread sends to the worker that
+     * waits for it. Dropping it made every such signal a permit leak. A release beyond what
+     * helper threads took themselves balances an acquisition by the run; a surplus is never an
+     * over-release.
+     *
+     * @param semaphore the semaphore being recorded, tracked by identity
+     * @param name the semaphore name
+     * @since 1.14.3
+     */
+    public void recordHelperRelease(Semaphore semaphore, String name) {
+        if (!enabled || semaphore == null) {
+            return;
+        }
+        stateFor(semaphore, name, "semaphore").helperReleaseCount.incrementAndGet();
+    }
+
+    /**
      * Analyze semaphore usage for issues.
      * 
      * @return a report of detected issues
@@ -147,21 +190,29 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
             int available = state.semaphore.availablePermits();
             int initialPermits = state.initialPermits.get();
 
+            // What helper threads did beyond their own use: permits they returned for the run,
+            // and permits they took that the run returned.
+            int helperNet = state.helperReleaseCount.get() - state.helperAcquireCount.get();
+            int returnedByHelpers = Math.max(0, helperNet);
+            int takenByHelpers = Math.max(0, -helperNet);
+
             // Check for permit leaks (more acquires than releases)
-            if (acquires > releases) {
+            if (acquires > releases + returnedByHelpers) {
                 report.permitLeaks.add(String.format(
                     "%s: acquired %d times but released only %d times (%d permits potentially leaked)",
-                    state.name, acquires, releases, acquires - releases));
+                    state.name, acquires, releases + returnedByHelpers,
+                    acquires - releases - returnedByHelpers));
             }
 
             // Check for over-release (more releases than acquires). With no declared capacity
             // to hold it to, a semaphore released before it was ever acquired is a signal, and
             // its surplus is a signal not yet awaited.
             boolean signal = initialPermits < 0 && state.releasedBeforeAcquired;
-            if (releases > acquires && !signal) {
+            if (releases > acquires + takenByHelpers && !signal) {
                 report.overReleases.add(String.format(
                     "%s: released %d times but acquired only %d times (%d extra releases)",
-                    state.name, releases, acquires, releases - acquires));
+                    state.name, releases, acquires + takenByHelpers,
+                    releases - acquires - takenByHelpers));
             }
 
             // Check for unreleased permits at completion

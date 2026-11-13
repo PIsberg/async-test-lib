@@ -204,7 +204,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 19. Semaphore Misuse Detector
 * **Severity**: `HIGH`
-* **Description**: Tracks `acquire()`/`release()` pairs per `Semaphore` to catch permit leaks (acquire without a matching release), over-release (releasing more permits than were acquired), and permits still outstanding at test completion. Releases are counted from the first one seen, so a semaphore used as a signal, released by one thread and acquired by another, balances. A semaphore the run released before it ever acquired it is such a signal, and a surplus on it is not reported as an over-release unless the test registered its permit count with `registerSemaphore`.
+* **Description**: Tracks `acquire()`/`release()` pairs per `Semaphore` to catch permit leaks (acquire without a matching release), over-release (releasing more permits than were acquired), and permits still outstanding at test completion. Releases are counted from the first one seen, so a semaphore used as a signal, released by one thread and acquired by another, balances. A semaphore the run released before it ever acquired it is such a signal, and a surplus on it is not reported as an over-release unless the test registered its permit count with `registerSemaphore`. With the agent attached, a permit taken or returned on a thread that works for the run without being one of its workers, a pool thread running a handed task or a thread the body started, is counted apart (#1333): a release there balances a worker's acquisition and an acquisition there balances a worker's release, and what such a thread does alone is never a finding, since it may outlive the run.
 * **Buggy Code**:
   ```java
   semaphore.acquire();
