@@ -473,7 +473,8 @@ public class AtomicityValidator {
      * {@code lockCoveredTheRound}, {@code safePublication} and {@code oneConstant}, the lockset's
      * own answers; {@code postShareLock}, {@code hintReadsConfirmed}, {@code settledCache} and
      * {@code ownershipGenerationsAgree}, the per-instance excuses; {@code happensBefore} and
-     * {@code orderedOrLocked}, the ordering rules; and {@code volatileSingleWriter}. One key counts
+     * {@code orderedOrLocked}, the ordering rules; {@code volatileSingleWriter}; and {@code volatileBlindWrites}, a
+     * volatile field the round only wrote (#1296). One key counts
      * accesses rather than groups: {@code constructionDropped}, the accesses of an object built
      * before a corroborated hand-off, which leave the analysis before grouping.
      *
@@ -1538,6 +1539,14 @@ public class AtomicityValidator {
                         && writerThreads(roundAccesses) == 1) {
                     sawUnguarded = false;
                     verdict = "volatileSingleWriter";
+                }
+                // A volatile field the round only wrote (#1296): a blind store makes no check, so
+                // there is no window for another thread to change the state in, and nothing to
+                // lose but the order of the stores, which a volatile defines. A plain field keeps
+                // its finding: its writes are unordered, whatever the line is called.
+                if (sawUnguarded && !hasRead && locks != null && locks.hasVolatileWrites()) {
+                    sawUnguarded = false;
+                    verdict = "volatileBlindWrites";
                 }
                 String decided = threads.size() <= 1 ? "oneThread"
                         : !hasWrite ? "noWrite"

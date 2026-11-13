@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A volatile field that threads only write no longer draws a TOCTOU window (#1296).** Six
+  threads each storing their own value into one `volatile` field, with nothing reading it, drew
+  "state changed between check/use windows on 6 threads" from `ATOMICITY_VIOLATIONS`: the line
+  asked only for a write, where the compound-access line beside it asks for a read and a write. A
+  blind store makes no check, so a round that only wrote a volatile field is now cleared, under
+  the new verdict key `volatileBlindWrites`. A volatile field read and then written by two threads
+  (volatile `count++`) still reports, and so does a plain field several threads only write, whose
+  stores nothing orders. Test first in `AtomicityVerdictCountsTest`, red before the change, with
+  both of those pinned beside it. New corpus idiom pair `idiom_volatileStatus_lastWriterWins` /
+  `idiom_volatileStatus_countsWithReadThenWrite`: the correct row failed the idioms lane against
+  the previous jar.
+
 - **An object handed over through `BlockingQueue.drainTo` is no longer reported as raced (#1295).**
   A woven `take` or `poll` acquired what the element's `put` published, but a drain names no
   element, so it acquired nothing: an order built by one thread, put on a queue, drained into a
