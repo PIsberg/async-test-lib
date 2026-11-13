@@ -58,9 +58,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `stream()` (each element is received as the pipeline reaches it) and six calls the agent did
   not weave before: `Iterable.forEach`, `Map.forEach`, `Map.getOrDefault`, `Map.putIfAbsent`
   (a refused one withdraws its release, and the value already there is received),
-  `Deque.peekFirst` and `Deque.peekLast`. Not covered yet and still open on #1294: the values of
-  an iterated `entrySet()`, the navigable-map reads such as `firstEntry`, `parallelStream()`,
-  and `drainTo` into a non-list. Test first in `AgentHappensBeforeFeedTest`, eight tests red
+  `Deque.peekFirst` and `Deque.peekLast`. A third slice covers the values of an iterated
+  `entrySet()` (the entry's key and value are received with it, through a for-each, `forEach`
+  or `stream()`) and eight `NavigableMap` calls the agent did not weave before: `firstEntry`,
+  `lastEntry`, `floorEntry`, `ceilingEntry`, `lowerEntry`, `higherEntry`, `pollFirstEntry` and
+  `pollLastEntry`; corpus pairs `idiom_skipListMap_*` and `idiom_concurrentHashMap_*EntrySet`/
+  `*entryValue*`, both correct rows red against the previous jar. Not covered yet and still
+  open on #1294: `parallelStream()` and `drainTo` into a non-list. Test first in `AgentHappensBeforeFeedTest`, eight tests red
   before the changes, each row with a twin that keeps its finding. New corpus idiom pairs
   `idiom_computeIfAbsent_*`, `idiom_copyOnWriteListeners_*` and `idiom_putIfAbsent_*`: every
   correct row failed the idioms lane against the previous jar.

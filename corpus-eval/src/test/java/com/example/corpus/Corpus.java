@@ -6335,6 +6335,40 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same task with the runner writing the result's field after the run "
                             + "completed it, unordered with the other threads' reads",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_skipListMap_valueReadThroughFirstEntry", JDK,
+                    "java.util.concurrent.ConcurrentSkipListMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread puts a built value in a sorted concurrent map, the others "
+                            + "read it through firstEntry().getValue(). The map orders the "
+                            + "build before each read (#1294)"),
+
+            new RecordingSubject("idiom_skipListMap_valueFilledInAfterThePut", JDK,
+                    "java.util.concurrent.ConcurrentSkipListMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same sorted map with the value's field written after the put "
+                            + "published it: the write and the other threads' reads are "
+                            + "unordered",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_concurrentHashMap_valuesReadThroughEntrySet", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread puts a built value, the others loop over entrySet() and read "
+                            + "each entry's value. The map orders the build before each "
+                            + "read (#1294)"),
+
+            new RecordingSubject("idiom_concurrentHashMap_entryValueFilledInAfterThePut", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same entrySet() loop with the value's field written after the put "
+                            + "published it: the write and the other threads' reads are "
+                            + "unordered",
                     IssueSeverity.HIGH)
     );
 

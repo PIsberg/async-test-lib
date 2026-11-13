@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -13,6 +14,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -26,6 +28,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -383,6 +386,77 @@ class AgentHappensBeforeFeedTest {
         Deque<Object> plain = new ArrayDeque<>();
         assertTrue(containerHandOffReported(b -> AgentCollectionHooks.dequeAddFirst(plain, b),
                 () -> AgentCollectionHooks.dequePeekFirst(plain)), "an ArrayDeque orders nothing");
+    }
+
+    @Test
+    @DisplayName("a concurrent navigable map's woven entry reads receive the value the put published (#1294)")
+    void wovenNavigationReads() throws InterruptedException {
+        List<Function<ConcurrentSkipListMap<Object, Object>, Map.Entry<Object, Object>>> woven = List.of(
+                AgentCollectionHooks::navigableFirstEntry,
+                AgentCollectionHooks::navigableLastEntry,
+                m -> AgentCollectionHooks.navigableFloorEntry(m, "k"),
+                m -> AgentCollectionHooks.navigableCeilingEntry(m, "k"),
+                m -> AgentCollectionHooks.navigableLowerEntry(m, "z"),
+                m -> AgentCollectionHooks.navigableHigherEntry(m, "a"),
+                AgentCollectionHooks::navigablePollFirstEntry,
+                AgentCollectionHooks::navigablePollLastEntry);
+        for (int i = 0; i < woven.size(); i++) {
+            ConcurrentSkipListMap<Object, Object> map = new ConcurrentSkipListMap<>();
+            var read = woven.get(i);
+            assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(map, "k", b),
+                    () -> read.apply(map).getValue()), "put then navigation read " + i);
+        }
+        ConcurrentSkipListMap<Object, Object> plain = new ConcurrentSkipListMap<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.mapPut(plain, "k", b),
+                () -> plain.firstEntry().getValue()), "the unwoven firstEntry received nothing");
+        java.util.TreeMap<Object, Object> tree = new java.util.TreeMap<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.mapPut(tree, "k", b),
+                () -> AgentCollectionHooks.navigableFirstEntry(tree).getValue()),
+                "a TreeMap orders nothing");
+        assertNull(AgentCollectionHooks.navigableFirstEntry(new ConcurrentSkipListMap<>()), "an empty map");
+    }
+
+    @Test
+    @DisplayName("iterating a concurrent map's entry set receives each entry's value (#1294)")
+    void wovenEntrySetValues() throws InterruptedException {
+        ConcurrentHashMap<Object, Object> looped = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(looped, "k", b), () -> {
+            Iterable<Object> entries = erased(AgentCollectionHooks.mapEntrySet(looped));
+            return ((Map.Entry<?, ?>) AgentCollectionHooks.iterableIterator(entries).next()).getValue();
+        }), "put then a for-each over entrySet()");
+
+        ConcurrentHashMap<Object, Object> remaining = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(remaining, "k", b), () -> {
+            Iterable<Object> entries = erased(AgentCollectionHooks.mapEntrySet(remaining));
+            Object[] seen = new Object[1];
+            AgentCollectionHooks.iterableIterator(entries)
+                    .forEachRemaining(e -> seen[0] = ((Map.Entry<?, ?>) e).getValue());
+            return seen[0];
+        }), "put then forEachRemaining over entrySet()");
+
+        ConcurrentHashMap<Object, Object> each = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(each, "k", b), () -> {
+            Iterable<Object> entries = erased(AgentCollectionHooks.mapEntrySet(each));
+            Object[] seen = new Object[1];
+            AgentCollectionHooks.iterableForEach(entries, e -> seen[0] = ((Map.Entry<?, ?>) e).getValue());
+            return seen[0];
+        }), "put then entrySet().forEach");
+
+        ConcurrentHashMap<Object, Object> streamed = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(streamed, "k", b), () -> {
+            Collection<Object> entries = erased(AgentCollectionHooks.mapEntrySet(streamed));
+            return AgentCollectionHooks.collectionStream(entries)
+                    .map(e -> ((Map.Entry<?, ?>) e).getValue()).findFirst().orElseThrow();
+        }), "put then entrySet().stream()");
+
+        ConcurrentHashMap<Object, Object> bare = new ConcurrentHashMap<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.mapPut(bare, "k", b),
+                () -> bare.entrySet().iterator().next().getValue()), "the unwoven loop received nothing");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T erased(Object view) {
+        return (T) view;
     }
 
     /**
