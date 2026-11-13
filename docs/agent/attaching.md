@@ -529,7 +529,11 @@ the access went through, so a subclass field that shadows a superclass field has
 and a volatile write in a constructor releases once the super constructor has run (#813). An `AtomicReference` is modelled the same way (#741): a
 `set`, `lazySet`, `setRelease`, successful `compareAndSet` or `getAndSet` releases the slot, and a
 `get` or `getAcquire` acquires what the store whose value it returned published, so the same object
-read out of another slot receives nothing. So is a reference slot reached through an `AtomicReferenceFieldUpdater`,
+read out of another slot receives nothing. Its `updateAndGet`, `getAndUpdate`, `accumulateAndGet`,
+`getAndAccumulate`, `compareAndExchange` and `weakCompareAndSetVolatile` run as that `get` and that
+`compareAndSet` (#1334), so an object built in an update function is published to the thread that reads
+it through the slot; `weakCompareAndSetPlain`, the deprecated `weakCompareAndSet`, and the acquire and
+release flavours of the exchange and the weak swap are not woven and order nothing. So is a reference slot reached through an `AtomicReferenceFieldUpdater`,
 an `AtomicReferenceArray` element or a `VarHandle` (since #741): their volatile, release and successful
 compare-and-set stores release the slot, and an updater `get`, an array `get` or `getAcquire`, or a
 handle's `getVolatile` or `getAcquire` acquires. An `AtomicStampedReference` is a slot too (#817): its

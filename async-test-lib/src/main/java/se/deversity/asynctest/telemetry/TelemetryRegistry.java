@@ -25,8 +25,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.atomic.AtomicStampedReference;
+import java.util.function.BinaryOperator;
 import java.util.function.IntBinaryOperator;
 import java.util.function.IntUnaryOperator;
+import java.util.function.UnaryOperator;
 
 /**
  * Global registry that routes field-access events from producer threads into a shared
@@ -2975,6 +2977,135 @@ public final class TelemetryRegistry {
         Object value = aba == null ? slot.getAcquire() : aba.getAcquire(slot);
         HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value, released);
         return value;
+    }
+
+    /**
+     * Weaves {@code AtomicReference.updateAndGet} as the loop the JDK runs inside it, made of the
+     * woven read and the woven swap: the function's argument comes from a get that acquires what
+     * the store of that value published, and the reference it returns is published by a
+     * compareAndSet like any other (#1334). Unwoven, the call stored with a volatile write that
+     * released nothing, so an object built in the function and read through the slot by another
+     * thread looked unordered.
+     *
+     * @param slot   the atomic the call site invoked
+     * @param update the function applied to the current reference, again after a lost swap
+     * @return the reference stored
+     * @since 1.14.3
+     */
+    public static @Nullable Object updateAndGetAtomicReference(AtomicReference<Object> slot,
+                                                               UnaryOperator<Object> update) {
+        for (;;) {
+            Object seen = getAtomicReference(slot);
+            Object next = update.apply(seen);
+            if (compareAndSetAtomicReference(slot, seen, next)) {
+                return next;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReference.getAndUpdate}, as {@link #updateAndGetAtomicReference}.
+     *
+     * @param slot   the atomic the call site invoked
+     * @param update the function applied to the current reference, again after a lost swap
+     * @return the reference replaced
+     * @since 1.14.3
+     */
+    public static @Nullable Object getAndUpdateAtomicReference(AtomicReference<Object> slot,
+                                                               UnaryOperator<Object> update) {
+        for (;;) {
+            Object seen = getAtomicReference(slot);
+            if (compareAndSetAtomicReference(slot, seen, update.apply(seen))) {
+                return seen;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReference.accumulateAndGet}, as {@link #updateAndGetAtomicReference}.
+     *
+     * @param slot        the atomic the call site invoked
+     * @param given       the function's second argument
+     * @param accumulator the function applied to the current reference and {@code given}
+     * @return the reference stored
+     * @since 1.14.3
+     */
+    public static @Nullable Object accumulateAndGetAtomicReference(AtomicReference<Object> slot,
+                                                                   @Nullable Object given,
+                                                                   BinaryOperator<Object> accumulator) {
+        for (;;) {
+            Object seen = getAtomicReference(slot);
+            Object next = accumulator.apply(seen, given);
+            if (compareAndSetAtomicReference(slot, seen, next)) {
+                return next;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReference.getAndAccumulate}, as {@link #updateAndGetAtomicReference}.
+     *
+     * @param slot        the atomic the call site invoked
+     * @param given       the function's second argument
+     * @param accumulator the function applied to the current reference and {@code given}
+     * @return the reference replaced
+     * @since 1.14.3
+     */
+    public static @Nullable Object getAndAccumulateAtomicReference(AtomicReference<Object> slot,
+                                                                   @Nullable Object given,
+                                                                   BinaryOperator<Object> accumulator) {
+        for (;;) {
+            Object seen = getAtomicReference(slot);
+            if (compareAndSetAtomicReference(slot, seen, accumulator.apply(seen, given))) {
+                return seen;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReference.compareAndExchange}: a won exchange is the woven
+     * compareAndSet, publishing {@code update}; a lost one publishes nothing and returns a
+     * reference the slot held instead, read with the woven get, so it acquires what the store
+     * of that reference published (#1334). The witness is read after the swap failed, not by it;
+     * one equal to {@code expected} means the slot went back, and the swap is tried again.
+     *
+     * @param slot     the atomic the call site invoked
+     * @param expected the reference the slot must hold
+     * @param update   the reference to store
+     * @return {@code expected} when the exchange happened, otherwise what the slot held
+     * @since 1.14.3
+     */
+    @SuppressWarnings("ReferenceEquality") // the slot compares by identity
+    public static @Nullable Object compareAndExchangeAtomicReference(AtomicReference<Object> slot,
+                                                                     @Nullable Object expected,
+                                                                     @Nullable Object update) {
+        for (;;) {
+            if (compareAndSetAtomicReference(slot, expected, update)) {
+                return expected;
+            }
+            Object witness = getAtomicReference(slot);
+            if (witness != expected) { // NOPMD CompareObjectsWithEquals - the slot compares by identity
+                return witness;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReference.weakCompareAndSetVolatile} as the strong swap, which a weak
+     * one may always be: it stores with a volatile write and publishes like
+     * {@link #compareAndSetAtomicReference} (#1334). {@code weakCompareAndSetPlain} and the
+     * deprecated {@code weakCompareAndSet} have plain memory semantics and stay unwoven.
+     *
+     * @param slot     the atomic the call site invoked
+     * @param expected the reference the slot must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.14.3
+     */
+    public static boolean weakCompareAndSetVolatileAtomicReference(AtomicReference<Object> slot,
+                                                                   @Nullable Object expected,
+                                                                   @Nullable Object update) {
+        return compareAndSetAtomicReference(slot, expected, update);
     }
 
     /**

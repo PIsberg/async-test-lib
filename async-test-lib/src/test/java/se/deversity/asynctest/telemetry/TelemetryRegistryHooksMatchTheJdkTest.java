@@ -437,6 +437,33 @@ class TelemetryRegistryHooksMatchTheJdkTest {
         add("getAtomicReference", slot, TelemetryRegistry::getAtomicReference, AtomicReference::get, state);
         add("getAcquireAtomicReference", slot, TelemetryRegistry::getAcquireAtomicReference,
                 AtomicReference::getAcquire, state);
+        // The update, accumulate, exchange and weak-volatile forms (#1334).
+        add("updateAndGetAtomicReference", slot,
+                s -> TelemetryRegistry.updateAndGetAtomicReference(s, old -> old == A ? B : C),
+                s -> s.updateAndGet(old -> old == A ? B : C), state);
+        add("getAndUpdateAtomicReference", slot,
+                s -> TelemetryRegistry.getAndUpdateAtomicReference(s, old -> old == A ? B : C),
+                s -> s.getAndUpdate(old -> old == A ? B : C), state);
+        add("accumulateAndGetAtomicReference", slot,
+                s -> TelemetryRegistry.accumulateAndGetAtomicReference(s, B, (old, given) -> old == A ? given : C),
+                s -> s.accumulateAndGet(B, (old, given) -> old == A ? given : C), state);
+        add("getAndAccumulateAtomicReference", slot,
+                s -> TelemetryRegistry.getAndAccumulateAtomicReference(s, B, (old, given) -> old == A ? given : C),
+                s -> s.getAndAccumulate(B, (old, given) -> old == A ? given : C), state);
+        add("updateAndGetAtomicReference to null", slot,
+                s -> TelemetryRegistry.updateAndGetAtomicReference(s, old -> null),
+                s -> s.updateAndGet(old -> null), state);
+        for (Object expected : new Object[] {A, B}) {
+            add("compareAndExchangeAtomicReference(" + expected + ", c)", slot,
+                    s -> TelemetryRegistry.compareAndExchangeAtomicReference(s, expected, C),
+                    s -> s.compareAndExchange(expected, C), state);
+            add("weakCompareAndSetVolatileAtomicReference(" + expected + ", c)", slot,
+                    s -> expected == A
+                            ? untilWon(() -> TelemetryRegistry.weakCompareAndSetVolatileAtomicReference(s, expected, C))
+                            : TelemetryRegistry.weakCompareAndSetVolatileAtomicReference(s, expected, C),
+                    s -> expected == A ? untilWon(() -> s.weakCompareAndSetVolatile(expected, C))
+                            : s.weakCompareAndSetVolatile(expected, C), state);
+        }
     }
 
     // ---- AtomicReferenceFieldUpdater -----------------------------------------------------------

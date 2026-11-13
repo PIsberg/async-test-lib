@@ -995,6 +995,83 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- Publication by an update function or an exchange (#1334) ------------------------------
+
+    private static final Rounds<AtomicReference<Config>> UPDATED_CONFIGS = new Rounds<>(AtomicReference::new);
+    private static final Rounds<AtomicReference<Config>> EXCHANGED_CONFIGS = new Rounds<>(AtomicReference::new);
+    private static final Rounds<PlainReference> REPLACED_CONFIGS = new Rounds<>(PlainReference::new);
+    private static final Rounds<PlainReference> COMPARED_CONFIGS = new Rounds<>(PlainReference::new);
+
+    /**
+     * Every thread replaces the round's config with a successor it builds inside updateAndGet:
+     * the function reads the port of the config another thread stored, and the new config's
+     * port is set after construction, before the swap that publishes it.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_updateAndGet_buildsTheSuccessorInTheFunction() {
+        correct(() -> {
+            AtomicReference<Config> reference = UPDATED_CONFIGS.next().shared();
+            Config mine = reference.updateAndGet(old -> {
+                Config fresh = new Config();
+                fresh.setPort(old == null ? 1 : old.getPort() + 1);
+                return fresh;
+            });
+            use(mine.getPort() + reference.get().getPort());
+        });
+    }
+
+    /** The same replacement through a plain field: read, build, assign. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_updateAndGet_plainFieldReadThenAssign() {
+        broken(() -> {
+            PlainReference reference = REPLACED_CONFIGS.next().shared();
+            Config old = reference.value;
+            Config fresh = new Config();
+            fresh.setPort(old == null ? 1 : old.getPort() + 1);
+            reference.value = fresh;
+            use(reference.value.getPort());
+        });
+    }
+
+    /** The same replacement as a compareAndExchange loop that carries on from the witness. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_compareAndExchange_retriesFromTheWitness() {
+        correct(() -> {
+            AtomicReference<Config> reference = EXCHANGED_CONFIGS.next().shared();
+            Config seen = reference.get();
+            for (;;) {
+                Config fresh = new Config();
+                fresh.setPort(seen == null ? 1 : seen.getPort() + 1);
+                Config witness = reference.compareAndExchange(seen, fresh);
+                if (witness == seen) {
+                    break;
+                }
+                seen = witness;
+            }
+            use(reference.get().getPort());
+        });
+    }
+
+    /** The same loop through a plain field: compare what is there, then assign. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_compareAndExchange_plainFieldCompareThenAssign() {
+        broken(() -> {
+            PlainReference reference = COMPARED_CONFIGS.next().shared();
+            Config seen = reference.value;
+            for (;;) {
+                Config fresh = new Config();
+                fresh.setPort(seen == null ? 1 : seen.getPort() + 1);
+                Config witness = reference.value;
+                if (witness == seen) {
+                    reference.value = fresh;
+                    break;
+                }
+                seen = witness;
+            }
+            use(reference.value.getPort());
+        });
+    }
+
     // --- A MessageDigest pool that hands out holders (#747) -----------------------------------
 
     /** What the holder pool hands out: a wrapper around one digest, never the digest itself. */

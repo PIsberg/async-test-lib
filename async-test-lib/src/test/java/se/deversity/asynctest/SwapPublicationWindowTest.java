@@ -7,6 +7,8 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicStampedReference;
 import java.util.function.Supplier;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -33,6 +35,20 @@ class SwapPublicationWindowTest {
         int value;
     }
 
+    /**
+     * A drain for the offer each swap publishes: with none the ring fills after about 8,000
+     * rounds in this class, and every later swap waits out the ring's give-up second.
+     */
+    @BeforeEach
+    void drainTelemetry() {
+        TelemetryRegistry.start();
+    }
+
+    @AfterEach
+    void stopTheDrain() {
+        TelemetryRegistry.stop();
+    }
+
     /** A reference slot of one kind: a swap from empty, and a read. */
     private interface Slot {
 
@@ -53,6 +69,25 @@ class SwapPublicationWindowTest {
             public Object read() {
                 return TelemetryRegistry.getAtomicReference(slot);
             }
+        };
+    }
+
+    /** An {@code AtomicReference} whose swap from empty is {@code swap}; read with a get. */
+    private static Supplier<Slot> atomicReferenceSwappedBy(
+            java.util.function.BiPredicate<AtomicReference<Object>, Object> swap) {
+        return () -> {
+            AtomicReference<Object> slot = new AtomicReference<>();
+            return new Slot() {
+                @Override
+                public boolean swapIn(Object box) {
+                    return swap.test(slot, box);
+                }
+
+                @Override
+                public Object read() {
+                    return TelemetryRegistry.getAtomicReference(slot);
+                }
+            };
         };
     }
 
@@ -149,6 +184,90 @@ class SwapPublicationWindowTest {
     @DisplayName("and an AtomicStampedReference's")
     void aStampedReadRightAfterTheSwapIsOrdered() throws InterruptedException {
         assertEquals(0, roundsReported(SwapPublicationWindowTest::atomicStampedReference), ORDERED);
+    }
+
+    @Test
+    @DisplayName("an object stored by updateAndGet or getAndUpdate is published to the get that returns it (#1334)")
+    void anUpdateFormPublishesWhatItStores() throws InterruptedException {
+        assertEquals(0, roundsReported(atomicReferenceSwappedBy((slot, box) ->
+                TelemetryRegistry.updateAndGetAtomicReference(slot, old -> old == null ? box : old) == box)),
+                ORDERED);
+        assertEquals(0, roundsReported(atomicReferenceSwappedBy((slot, box) ->
+                TelemetryRegistry.getAndUpdateAtomicReference(slot, old -> old == null ? box : old) == null)),
+                ORDERED);
+    }
+
+    @Test
+    @DisplayName("so is one stored by accumulateAndGet or getAndAccumulate (#1334)")
+    void anAccumulateFormPublishesWhatItStores() throws InterruptedException {
+        assertEquals(0, roundsReported(atomicReferenceSwappedBy((slot, box) ->
+                TelemetryRegistry.accumulateAndGetAtomicReference(slot, box,
+                        (old, mine) -> old == null ? mine : old) == box)), ORDERED);
+        assertEquals(0, roundsReported(atomicReferenceSwappedBy((slot, box) ->
+                TelemetryRegistry.getAndAccumulateAtomicReference(slot, box,
+                        (old, mine) -> old == null ? mine : old) == null)), ORDERED);
+    }
+
+    @Test
+    @DisplayName("and one stored by compareAndExchange or weakCompareAndSetVolatile (#1334)")
+    void anExchangeOrAWeakVolatileSwapPublishesWhatItStores() throws InterruptedException {
+        assertEquals(0, roundsReported(atomicReferenceSwappedBy((slot, box) ->
+                TelemetryRegistry.compareAndExchangeAtomicReference(slot, null, box) == null)), ORDERED);
+        assertEquals(0, roundsReported(atomicReferenceSwappedBy((slot, box) ->
+                TelemetryRegistry.weakCompareAndSetVolatileAtomicReference(slot, null, box))), ORDERED);
+    }
+
+    @Test
+    @DisplayName("an exchange that lost publishes nothing, and returns what the slot held")
+    void aLostExchangePublishesNothing() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box box = new Box();
+        Object held = new Object();
+        AtomicReference<Object> slot = new AtomicReference<>(held);
+        AtomicReference<Object> witness = new AtomicReference<>();
+        Thread writer = new Thread(() -> {
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            witness.set(TelemetryRegistry.compareAndExchangeAtomicReference(slot, null, box));
+        });
+        writer.start();
+        writer.join(); // unwoven here, so it orders nothing as far as the model knows
+        Thread reader = new Thread(() -> {
+            TelemetryRegistry.getAtomicReference(slot);
+            detector.recordFieldRead(box, "value");
+            box.value++;
+            detector.recordFieldWrite(box, "value");
+        });
+        reader.start();
+        reader.join();
+        assertTrue(witness.get() == held, "a lost exchange returns the value it found");
+        assertTrue(slot.get() == held, "and stores nothing");
+        assertTrue(detector.analyzeRaceConditions().hasIssues(),
+                "The exchange lost, so the box never reached the slot and the reader's get "
+                        + "returned something else: nothing orders the writer before the reader.");
+    }
+
+    @Test
+    @DisplayName("an update function sees the value its swap replaces, and is retried when it lost")
+    void anUpdateIsAppliedToTheValueItReplaces() throws InterruptedException {
+        AtomicReference<Object> slot = new AtomicReference<>(0);
+        int threads = 4;
+        int each = 500;
+        Thread[] workers = new Thread[threads];
+        for (int i = 0; i < threads; i++) {
+            workers[i] = new Thread(() -> {
+                for (int n = 0; n < each; n++) {
+                    TelemetryRegistry.updateAndGetAtomicReference(slot, old -> (Integer) old + 1);
+                    TelemetryRegistry.getAndAccumulateAtomicReference(slot, 1,
+                            (old, add) -> (Integer) old + (Integer) add);
+                }
+            });
+            workers[i].start();
+        }
+        for (Thread worker : workers) {
+            worker.join();
+        }
+        assertEquals(2 * threads * each, slot.get(), "no update may be lost or applied twice");
     }
 
     @Test

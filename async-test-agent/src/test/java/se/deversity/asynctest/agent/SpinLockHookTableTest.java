@@ -196,6 +196,17 @@ class SpinLockHookTableTest {
             assertTrue(substituted.contains(form), form + " is an offer, take or acquire the weaver observes "
                     + "since #664 (the gets since #741); substituted: " + substituted);
         }
+        for (String form : List.of("AtomicReference.updateAndGet", "AtomicReference.getAndUpdate",
+                "AtomicReference.accumulateAndGet", "AtomicReference.getAndAccumulate",
+                "AtomicReference.compareAndExchange", "AtomicReference.weakCompareAndSetVolatile")) {
+            assertTrue(substituted.contains(form), form + " stores with a volatile write, so the object "
+                    + "it stores is published to the get that returns it (#1334); substituted: " + substituted);
+        }
+        for (String form : List.of("AtomicReference.weakCompareAndSetPlain", "AtomicReference.weakCompareAndSet",
+                "AtomicReference.setPlain", "AtomicReference.getPlain")) {
+            assertTrue(!substituted.contains(form), form + " has plain memory semantics and orders "
+                    + "nothing: substituting it as a release would hide an unsafe publication");
+        }
     }
 
     private static void assertHookExists(FieldAccessWeaver.Substitution substitution) {

@@ -20,6 +20,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An object published with `AtomicReference.updateAndGet` is ordered before the read that
+  reaches it (#1334).** With the agent attached, a thread that built an object inside
+  `updateAndGet`, `getAndUpdate`, `accumulateAndGet` or `getAndAccumulate`, or swapped one in
+  with `compareAndExchange` or `weakCompareAndSetVolatile`, and set a field on it after
+  construction, was reported by `AtomicityValidator` at `PROMPT` trust when another thread read
+  the field through the reference. The agent wove `set`, `compareAndSet`, `getAndSet` and `get`
+  only, so these six stored with a volatile write that released nothing. Each now runs as the
+  woven `get` and the woven `compareAndSet` (`updateAndGetAtomicReference` and five more hooks
+  on `TelemetryRegistry`), which is the loop the JDK runs inside them. An exchange that loses
+  publishes nothing. `weakCompareAndSetPlain` and the deprecated `weakCompareAndSet` have plain
+  memory semantics and stay unwoven. New idiom rows
+  `idiom_updateAndGet_buildsTheSuccessorInTheFunction` and
+  `idiom_compareAndExchange_retriesFromTheWitness` must stay silent, and their plain-field
+  twins must fire; both silent rows failed the idioms lane with the six weaver entries removed. `AtomicReferenceArray`, `AtomicReferenceFieldUpdater`
+  and `VarHandle` slots still have the gap (#1336).
+
 - **A semaphore released by a pool task, a callback or a started thread is no longer a leaked
   permit (#1333).** With the agent attached, a body that waits on a `Semaphore` for a helper
   thread, `done.acquire()` after `pool.execute(done::release)`, `CompletableFuture.runAsync` or
