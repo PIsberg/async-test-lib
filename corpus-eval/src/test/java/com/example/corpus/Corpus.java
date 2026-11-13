@@ -6269,6 +6269,40 @@ final class Corpus {
                     "the same listener configured after the add that published it: a reader "
                             + "already walking the list reads the field with nothing ordering "
                             + "it after the write",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_putIfAbsent_registersAValueReadWithGetOrDefault", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread builds a value and registers it with putIfAbsent, the others "
+                            + "read it through getOrDefault. The map orders the build before "
+                            + "each read (#1294)"),
+
+            new RecordingSubject("idiom_putIfAbsent_fillsTheValueInAfterRegisteringIt", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same registry with the value's field written after putIfAbsent "
+                            + "published it: the write and the other threads' reads are "
+                            + "unordered",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_copyOnWriteListeners_notifiedWithForEachAndAStream", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a configured listener added to a CopyOnWriteArrayList and read by the "
+                            + "other threads through forEach and through a stream: both are "
+                            + "traversals the add published to (#1294)"),
+
+            new RecordingSubject("idiom_copyOnWriteListeners_notifiedWhileStillBeingConfigured", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same listener configured after the add that published it, read "
+                            + "through forEach and a stream with nothing ordering the reads "
+                            + "after the write",
                     IssueSeverity.HIGH)
     );
 

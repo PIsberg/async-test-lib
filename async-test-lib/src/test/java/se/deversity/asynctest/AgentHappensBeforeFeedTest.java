@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -295,6 +297,90 @@ class AgentHappensBeforeFeedTest {
         assertTrue(containerHandOffReported(b -> AgentCollectionHooks.mapComputeIfAbsent(plain, "k", k -> b),
                 () -> AgentCollectionHooks.mapComputeIfAbsent(plain, "k", k -> new Box())),
                 "a HashMap orders nothing");
+    }
+
+    /** The last element {@code walk} hands its consumer. */
+    private static Object lastSeen(Consumer<Consumer<Object>> walk) {
+        Object[] last = new Object[1];
+        walk.accept(element -> last[0] = element);
+        return last[0];
+    }
+
+    @Test
+    @DisplayName("a woven stream() or forEach over a concurrent collection receives each element (#1294)")
+    void wovenStreamAndForEach() throws InterruptedException {
+        List<Object> list = new CopyOnWriteArrayList<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(list, b),
+                () -> lastSeen(seen -> AgentCollectionHooks.collectionStream(list).forEach(seen))),
+                "add then stream");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(list, b),
+                () -> lastSeen(seen -> AgentCollectionHooks.iterableForEach(list, seen))),
+                "add then forEach");
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(list, b),
+                () -> lastSeen(seen -> list.stream().forEach(seen))), "the unwoven stream received nothing");
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(list, b),
+                () -> lastSeen(list::forEach)), "nor did the unwoven forEach");
+
+        List<Object> plain = new ArrayList<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(plain, b),
+                () -> lastSeen(seen -> AgentCollectionHooks.collectionStream(plain).forEach(seen))),
+                "an ArrayList's stream orders nothing");
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(plain, b),
+                () -> lastSeen(seen -> AgentCollectionHooks.iterableForEach(plain, seen))),
+                "nor does its forEach");
+    }
+
+    @Test
+    @DisplayName("a woven Map.forEach, getOrDefault and putIfAbsent receive and publish a value (#1294)")
+    void wovenMapForEachGetOrDefaultPutIfAbsent() throws InterruptedException {
+        Map<Object, Object> map = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(map, "a", b),
+                () -> lastSeen(seen -> AgentCollectionHooks.mapForEach(map, (k, v) -> seen.accept(v)))),
+                "put then Map.forEach");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(map, "a", b),
+                () -> AgentCollectionHooks.mapGetOrDefault(map, "a", "none")), "put then getOrDefault");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPutIfAbsent(map, "b", b),
+                () -> AgentCollectionHooks.mapGet(map, "b")), "putIfAbsent then get");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPutIfAbsent(map, "c", b),
+                () -> AgentCollectionHooks.mapPutIfAbsent(map, "c", new Box())),
+                "the losing putIfAbsent received the winner's value");
+
+        assertTrue(containerHandOffReported(b -> map.putIfAbsent("u", b),
+                () -> AgentCollectionHooks.mapGetOrDefault(map, "u", "none")),
+                "the unwoven putIfAbsent published nothing");
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.mapPut(map, "w", b),
+                () -> map.getOrDefault("w", "none")), "the unwoven getOrDefault received nothing");
+
+        // The key is taken: the stranger's box is refused, and its release is withdrawn.
+        AtomicReference<Object> refused = new AtomicReference<>();
+        map.put("taken", "first");
+        assertTrue(containerHandOffReported(b -> {
+            refused.setPlain(b);
+            AgentCollectionHooks.mapPutIfAbsent(map, "taken", b);
+        }, () -> {
+            HappensBefore.acquire(refused.getPlain());
+            return refused.getPlain();
+        }), "a refused putIfAbsent published nothing");
+
+        Map<Object, Object> plain = new HashMap<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.mapPutIfAbsent(plain, "k", b),
+                () -> AgentCollectionHooks.mapGetOrDefault(plain, "k", "none")), "a HashMap orders nothing");
+    }
+
+    @Test
+    @DisplayName("a concurrent deque's woven peekFirst and peekLast receive what the offer published (#1294)")
+    void wovenDequePeeks() throws InterruptedException {
+        Deque<Object> deque = new ConcurrentLinkedDeque<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.dequeAddLast(deque, b),
+                () -> AgentCollectionHooks.dequePeekLast(deque)), "addLast then peekLast");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.dequeAddFirst(deque, b),
+                () -> AgentCollectionHooks.dequePeekFirst(deque)), "addFirst then peekFirst");
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.dequeAddFirst(deque, b), deque::peekFirst),
+                "the unwoven peekFirst received nothing");
+
+        Deque<Object> plain = new ArrayDeque<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.dequeAddFirst(plain, b),
+                () -> AgentCollectionHooks.dequePeekFirst(plain)), "an ArrayDeque orders nothing");
     }
 
     private static boolean startJoinReported(boolean woven) throws InterruptedException {

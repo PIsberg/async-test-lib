@@ -465,10 +465,12 @@ model names for the woven calls: an element offered to and taken from a `java.ut
 refused publishes nothing, and a `BlockingQueue.drainTo` into a `List` takes each element it moved
 (#1295; a drain into any other collection orders nothing), a value put into and read back from such a map,
 an element added to such a collection with `add`, `addAll` or `List.set` and read back with
-`List.get`, `Queue.peek` or `element`, or a for-each over it, and a value a `compute`,
-`computeIfAbsent`, `computeIfPresent` or `merge` stored, received by the caller it is returned to
-(#1294; a refused `add` publishes nothing, and `stream()`, `forEach`, `getOrDefault`,
-`putIfAbsent`, the deque peeks and the navigable-map reads are not modelled yet),
+`List.get`, `Queue.peek` or `element`, `Deque.peekFirst` or `peekLast`, or a for-each, `forEach`
+or `stream()` over it, a value stored with `putIfAbsent` and one read with `getOrDefault` or
+`Map.forEach`, and a value a `compute`, `computeIfAbsent`, `computeIfPresent` or `merge` stored,
+received by the caller it is returned to (#1294; a refused `add` or `putIfAbsent` publishes
+nothing, and the values of an iterated `entrySet()`, the navigable-map reads such as
+`firstEntry`, and `parallelStream()` are not modelled yet),
 `CountDownLatch.countDown` and an `await` that reached zero, `Semaphore.release` and an acquire that
 took a permit, a `CyclicBarrier.await` and the normal returns from the same generation (#1246; the
 generation is read under the barrier's own lock, which needs `collections=true`), with the
