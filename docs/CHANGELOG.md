@@ -166,8 +166,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or `stream()`) and eight `NavigableMap` calls the agent did not weave before: `firstEntry`,
   `lastEntry`, `floorEntry`, `ceilingEntry`, `lowerEntry`, `higherEntry`, `pollFirstEntry` and
   `pollLastEntry`; corpus pairs `idiom_skipListMap_*` and `idiom_concurrentHashMap_*EntrySet`/
-  `*entryValue*`, both correct rows red against the previous jar. Not covered yet and still
-  open on #1294: `parallelStream()` and `drainTo` into a non-list. Test first in `AgentHappensBeforeFeedTest`, eight tests red
+  `*entryValue*`, both correct rows red against the previous jar. A fourth slice, found by
+  28 probes of which 19 were reported, covers 23 more calls the agent did not weave:
+  `Vector.elementAt`, `firstElement` and `lastElement`; `Stack.push` (which now publishes),
+  `peek` and `pop`; `getFirst` and `getLast` on a `Deque` or a `List`;
+  `Deque.descendingIterator`; `SortedSet.first` and `last`; `NavigableSet.floor`, `ceiling`,
+  `lower`, `higher`, `pollFirst` and `pollLast`; the three `Collection.toArray` forms, which receive
+  every element they hand out; and `parallelStream()`, received on the thread whose part of the
+  pipeline reaches the element. Corpus pairs `idiom_vector_*`, `idiom_stack_*`,
+  `idiom_skipListSet_*` and `idiom_copyOnWriteList_element*`, all four correct rows red against
+  the previous jar. Not covered yet and still open on #1294: an object published as a map
+  **key**, `listIterator()`, the `elements()` and `keys()` enumerations, `ConcurrentHashMap`'s
+  `search` and `reduce` forms, and `drainTo` into a non-list. Test first in `AgentHappensBeforeFeedTest`, eight tests red
   before the changes, each row with a twin that keeps its finding. New corpus idiom pairs
   `idiom_computeIfAbsent_*`, `idiom_copyOnWriteListeners_*` and `idiom_putIfAbsent_*`: every
   correct row failed the idioms lane against the previous jar.

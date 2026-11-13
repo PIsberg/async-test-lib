@@ -43,6 +43,8 @@ import se.deversity.asynctest.diagnostics.RaceConditionDetector;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -373,6 +375,130 @@ class AgentHappensBeforeFeedTest {
         Map<Object, Object> plain = new HashMap<>();
         assertTrue(containerHandOffReported(b -> AgentCollectionHooks.mapPutIfAbsent(plain, "k", b),
                 () -> AgentCollectionHooks.mapGetOrDefault(plain, "k", "none")), "a HashMap orders nothing");
+    }
+
+    @Test
+    @DisplayName("a Vector's and a Stack's own reads receive what the add or push published (#1294)")
+    void wovenVectorAndStackReads() throws InterruptedException {
+        java.util.Vector<Object> vector = new java.util.Vector<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(vector, b),
+                () -> AgentCollectionHooks.vectorElementAt(vector, vector.size() - 1)), "add then elementAt");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(vector, b),
+                () -> AgentCollectionHooks.vectorLastElement(vector)), "add then lastElement");
+        java.util.Vector<Object> single = new java.util.Vector<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(single, b),
+                () -> AgentCollectionHooks.vectorFirstElement(single)), "add then firstElement");
+        java.util.Vector<Object> unwoven = new java.util.Vector<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(unwoven, b),
+                unwoven::firstElement), "the unwoven firstElement received nothing");
+
+        java.util.Stack<Object> stack = new java.util.Stack<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.stackPush(stack, b),
+                () -> AgentCollectionHooks.stackPeek(stack)), "push then peek");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.stackPush(stack, b),
+                () -> AgentCollectionHooks.stackPop(stack)), "push then pop");
+        Object pushed = new Object();
+        assertSame(pushed, AgentCollectionHooks.stackPush(stack, pushed), "push returns its argument");
+        java.util.Stack<Object> plainPush = new java.util.Stack<>();
+        assertTrue(containerHandOffReported(plainPush::push,
+                () -> AgentCollectionHooks.stackPeek(plainPush)), "the unwoven push published nothing");
+    }
+
+    @Test
+    @DisplayName("getFirst and getLast on a concurrent deque or list, and a descending iterator, receive (#1294)")
+    void wovenEndReads() throws InterruptedException {
+        Deque<Object> deque = new ConcurrentLinkedDeque<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.dequeAddFirst(deque, b),
+                () -> AgentCollectionHooks.dequeGetFirst(deque)), "addFirst then getFirst");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.dequeAddLast(deque, b),
+                () -> AgentCollectionHooks.dequeGetLast(deque)), "addLast then getLast");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.dequeAddLast(deque, b),
+                () -> AgentCollectionHooks.dequeDescendingIterator(deque).next()),
+                "addLast then descendingIterator");
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.dequeAddLast(deque, b), deque::getLast),
+                "the unwoven getLast received nothing");
+        Deque<Object> plain = new ArrayDeque<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.dequeAddFirst(plain, b),
+                () -> AgentCollectionHooks.dequeGetFirst(plain)), "an ArrayDeque orders nothing");
+        Deque<Object> walked = new ArrayDeque<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.dequeAddFirst(walked, b),
+                () -> AgentCollectionHooks.dequeDescendingIterator(walked).next()),
+                "an ArrayDeque's descending iterator orders nothing");
+
+        List<Object> list = new CopyOnWriteArrayList<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(list, b),
+                () -> AgentCollectionHooks.listGetLast(list)), "add then List.getLast");
+        List<Object> one = new CopyOnWriteArrayList<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(one, b),
+                () -> AgentCollectionHooks.listGetFirst(one)), "add then List.getFirst");
+        List<Object> plainList = new ArrayList<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(plainList, b),
+                () -> AgentCollectionHooks.listGetFirst(plainList)), "an ArrayList orders nothing");
+    }
+
+    @Test
+    @DisplayName("a concurrent sorted set's navigation reads receive what the add published (#1294)")
+    void wovenSortedSetReads() throws InterruptedException {
+        // Every element compares equal, so each navigation read finds the one box whatever it is asked for.
+        List<Function<java.util.NavigableSet<Object>, Object>> woven = List.of(
+                AgentCollectionHooks::sortedSetFirst,
+                AgentCollectionHooks::sortedSetLast,
+                s -> AgentCollectionHooks.navigableSetFloor(s, "probe"),
+                s -> AgentCollectionHooks.navigableSetCeiling(s, "probe"),
+                AgentCollectionHooks::navigableSetPollFirst,
+                AgentCollectionHooks::navigableSetPollLast);
+        for (int i = 0; i < woven.size(); i++) {
+            java.util.NavigableSet<Object> set = new java.util.concurrent.ConcurrentSkipListSet<>((a, b) -> 0);
+            var read = woven.get(i);
+            assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(set, b),
+                    () -> read.apply(set)), "add then sorted-set read " + i);
+        }
+        java.util.NavigableSet<Object> ordered = new java.util.concurrent.ConcurrentSkipListSet<>(
+                java.util.Comparator.comparing(o -> o instanceof String ? 1 : 0));
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(ordered, b),
+                () -> AgentCollectionHooks.navigableSetLower(ordered, "probe")), "add then lower");
+        java.util.NavigableSet<Object> reversed = new java.util.concurrent.ConcurrentSkipListSet<>(
+                java.util.Comparator.comparing(o -> o instanceof String ? 0 : 1));
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(reversed, b),
+                () -> AgentCollectionHooks.navigableSetHigher(reversed, "probe")), "add then higher");
+
+        java.util.NavigableSet<Object> unwoven = new java.util.concurrent.ConcurrentSkipListSet<>((a, b) -> 0);
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(unwoven, b),
+                unwoven::first), "the unwoven first received nothing");
+        java.util.NavigableSet<Object> tree = new java.util.TreeSet<>((a, b) -> 0);
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(tree, b),
+                () -> AgentCollectionHooks.sortedSetFirst(tree)), "a TreeSet orders nothing");
+        assertNull(AgentCollectionHooks.navigableSetPollFirst(new java.util.concurrent.ConcurrentSkipListSet<>()),
+                "an empty set");
+    }
+
+    @Test
+    @DisplayName("toArray and parallelStream on a concurrent collection receive every element (#1294)")
+    void wovenBulkReads() throws InterruptedException {
+        List<Object> list = new CopyOnWriteArrayList<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(list, b),
+                () -> AgentCollectionHooks.collectionToArray(list)[0]), "add then toArray()");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.listSet(list, 0, b),
+                () -> AgentCollectionHooks.collectionToArray(list, new Object[0])[0]), "set then toArray(T[])");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.listSet(list, 0, b),
+                () -> AgentCollectionHooks.collectionToArray(list, Object[]::new)[0]),
+                "set then toArray(IntFunction)");
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.listSet(list, 0, b),
+                () -> AgentCollectionHooks.collectionParallelStream(list).findFirst().orElseThrow()),
+                "set then parallelStream()");
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.listSet(list, 0, b),
+                () -> list.toArray()[0]), "the unwoven toArray received nothing");
+
+        List<Object> plain = new ArrayList<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(plain, b),
+                () -> AgentCollectionHooks.collectionToArray(plain)[0]), "an ArrayList orders nothing");
+        List<Object> streamed = new ArrayList<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(streamed, b),
+                () -> AgentCollectionHooks.collectionParallelStream(streamed).findFirst().orElseThrow()),
+                "an ArrayList's parallel stream orders nothing");
+        Object[] sized = AgentCollectionHooks.collectionToArray(new ArrayList<>(List.of("a", "b")), new Object[5]);
+        assertEquals(5, sized.length, "toArray(T[]) keeps the array it was given, null terminator and all");
+        assertNull(sized[2], "the null terminator is not an element");
     }
 
     @Test

@@ -3224,6 +3224,169 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 36. Elements read by another name than get, peek or iterator (#1294) -----------------
+
+    /** A sorted set's element: ordered by a rank fixed at construction, with one plain field. */
+    private static final class Ranked implements Comparable<Ranked> {
+        final int rank;
+        int limit;
+
+        Ranked() {
+            this.rank = 1;
+        }
+
+        @Override
+        public int compareTo(Ranked other) {
+            return Integer.compare(rank, other.rank);
+        }
+    }
+
+    private static void awaitAnElement(java.util.Collection<?> elements) {
+        while (elements.isEmpty()) {
+            Thread.onSpinWait();
+        }
+    }
+
+    private static final Rounds<java.util.Vector<Limits>> VECTORS = new Rounds<>(java.util.Vector::new);
+    private static final Rounds<java.util.Vector<Limits>> LATE_VECTORS = new Rounds<>(java.util.Vector::new);
+
+    /** One thread adds a built element to a Vector; the others read it through firstElement. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_vector_elementReadThroughFirstElement() {
+        correct(() -> {
+            Turn<java.util.Vector<Limits>> turn = VECTORS.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                built.limit = 10;
+                turn.shared().add(built);
+            } else {
+                awaitAnElement(turn.shared());
+                use(turn.shared().firstElement().limit);
+            }
+        });
+    }
+
+    /** The same collection, with the element filled in after the add that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_vector_elementFilledInAfterTheAdd() {
+        broken(() -> {
+            Turn<java.util.Vector<Limits>> turn = LATE_VECTORS.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                turn.shared().add(built);
+                built.limit = 10;
+            } else {
+                awaitAnElement(turn.shared());
+                use(turn.shared().firstElement().limit);
+            }
+        });
+    }
+
+    private static final Rounds<java.util.Stack<Limits>> STACKS = new Rounds<>(java.util.Stack::new);
+    private static final Rounds<java.util.Stack<Limits>> LATE_STACKS = new Rounds<>(java.util.Stack::new);
+
+    /** One thread pushes a built element on a Stack; the others read it through peek. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_stack_elementReadThroughPeek() {
+        correct(() -> {
+            Turn<java.util.Stack<Limits>> turn = STACKS.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                built.limit = 10;
+                turn.shared().push(built);
+            } else {
+                awaitAnElement(turn.shared());
+                use(turn.shared().peek().limit);
+            }
+        });
+    }
+
+    /** The same collection, with the element filled in after the push that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_stack_elementFilledInAfterThePush() {
+        broken(() -> {
+            Turn<java.util.Stack<Limits>> turn = LATE_STACKS.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                turn.shared().push(built);
+                built.limit = 10;
+            } else {
+                awaitAnElement(turn.shared());
+                use(turn.shared().peek().limit);
+            }
+        });
+    }
+
+    private static final Rounds<java.util.concurrent.ConcurrentSkipListSet<Ranked>> SORTED_SETS = new Rounds<>(java.util.concurrent.ConcurrentSkipListSet::new);
+    private static final Rounds<java.util.concurrent.ConcurrentSkipListSet<Ranked>> LATE_SORTED_SETS = new Rounds<>(java.util.concurrent.ConcurrentSkipListSet::new);
+
+    /** One thread adds a built element to a sorted concurrent set; the others read it through first. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_skipListSet_elementReadThroughFirst() {
+        correct(() -> {
+            Turn<java.util.concurrent.ConcurrentSkipListSet<Ranked>> turn = SORTED_SETS.next();
+            if (turn.opensTheRound()) {
+                Ranked built = new Ranked();
+                built.limit = 10;
+                turn.shared().add(built);
+            } else {
+                awaitAnElement(turn.shared());
+                use(turn.shared().first().limit);
+            }
+        });
+    }
+
+    /** The same collection, with the element filled in after the add that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_skipListSet_elementFilledInAfterTheAdd() {
+        broken(() -> {
+            Turn<java.util.concurrent.ConcurrentSkipListSet<Ranked>> turn = LATE_SORTED_SETS.next();
+            if (turn.opensTheRound()) {
+                Ranked built = new Ranked();
+                turn.shared().add(built);
+                built.limit = 10;
+            } else {
+                awaitAnElement(turn.shared());
+                use(turn.shared().first().limit);
+            }
+        });
+    }
+
+    private static final Rounds<CopyOnWriteArrayList<Limits>> SNAPSHOTS = new Rounds<>(CopyOnWriteArrayList::new);
+    private static final Rounds<CopyOnWriteArrayList<Limits>> LATE_SNAPSHOTS = new Rounds<>(CopyOnWriteArrayList::new);
+
+    /** One thread adds a built element to a copy-on-write list; the others read it out of toArray. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_copyOnWriteList_elementReadThroughToArray() {
+        correct(() -> {
+            Turn<CopyOnWriteArrayList<Limits>> turn = SNAPSHOTS.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                built.limit = 10;
+                turn.shared().add(built);
+            } else {
+                awaitAnElement(turn.shared());
+                use(turn.shared().toArray(new Limits[0])[0].limit);
+            }
+        });
+    }
+
+    /** The same collection, with the element filled in after the add that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_copyOnWriteList_elementFilledInAfterTheAdd() {
+        broken(() -> {
+            Turn<CopyOnWriteArrayList<Limits>> turn = LATE_SNAPSHOTS.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                turn.shared().add(built);
+                built.limit = 10;
+            } else {
+                awaitAnElement(turn.shared());
+                use(turn.shared().toArray(new Limits[0])[0].limit);
+            }
+        });
+    }
+
     // --- 35. Plain data published by an AtomicBoolean flag (#1315) ----------------------------
 
     private static final class FlaggedMailbox {

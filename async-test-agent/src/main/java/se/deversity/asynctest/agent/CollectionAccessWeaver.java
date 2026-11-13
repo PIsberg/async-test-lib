@@ -32,6 +32,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.NavigableSet;
+import java.util.SortedSet;
+import java.util.Stack;
+import java.util.Vector;
 import java.util.Queue;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -370,6 +374,31 @@ final class CollectionAccessWeaver {
             Entry.call(NavigableMap.class, "higherEntry", "navigableHigherEntry", Object.class),
             Entry.call(NavigableMap.class, "pollFirstEntry", "navigablePollFirstEntry"),
             Entry.call(NavigableMap.class, "pollLastEntry", "navigablePollLastEntry"),
+            // The reads of one element, or of all of them, that a thread-safe collection hands
+            // out by another name than get, peek or iterator (#1294).
+            Entry.call(Vector.class, "elementAt", "vectorElementAt", int.class),
+            Entry.call(Vector.class, "firstElement", "vectorFirstElement"),
+            Entry.call(Vector.class, "lastElement", "vectorLastElement"),
+            Entry.call(Stack.class, "push", "stackPush", Object.class),
+            Entry.call(Stack.class, "peek", "stackPeek"),
+            Entry.call(Stack.class, "pop", "stackPop"),
+            Entry.call(Deque.class, "getFirst", "dequeGetFirst"),
+            Entry.call(Deque.class, "getLast", "dequeGetLast"),
+            Entry.call(Deque.class, "descendingIterator", "dequeDescendingIterator"),
+            Entry.call(List.class, "getFirst", "listGetFirst"),
+            Entry.call(List.class, "getLast", "listGetLast"),
+            Entry.call(SortedSet.class, "first", "sortedSetFirst"),
+            Entry.call(SortedSet.class, "last", "sortedSetLast"),
+            Entry.call(NavigableSet.class, "floor", "navigableSetFloor", Object.class),
+            Entry.call(NavigableSet.class, "ceiling", "navigableSetCeiling", Object.class),
+            Entry.call(NavigableSet.class, "lower", "navigableSetLower", Object.class),
+            Entry.call(NavigableSet.class, "higher", "navigableSetHigher", Object.class),
+            Entry.call(NavigableSet.class, "pollFirst", "navigableSetPollFirst"),
+            Entry.call(NavigableSet.class, "pollLast", "navigableSetPollLast"),
+            Entry.call(Collection.class, "toArray", "collectionToArray"),
+            Entry.call(Collection.class, "toArray", "collectionToArray", Object[].class),
+            Entry.call(Collection.class, "toArray", "collectionToArray", IntFunction.class),
+            Entry.call(Collection.class, "parallelStream", "collectionParallelStream"),
             // A BitSet is neither a Collection nor a Map, and as unsafe to share as either:
             // set is a read-modify-write of one long word (#1297).
             Entry.call(BitSet.class, "set", "bitSetSet", int.class),

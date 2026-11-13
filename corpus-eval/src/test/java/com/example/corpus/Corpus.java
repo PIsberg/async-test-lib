@@ -6475,6 +6475,77 @@ final class Corpus {
                             + "completed it, unordered with the other threads' reads",
                     IssueSeverity.HIGH),
 
+            // --- Elements read by another name than get, peek or iterator (#1294): the reads
+            //     the agent did not weave received nothing of what the add published.
+
+            new RecordingSubject("idiom_vector_elementReadThroughFirstElement", JDK,
+                    "java.util.Vector",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread adds a built element to a Vector, the others read it "
+                            + "through firstElement(). The collection orders the build before each "
+                            + "read (#1294)"),
+
+            new RecordingSubject("idiom_vector_elementFilledInAfterTheAdd", JDK,
+                    "java.util.Vector",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same collection with the element's field written after the add "
+                            + "published it: the write and the other threads' reads are "
+                            + "unordered",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_stack_elementReadThroughPeek", JDK,
+                    "java.util.Stack",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread pushes a built element on a Stack, the others read it "
+                            + "through peek(). The collection orders the build before each "
+                            + "read (#1294)"),
+
+            new RecordingSubject("idiom_stack_elementFilledInAfterThePush", JDK,
+                    "java.util.Stack",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same collection with the element's field written after the push "
+                            + "published it: the write and the other threads' reads are "
+                            + "unordered",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_skipListSet_elementReadThroughFirst", JDK,
+                    "java.util.concurrent.ConcurrentSkipListSet",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread adds a built element to a sorted concurrent set, the others read it "
+                            + "through first(). The collection orders the build before each "
+                            + "read (#1294)"),
+
+            new RecordingSubject("idiom_skipListSet_elementFilledInAfterTheAdd", JDK,
+                    "java.util.concurrent.ConcurrentSkipListSet",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same collection with the element's field written after the add "
+                            + "published it: the write and the other threads' reads are "
+                            + "unordered",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_copyOnWriteList_elementReadThroughToArray", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread adds a built element to a copy-on-write list, the others read it "
+                            + "through toArray(T[]). The collection orders the build before each "
+                            + "read (#1294)"),
+
+            new RecordingSubject("idiom_copyOnWriteList_elementFilledInAfterTheAdd", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same collection with the element's field written after the add "
+                            + "published it: the write and the other threads' reads are "
+                            + "unordered",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_skipListMap_valueReadThroughFirstEntry", JDK,
                     "java.util.concurrent.ConcurrentSkipListMap",
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
