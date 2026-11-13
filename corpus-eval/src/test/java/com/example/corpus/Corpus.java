@@ -969,6 +969,25 @@ final class Corpus {
                             + "for it. The threads still all call update() and digest(), so the "
                             + "substituted call sites see the same traffic as the firing row"),
 
+            new RecordingSubject("agent_mac_oneInstanceForEveryThread", JDK,
+                    "javax.crypto.Mac",
+                    DetectorType.SHARED_STATEFUL_CRYPTO, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "update() folds bytes into the instance's running state and doFinal() "
+                            + "finishes and resets it, so two threads sharing one Mac compute a "
+                            + "tag over an interleaving of both inputs or throw from inside the "
+                            + "provider. No recording call: the woven call sites are the feed "
+                            + "(#1321)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_mac_oneInstancePerThread", JDK,
+                    "javax.crypto.Mac",
+                    DetectorType.SHARED_STATEFUL_CRYPTO, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a Mac per thread, initialised with the same key. The threads still all call "
+                            + "update() and doFinal(), so the substituted call sites see the same "
+                            + "traffic as the firing row"),
+
             new RecordingSubject("agent_calendar_oneInstanceForEveryThread", JDK,
                     "java.util.Calendar",
                     DetectorType.CALENDAR, Contract.NOT_THREAD_SAFE,
@@ -1854,6 +1873,25 @@ final class Corpus {
                             + "MessageDigestHasher.update call site is reached on every execution, "
                             + "so a finding here would mean the detector reports Guava's call "
                             + "site rather than a digest two threads touched"),
+
+            new RecordingSubject("agent_guavaHmacHasher_oneHasherForEveryThread", GUAVA,
+                    "com.google.common.hash.Hasher",
+                    DetectorType.SHARED_STATEFUL_CRYPTO, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "Hashing.hmacSha256(key).newHasher() returns a stateful Hasher that keeps "
+                            + "its state in one Mac. Every thread puts into the one hasher, so "
+                            + "every thread's update lands on the same Mac from inside Guava "
+                            + "(#1321)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_guavaHmacHasher_oneHasherPerTag", GUAVA,
+                    "com.google.common.hash.Hasher",
+                    DetectorType.SHARED_STATEFUL_CRYPTO, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a fresh hasher per tag, each with a Mac of its own. The same "
+                            + "MacHasher.update call site is reached on every execution, so a "
+                            + "finding here would mean the detector reports Guava's call site "
+                            + "rather than a Mac two threads touched"),
 
             new RecordingSubject("agent_jacksonStdDateFormat_oneFormatForEveryThread", JACKSON,
                     "com.fasterxml.jackson.databind.util.StdDateFormat",

@@ -4,6 +4,8 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.io.IOException;
 import java.security.MessageDigest;
+import java.security.Signature;
+import java.security.SignatureException;
 import java.text.DateFormat;
 import java.text.Format;
 import java.text.MessageFormat;
@@ -31,6 +33,12 @@ import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.Mac;
+import javax.crypto.ShortBufferException;
+
 import se.deversity.asynctest.diagnostics.CalendarDetector;
 import se.deversity.asynctest.telemetry.ControlledSchedule;
 import se.deversity.asynctest.diagnostics.JdbcConnectionSharedDetector;
@@ -43,6 +51,7 @@ import se.deversity.asynctest.diagnostics.SharedFormatterDetector;
 import se.deversity.asynctest.diagnostics.SharedMatcherDetector;
 import se.deversity.asynctest.diagnostics.SharedMessageDigestDetector;
 import se.deversity.asynctest.diagnostics.SharedSplittableRandomDetector;
+import se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector;
 import se.deversity.asynctest.diagnostics.SimpleDateFormatDetector;
 import se.deversity.asynctest.diagnostics.StringBuilderDetector;
 import se.deversity.vibetags.annotations.AIContract;
@@ -1478,6 +1487,467 @@ public final class AgentSharedInstanceHooks {
                 AsyncTestContext.currentSharedSplittableRandomDetector();
         if (detector != null) {
             detector.recordAccess(receiver, receiver.getClass().getName(), "next*");
+        }
+    }
+
+    // --- Mac, Signature and Cipher (#1321) --------------------------------------------------------
+    //
+    // Each of these keeps one running state per instance, so the calls that feed it or finish it
+    // are the ones woven: update, doFinal, sign, verify and updateAAD, every overload. The init
+    // calls are not: a body that only initialises a shared primitive computes nothing with it, and
+    // one that goes on to use it is seen at the use. The hooks pass their arguments straight
+    // through and keep none of them: they are key material, plaintext and signatures.
+
+    /**
+     * Weaves {@code Mac.update(byte)}.
+     *
+     * @param receiver the mac
+     * @param a0 the call's {@code byte} argument, passed through
+     */
+    public static void update(Mac receiver, byte a0) {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.update(a0);
+    }
+
+    /**
+     * Weaves {@code Mac.update(byte[])}.
+     *
+     * @param receiver the mac
+     * @param a0 the call's {@code byte[]} argument, passed through
+     */
+    public static void update(Mac receiver, byte[] a0) {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.update(a0);
+    }
+
+    /**
+     * Weaves {@code Mac.update(byte[], int, int)}.
+     *
+     * @param receiver the mac
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @param a1 the call's {@code int} argument, passed through
+     * @param a2 the call's {@code int} argument, passed through
+     */
+    public static void update(Mac receiver, byte[] a0, int a1, int a2) {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.update(a0, a1, a2);
+    }
+
+    /**
+     * Weaves {@code Mac.update(ByteBuffer)}.
+     *
+     * @param receiver the mac
+     * @param a0 the call's {@code ByteBuffer} argument, passed through
+     */
+    public static void update(Mac receiver, ByteBuffer a0) {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.update(a0);
+    }
+
+    /**
+     * Weaves {@code Mac.doFinal()}.
+     *
+     * @param receiver the mac
+     * @return what the mac returned
+     */
+    public static byte[] doFinal(Mac receiver) {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.doFinal();
+    }
+
+    /**
+     * Weaves {@code Mac.doFinal(byte[])}.
+     *
+     * @param receiver the mac
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @return what the mac returned
+     */
+    public static byte[] doFinal(Mac receiver, byte[] a0) {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.doFinal(a0);
+    }
+
+    /**
+     * Weaves {@code Mac.doFinal(byte[], int)}.
+     *
+     * @param receiver the mac
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @param a1 the call's {@code int} argument, passed through
+     * @throws ShortBufferException as the mac throws it
+     */
+    public static void doFinal(Mac receiver, byte[] a0, int a1) throws ShortBufferException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.doFinal(a0, a1);
+    }
+
+    /**
+     * Weaves {@code Signature.update(byte)}.
+     *
+     * @param receiver the signature
+     * @param a0 the call's {@code byte} argument, passed through
+     * @throws SignatureException as the signature throws it
+     */
+    public static void update(Signature receiver, byte a0) throws SignatureException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.update(a0);
+    }
+
+    /**
+     * Weaves {@code Signature.update(byte[])}.
+     *
+     * @param receiver the signature
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @throws SignatureException as the signature throws it
+     */
+    public static void update(Signature receiver, byte[] a0) throws SignatureException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.update(a0);
+    }
+
+    /**
+     * Weaves {@code Signature.update(byte[], int, int)}.
+     *
+     * @param receiver the signature
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @param a1 the call's {@code int} argument, passed through
+     * @param a2 the call's {@code int} argument, passed through
+     * @throws SignatureException as the signature throws it
+     */
+    public static void update(Signature receiver, byte[] a0, int a1, int a2) throws SignatureException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.update(a0, a1, a2);
+    }
+
+    /**
+     * Weaves {@code Signature.update(ByteBuffer)}.
+     *
+     * @param receiver the signature
+     * @param a0 the call's {@code ByteBuffer} argument, passed through
+     * @throws SignatureException as the signature throws it
+     */
+    public static void update(Signature receiver, ByteBuffer a0) throws SignatureException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.update(a0);
+    }
+
+    /**
+     * Weaves {@code Signature.sign()}.
+     *
+     * @param receiver the signature
+     * @return what the signature returned
+     * @throws SignatureException as the signature throws it
+     */
+    public static byte[] sign(Signature receiver) throws SignatureException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.sign();
+    }
+
+    /**
+     * Weaves {@code Signature.sign(byte[], int, int)}.
+     *
+     * @param receiver the signature
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @param a1 the call's {@code int} argument, passed through
+     * @param a2 the call's {@code int} argument, passed through
+     * @return what the signature returned
+     * @throws SignatureException as the signature throws it
+     */
+    public static int sign(Signature receiver, byte[] a0, int a1, int a2) throws SignatureException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.sign(a0, a1, a2);
+    }
+
+    /**
+     * Weaves {@code Signature.verify(byte[])}.
+     *
+     * @param receiver the signature
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @return what the signature returned
+     * @throws SignatureException as the signature throws it
+     */
+    public static boolean verify(Signature receiver, byte[] a0) throws SignatureException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.verify(a0);
+    }
+
+    /**
+     * Weaves {@code Signature.verify(byte[], int, int)}.
+     *
+     * @param receiver the signature
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @param a1 the call's {@code int} argument, passed through
+     * @param a2 the call's {@code int} argument, passed through
+     * @return what the signature returned
+     * @throws SignatureException as the signature throws it
+     */
+    public static boolean verify(Signature receiver, byte[] a0, int a1, int a2) throws SignatureException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.verify(a0, a1, a2);
+    }
+
+    /**
+     * Weaves {@code Cipher.update(byte[])}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @return what the cipher returned
+     */
+    public static byte[] update(Cipher receiver, byte[] a0) {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.update(a0);
+    }
+
+    /**
+     * Weaves {@code Cipher.update(byte[], int, int)}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @param a1 the call's {@code int} argument, passed through
+     * @param a2 the call's {@code int} argument, passed through
+     * @return what the cipher returned
+     */
+    public static byte[] update(Cipher receiver, byte[] a0, int a1, int a2) {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.update(a0, a1, a2);
+    }
+
+    /**
+     * Weaves {@code Cipher.update(byte[], int, int, byte[])}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @param a1 the call's {@code int} argument, passed through
+     * @param a2 the call's {@code int} argument, passed through
+     * @param a3 the call's {@code byte[]} argument, passed through
+     * @return what the cipher returned
+     * @throws ShortBufferException as the cipher throws it
+     */
+    public static int update(Cipher receiver, byte[] a0, int a1, int a2, byte[] a3) throws ShortBufferException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.update(a0, a1, a2, a3);
+    }
+
+    /**
+     * Weaves {@code Cipher.update(byte[], int, int, byte[], int)}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @param a1 the call's {@code int} argument, passed through
+     * @param a2 the call's {@code int} argument, passed through
+     * @param a3 the call's {@code byte[]} argument, passed through
+     * @param a4 the call's {@code int} argument, passed through
+     * @return what the cipher returned
+     * @throws ShortBufferException as the cipher throws it
+     */
+    public static int update(Cipher receiver, byte[] a0, int a1, int a2, byte[] a3, int a4) throws ShortBufferException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.update(a0, a1, a2, a3, a4);
+    }
+
+    /**
+     * Weaves {@code Cipher.update(ByteBuffer, ByteBuffer)}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code ByteBuffer} argument, passed through
+     * @param a1 the call's {@code ByteBuffer} argument, passed through
+     * @return what the cipher returned
+     * @throws ShortBufferException as the cipher throws it
+     */
+    public static int update(Cipher receiver, ByteBuffer a0, ByteBuffer a1) throws ShortBufferException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.update(a0, a1);
+    }
+
+    /**
+     * Weaves {@code Cipher.doFinal()}.
+     *
+     * @param receiver the cipher
+     * @return what the cipher returned
+     * @throws IllegalBlockSizeException as the cipher throws it
+     * @throws BadPaddingException as the cipher throws it
+     */
+    public static byte[] doFinal(Cipher receiver) throws IllegalBlockSizeException, BadPaddingException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.doFinal();
+    }
+
+    /**
+     * Weaves {@code Cipher.doFinal(byte[], int)}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @param a1 the call's {@code int} argument, passed through
+     * @return what the cipher returned
+     * @throws IllegalBlockSizeException as the cipher throws it
+     * @throws ShortBufferException as the cipher throws it
+     * @throws BadPaddingException as the cipher throws it
+     */
+    public static int doFinal(Cipher receiver, byte[] a0, int a1) throws IllegalBlockSizeException, ShortBufferException, BadPaddingException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.doFinal(a0, a1);
+    }
+
+    /**
+     * Weaves {@code Cipher.doFinal(byte[])}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @return what the cipher returned
+     * @throws IllegalBlockSizeException as the cipher throws it
+     * @throws BadPaddingException as the cipher throws it
+     */
+    public static byte[] doFinal(Cipher receiver, byte[] a0) throws IllegalBlockSizeException, BadPaddingException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.doFinal(a0);
+    }
+
+    /**
+     * Weaves {@code Cipher.doFinal(byte[], int, int)}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @param a1 the call's {@code int} argument, passed through
+     * @param a2 the call's {@code int} argument, passed through
+     * @return what the cipher returned
+     * @throws IllegalBlockSizeException as the cipher throws it
+     * @throws BadPaddingException as the cipher throws it
+     */
+    public static byte[] doFinal(Cipher receiver, byte[] a0, int a1, int a2) throws IllegalBlockSizeException, BadPaddingException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.doFinal(a0, a1, a2);
+    }
+
+    /**
+     * Weaves {@code Cipher.doFinal(byte[], int, int, byte[])}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @param a1 the call's {@code int} argument, passed through
+     * @param a2 the call's {@code int} argument, passed through
+     * @param a3 the call's {@code byte[]} argument, passed through
+     * @return what the cipher returned
+     * @throws ShortBufferException as the cipher throws it
+     * @throws IllegalBlockSizeException as the cipher throws it
+     * @throws BadPaddingException as the cipher throws it
+     */
+    public static int doFinal(Cipher receiver, byte[] a0, int a1, int a2, byte[] a3) throws ShortBufferException, IllegalBlockSizeException, BadPaddingException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.doFinal(a0, a1, a2, a3);
+    }
+
+    /**
+     * Weaves {@code Cipher.doFinal(byte[], int, int, byte[], int)}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @param a1 the call's {@code int} argument, passed through
+     * @param a2 the call's {@code int} argument, passed through
+     * @param a3 the call's {@code byte[]} argument, passed through
+     * @param a4 the call's {@code int} argument, passed through
+     * @return what the cipher returned
+     * @throws ShortBufferException as the cipher throws it
+     * @throws IllegalBlockSizeException as the cipher throws it
+     * @throws BadPaddingException as the cipher throws it
+     */
+    public static int doFinal(Cipher receiver, byte[] a0, int a1, int a2, byte[] a3, int a4) throws ShortBufferException, IllegalBlockSizeException, BadPaddingException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.doFinal(a0, a1, a2, a3, a4);
+    }
+
+    /**
+     * Weaves {@code Cipher.doFinal(ByteBuffer, ByteBuffer)}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code ByteBuffer} argument, passed through
+     * @param a1 the call's {@code ByteBuffer} argument, passed through
+     * @return what the cipher returned
+     * @throws ShortBufferException as the cipher throws it
+     * @throws IllegalBlockSizeException as the cipher throws it
+     * @throws BadPaddingException as the cipher throws it
+     */
+    public static int doFinal(Cipher receiver, ByteBuffer a0, ByteBuffer a1) throws ShortBufferException, IllegalBlockSizeException, BadPaddingException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.doFinal(a0, a1);
+    }
+
+    /**
+     * Weaves {@code Cipher.updateAAD(byte[])}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code byte[]} argument, passed through
+     */
+    public static void updateAAD(Cipher receiver, byte[] a0) {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.updateAAD(a0);
+    }
+
+    /**
+     * Weaves {@code Cipher.updateAAD(byte[], int, int)}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code byte[]} argument, passed through
+     * @param a1 the call's {@code int} argument, passed through
+     * @param a2 the call's {@code int} argument, passed through
+     */
+    public static void updateAAD(Cipher receiver, byte[] a0, int a1, int a2) {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.updateAAD(a0, a1, a2);
+    }
+
+    /**
+     * Weaves {@code Cipher.updateAAD(ByteBuffer)}.
+     *
+     * @param receiver the cipher
+     * @param a0 the call's {@code ByteBuffer} argument, passed through
+     */
+    public static void updateAAD(Cipher receiver, ByteBuffer a0) {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.updateAAD(a0);
+    }
+
+    private static void recordCrypto(Object receiver) {
+        SharedStatefulCryptoDetector detector = AsyncTestContext.currentSharedStatefulCryptoDetector();
+        if (detector == null) {
+            return;
+        }
+        // The detector reads the kind and the algorithm from the instance, once, so the label is
+        // only the class a reader would look for.
+        if (receiver instanceof Mac mac) {
+            detector.recordAccess(mac, "Mac", Thread.currentThread());
+        } else if (receiver instanceof Signature signature) {
+            detector.recordAccess(signature, "Signature", Thread.currentThread());
+        } else {
+            detector.recordAccess((Cipher) receiver, "Cipher", Thread.currentThread());
         }
     }
 }

@@ -1884,8 +1884,8 @@ silence, so a refusal cannot outlive a pair in that lane either.
 | | Detectors |
 |---|---|
 | Paired in the recording lane | 127 |
-| Paired in the agent-pair lane | 54 |
-| ...less those paired in both | -33 |
+| Paired in the agent-pair lane | 55 |
+| ...less those paired in both | -34 |
 | Paired by neither of those lanes | +1 |
 | **Total paired** | **149** |
 
@@ -2430,8 +2430,9 @@ mode. `agent_sleepStamped_whileHoldingTheWriteStamp` and its released twin pair 
 the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
-added below, and the Guava service pair (#736), 19 of the 52 agent-fed detectors are measured in
-both directions on call sites inside a library. `LibraryReach` records why the other thirty are not,
+added below, the Guava service pair (#736) and the Guava HMAC hasher pair (#1321),
+20 of the 53 agent-fed detectors are measured in both directions on call sites inside a library.
+`LibraryReach` records why the other 33 are not,
 and `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions:
 
 | Detector | Why no corpus library reaches it |
