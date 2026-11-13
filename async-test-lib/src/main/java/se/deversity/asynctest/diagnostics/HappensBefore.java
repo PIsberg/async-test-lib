@@ -100,8 +100,10 @@ import org.jspecify.annotations.Nullable;
  *       {@code AtomicInteger} or {@code AtomicLong} through {@code set}, {@code getAndSet},
  *       {@code compareAndSet} or an increment, decrement or add, and a {@code get} that
  *       returned the value stored: the volatile-field model, on the atomic. A
- *       compare-and-set releases before it is known to win, so a lost one leaves a release
- *       of a value another thread stored, the two-writers limit below.
+ *       {@code compareAndSet} releases once it has won, so a lost one publishes nothing and
+ *       a read between a won swap and its release acquires nothing. An arithmetic update
+ *       releases the value it is about to store, so one that loses to a concurrent update
+ *       and retries has, until its own store, published to a reader of the winner's value.
  * </ul>
  *
  * <p>Plain lock and monitor hand-offs are deliberately not edges. The detectors judge lock

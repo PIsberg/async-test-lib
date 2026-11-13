@@ -572,6 +572,29 @@ class AgentHappensBeforeFeedTest {
     }
 
     @Test
+    @DisplayName("a compareAndSet that lost stored nothing, so it publishes nothing (#1315)")
+    void aLostCompareAndSetPublishesNothing() throws InterruptedException {
+        AtomicBoolean flag = new AtomicBoolean();
+        TelemetryRegistry.setAtomicBoolean(flag, true);
+        assertTrue(flagPublicationReported(
+                () -> TelemetryRegistry.compareAndSetAtomicBoolean(flag, false, true),
+                () -> TelemetryRegistry.getAtomicBoolean(flag)),
+                "the reader saw the true this thread stored, not one the losing writer did");
+
+        AtomicInteger count = new AtomicInteger();
+        TelemetryRegistry.setAtomicInteger(count, 3);
+        assertTrue(flagPublicationReported(
+                () -> TelemetryRegistry.compareAndSetAtomicInteger(count, 0, 3),
+                () -> TelemetryRegistry.getAtomicInteger(count)), "AtomicInteger");
+
+        AtomicLong total = new AtomicLong();
+        TelemetryRegistry.setAtomicLong(total, 3L);
+        assertTrue(flagPublicationReported(
+                () -> TelemetryRegistry.compareAndSetAtomicLong(total, 0L, 3L),
+                () -> TelemetryRegistry.getAtomicLong(total)), "AtomicLong");
+    }
+
+    @Test
     @DisplayName("the arithmetic hooks still return what the JDK call returns (#1315)")
     void theArithmeticHooksKeepTheirResults() {
         AtomicInteger count = new AtomicInteger(10);

@@ -843,8 +843,10 @@ public final class TelemetryRegistry {
         if (!expected && update) {
             SpinLocks.aboutToAcquire(flag);
         }
-        primitiveSlotStoring(flag, update ? 1 : 0);
         boolean won = flag.compareAndSet(expected, update);
+        if (won) {
+            primitiveSlotStoring(flag, update ? 1 : 0);
+        }
         if (won && expected != update) {
             if (update) {
                 SpinLocks.acquire(flag);
@@ -897,11 +899,12 @@ public final class TelemetryRegistry {
      * published to a {@code get} of the same atomic that returns {@code value} (#1315), the model
      * {@link #slotStored} gives an {@code AtomicReference}.
      *
-     * <p>Called before the store, as a volatile field's release is, so it precedes every read that
-     * can return the value. A compare-and-set therefore releases whether or not it then wins: a
-     * lost one leaves a release of a value this thread did not store, which a read of that value
-     * stored by another thread may take. That is the limit {@code HappensBefore} already states
-     * for a value two writers stored.
+     * <p>Called before the store by a {@code set}, a {@code getAndSet} and the arithmetic forms,
+     * as a volatile field's release is, so it precedes every read that can return the value. A
+     * {@code compareAndSet} calls it only once the swap has won, as {@code AtomicReference}'s
+     * does: one that lost stored nothing, and a release for it would order a reader after a
+     * thread whose writes nothing published. The price is a read that lands between a won swap
+     * and its release, which acquires nothing and keeps the finding it had.
      */
     private static void primitiveSlotStoring(Object atomic, long value) {
         HappensBefore.releaseVolatile(atomic, SLOT_VALUE, value);
@@ -911,7 +914,10 @@ public final class TelemetryRegistry {
      * {@code count.addAndGet(delta)} as a compare-and-set loop, so the value about to be stored is
      * known before the store and can be released first (#1315). An arithmetic update's result is
      * not on the stack, and a release made after the store would leave a reader that saw the new
-     * value in between nothing to acquire.
+     * value in between nothing to acquire, which a reader spinning on a completion counter does
+     * often. An attempt that loses the swap has released a value it did not store; the thread
+     * stores its own on the next turn of the loop, and until then a reader of the winner's value
+     * is ordered after this thread too.
      *
      * @return the updated value
      */
@@ -970,8 +976,10 @@ public final class TelemetryRegistry {
         if (expected == 0 && update == 1) {
             SpinLocks.aboutToAcquire(count);
         }
-        primitiveSlotStoring(count, update);
         boolean won = count.compareAndSet(expected, update);
+        if (won) {
+            primitiveSlotStoring(count, update);
+        }
         if (won && expected == 0 && update == 1) {
             SpinLocks.acquire(count);
         } else if (won && expected == 1 && update == 0) {
@@ -1212,8 +1220,11 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetAtomicLong(AtomicLong count, long expected, long update) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicSwapped(count);
-        primitiveSlotStoring(count, update);
-        return count.compareAndSet(expected, update);
+        boolean won = count.compareAndSet(expected, update);
+        if (won) {
+            primitiveSlotStoring(count, update);
+        }
+        return won;
     }
 
     /**
