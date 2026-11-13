@@ -5611,6 +5611,43 @@ final class Corpus {
                     "the same publication through a plain field, which orders nothing",
                     IssueSeverity.HIGH),
 
+            // --- Publication by compareAndSet (#1328): a swap is released after its store, and a
+            //     get that ran in between found nothing to take.
+
+            new RecordingSubject("idiom_compareAndSetLazyInit_losersReadTheWinnersObject", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread builds a config, offers it with compareAndSet(null, mine) and "
+                            + "uses whichever won; a loser's get runs right after the winner's "
+                            + "swap, which orders the winner's setters before the loser's read. "
+                            + "Reported before #1328, when that get ran before the swap's release"),
+
+            new RecordingSubject("idiom_compareAndSetLazyInit_plainFieldCheckThenAssign", JDK,
+                    IDIOM_LANE + "PlainReference",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same initialisation through a plain field: check, build, assign, with "
+                            + "nothing ordering one thread's assignment before another's read",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_treiberStack_pushesAFreshNodePerValue", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a lock-free stack that allocates a node per push: the node's next is written "
+                            + "before the compareAndSet that publishes the node and read only "
+                            + "after a get returned it. Its Node.next was reported in about 1 "
+                            + "round in 100 before #1328"),
+
+            new RecordingSubject("idiom_treiberStack_plainHead", JDK,
+                    IDIOM_LANE + "PlainStack",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same stack with a plain head, read and assigned by every thread with "
+                            + "nothing between",
+                    IssueSeverity.HIGH),
+
             // --- A pool that hands out holders (#747): the first pair is a known gap, the second
             //     the declaration that closes it for a user today.
 

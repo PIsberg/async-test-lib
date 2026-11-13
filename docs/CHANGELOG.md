@@ -20,6 +20,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An object read out of an atomic right after the `compareAndSet` that stored it is ordered
+  (#1328).** With the agent attached, `ref.compareAndSet(null, created)` followed by another
+  thread's `ref.get().field` could be reported by `AtomicityValidator` and
+  `RaceConditionDetector` as an unordered read of what the first thread wrote before the swap:
+  2,952 of 3,000 rounds when the reader spins on the atomic, and a lock-free stack's
+  `Node.next` in every run of 200 rounds on six threads. A successful swap is released after it,
+  because a failed one must publish nothing (#742), and a `get` that ran in between found no
+  release to take. The swap is now announced beforehand, and a read whose value no release
+  stored waits for an announced swap of that very object to end, for at most a millisecond,
+  then looks again. A read also looks among the releases the slot had made before it ran, and a
+  slot that has been swapped keeps sixteen releases instead of four, which costs 1,289 to
+  1,743 bytes for a slot written that often against 426 to 576. A read still takes only a
+  release that stored the object it returned, through the slot it read, so a failed swap
+  publishes nothing, as before. Covers `AtomicReference`, `AtomicReferenceArray`,
+  `AtomicReferenceFieldUpdater`, `AtomicStampedReference` and reference `VarHandle` swaps.
+  What is left is in the limits of `HappensBefore`: a swapping thread that loses its processor
+  for more than a millisecond between its store and its release, a ninth thread swapping one
+  slot at once, and sixteen completed swaps between a read and its lookup.
+
 - **A lock-free stack that allocates a node per push is no longer reported as an ABA (#1325).**
   With the agent attached, a thread that read the head, saw another thread push a node on top and
   pop it again, and then swapped the head drew `CAS succeeded despite ABA` at `VERDICT`: 26

@@ -2886,6 +2886,7 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicSwapped(slot);
         ControlledSchedule.point();
         ownershipOffered(update, slot);
+        HappensBefore.swapping(slot, SLOT_VALUE, update);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         boolean swapped = aba == null ? slot.compareAndSet(expected, update)
                 : aba.compareAndSet(slot, expected, update);
@@ -2894,9 +2895,11 @@ public final class TelemetryRegistry {
         } else {
             // After the swap, not before: a slot's release cannot be withdrawn, and one a failed
             // swap left behind would match a later read of the same value stored by somebody else.
-            // A read that returns the value before this lands finds no release and takes nothing.
+            // A read that returns the value before this lands finds the swap announced above,
+            // waits for it to end below, and then finds the release (#1328).
             slotStored(slot, update);
         }
+        HappensBefore.swapEnded();
         return swapped;
     }
 
@@ -2950,8 +2953,9 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicRead(slot);
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        Object released = HappensBefore.releasedSoFar(slot, SLOT_VALUE);
         Object value = aba == null ? slot.get() : aba.get(slot);
-        HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
+        HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value, released);
         return value;
     }
 
@@ -2967,8 +2971,9 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicRead(slot);
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        Object released = HappensBefore.releasedSoFar(slot, SLOT_VALUE);
         Object value = aba == null ? slot.getAcquire() : aba.getAcquire(slot);
-        HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
+        HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value, released);
         return value;
     }
 
@@ -3032,12 +3037,14 @@ public final class TelemetryRegistry {
             @Nullable Object expected, @Nullable Object update) {
         ControlledSchedule.point();
         slotOffered(update, receiver, System.identityHashCode(updater));
+        HappensBefore.swapping(receiver, ReferenceSlots.fieldOf(updater), update);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
         boolean swapped = aba == null ? updater.compareAndSet(receiver, expected, update)
                 : aba.compareAndSet(receiver, updater, 0, expected, update, (h, s, i, e, u) -> asUpdater(s).compareAndSet(h, e, u));
         if (swapped) {
             slotReleased(receiver, ReferenceSlots.fieldOf(updater), update);
         }
+        HappensBefore.swapEnded();
         return swapped;
     }
 
@@ -3141,12 +3148,14 @@ public final class TelemetryRegistry {
                                                       @Nullable Object update) {
         ControlledSchedule.point();
         slotOffered(update, slots, index);
+        HappensBefore.swapping(slots, ReferenceSlots.element(index), update);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
         boolean swapped = aba == null ? slots.compareAndSet(index, expected, update)
                 : aba.compareAndSet(slots, null, index, expected, update, (h, s, i, e, u) -> asArray(h).compareAndSet(i, e, u));
         if (swapped) {
             slotReleased(slots, ReferenceSlots.element(index), update);
         }
+        HappensBefore.swapEnded();
         return swapped;
     }
 
@@ -3269,12 +3278,14 @@ public final class TelemetryRegistry {
                                                        @Nullable Object update) {
         ControlledSchedule.point();
         slotOffered(update, receiver, System.identityHashCode(handle));
+        HappensBefore.swapping(receiver, ReferenceSlots.fieldOf(handle), update);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
         boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(receiver, expected, update)
                 : aba.compareAndSet(receiver, handle, 0, expected, update, (h, s, i, e, u) -> (boolean) asHandle(s).withInvokeBehavior().compareAndSet(h, e, u));
         if (swapped) {
             slotReleased(receiver, ReferenceSlots.fieldOf(handle), update);
         }
+        HappensBefore.swapEnded();
         return swapped;
     }
 
@@ -3391,12 +3402,14 @@ public final class TelemetryRegistry {
                                                              @Nullable Object update) {
         ControlledSchedule.point();
         slotOffered(update, handle, 0);
+        HappensBefore.swapping(handle, SLOT_VALUE, update);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
         boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(expected, update)
                 : aba.compareAndSet(handle, null, 0, expected, update, (h, s, i, e, u) -> (boolean) asHandle(h).withInvokeBehavior().compareAndSet(e, u));
         if (swapped) {
             slotReleased(handle, SLOT_VALUE, update);
         }
+        HappensBefore.swapEnded();
         return swapped;
     }
 
@@ -3524,12 +3537,14 @@ public final class TelemetryRegistry {
                                                             @Nullable Object update) {
         ControlledSchedule.point();
         slotOffered(update, array, index);
+        HappensBefore.swapping(array, ReferenceSlots.element(index), update);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
         boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(array, index, expected, update)
                 : aba.compareAndSet(array, handle, index, expected, update, (h, s, i, e, u) -> (boolean) asHandle(s).withInvokeBehavior().compareAndSet(h, i, e, u));
         if (swapped) {
             slotReleased(array, ReferenceSlots.element(index), update);
         }
+        HappensBefore.swapEnded();
         return swapped;
     }
 
@@ -3571,8 +3586,9 @@ public final class TelemetryRegistry {
     public static @Nullable Object getStampedReference(AtomicStampedReference<Object> slot, int[] stampHolder) {
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        Object released = HappensBefore.releasedSoFar(slot, SLOT_VALUE);
         Object value = aba == null ? slot.get(stampHolder) : aba.getStamped(slot, stampHolder);
-        HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
+        HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value, released);
         return value;
     }
 
@@ -3586,8 +3602,9 @@ public final class TelemetryRegistry {
     public static @Nullable Object getReferenceStampedReference(AtomicStampedReference<Object> slot) {
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+        Object released = HappensBefore.releasedSoFar(slot, SLOT_VALUE);
         Object value = aba == null ? slot.getReference() : aba.getStampedReference(slot);
-        HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value);
+        HappensBefore.acquireVolatileReference(slot, SLOT_VALUE, value, released);
         return value;
     }
 
@@ -3647,6 +3664,7 @@ public final class TelemetryRegistry {
 
     private static boolean stampedSwap(AtomicStampedReference<Object> slot, @Nullable Object expected,
                                        @Nullable Object update, int expectedStamp, int newStamp, boolean weak) {
+        HappensBefore.swapping(slot, SLOT_VALUE, update);
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
         boolean swapped;
         if (aba == null) {
@@ -3658,6 +3676,7 @@ public final class TelemetryRegistry {
         if (swapped) {
             HappensBefore.releaseVolatileReference(slot, SLOT_VALUE, update);
         }
+        HappensBefore.swapEnded();
         return swapped;
     }
 
@@ -3722,11 +3741,14 @@ public final class TelemetryRegistry {
         }
     }
 
-    /** The acquire half of {@link #slotReleased}, for the value an acquiring read returned. */
+    /**
+     * The acquire half of {@link #slotReleased}, for the value an acquiring read returned and
+     * what the slot had released before that read ({@link HappensBefore#releasedSoFar}, #1328).
+     */
     private static void slotAcquired(@Nullable Object owner, @Nullable String field,
-                                     @Nullable Object value) {
+                                     @Nullable Object value, @Nullable Object released) {
         if (owner != null && field != null) {
-            HappensBefore.acquireVolatileReference(owner, field, value);
+            HappensBefore.acquireVolatileReference(owner, field, value, released);
         }
     }
 
@@ -3742,9 +3764,10 @@ public final class TelemetryRegistry {
                                                        Object receiver) {
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
+        Object released = HappensBefore.releasedSoFar(receiver, ReferenceSlots.fieldOf(updater));
         Object value = aba == null ? updater.get(receiver)
                 : aba.read(receiver, updater, 0, (h, s, i) -> asUpdater(s).get(h));
-        slotAcquired(receiver, ReferenceSlots.fieldOf(updater), value);
+        slotAcquired(receiver, ReferenceSlots.fieldOf(updater), value, released);
         return value;
     }
 
@@ -3759,9 +3782,10 @@ public final class TelemetryRegistry {
     public static @Nullable Object getReferenceArray(AtomicReferenceArray<Object> slots, int index) {
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
+        Object released = HappensBefore.releasedSoFar(slots, ReferenceSlots.element(index));
         Object value = aba == null ? slots.get(index)
                 : aba.read(slots, null, index, (h, s, i) -> asArray(h).get(i));
-        slotAcquired(slots, ReferenceSlots.element(index), value);
+        slotAcquired(slots, ReferenceSlots.element(index), value, released);
         return value;
     }
 
@@ -3776,9 +3800,10 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAcquireReferenceArray(AtomicReferenceArray<Object> slots, int index) {
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
+        Object released = HappensBefore.releasedSoFar(slots, ReferenceSlots.element(index));
         Object value = aba == null ? slots.getAcquire(index)
                 : aba.read(slots, null, index, (h, s, i) -> asArray(h).getAcquire(i));
-        slotAcquired(slots, ReferenceSlots.element(index), value);
+        slotAcquired(slots, ReferenceSlots.element(index), value, released);
         return value;
     }
 
@@ -3793,9 +3818,10 @@ public final class TelemetryRegistry {
     public static @Nullable Object getVolatileReferenceHandle(VarHandle handle, Object receiver) {
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
+        Object released = HappensBefore.releasedSoFar(receiver, ReferenceSlots.fieldOf(handle));
         Object value = aba == null ? handle.withInvokeBehavior().getVolatile(receiver)
                 : aba.read(receiver, handle, 0, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h));
-        slotAcquired(receiver, ReferenceSlots.fieldOf(handle), value);
+        slotAcquired(receiver, ReferenceSlots.fieldOf(handle), value, released);
         return value;
     }
 
@@ -3810,9 +3836,10 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAcquireReferenceHandle(VarHandle handle, Object receiver) {
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
+        Object released = HappensBefore.releasedSoFar(receiver, ReferenceSlots.fieldOf(handle));
         Object value = aba == null ? handle.withInvokeBehavior().getAcquire(receiver)
                 : aba.read(receiver, handle, 0, (h, s, i) -> asHandle(s).withInvokeBehavior().getAcquire(h));
-        slotAcquired(receiver, ReferenceSlots.fieldOf(handle), value);
+        slotAcquired(receiver, ReferenceSlots.fieldOf(handle), value, released);
         return value;
     }
 
@@ -3826,9 +3853,10 @@ public final class TelemetryRegistry {
     public static @Nullable Object getVolatileStaticReferenceHandle(VarHandle handle) {
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
+        Object released = HappensBefore.releasedSoFar(handle, SLOT_VALUE);
         Object value = aba == null ? handle.withInvokeBehavior().getVolatile()
                 : aba.read(handle, null, 0, (h, s, i) -> asHandle(h).withInvokeBehavior().getVolatile());
-        slotAcquired(handle, SLOT_VALUE, value);
+        slotAcquired(handle, SLOT_VALUE, value, released);
         return value;
     }
 
@@ -3842,9 +3870,10 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAcquireStaticReferenceHandle(VarHandle handle) {
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
+        Object released = HappensBefore.releasedSoFar(handle, SLOT_VALUE);
         Object value = aba == null ? handle.withInvokeBehavior().getAcquire()
                 : aba.read(handle, null, 0, (h, s, i) -> asHandle(h).withInvokeBehavior().getAcquire());
-        slotAcquired(handle, SLOT_VALUE, value);
+        slotAcquired(handle, SLOT_VALUE, value, released);
         return value;
     }
 
@@ -3860,9 +3889,10 @@ public final class TelemetryRegistry {
     public static @Nullable Object getVolatileArrayReferenceHandle(VarHandle handle, Object array, int index) {
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
+        Object released = HappensBefore.releasedSoFar(array, ReferenceSlots.element(index));
         Object value = aba == null ? handle.withInvokeBehavior().getVolatile(array, index)
                 : aba.read(array, handle, index, (h, s, i) -> asHandle(s).withInvokeBehavior().getVolatile(h, i));
-        slotAcquired(array, ReferenceSlots.element(index), value);
+        slotAcquired(array, ReferenceSlots.element(index), value, released);
         return value;
     }
 
@@ -3878,9 +3908,10 @@ public final class TelemetryRegistry {
     public static @Nullable Object getAcquireArrayReferenceHandle(VarHandle handle, Object array, int index) {
         ControlledSchedule.point();
         ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
+        Object released = HappensBefore.releasedSoFar(array, ReferenceSlots.element(index));
         Object value = aba == null ? handle.withInvokeBehavior().getAcquire(array, index)
                 : aba.read(array, handle, index, (h, s, i) -> asHandle(s).withInvokeBehavior().getAcquire(h, i));
-        slotAcquired(array, ReferenceSlots.element(index), value);
+        slotAcquired(array, ReferenceSlots.element(index), value, released);
         return value;
     }
 
