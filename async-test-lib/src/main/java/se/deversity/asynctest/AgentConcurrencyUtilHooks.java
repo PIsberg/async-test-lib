@@ -92,6 +92,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -254,6 +255,56 @@ public final class AgentConcurrencyUtilHooks {
             }
         }
         return acquired;
+    }
+
+    /**
+     * The tasks a woven {@link #futureTaskRun} is inside right now. A get on another thread can
+     * return between the task completing and the run returning, and waits out that window in
+     * {@link #awaitDirectRun} so that it acquires what the run released (#1307).
+     */
+    private static final Set<Object> RUNNING_DIRECTLY = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Whether any {@code FutureTask} was ever run through {@link #futureTaskRun}. Every executor
+     * future is a {@code FutureTask} too, and until this is set a get on one looks nothing up.
+     */
+    private static volatile boolean futureTaskRunDirectly;
+
+    /** How long a get waits for a direct run it observed complete to return and release. */
+    private static final long DIRECT_RUN_RETURN_NANOS = TimeUnit.MILLISECONDS.toNanos(100);
+
+    /**
+     * Weaves {@code FutureTask.run()} called by the code under test, the Memoizer idiom, where
+     * no executor wraps the task: when the run ends, what the callable did is released to the
+     * task, and a woven get that observed the completion acquires it (#1307).
+     *
+     * @param receiver the task the caller runs on its own thread
+     */
+    public static void futureTaskRun(FutureTask<Object> receiver) {
+        ControlledSchedule.point();
+        futureTaskRunDirectly = true;
+        RUNNING_DIRECTLY.add(receiver);
+        try {
+            receiver.run();
+        } finally {
+            HappensBefore.release(receiver);
+            RUNNING_DIRECTLY.remove(receiver);
+        }
+    }
+
+    /**
+     * Waits, briefly, for a direct run of {@code task} that has completed it to release: the
+     * runner is between the task's completion and the end of {@link #futureTaskRun}, with no
+     * scheduling point in between. Bounded, so a task that gets itself costs a pause, not a hang.
+     */
+    private static void awaitDirectRun(Object task) {
+        if (!RUNNING_DIRECTLY.contains(task)) {
+            return;
+        }
+        long deadline = System.nanoTime() + DIRECT_RUN_RETURN_NANOS;
+        while (RUNNING_DIRECTLY.contains(task) && System.nanoTime() - deadline < 0) {
+            Thread.onSpinWait();
+        }
     }
 
     /**
@@ -7571,6 +7622,10 @@ public final class AgentConcurrencyUtilHooks {
     /** What {@link #completionObserved} does, given the work known to be behind {@code future}. */
     static void observed(Object future, @Nullable Handed handed) {
         if (future instanceof CompletableFuture) {
+            HappensBefore.acquire(future);
+        } else if (futureTaskRunDirectly && future instanceof FutureTask) {
+            // A task its caller ran itself released at the end of that run (#1307).
+            awaitDirectRun(future);
             HappensBefore.acquire(future);
         }
         if (handed instanceof HandedAll all) {

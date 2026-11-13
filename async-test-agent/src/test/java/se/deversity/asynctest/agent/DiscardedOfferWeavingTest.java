@@ -191,6 +191,10 @@ class DiscardedOfferWeavingTest {
             f.obtrudeException(t);
         }
 
+        public static void futureTaskRun(java.util.concurrent.FutureTask<Object> t) {
+            t.run();
+        }
+
         public static Object join(java.util.concurrent.CompletableFuture<Object> f) {
             return f.join();
         }

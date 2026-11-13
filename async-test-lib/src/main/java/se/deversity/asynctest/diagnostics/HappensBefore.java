@@ -93,6 +93,9 @@ import org.jspecify.annotations.Nullable;
  *       left when it ended; and each side of an {@code Exchanger}, which releases the object it
  *       hands over and acquires the one it gets back, and withdraws its release when the
  *       exchange failed.
+ *   <li>Since #1307: a {@code FutureTask} whose {@code run()} the code under test calls itself,
+ *       with no executor to wrap it, releases to the task when the run ends, and a {@code get}
+ *       that observed the completion acquires it, on any thread.
  * </ul>
  *
  * <p>Plain lock and monitor hand-offs are deliberately not edges. The detectors judge lock
