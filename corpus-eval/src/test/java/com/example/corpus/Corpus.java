@@ -5648,6 +5648,41 @@ final class Corpus {
                             + "nothing between",
                     IssueSeverity.HIGH),
 
+            // --- Publication by an update function or an exchange (#1334): the forms the agent
+            //     did not weave stored with a volatile write that released nothing.
+
+            new RecordingSubject("idiom_updateAndGet_buildsTheSuccessorInTheFunction", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread replaces a config with a successor built inside updateAndGet, "
+                            + "its port set after construction and before the swap; the function "
+                            + "reads the port of the config another thread stored. Reported "
+                            + "before #1334, when updateAndGet was not woven"),
+
+            new RecordingSubject("idiom_updateAndGet_plainFieldReadThenAssign", JDK,
+                    IDIOM_LANE + "PlainReference",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same replacement through a plain field: read, build, assign, with "
+                            + "nothing ordering one thread's assignment before another's read",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_compareAndExchange_retriesFromTheWitness", JDK,
+                    "java.util.concurrent.atomic.AtomicReference",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same replacement as a compareAndExchange loop that carries on from the "
+                            + "witness a lost exchange returned. Reported before #1334"),
+
+            new RecordingSubject("idiom_compareAndExchange_plainFieldCompareThenAssign", JDK,
+                    IDIOM_LANE + "PlainReference",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same loop through a plain field: compare what is there, then assign, "
+                            + "with nothing making the two one step",
+                    IssueSeverity.HIGH),
+
             // --- A pool that hands out holders (#747): the first pair is a known gap, the second
             //     the declaration that closes it for a user today.
 

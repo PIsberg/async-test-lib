@@ -7,6 +7,8 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicStampedReference;
 import java.util.function.Supplier;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -33,6 +35,20 @@ class SwapPublicationWindowTest {
         int value;
     }
 
+    /**
+     * A drain for the offer each swap publishes: with none the ring fills after about 8,000
+     * rounds in this class, and every later swap waits out the ring's give-up second.
+     */
+    @BeforeEach
+    void drainTelemetry() {
+        TelemetryRegistry.start();
+    }
+
+    @AfterEach
+    void stopTheDrain() {
+        TelemetryRegistry.stop();
+    }
+
     /** A reference slot of one kind: a swap from empty, and a read. */
     private interface Slot {
 
@@ -53,6 +69,25 @@ class SwapPublicationWindowTest {
             public Object read() {
                 return TelemetryRegistry.getAtomicReference(slot);
             }
+        };
+    }
+
+    /** An {@code AtomicReference} whose swap from empty is {@code swap}; read with a get. */
+    private static Supplier<Slot> atomicReferenceSwappedBy(
+            java.util.function.BiPredicate<AtomicReference<Object>, Object> swap) {
+        return () -> {
+            AtomicReference<Object> slot = new AtomicReference<>();
+            return new Slot() {
+                @Override
+                public boolean swapIn(Object box) {
+                    return swap.test(slot, box);
+                }
+
+                @Override
+                public Object read() {
+                    return TelemetryRegistry.getAtomicReference(slot);
+                }
+            };
         };
     }
 
@@ -152,6 +187,90 @@ class SwapPublicationWindowTest {
     }
 
     @Test
+    @DisplayName("an object stored by updateAndGet or getAndUpdate is published to the get that returns it (#1334)")
+    void anUpdateFormPublishesWhatItStores() throws InterruptedException {
+        assertEquals(0, roundsReported(atomicReferenceSwappedBy((slot, box) ->
+                TelemetryRegistry.updateAndGetAtomicReference(slot, old -> old == null ? box : old) == box)),
+                ORDERED);
+        assertEquals(0, roundsReported(atomicReferenceSwappedBy((slot, box) ->
+                TelemetryRegistry.getAndUpdateAtomicReference(slot, old -> old == null ? box : old) == null)),
+                ORDERED);
+    }
+
+    @Test
+    @DisplayName("so is one stored by accumulateAndGet or getAndAccumulate (#1334)")
+    void anAccumulateFormPublishesWhatItStores() throws InterruptedException {
+        assertEquals(0, roundsReported(atomicReferenceSwappedBy((slot, box) ->
+                TelemetryRegistry.accumulateAndGetAtomicReference(slot, box,
+                        (old, mine) -> old == null ? mine : old) == box)), ORDERED);
+        assertEquals(0, roundsReported(atomicReferenceSwappedBy((slot, box) ->
+                TelemetryRegistry.getAndAccumulateAtomicReference(slot, box,
+                        (old, mine) -> old == null ? mine : old) == null)), ORDERED);
+    }
+
+    @Test
+    @DisplayName("and one stored by compareAndExchange or weakCompareAndSetVolatile (#1334)")
+    void anExchangeOrAWeakVolatileSwapPublishesWhatItStores() throws InterruptedException {
+        assertEquals(0, roundsReported(atomicReferenceSwappedBy((slot, box) ->
+                TelemetryRegistry.compareAndExchangeAtomicReference(slot, null, box) == null)), ORDERED);
+        assertEquals(0, roundsReported(atomicReferenceSwappedBy((slot, box) ->
+                TelemetryRegistry.weakCompareAndSetVolatileAtomicReference(slot, null, box))), ORDERED);
+    }
+
+    @Test
+    @DisplayName("an exchange that lost publishes nothing, and returns what the slot held")
+    void aLostExchangePublishesNothing() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box box = new Box();
+        Object held = new Object();
+        AtomicReference<Object> slot = new AtomicReference<>(held);
+        AtomicReference<Object> witness = new AtomicReference<>();
+        Thread writer = new Thread(() -> {
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            witness.set(TelemetryRegistry.compareAndExchangeAtomicReference(slot, null, box));
+        });
+        writer.start();
+        writer.join(); // unwoven here, so it orders nothing as far as the model knows
+        Thread reader = new Thread(() -> {
+            TelemetryRegistry.getAtomicReference(slot);
+            detector.recordFieldRead(box, "value");
+            box.value++;
+            detector.recordFieldWrite(box, "value");
+        });
+        reader.start();
+        reader.join();
+        assertTrue(witness.get() == held, "a lost exchange returns the value it found");
+        assertTrue(slot.get() == held, "and stores nothing");
+        assertTrue(detector.analyzeRaceConditions().hasIssues(),
+                "The exchange lost, so the box never reached the slot and the reader's get "
+                        + "returned something else: nothing orders the writer before the reader.");
+    }
+
+    @Test
+    @DisplayName("an update function sees the value its swap replaces, and is retried when it lost")
+    void anUpdateIsAppliedToTheValueItReplaces() throws InterruptedException {
+        AtomicReference<Object> slot = new AtomicReference<>(0);
+        int threads = 4;
+        int each = 500;
+        Thread[] workers = new Thread[threads];
+        for (int i = 0; i < threads; i++) {
+            workers[i] = new Thread(() -> {
+                for (int n = 0; n < each; n++) {
+                    TelemetryRegistry.updateAndGetAtomicReference(slot, old -> (Integer) old + 1);
+                    TelemetryRegistry.getAndAccumulateAtomicReference(slot, 1,
+                            (old, add) -> (Integer) old + (Integer) add);
+                }
+            });
+            workers[i].start();
+        }
+        for (Thread worker : workers) {
+            worker.join();
+        }
+        assertEquals(2 * threads * each, slot.get(), "no update may be lost or applied twice");
+    }
+
+    @Test
     @DisplayName("a swap that failed still publishes nothing to a get of the same object")
     void aFailedSwapStillPublishesNothing() throws InterruptedException {
         RaceConditionDetector detector = new RaceConditionDetector();
@@ -190,8 +309,8 @@ class SwapPublicationWindowTest {
     }
 
     @Test
-    @DisplayName("a get does not wait on a swap that never ends, and takes nothing from it")
-    void anUnfinishedSwapIsWaitedForBrieflyAndPublishesNothing() throws InterruptedException {
+    @DisplayName("a get does not wait on a swap that stalls after its store, and is ordered after what the swapper did before it")
+    void aSwapStalledAfterItsStoreIsWaitedForBrieflyAndStillOrdersItsReader() throws InterruptedException {
         RaceConditionDetector detector = new RaceConditionDetector();
         Box box = new Box();
         AtomicReference<Object> slot = new AtomicReference<>();
@@ -238,9 +357,79 @@ class SwapPublicationWindowTest {
         assertTrue(returned, "the get must return although the swap it waited for never ended");
         assertTrue(waitedNanos[0] < TimeUnit.SECONDS.toNanos(5),
                 "the wait is bounded at a millisecond; this get took " + waitedNanos[0] + " ns");
-        assertTrue(detector.analyzeRaceConditions().hasIssues(),
-                "No release of the box ever landed, so the reader took nothing: an announcement "
-                        + "is not a release, and waiting for one orders nothing.");
+        assertFalse(detector.analyzeRaceConditions().hasIssues(),
+                "The reader's get returned the box while its swap was still announced and no "
+                        + "release had stored it, so that swap put it there: what the swapper did "
+                        + "before announcing is ordered before the read, however long the swapper "
+                        + "then stays off its processor (a runner under load exceeds the "
+                        + "millisecond the reader waits).");
+    }
+
+    /**
+     * Runs a writer that sets {@code box.value}, announces a swap of {@code box} into
+     * {@code slot} and stalls there without storing or releasing, and a reader that gets from
+     * the slot while the writer is stalled and then uses {@code box}.
+     *
+     * @return whether the detector reported the reader's use of the box
+     */
+    private static boolean reportedWithAStalledAnnouncement(AtomicReference<Object> slot, Box box,
+                                                            RaceConditionDetector detector)
+            throws InterruptedException {
+        CountDownLatch announced = new CountDownLatch(1);
+        CountDownLatch read = new CountDownLatch(1);
+        Thread writer = new Thread(() -> {
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            HappensBefore.swapping(slot, "value", box);
+            announced.countDown();
+            try {
+                read.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            HappensBefore.swapEnded();
+        });
+        Thread reader = new Thread(() -> {
+            try {
+                announced.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            TelemetryRegistry.getAtomicReference(slot);
+            detector.recordFieldRead(box, "value");
+            box.value++;
+            detector.recordFieldWrite(box, "value");
+            read.countDown();
+        });
+        writer.start();
+        reader.start();
+        reader.join(TimeUnit.SECONDS.toMillis(30));
+        read.countDown();
+        writer.join();
+        reader.join();
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a stalled swap of another object orders nothing for a get that returned something else")
+    void aStalledSwapOfAnotherObjectPublishesNothing() throws InterruptedException {
+        AtomicReference<Object> slot = new AtomicReference<>(new Box());
+        assertTrue(reportedWithAStalledAnnouncement(slot, new Box(), new RaceConditionDetector()),
+                "The get returned the object the slot already held, not the one being swapped "
+                        + "in, so the announced swap never reached this reader.");
+    }
+
+    @Test
+    @DisplayName("a get takes the release that stored its object, not a stalled announcement of the same object")
+    void aReleaseThatStoredTheObjectWinsOverAStalledAnnouncementOfIt() throws InterruptedException {
+        Box box = new Box();
+        AtomicReference<Object> slot = new AtomicReference<>();
+        TelemetryRegistry.setAtomicReference(slot, box); // this thread's store put the box there
+        assertTrue(reportedWithAStalledAnnouncement(slot, box, new RaceConditionDetector()),
+                "The box was stored and released by this thread. The other thread's swap of the "
+                        + "same box is only announced, so its write to the box is ordered before "
+                        + "nothing the reader does.");
     }
 
     /**

@@ -470,9 +470,15 @@ public final class HappensBefore {
             published = earlier.publishedBy(hash, value, true, Release.KEPT_SWAPPED);
         }
         // No release stored this object, and a swap of it into this slot may be between its
-        // store and its release (#1328): let it finish, and look once more.
-        if (published == null && value != null && clock.awaitSwapOf(value)) {
+        // store and its release (#1328): let it finish, and look once more. A swap still announced
+        // when the wait runs out stored the object this read returned, since nothing else did, so
+        // the read takes what its thread had done by then (#1334).
+        if (published == null && value != null && clock.swappers != null) {
+            Stamp stalled = clock.awaitSwapOf(value);
             published = clock.publishedBy(hash, value, true);
+            if (published == null) {
+                published = stalled;
+            }
         }
         acquireStamp(me, published);
     }
@@ -484,9 +490,19 @@ public final class HappensBefore {
      * <p>A successful swap is released after it, because a failed one publishes nothing and a
      * volatile field's release is never withdrawn (#742). That leaves an instant in which a read
      * already returns the value and its release has not landed. The announcement lets such a read
-     * wait for {@link #swapEnded} and look again; it publishes nothing itself, so a failed swap
-     * leaves no trace, and a read still takes only a release that stored the object it returned,
-     * through the slot it read.
+     * wait for {@link #swapEnded} and look again. A failed swap leaves no trace, and a read takes
+     * a release that stored the object it returned, through the slot it read, whenever there is
+     * one.
+     *
+     * <p>A swapping thread can lose its processor between its store and its release for longer
+     * than a reader waits, which a loaded CI runner does about once in eight runs of 40 rounds
+     * on four cores (#1334). A read that returned the object, found no release that stored it,
+     * and finds its swap still announced after the wait takes the announcing thread's clock
+     * instead: with no other store of the object, that swap is how it reached the slot, so
+     * everything its thread did before announcing is before the read. The one case this gets
+     * wrong is an object that an unwoven store put in the slot while another thread's failing
+     * swap of the same object is stalled, where the read is ordered after a thread that published
+     * nothing.
      *
      * <p>Call it before the swap and {@link #swapEnded} after the release, on the same thread. A
      * thread announces one swap at a time: a new announcement ends the last. Allocates an eight
@@ -1030,18 +1046,19 @@ public final class HappensBefore {
 
         /**
          * Waits for every announced swap of {@code value} into the field to end, for at most
-         * {@link Swappers#WAIT_NANOS} in all. {@return whether the field has ever been swapped,
-         * which is when looking for a release again can find one}
+         * {@link Swappers#WAIT_NANOS} in all. {@return the clock of a thread whose swap was still
+         * announced when the wait ran out, {@code null} when every swap ended}
          *
          * <p>A swap lasts a store and a release, so the wait is a few spins unless the swapping
-         * thread lost its processor in between, which is what the bound is for: past it the
-         * reader takes nothing, the answer it had before (#1328).
+         * thread lost its processor in between, which is what the bound is for (#1328). The clock
+         * is read before the announcement is checked once more, so it is one the thread had while
+         * it was announced: no later than the release it has yet to make (#1334).
          */
         @SuppressWarnings("ReferenceEquality") // the object read, and the thread that announced it
-        boolean awaitSwapOf(Object value) {
+        @Nullable Stamp awaitSwapOf(Object value) {
             Swappers table = swappers;
             if (table == null) {
-                return false;
+                return null;
             }
             long deadline = 0L;
             for (int i = 0; i < Swappers.SIZE; i++) {
@@ -1056,12 +1073,14 @@ public final class HappensBefore {
                     if (deadline == 0L) {
                         deadline = System.nanoTime() + Swappers.WAIT_NANOS;
                     } else if (System.nanoTime() - deadline > 0L) {
-                        return true;
+                        Stamp announced = swapper.current;
+                        return swapper.swapping == value && table.get(i) == swapper // NOPMD CompareObjectsWithEquals - identity is the point
+                                ? announced : null;
                     }
                     Thread.yield();
                 }
             }
-            return true;
+            return null;
         }
 
         /** {@return how many releases the field keeps: more once it has been swapped (#1328)} */

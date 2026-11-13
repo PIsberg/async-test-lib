@@ -204,16 +204,25 @@ final class FieldAccessWeaver {
     /**
      * The {@code AtomicReference} calls substituted; the hook is the name plus {@code AtomicReference}.
      * The stores are offers (#664) and releases, and the two acquiring reads are acquires of the
-     * store whose value they returned, the model a volatile field has (#741).
+     * store whose value they returned, the model a volatile field has (#741). The update,
+     * accumulate, exchange and weak-volatile forms store with a volatile write too, and their
+     * hooks run them as that read and that swap (#1334). {@code weakCompareAndSetPlain} and the
+     * deprecated {@code weakCompareAndSet} have plain memory semantics and are left alone.
      */
-    private static final Map<String, String> ATOMIC_REFERENCE_FORMS = Map.of(
-            "set", "(" + OBJECT + ")V",
-            "lazySet", "(" + OBJECT + ")V",
-            "setRelease", "(" + OBJECT + ")V",
-            "compareAndSet", "(" + OBJECT + OBJECT + ")Z",
-            "getAndSet", "(" + OBJECT + ")" + OBJECT,
-            "get", "()" + OBJECT,
-            "getAcquire", "()" + OBJECT);
+    private static final Map<String, String> ATOMIC_REFERENCE_FORMS = Map.ofEntries(
+            Map.entry("set", "(" + OBJECT + ")V"),
+            Map.entry("lazySet", "(" + OBJECT + ")V"),
+            Map.entry("setRelease", "(" + OBJECT + ")V"),
+            Map.entry("compareAndSet", "(" + OBJECT + OBJECT + ")Z"),
+            Map.entry("getAndSet", "(" + OBJECT + ")" + OBJECT),
+            Map.entry("get", "()" + OBJECT),
+            Map.entry("getAcquire", "()" + OBJECT),
+            Map.entry("updateAndGet", "(Ljava/util/function/UnaryOperator;)" + OBJECT),
+            Map.entry("getAndUpdate", "(Ljava/util/function/UnaryOperator;)" + OBJECT),
+            Map.entry("accumulateAndGet", "(" + OBJECT + "Ljava/util/function/BinaryOperator;)" + OBJECT),
+            Map.entry("getAndAccumulate", "(" + OBJECT + "Ljava/util/function/BinaryOperator;)" + OBJECT),
+            Map.entry("compareAndExchange", "(" + OBJECT + OBJECT + ")" + OBJECT),
+            Map.entry("weakCompareAndSetVolatile", "(" + OBJECT + OBJECT + ")Z"));
 
     /**
      * The {@code AtomicReferenceFieldUpdater} calls substituted; the hook is the name plus
