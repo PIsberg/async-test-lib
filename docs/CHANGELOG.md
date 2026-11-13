@@ -20,6 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A semaphore used as a signal is no longer reported as a permit leak.** `SEMAPHORE` counted a
+  release only against a semaphore an acquisition had already registered, so releases recorded
+  before the first acquisition were dropped. That is the order a signal produces: one thread
+  releases, another acquires. A `Semaphore(0)` released five times and then acquired five times was
+  reported at `VERDICT` trust as "acquired 5 times but released only 0 times". A release now
+  registers the semaphore like an acquisition does. A semaphore the run released before it ever
+  acquired it is treated as a signal, so a signal nobody has awaited yet is not an over-release;
+  a semaphore registered with `registerSemaphore` is still held to its declared permits, and a
+  holder that returns its permit twice is still reported. A release by a thread that acquired
+  nothing, on a semaphore nothing has acquired yet, was dropped before and is not concluded now.
+  Tests first in `SemaphoreMisuseDetectorTest`: three were red before the change. New corpus idiom
+  pair `idiom_semaphore_signalsItsWaiters` / `idiom_semaphore_takesWhatNobodySends`; the correct
+  row drew the finding in a probe before the change.
+
 - **A woven `awaitTermination` or `close` is recorded by `EXECUTOR_SHUTDOWN` (#1271).** With
   `collections=true` both calls were woven for the happens-before model (#1266), but the shutdown
   detector learned of a wait only through the recording API. A pool shut down, awaited too briefly

@@ -6186,6 +6186,21 @@ final class Corpus {
                     "each thread checks isEmpty and then removes, so a thread whose check another "
                             + "thread's take overtook removes a job it never saw, and throws on the "
                             + "last one (#1249)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_semaphore_signalsItsWaiters", JDK,
+                    "java.util.concurrent.Semaphore",
+                    DetectorType.SEMAPHORE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread releases a permit per waiter and the others acquire one each, so "
+                            + "the releases precede the acquisitions and the counts end equal"),
+
+            new RecordingSubject("idiom_semaphore_takesWhatNobodySends", JDK,
+                    "java.util.concurrent.Semaphore",
+                    DetectorType.SEMAPHORE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread acquires a permit and nothing releases one, so acquisitions "
+                            + "exceed releases by one per thread",
                     IssueSeverity.HIGH)
     );
 

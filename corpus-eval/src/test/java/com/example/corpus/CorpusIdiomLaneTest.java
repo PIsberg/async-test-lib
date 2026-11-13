@@ -2514,6 +2514,37 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 25. A semaphore as a signal: one thread releases, the others acquire ------------------
+
+    private static final Rounds<Semaphore> SIGNALS = new Rounds<>(() -> new Semaphore(0));
+    private static final Rounds<Semaphore> UNSIGNALLED = new Rounds<>(() -> new Semaphore(THREADS));
+
+    /**
+     * The round's first thread sends one permit per waiter, and every other thread waits for one.
+     * Nobody holds anything: the releases come before the acquisitions they wake, from a thread
+     * that never acquires.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_semaphore_signalsItsWaiters() {
+        correct(() -> {
+            Turn<Semaphore> turn = SIGNALS.next();
+            if (turn.opensTheRound()) {
+                turn.shared().release(THREADS - 1);
+            } else {
+                turn.shared().acquire();
+            }
+        });
+    }
+
+    /**
+     * The permits are there from the start and nobody sends any: every thread takes one and
+     * returns nothing, so the round ends with the semaphore drained.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_semaphore_takesWhatNobodySends() {
+        broken(() -> UNSIGNALLED.next().shared().acquire());
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**
