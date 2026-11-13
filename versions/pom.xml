@@ -76,7 +76,11 @@
         <clojure.version>1.12.6</clojure.version>
         <gmavenplus-plugin.version>5.1.0</gmavenplus-plugin.version>
         <scala-maven-plugin.version>4.10.0</scala-maven-plugin.version>
-        <clojure-maven-plugin.version>1.9.4</clojure-maven-plugin.version>
+        <!-- Held at 1.9.3: 1.9.4 declares a Maven 3.9.16 prerequisite (1.9.3 asks for 3.3), and
+             the ubuntu-26.04 runner image ships 3.9.15, so every Clojure fixture leg fails there
+             with "Required Maven version 3.9.16 is not met". Lift it when the runner's Maven is
+             3.9.16 or newer. -->
+        <clojure-maven-plugin.version>1.9.3</clojure-maven-plugin.version>
 
         <!-- corpus-eval/: the third-party subjects. A subject bump can move the measured numbers;
              rerun the corpus lanes before merging one. -->
