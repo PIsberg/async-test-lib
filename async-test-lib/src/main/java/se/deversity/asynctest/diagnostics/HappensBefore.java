@@ -62,7 +62,9 @@ import org.jspecify.annotations.Nullable;
  *       {@code Thread.Builder} start and {@code Thread.startVirtualThread}, {@code Thread.join},
  *       and an {@code isAlive} that returned {@code false} (#834); an element offered to, and taken from, a concurrent queue, map or
  *       {@code AtomicReference}, where an offer the container refused or a failed
- *       {@code compareAndSet} is withdrawn with {@link #retract} and publishes nothing;
+ *       {@code compareAndSet} is withdrawn with {@link #retract} and publishes nothing; a
+ *       {@code BlockingQueue.drainTo} whose target is a {@code List}, which acquires each element
+ *       it moved, the last ones of the list (#1295);
  *       {@code CountDownLatch.countDown} and a successful {@code await};
  *       {@code Semaphore.release} and a successful acquire; a {@code CyclicBarrier.await},
  *       which releases into the generation it arrives in and, on a normal return, acquires it

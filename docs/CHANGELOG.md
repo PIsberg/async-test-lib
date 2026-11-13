@@ -20,6 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An object handed over through `BlockingQueue.drainTo` is no longer reported as raced (#1295).**
+  A woven `take` or `poll` acquired what the element's `put` published, but a drain names no
+  element, so it acquired nothing: an order built by one thread, put on a queue, drained into a
+  list by another and updated there drew "mixed read/write compound access across 2 threads" from
+  `ATOMICITY_VIOLATIONS`. Both `drainTo` forms now acquire each element they moved when the target
+  is a `List`, where a drain appends and the moved elements are the last ones. A drain into any
+  other collection still orders nothing. Test first in `AgentHappensBeforeFeedTest`, red before the
+  change, with the unwoven drain as the twin that keeps its finding. New corpus idiom pair
+  `idiom_drainTo_handsOffAMutableObject` / `idiom_drainTo_producerKeepsWritingAfterThePut`: the
+  correct row failed the idioms lane against the previous jar.
+
 - **A semaphore used as a signal is no longer reported as a permit leak.** `SEMAPHORE` counted a
   release only against a semaphore an acquisition had already registered, so releases recorded
   before the first acquisition were dropped. That is the order a signal produces: one thread
