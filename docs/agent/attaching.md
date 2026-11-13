@@ -533,7 +533,7 @@ read out of another slot receives nothing. So is a reference slot reached throug
 an `AtomicReferenceArray` element or a `VarHandle` (since #741): their volatile, release and successful
 compare-and-set stores release the slot, and an updater `get`, an array `get` or `getAcquire`, or a
 handle's `getVolatile` or `getAcquire` acquires. An `AtomicStampedReference` is a slot too (#817): its
-`set` and successful swaps release, its `get` and `getReference` acquire. The slot is the field the updater or handle reaches,
+`set` and successful swaps release, its `get` and `getReference` acquire. An `AtomicBoolean`, `AtomicInteger` or `AtomicLong` used as a completion flag or counter is modelled the same way (#1315): `set`, `getAndSet`, `compareAndSet` and the increment, decrement and add forms release the atomic, and a `get` acquires what the store whose value it returned published, so a field written before `done.set(true)` is ordered before a read made after `done.get()` returned `true`, and one written after the `set` is not. A `compareAndSet` that loses publishes nothing. Their `lazySet`, plain, opaque, update and accumulate forms, and `intValue` or `getPlain`, order nothing. The slot is the field the updater or handle reaches,
 the same clock a direct access to that field uses, or the element's index. A plain or opaque access
 orders nothing, and an updater's field is named only while `java.util.concurrent.atomic` is open to the
 library, which `fields=true` arranges. The value is compared as a primitive's bits or a

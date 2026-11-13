@@ -123,6 +123,8 @@ final class FieldAccessWeaver {
 
     /** The {@code AtomicBoolean} calls substituted; the hook is the name plus {@code AtomicBoolean}. */
     private static final Map<String, String> ATOMIC_BOOLEAN_FORMS = Map.ofEntries(
+            // A volatile read: the acquire of the store it returned (#1315).
+            Map.entry("get", "()Z"),
             Map.entry("compareAndSet", "(ZZ)Z"),
             Map.entry("getAndSet", "(Z)Z"),
             Map.entry("set", "(Z)V"),
@@ -939,7 +941,9 @@ final class FieldAccessWeaver {
          *
          * <p>{@code AtomicInteger.get}, its increments and the {@code AtomicLong} calls are here for
          * a get followed by a set (#1157) or by an arithmetic update (#1249), not for locking: the
-         * same substitution, the same stack, a different reader.
+         * same substitution, the same stack, a different reader. {@code AtomicBoolean.get} is
+         * here for the happens-before model alone (#1315): the acquire of the store whose value
+         * it returned, which is what orders a reader after a completion flag's writer.
          */
         private static @Nullable String spinLockHook(int opcode, String owner, String name,
                                                      String descriptor) {

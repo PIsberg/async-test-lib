@@ -6369,6 +6369,22 @@ final class Corpus {
                     "the same entrySet() loop with the value's field written after the put "
                             + "published it: the write and the other threads' reads are "
                             + "unordered",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_atomicFlag_publishesPlainData", JDK,
+                    "java.util.concurrent.atomic.AtomicBoolean",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one writer per round writes plain data and then sets an AtomicBoolean, and "
+                            + "every reader spins on get before it reads the data: the set is a "
+                            + "volatile write and the get that saw it a volatile read (#1315)"),
+
+            new RecordingSubject("idiom_atomicFlag_setBeforeTheData", JDK,
+                    "java.util.concurrent.atomic.AtomicBoolean",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same code with the flag set first and the data written after it, so a "
+                            + "reader that saw the flag reads data nothing ordered",
                     IssueSeverity.HIGH)
     );
 

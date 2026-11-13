@@ -43,6 +43,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
@@ -2971,6 +2972,56 @@ class CorpusIdiomLaneTest {
                 awaitAnEntry(turn.shared());
                 for (Map.Entry<String, Limits> entry : turn.shared().entrySet()) {
                     use(entry.getValue().limit);
+                }
+            }
+        });
+    }
+
+    // --- 35. Plain data published by an AtomicBoolean flag (#1315) ----------------------------
+
+    private static final class FlaggedMailbox {
+        int data;
+        final AtomicBoolean ready = new AtomicBoolean();
+    }
+
+    private static final Rounds<FlaggedMailbox> FLAGGED = new Rounds<>(FlaggedMailbox::new);
+    private static final Rounds<FlaggedMailbox> EARLY_FLAGGED = new Rounds<>(FlaggedMailbox::new);
+
+    /** The volatile-flag idiom of row 2 with the flag an AtomicBoolean, the commoner spelling. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_atomicFlag_publishesPlainData() {
+        correct(() -> {
+            Turn<FlaggedMailbox> turn = FLAGGED.next();
+            FlaggedMailbox box = turn.shared();
+            if (turn.opensTheRound()) {
+                box.data = 42;
+                box.ready.set(true);
+            } else {
+                for (int spins = 0; !box.ready.get() && spins < SPIN_LIMIT; spins++) {
+                    Thread.onSpinWait();
+                }
+                if (box.ready.get()) {
+                    use(box.data);
+                }
+            }
+        });
+    }
+
+    /** The same code with the flag set before the data is written. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_atomicFlag_setBeforeTheData() {
+        broken(() -> {
+            Turn<FlaggedMailbox> turn = EARLY_FLAGGED.next();
+            FlaggedMailbox box = turn.shared();
+            if (turn.opensTheRound()) {
+                box.ready.set(true);
+                box.data = 42;
+            } else {
+                for (int spins = 0; !box.ready.get() && spins < SPIN_LIMIT; spins++) {
+                    Thread.onSpinWait();
+                }
+                if (box.ready.get()) {
+                    use(box.data);
                 }
             }
         });

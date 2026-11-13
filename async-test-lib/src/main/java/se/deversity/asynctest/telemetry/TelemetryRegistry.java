@@ -844,6 +844,9 @@ public final class TelemetryRegistry {
             SpinLocks.aboutToAcquire(flag);
         }
         boolean won = flag.compareAndSet(expected, update);
+        if (won) {
+            primitiveSlotStoring(flag, update ? 1 : 0);
+        }
         if (won && expected != update) {
             if (update) {
                 SpinLocks.acquire(flag);
@@ -866,11 +869,79 @@ public final class TelemetryRegistry {
         } else {
             SpinLocks.aboutToAcquire(flag);
         }
+        primitiveSlotStoring(flag, value ? 1 : 0);
         boolean previous = flag.getAndSet(value);
         if (value && !previous) {
             SpinLocks.acquire(flag);
         }
         return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicBoolean.get}, a volatile read: the reading thread receives what the store
+     * of the value it returned published (#1315), as {@link #getAtomicReference} does for a
+     * reference. The acquire half of {@link #primitiveSlotStoring}.
+     *
+     * @param flag the atomic the call site invoked
+     * @return what the atomic held
+     * @since 1.14.3
+     */
+    public static boolean getAtomicBoolean(AtomicBoolean flag) {
+        ControlledSchedule.point();
+        boolean value = flag.get();
+        HappensBefore.acquireVolatile(flag, SLOT_VALUE, value ? 1 : 0);
+        return value;
+    }
+
+    /**
+     * The release half of a store into an {@code AtomicBoolean}, {@code AtomicInteger} or
+     * {@code AtomicLong}, which has volatile-write semantics: everything this thread did so far is
+     * published to a {@code get} of the same atomic that returns {@code value} (#1315), the model
+     * {@link #slotStored} gives an {@code AtomicReference}.
+     *
+     * <p>Called before the store by a {@code set}, a {@code getAndSet} and the arithmetic forms,
+     * as a volatile field's release is, so it precedes every read that can return the value. A
+     * {@code compareAndSet} calls it only once the swap has won, as {@code AtomicReference}'s
+     * does: one that lost stored nothing, and a release for it would order a reader after a
+     * thread whose writes nothing published. The price is a read that lands between a won swap
+     * and its release, which acquires nothing and keeps the finding it had.
+     */
+    private static void primitiveSlotStoring(Object atomic, long value) {
+        HappensBefore.releaseVolatile(atomic, SLOT_VALUE, value);
+    }
+
+    /**
+     * {@code count.addAndGet(delta)} as a compare-and-set loop, so the value about to be stored is
+     * known before the store and can be released first (#1315). An arithmetic update's result is
+     * not on the stack, and a release made after the store would leave a reader that saw the new
+     * value in between nothing to acquire, which a reader spinning on a completion counter does
+     * often. An attempt that loses the swap has released a value it did not store; the thread
+     * stores its own on the next turn of the loop, and until then a reader of the winner's value
+     * is ordered after this thread too.
+     *
+     * @return the updated value
+     */
+    private static int addPublishing(AtomicInteger count, int delta) {
+        for (;;) {
+            int seen = count.get();
+            int next = seen + delta;
+            primitiveSlotStoring(count, next);
+            if (count.compareAndSet(seen, next)) {
+                return next;
+            }
+        }
+    }
+
+    /** {@link #addPublishing(AtomicInteger, int)} for an {@code AtomicLong}. */
+    private static long addPublishing(AtomicLong count, long delta) {
+        for (;;) {
+            long seen = count.get();
+            long next = seen + delta;
+            primitiveSlotStoring(count, next);
+            if (count.compareAndSet(seen, next)) {
+                return next;
+            }
+        }
     }
 
     /** Weaves {@code AtomicBoolean.set}; storing {@code false} releases. @param flag the atomic @param value the value @since 1.12.1 */
@@ -879,6 +950,7 @@ public final class TelemetryRegistry {
         if (!value) {
             SpinLocks.release(flag);
         }
+        primitiveSlotStoring(flag, value ? 1 : 0);
         flag.set(value);
     }
 
@@ -905,6 +977,9 @@ public final class TelemetryRegistry {
             SpinLocks.aboutToAcquire(count);
         }
         boolean won = count.compareAndSet(expected, update);
+        if (won) {
+            primitiveSlotStoring(count, update);
+        }
         if (won && expected == 0 && update == 1) {
             SpinLocks.acquire(count);
         } else if (won && expected == 1 && update == 0) {
@@ -924,7 +999,9 @@ public final class TelemetryRegistry {
     public static int getAtomicInteger(AtomicInteger count) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicRead(count);
-        return count.get();
+        int value = count.get();
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, value);
+        return value;
     }
 
     /**
@@ -938,7 +1015,7 @@ public final class TelemetryRegistry {
     public static int incrementAndGetAtomicInteger(AtomicInteger count) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicIncremented(count);
-        return count.incrementAndGet();
+        return addPublishing(count, 1);
     }
 
     /**
@@ -951,7 +1028,7 @@ public final class TelemetryRegistry {
     public static int getAndIncrementAtomicInteger(AtomicInteger count) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicIncremented(count);
-        return count.getAndIncrement();
+        return addPublishing(count, 1) - 1;
     }
 
     /**
@@ -964,7 +1041,7 @@ public final class TelemetryRegistry {
     public static long incrementAndGetAtomicLong(AtomicLong count) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicIncremented(count);
-        return count.incrementAndGet();
+        return addPublishing(count, 1L);
     }
 
     /**
@@ -977,7 +1054,7 @@ public final class TelemetryRegistry {
     public static long getAndIncrementAtomicLong(AtomicLong count) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicIncremented(count);
-        return count.getAndIncrement();
+        return addPublishing(count, 1L) - 1L;
     }
 
     /**
@@ -990,7 +1067,7 @@ public final class TelemetryRegistry {
     public static long decrementAndGetAtomicLong(AtomicLong count) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicIncremented(count);
-        return count.decrementAndGet();
+        return addPublishing(count, -1L);
     }
 
     /**
@@ -1003,7 +1080,7 @@ public final class TelemetryRegistry {
     public static long getAndDecrementAtomicLong(AtomicLong count) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicIncremented(count);
-        return count.getAndDecrement();
+        return addPublishing(count, -1L) + 1L;
     }
 
     /**
@@ -1017,7 +1094,7 @@ public final class TelemetryRegistry {
     public static long addAndGetAtomicLong(AtomicLong count, long delta) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicIncremented(count);
-        return count.addAndGet(delta);
+        return addPublishing(count, delta);
     }
 
     /**
@@ -1031,7 +1108,7 @@ public final class TelemetryRegistry {
     public static long getAndAddAtomicLong(AtomicLong count, long delta) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicIncremented(count);
-        return count.getAndAdd(delta);
+        return addPublishing(count, delta) - delta;
     }
 
     /**
@@ -1041,13 +1118,16 @@ public final class TelemetryRegistry {
     public static long getAtomicLong(AtomicLong count) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicRead(count);
-        return count.get();
+        long value = count.get();
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, value);
+        return value;
     }
 
     /** Weaves {@code AtomicLong.set}. @param count the atomic @param value the value @since 1.14.1 */
     public static void setAtomicLong(AtomicLong count, long value) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicStored(count);
+        primitiveSlotStoring(count, value);
         count.set(value);
     }
 
@@ -1061,6 +1141,7 @@ public final class TelemetryRegistry {
     public static void setAtomicLongUnrelated(AtomicLong count, long value) {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
+        primitiveSlotStoring(count, value);
         count.set(value);
     }
 
@@ -1139,7 +1220,11 @@ public final class TelemetryRegistry {
     public static boolean compareAndSetAtomicLong(AtomicLong count, long expected, long update) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicSwapped(count);
-        return count.compareAndSet(expected, update);
+        boolean won = count.compareAndSet(expected, update);
+        if (won) {
+            primitiveSlotStoring(count, update);
+        }
+        return won;
     }
 
     /**
@@ -1169,6 +1254,7 @@ public final class TelemetryRegistry {
         if (value == 0) {
             SpinLocks.release(count);
         }
+        primitiveSlotStoring(count, value);
         count.set(value);
     }
 
@@ -1186,6 +1272,7 @@ public final class TelemetryRegistry {
         if (value == 0) {
             SpinLocks.release(count);
         }
+        primitiveSlotStoring(count, value);
         count.set(value);
     }
 
@@ -1433,6 +1520,7 @@ public final class TelemetryRegistry {
     public static int getAndSetAtomicInteger(AtomicInteger count, int value) {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
+        primitiveSlotStoring(count, value);
         int previous = count.getAndSet(value);
         if (value != 1) {
             SpinLocks.release(count);
@@ -1451,7 +1539,7 @@ public final class TelemetryRegistry {
     public static int getAndAddAtomicInteger(AtomicInteger count, int delta) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicIncremented(count);
-        int previous = count.getAndAdd(delta);
+        int previous = addPublishing(count, delta) - delta;
         if (previous + delta != 1) {
             SpinLocks.release(count);
         }
@@ -1469,7 +1557,7 @@ public final class TelemetryRegistry {
     public static int addAndGetAtomicInteger(AtomicInteger count, int delta) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicIncremented(count);
-        int current = count.addAndGet(delta);
+        int current = addPublishing(count, delta);
         if (current != 1) {
             SpinLocks.release(count);
         }
@@ -1486,7 +1574,7 @@ public final class TelemetryRegistry {
     public static int getAndDecrementAtomicInteger(AtomicInteger count) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicIncremented(count);
-        int previous = count.getAndDecrement();
+        int previous = addPublishing(count, -1) + 1;
         if (previous != 2) {
             SpinLocks.release(count);
         }
@@ -1503,7 +1591,7 @@ public final class TelemetryRegistry {
     public static int decrementAndGetAtomicInteger(AtomicInteger count) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicIncremented(count);
-        int current = count.decrementAndGet();
+        int current = addPublishing(count, -1);
         if (current != 1) {
             SpinLocks.release(count);
         }
