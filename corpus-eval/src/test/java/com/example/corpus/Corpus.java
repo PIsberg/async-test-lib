@@ -6233,6 +6233,42 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same volatile field read and then written by six threads: each step "
                             + "is visible and the pair is not atomic, so an increment is lost",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_computeIfAbsent_buildsACachedValueOnce", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the lazy cache: one thread builds the value inside computeIfAbsent and "
+                            + "every thread reads what its own call returned. The map's "
+                            + "memory-consistency contract orders the build before each read "
+                            + "(#1294)"),
+
+            new RecordingSubject("idiom_computeIfAbsent_fillsTheValueInAfterPublishingIt", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same cache with the value's field written after computeIfAbsent "
+                            + "returned: the map published an empty object, and the write and "
+                            + "the other threads' reads are unordered",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_copyOnWriteListeners_registeredThenWalked", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread configures a listener and adds it to a CopyOnWriteArrayList, "
+                            + "the others walk the list with a for-each and read it. The add "
+                            + "publishes what was written before it to every later traversal "
+                            + "(#1294)"),
+
+            new RecordingSubject("idiom_copyOnWriteListeners_configuredAfterRegistering", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same listener configured after the add that published it: a reader "
+                            + "already walking the list reads the field with nothing ordering "
+                            + "it after the write",
                     IssueSeverity.HIGH)
     );
 

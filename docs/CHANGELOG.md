@@ -20,6 +20,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An object published through a concurrent collection is no longer reported as an unordered
+  publication on its most common routes (#1294).** The happens-before model heard about
+  `Map.put`/`get` and the queue offer and take forms only, so a value built inside
+  `ConcurrentHashMap.computeIfAbsent` and read by every caller, or a listener added to a
+  `CopyOnWriteArrayList` and read in a for-each, drew "set to one constant by one thread and read
+  by another with no lock and no happens-before edge" from `ATOMICITY_VIOLATIONS`. The existing
+  hooks now release an element before `Collection.add`, `addAll` and `List.set`, and the value a
+  `compute`, `computeIfAbsent`, `computeIfPresent` or `merge` function returns before the map
+  stores it; and acquire on `List.get`, `Queue.peek`, `Queue.element`, each element of a for-each,
+  and the value a `compute`-family call returns. Only for containers whose contract orders the
+  hand-off (`HappensBefore.publishesElements`): an `ArrayList` or a `HashMap` still orders
+  nothing, and a set's refused `add` withdraws its release. A for-each over such a container now
+  gets a delegating iterator, not the container's own class. No weaver changed. Not covered yet
+  and still open on #1294: `stream()`, `forEach`, `getOrDefault`, `putIfAbsent`, the deque peeks,
+  map views of entries, and the navigable-map reads. Test first in `AgentHappensBeforeFeedTest`,
+  five rows red before the change, each with a twin that keeps its finding. New corpus idiom
+  pairs `idiom_computeIfAbsent_*` and `idiom_copyOnWriteListeners_*`: both correct rows failed
+  the idioms lane against the previous jar.
+
 - **A volatile field that threads only write no longer draws a TOCTOU window (#1296).** Six
   threads each storing their own value into one `volatile` field, with nothing reading it, drew
   "state changed between check/use windows on 6 threads" from `ATOMICITY_VIOLATIONS`: the line
