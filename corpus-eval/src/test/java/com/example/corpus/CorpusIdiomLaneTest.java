@@ -1168,6 +1168,7 @@ class CorpusIdiomLaneTest {
             new Rounds<>(ConcurrentHashMap::new);
     private static final Rounds<Map<String, Integer>> RACED_COUNTS =
             new Rounds<>(ConcurrentHashMap::new);
+    private static final Rounds<CyclicBarrier> COUNT_READS = new Rounds<>(() -> new CyclicBarrier(THREADS));
 
     /** Every thread counts one key with merge. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
@@ -1175,12 +1176,20 @@ class CorpusIdiomLaneTest {
         correct(() -> MERGED_COUNTS.next().shared().merge("hits", 1, Integer::sum));
     }
 
-    /** The same count as a get and then a put. */
+    /**
+     * The same count as a get and then a put. The barrier lines the reads up so that every thread
+     * has read the count before any writes it back, the way the synchronized-list row does (#1159):
+     * the detector reports a write that landed between a thread's get and its own put, and without
+     * the barrier a runner on which no round interleaved left this row silent (Java 26 leg of
+     * PR #1320).
+     */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void idiom_concurrentMap_countsWithGetThenPut() {
         broken(() -> {
             Map<String, Integer> counts = RACED_COUNTS.next().shared();
+            CyclicBarrier read = COUNT_READS.next().shared();
             Integer seen = counts.get("hits");
+            awaitAll(read);
             counts.put("hits", seen == null ? 1 : seen + 1);
         });
     }
