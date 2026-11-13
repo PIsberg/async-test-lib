@@ -32,12 +32,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the value a `compute`-family call returns. Only for containers whose contract orders the
   hand-off (`HappensBefore.publishesElements`): an `ArrayList` or a `HashMap` still orders
   nothing, and a set's refused `add` withdraws its release. A for-each over such a container now
-  gets a delegating iterator, not the container's own class. No weaver changed. Not covered yet
-  and still open on #1294: `stream()`, `forEach`, `getOrDefault`, `putIfAbsent`, the deque peeks,
-  map views of entries, and the navigable-map reads. Test first in `AgentHappensBeforeFeedTest`,
-  five rows red before the change, each with a twin that keeps its finding. New corpus idiom
-  pairs `idiom_computeIfAbsent_*` and `idiom_copyOnWriteListeners_*`: both correct rows failed
-  the idioms lane against the previous jar.
+  gets a delegating iterator, not the container's own class. A second change covers
+  `stream()` (each element is received as the pipeline reaches it) and six calls the agent did
+  not weave before: `Iterable.forEach`, `Map.forEach`, `Map.getOrDefault`, `Map.putIfAbsent`
+  (a refused one withdraws its release, and the value already there is received),
+  `Deque.peekFirst` and `Deque.peekLast`. Not covered yet and still open on #1294: the values of
+  an iterated `entrySet()`, the navigable-map reads such as `firstEntry`, `parallelStream()`,
+  and `drainTo` into a non-list. Test first in `AgentHappensBeforeFeedTest`, eight tests red
+  before the changes, each row with a twin that keeps its finding. New corpus idiom pairs
+  `idiom_computeIfAbsent_*`, `idiom_copyOnWriteListeners_*` and `idiom_putIfAbsent_*`: every
+  correct row failed the idioms lane against the previous jar.
 
 - **A volatile field that threads only write no longer draws a TOCTOU window (#1296).** Six
   threads each storing their own value into one `volatile` field, with nothing reading it, drew

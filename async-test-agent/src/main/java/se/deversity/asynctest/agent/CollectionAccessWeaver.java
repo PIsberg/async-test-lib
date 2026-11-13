@@ -351,6 +351,13 @@ final class CollectionAccessWeaver {
             Entry.call(Map.class, "computeIfAbsent", "mapComputeIfAbsent", Object.class,
                     Function.class),
             Entry.call(Map.class, "merge", "mapMerge", Object.class, Object.class, BiFunction.class),
+            // The other ways a value goes into or comes out of a map that publishes it (#1294).
+            Entry.call(Map.class, "putIfAbsent", "mapPutIfAbsent", Object.class, Object.class),
+            Entry.call(Map.class, "getOrDefault", "mapGetOrDefault", Object.class, Object.class),
+            Entry.call(Map.class, "forEach", "mapForEach", BiConsumer.class),
+            Entry.call(Iterable.class, "forEach", "iterableForEach", Consumer.class),
+            Entry.call(Deque.class, "peekFirst", "dequePeekFirst"),
+            Entry.call(Deque.class, "peekLast", "dequePeekLast"),
             // Iteration, and where a synchronized map's views come from: a wrapper from
             // Collections.synchronized* must be iterated under the monitor it synchronizes on,
             // which for a map's view is the map's.

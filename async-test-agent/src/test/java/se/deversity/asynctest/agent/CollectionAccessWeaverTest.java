@@ -64,6 +64,33 @@ class CollectionAccessWeaverTest {
             return receiver.isEmpty();
         }
 
+        public static Object mapPutIfAbsent(Map<Object, Object> receiver, Object key, Object value) {
+            return receiver.putIfAbsent(key, value);
+        }
+
+        public static Object mapGetOrDefault(Map<Object, Object> receiver, Object key,
+                                             Object defaultValue) {
+            return receiver.getOrDefault(key, defaultValue);
+        }
+
+        public static void mapForEach(Map<Object, Object> receiver,
+                                      java.util.function.BiConsumer<Object, Object> action) {
+            receiver.forEach(action);
+        }
+
+        public static void iterableForEach(Iterable<Object> receiver,
+                                           java.util.function.Consumer<Object> action) {
+            receiver.forEach(action);
+        }
+
+        public static Object dequePeekFirst(java.util.Deque<Object> receiver) {
+            return receiver.peekFirst();
+        }
+
+        public static Object dequePeekLast(java.util.Deque<Object> receiver) {
+            return receiver.peekLast();
+        }
+
         public static boolean queueIsEmpty(java.util.Queue<Object> receiver) {
             return receiver.isEmpty();
         }

@@ -321,7 +321,10 @@ public final class AgentCollectionHooks {
     public static java.util.stream.Stream<Object> collectionStream(Collection<Object> receiver) {
         ControlledSchedule.point();
         iterated(receiver);
-        return receiver.stream();
+        java.util.stream.Stream<Object> elements = receiver.stream();
+        // Each element is received as the pipeline reaches it, on the thread that does (#1294).
+        return elements != null && HappensBefore.publishesElements(receiver)
+                ? elements.peek(HappensBefore::acquire) : elements;
     }
 
     /**
@@ -359,6 +362,107 @@ public final class AgentCollectionHooks {
     public static java.util.Set<Map.Entry<Object, Object>> mapEntrySet(Map<Object, Object> receiver) {
         ControlledSchedule.point();
         return viewOf(receiver.entrySet(), receiver);
+    }
+
+    /**
+     * Weaves {@code Iterable.forEach}, a walk of the collection like a for-each loop: over a
+     * container that orders what passes through it, each element is received before the action
+     * sees it (#1294).
+     *
+     * @param receiver the iterable
+     * @param action   the action to run on each element
+     */
+    public static void iterableForEach(Iterable<Object> receiver,
+                                       java.util.function.Consumer<Object> action) {
+        ControlledSchedule.point();
+        iterated(receiver);
+        if (action == null || !HappensBefore.publishesElements(receiver)) {
+            receiver.forEach(action);
+            return;
+        }
+        receiver.forEach(element -> {
+            HappensBefore.acquire(element);
+            action.accept(element);
+        });
+    }
+
+    /**
+     * Weaves {@code Map.forEach}: over a map that orders what passes through it, each key and
+     * value is received before the action sees it (#1294).
+     *
+     * @param receiver the map
+     * @param action   the action to run on each entry
+     */
+    public static void mapForEach(Map<Object, Object> receiver,
+                                  java.util.function.BiConsumer<Object, Object> action) {
+        ControlledSchedule.point();
+        record(receiver, "forEach", false);
+        if (action == null || !HappensBefore.publishesElements(receiver)) {
+            receiver.forEach(action);
+            return;
+        }
+        receiver.forEach((key, value) -> {
+            HappensBefore.acquire(key);
+            HappensBefore.acquire(value);
+            action.accept(key, value);
+        });
+    }
+
+    /**
+     * Weaves {@code Map.getOrDefault}, a read like {@code get} (#1294).
+     *
+     * @param receiver     the map
+     * @param key          the key looked up
+     * @param defaultValue what to return for an absent key
+     * @return the mapped value, or {@code defaultValue}
+     */
+    @SuppressWarnings("ReferenceEquality") // the default came back, or a mapped value did
+    public static @Nullable Object mapGetOrDefault(Map<Object, Object> receiver, Object key,
+                                                   Object defaultValue) {
+        ControlledSchedule.point();
+        record(receiver, "getOrDefault", false);
+        Object value = receiver.getOrDefault(key, defaultValue);
+        return value == defaultValue ? value : received(receiver, value); // NOPMD CompareObjectsWithEquals - the same object, not an equal one
+    }
+
+    /**
+     * Weaves {@code Map.putIfAbsent}: the value is published before the call, and the release is
+     * withdrawn when the key was taken; the value already there is received (#1294).
+     *
+     * @param receiver the map
+     * @param key      the key the value is stored under when absent
+     * @param value    the value to store for an absent key
+     * @return the value already mapped, or {@code null} when this one went in
+     */
+    public static @Nullable Object mapPutIfAbsent(Map<Object, Object> receiver, Object key,
+                                                  Object value) {
+        ControlledSchedule.point();
+        record(receiver, "putIfAbsent", true);
+        boolean published = publishing(receiver, value);
+        boolean stored = false;
+        try {
+            Object present = receiver.putIfAbsent(key, value);
+            stored = present == null;
+            return received(receiver, present);
+        } finally {
+            if (published && !stored) {
+                HappensBefore.retract(value);
+            }
+        }
+    }
+
+    /** Weaves {@code Deque.peekFirst}, a read of the head (#1294). @param receiver the deque @return the first element, or null */
+    public static @Nullable Object dequePeekFirst(Deque<Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "peekFirst", false);
+        return received(receiver, receiver.peekFirst());
+    }
+
+    /** Weaves {@code Deque.peekLast}, a read of the tail (#1294). @param receiver the deque @return the last element, or null */
+    public static @Nullable Object dequePeekLast(Deque<Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "peekLast", false);
+        return received(receiver, receiver.peekLast());
     }
 
     /** Weaves {@code Map.put}. @param receiver the map @param key the key @param value the value @return the previous value */

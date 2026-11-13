@@ -2730,6 +2730,100 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 30. A registry filled with putIfAbsent and read with getOrDefault (#1294) -----------
+
+    private static final Limits NO_LIMITS = new Limits();
+    private static final Rounds<ConcurrentHashMap<String, Limits>> REGISTRY =
+            new Rounds<>(ConcurrentHashMap::new);
+    private static final Rounds<ConcurrentHashMap<String, Limits>> LATE_REGISTRY =
+            new Rounds<>(ConcurrentHashMap::new);
+
+    /** Spins until the round's entry is visible, so every reader reads the registered value. */
+    private static void awaitAnEntry(Map<String, Limits> registry) {
+        while (registry.isEmpty()) {
+            Thread.onSpinWait();
+        }
+    }
+
+    /** One thread builds a value and registers it; the others look it up with a default. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_putIfAbsent_registersAValueReadWithGetOrDefault() {
+        correct(() -> {
+            Turn<ConcurrentHashMap<String, Limits>> turn = REGISTRY.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                built.limit = 10;
+                turn.shared().putIfAbsent("default", built);
+            } else {
+                awaitAnEntry(turn.shared());
+                use(turn.shared().getOrDefault("default", NO_LIMITS).limit);
+            }
+        });
+    }
+
+    /** The same registry, with the value filled in after the putIfAbsent that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_putIfAbsent_fillsTheValueInAfterRegisteringIt() {
+        broken(() -> {
+            Turn<ConcurrentHashMap<String, Limits>> turn = LATE_REGISTRY.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                turn.shared().putIfAbsent("default", built);
+                built.limit = 10;
+            } else {
+                awaitAnEntry(turn.shared());
+                use(turn.shared().getOrDefault("default", NO_LIMITS).limit);
+            }
+        });
+    }
+
+    // --- 31. Listeners notified with forEach and with a stream (#1294) ------------------------
+
+    private static final Rounds<CopyOnWriteArrayList<Listener>> NOTIFIED =
+            new Rounds<>(CopyOnWriteArrayList::new);
+    private static final Rounds<CopyOnWriteArrayList<Listener>> LATE_NOTIFIED =
+            new Rounds<>(CopyOnWriteArrayList::new);
+
+    /** One thread registers a configured listener; the others notify with forEach and a stream. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_copyOnWriteListeners_notifiedWithForEachAndAStream() {
+        correct(() -> {
+            Turn<CopyOnWriteArrayList<Listener>> turn = NOTIFIED.next();
+            if (turn.opensTheRound()) {
+                Listener listener = new Listener();
+                listener.priority = 3;
+                turn.shared().add(listener);
+            } else {
+                awaitARegistration(turn.shared());
+                if (turn.ticket() % 2 == 0) {
+                    turn.shared().forEach(listener -> use(listener.priority));
+                } else {
+                    use(turn.shared().stream().mapToInt(listener -> listener.priority).sum());
+                }
+            }
+        });
+    }
+
+    /** The same notification, with the listener configured after the add that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_copyOnWriteListeners_notifiedWhileStillBeingConfigured() {
+        broken(() -> {
+            Turn<CopyOnWriteArrayList<Listener>> turn = LATE_NOTIFIED.next();
+            if (turn.opensTheRound()) {
+                Listener listener = new Listener();
+                turn.shared().add(listener);
+                listener.priority = 3;
+            } else {
+                awaitARegistration(turn.shared());
+                if (turn.ticket() % 2 == 0) {
+                    turn.shared().forEach(listener -> use(listener.priority));
+                } else {
+                    use(turn.shared().stream().mapToInt(listener -> listener.priority).sum());
+                }
+            }
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**
