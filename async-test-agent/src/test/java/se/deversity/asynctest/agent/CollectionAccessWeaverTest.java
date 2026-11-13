@@ -203,6 +203,100 @@ class CollectionAccessWeaverTest {
             receiver.forEach(action);
         }
 
+        public static Object vectorElementAt(java.util.Vector<Object> receiver, int index) {
+            return receiver.elementAt(index);
+        }
+
+        public static Object vectorFirstElement(java.util.Vector<Object> receiver) {
+            return receiver.firstElement();
+        }
+
+        public static Object vectorLastElement(java.util.Vector<Object> receiver) {
+            return receiver.lastElement();
+        }
+
+        public static Object stackPeek(java.util.Stack<Object> receiver) {
+            return receiver.peek();
+        }
+
+        public static Object stackPop(java.util.Stack<Object> receiver) {
+            return receiver.pop();
+        }
+
+        public static Object dequeGetFirst(java.util.Deque<Object> receiver) {
+            return receiver.getFirst();
+        }
+
+        public static Object dequeGetLast(java.util.Deque<Object> receiver) {
+            return receiver.getLast();
+        }
+
+        public static Object listGetFirst(java.util.List<Object> receiver) {
+            return receiver.getFirst();
+        }
+
+        public static Object listGetLast(java.util.List<Object> receiver) {
+            return receiver.getLast();
+        }
+
+        public static Object sortedSetFirst(java.util.SortedSet<Object> receiver) {
+            return receiver.first();
+        }
+
+        public static Object sortedSetLast(java.util.SortedSet<Object> receiver) {
+            return receiver.last();
+        }
+
+        public static Object navigableSetFloor(java.util.NavigableSet<Object> receiver, Object bound) {
+            return receiver.floor(bound);
+        }
+
+        public static Object navigableSetCeiling(java.util.NavigableSet<Object> receiver, Object bound) {
+            return receiver.ceiling(bound);
+        }
+
+        public static Object navigableSetLower(java.util.NavigableSet<Object> receiver, Object bound) {
+            return receiver.lower(bound);
+        }
+
+        public static Object navigableSetHigher(java.util.NavigableSet<Object> receiver, Object bound) {
+            return receiver.higher(bound);
+        }
+
+        public static Object navigableSetPollFirst(java.util.NavigableSet<Object> receiver) {
+            return receiver.pollFirst();
+        }
+
+        public static Object navigableSetPollLast(java.util.NavigableSet<Object> receiver) {
+            return receiver.pollLast();
+        }
+
+        public static Object stackPush(java.util.Stack<Object> receiver, Object element) {
+            return receiver.push(element);
+        }
+
+        public static java.util.Iterator<Object> dequeDescendingIterator(java.util.Deque<Object> receiver) {
+            return receiver.descendingIterator();
+        }
+
+        public static java.util.stream.Stream<Object> collectionParallelStream(
+                java.util.Collection<Object> receiver) {
+            return receiver.parallelStream();
+        }
+
+        public static Object[] collectionToArray(java.util.Collection<Object> receiver) {
+            return receiver.toArray();
+        }
+
+        public static Object[] collectionToArray(java.util.Collection<Object> receiver, Object[] into) {
+            return receiver.toArray(into);
+        }
+
+        public static Object[] collectionToArray(java.util.Collection<Object> receiver,
+                                                 java.util.function.IntFunction<Object[]> generator) {
+            return receiver.toArray(generator);
+        }
+
         public static Object dequePeekFirst(java.util.Deque<Object> receiver) {
             return receiver.peekFirst();
         }

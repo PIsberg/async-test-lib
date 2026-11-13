@@ -471,8 +471,13 @@ or `stream()` over it, a value stored with `putIfAbsent` and one read with `getO
 received by the caller it is returned to (#1294; a refused `add` or `putIfAbsent` publishes
 nothing), the key and value of each entry a for-each, `forEach` or `stream()` over `entrySet()`
 hands out, and of the entry a `NavigableMap` `firstEntry`, `lastEntry`, `floorEntry`,
-`ceilingEntry`, `lowerEntry`, `higherEntry`, `pollFirstEntry` or `pollLastEntry` returns
-(`parallelStream()` is not modelled yet),
+`ceilingEntry`, `lowerEntry`, `higherEntry`, `pollFirstEntry` or `pollLastEntry` returns,
+an element read with `Vector.elementAt`, `firstElement` or `lastElement`, pushed on a `Stack` and
+read with `peek` or `pop`, read with `getFirst` or `getLast` on a `Deque` or a `List`, with
+`SortedSet.first` or `last` or a `NavigableSet` `floor`, `ceiling`, `lower`, `higher`, `pollFirst`
+or `pollLast`, through `Deque.descendingIterator`, out of `toArray`, or as a `parallelStream()`
+reaches it (an object published as a map key, `listIterator()`, the `elements()` and `keys()`
+enumerations and `ConcurrentHashMap.search` and `reduce` are not modelled yet),
 `CountDownLatch.countDown` and an `await` that reached zero, `Semaphore.release` and an acquire that
 took a permit, a `CyclicBarrier.await` and the normal returns from the same generation (#1246; the
 generation is read under the barrier's own lock, which needs `collections=true`), with the

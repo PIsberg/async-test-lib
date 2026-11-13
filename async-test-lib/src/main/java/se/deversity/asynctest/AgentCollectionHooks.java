@@ -585,6 +585,235 @@ public final class AgentCollectionHooks {
         return received(receiver, receiver.peekLast());
     }
 
+    /** Weaves {@code Vector.elementAt}, a read of one element (#1294). @param receiver the vector @param index the index @return the element */
+    public static @Nullable Object vectorElementAt(java.util.Vector<Object> receiver, int index) { // NOPMD LooseCoupling - the hook takes the class that declares the call
+        ControlledSchedule.point();
+        record(receiver, "elementAt", false);
+        return received(receiver, receiver.elementAt(index));
+    }
+
+    /** Weaves {@code Vector.firstElement}, a read of the first element (#1294). @param receiver the vector @return the first element */
+    public static @Nullable Object vectorFirstElement(java.util.Vector<Object> receiver) { // NOPMD LooseCoupling - the hook takes the class that declares the call
+        ControlledSchedule.point();
+        record(receiver, "firstElement", false);
+        return received(receiver, receiver.firstElement());
+    }
+
+    /** Weaves {@code Vector.lastElement}, a read of the last element (#1294). @param receiver the vector @return the last element */
+    public static @Nullable Object vectorLastElement(java.util.Vector<Object> receiver) { // NOPMD LooseCoupling - the hook takes the class that declares the call
+        ControlledSchedule.point();
+        record(receiver, "lastElement", false);
+        return received(receiver, receiver.lastElement());
+    }
+
+    /** Weaves {@code Stack.peek}, a read of the top (#1294). @param receiver the stack @return the top element */
+    public static @Nullable Object stackPeek(java.util.Stack<Object> receiver) { // NOPMD LooseCoupling - the hook takes the class that declares the call
+        ControlledSchedule.point();
+        record(receiver, "peek", false);
+        return received(receiver, receiver.peek());
+    }
+
+    /** Weaves {@code Stack.pop}, which takes the top (#1294). @param receiver the stack @return the element taken */
+    public static @Nullable Object stackPop(java.util.Stack<Object> receiver) { // NOPMD LooseCoupling - the hook takes the class that declares the call
+        ControlledSchedule.point();
+        record(receiver, "pop", true);
+        return received(receiver, receiver.pop());
+    }
+
+    /** Weaves {@code Deque.getFirst}, a read of the head that throws when there is none (#1294). @param receiver the deque @return the first element */
+    public static @Nullable Object dequeGetFirst(Deque<Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "getFirst", false);
+        return received(receiver, receiver.getFirst());
+    }
+
+    /** Weaves {@code Deque.getLast}, a read of the tail that throws when there is none (#1294). @param receiver the deque @return the last element */
+    public static @Nullable Object dequeGetLast(Deque<Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "getLast", false);
+        return received(receiver, receiver.getLast());
+    }
+
+    /** Weaves {@code List.getFirst}, a read of the first element (#1294). @param receiver the list @return the first element */
+    public static @Nullable Object listGetFirst(List<Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "getFirst", false);
+        return received(receiver, receiver.getFirst());
+    }
+
+    /** Weaves {@code List.getLast}, a read of the last element (#1294). @param receiver the list @return the last element */
+    public static @Nullable Object listGetLast(List<Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "getLast", false);
+        return received(receiver, receiver.getLast());
+    }
+
+    /** Weaves {@code SortedSet.first}, a read of the lowest element (#1294). @param receiver the set @return the lowest element */
+    public static @Nullable Object sortedSetFirst(java.util.SortedSet<Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "first", false);
+        return received(receiver, receiver.first());
+    }
+
+    /** Weaves {@code SortedSet.last}, a read of the highest element (#1294). @param receiver the set @return the highest element */
+    public static @Nullable Object sortedSetLast(java.util.SortedSet<Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "last", false);
+        return received(receiver, receiver.last());
+    }
+
+    /** Weaves {@code NavigableSet.floor}, a read of one element (#1294). @param receiver the set @param bound the element compared against @return the element found, or null */
+    public static @Nullable Object navigableSetFloor(java.util.NavigableSet<Object> receiver, Object bound) {
+        ControlledSchedule.point();
+        record(receiver, "floor", false);
+        return received(receiver, receiver.floor(bound));
+    }
+
+    /** Weaves {@code NavigableSet.ceiling}, a read of one element (#1294). @param receiver the set @param bound the element compared against @return the element found, or null */
+    public static @Nullable Object navigableSetCeiling(java.util.NavigableSet<Object> receiver, Object bound) {
+        ControlledSchedule.point();
+        record(receiver, "ceiling", false);
+        return received(receiver, receiver.ceiling(bound));
+    }
+
+    /** Weaves {@code NavigableSet.lower}, a read of one element (#1294). @param receiver the set @param bound the element compared against @return the element found, or null */
+    public static @Nullable Object navigableSetLower(java.util.NavigableSet<Object> receiver, Object bound) {
+        ControlledSchedule.point();
+        record(receiver, "lower", false);
+        return received(receiver, receiver.lower(bound));
+    }
+
+    /** Weaves {@code NavigableSet.higher}, a read of one element (#1294). @param receiver the set @param bound the element compared against @return the element found, or null */
+    public static @Nullable Object navigableSetHigher(java.util.NavigableSet<Object> receiver, Object bound) {
+        ControlledSchedule.point();
+        record(receiver, "higher", false);
+        return received(receiver, receiver.higher(bound));
+    }
+
+    /** Weaves {@code NavigableSet.pollFirst}, which takes the lowest element (#1294). @param receiver the set @return the element taken, or null */
+    public static @Nullable Object navigableSetPollFirst(java.util.NavigableSet<Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "pollFirst", true);
+        return received(receiver, receiver.pollFirst());
+    }
+
+    /** Weaves {@code NavigableSet.pollLast}, which takes the highest element (#1294). @param receiver the set @return the element taken, or null */
+    public static @Nullable Object navigableSetPollLast(java.util.NavigableSet<Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "pollLast", true);
+        return received(receiver, receiver.pollLast());
+    }
+
+    /**
+     * Weaves {@code Stack.push}: a stack is a synchronized collection, so the push publishes the
+     * element to whoever later reads it, as an add does (#1294).
+     *
+     * @param receiver the stack
+     * @param element  what goes on top, released before the push when it is not null
+     * @return the element, as the call it replaced returns
+     */
+    public static @Nullable Object stackPush(java.util.Stack<Object> receiver, Object element) { // NOPMD LooseCoupling - the hook takes the class that declares the call
+        ControlledSchedule.point();
+        record(receiver, "push", true);
+        publishing(receiver, element);
+        return receiver.push(element);
+    }
+
+    /**
+     * Weaves {@code Deque.descendingIterator()}, the walk from the tail: each element is received
+     * as the loop reaches it, as {@link #iterableIterator} does for the walk from the head (#1294).
+     *
+     * @param receiver the deque
+     * @return its descending iterator
+     */
+    public static java.util.Iterator<Object> dequeDescendingIterator(Deque<Object> receiver) {
+        ControlledSchedule.point();
+        iterated(receiver);
+        java.util.Iterator<Object> elements = receiver.descendingIterator();
+        return elements != null && HappensBefore.publishesElements(receiver)
+                ? new ReceivingIterator(elements) : elements;
+    }
+
+    /**
+     * Weaves {@code Collection.parallelStream()}, as {@link #collectionStream}: each element is
+     * received on the thread whose part of the pipeline reaches it (#1294).
+     *
+     * @param receiver the collection
+     * @return its parallel stream
+     */
+    public static java.util.stream.Stream<Object> collectionParallelStream(Collection<Object> receiver) {
+        ControlledSchedule.point();
+        iterated(receiver);
+        java.util.stream.Stream<Object> elements = receiver.parallelStream();
+        return elements != null && HappensBefore.publishesElements(receiver)
+                ? elements.peek(AgentCollectionHooks::receive) : elements;
+    }
+
+    /**
+     * Weaves {@code Collection.toArray()}, which hands out every element at once: all of them are
+     * received by the caller (#1294).
+     *
+     * @param receiver the collection
+     * @return its elements
+     */
+    public static Object[] collectionToArray(Collection<Object> receiver) {
+        ControlledSchedule.point();
+        iterated(receiver);
+        Object[] elements = receiver.toArray();
+        if (elements != null && HappensBefore.publishesElements(receiver)) {
+            for (Object element : elements) {
+                receive(element);
+            }
+        }
+        return elements;
+    }
+
+    /**
+     * Weaves {@code Collection.toArray(T[])}, as {@link #collectionToArray(Collection)}. When the
+     * collection filled the array it was given, receiving stops at the null it wrote after its
+     * last element, so what the caller had left further on in the array is not received.
+     *
+     * @param receiver the collection
+     * @param into     the array to fill when it is long enough
+     * @return the array holding the elements
+     */
+    @SuppressWarnings("ReferenceEquality") // the array handed in, or another
+    public static Object[] collectionToArray(Collection<Object> receiver, Object[] into) {
+        ControlledSchedule.point();
+        iterated(receiver);
+        Object[] elements = receiver.toArray(into);
+        if (elements != null && HappensBefore.publishesElements(receiver)) {
+            boolean reused = elements == into; // NOPMD CompareObjectsWithEquals - identity is the point
+            for (Object element : elements) {
+                if (element == null && reused) {
+                    break;
+                }
+                receive(element);
+            }
+        }
+        return elements;
+    }
+
+    /**
+     * Weaves {@code Collection.toArray(IntFunction)}, as {@link #collectionToArray(Collection)}.
+     *
+     * @param receiver  the collection
+     * @param generator makes the array the elements go into, as the call it replaced uses it
+     * @return a new array holding the elements
+     */
+    public static Object[] collectionToArray(Collection<Object> receiver,
+                                             java.util.function.IntFunction<Object[]> generator) {
+        ControlledSchedule.point();
+        iterated(receiver);
+        Object[] elements = receiver.toArray(generator);
+        if (elements != null && HappensBefore.publishesElements(receiver)) {
+            for (Object element : elements) {
+                receive(element);
+            }
+        }
+        return elements;
+    }
+
     /**
      * Weaves {@code BitSet.set(int)}, a write to the shared words (#1297).
      *
