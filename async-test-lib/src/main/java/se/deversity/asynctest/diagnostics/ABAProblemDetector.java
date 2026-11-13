@@ -86,10 +86,20 @@ import java.util.concurrent.atomic.AtomicStampedReference;
  * no state is judged harmless: {@code null}, an enum constant, a boxed number, a {@code String},
  * or a value whose instance fields are all final and reach no such state, followed three fields
  * deep, so a record of numbers is harmless and a record holding a {@code List} is not (#817).
- * Nothing behind a harmless value can have changed while it was away, so a state machine's A-B-A is silent,
- * while a lock-free stack that pushes a popped node back is reported. The agent's records keep no
- * history, only each thread's last read and whether the value left it and came back since, so a
- * hot atomic costs one entry per thread. They are reported under the atomic's class and identity,
+ * Nothing behind a harmless value can have changed while it was away, so a state machine's A-B-A is silent.
+ * A value that can carry state is then asked whether it did (#1325): the mutable fields of its own
+ * are read when a thread reads the value and again when that thread's compare-and-set finds it
+ * back, and a value that came back holding what it held is silent. So a stack that allocates a
+ * node per push is silent when a push and a pop above the head bring the head back, since the
+ * node's {@code next} is what the popping thread read, while a stack that pushes a popped node
+ * back over a different {@code next} is reported. Only the value's own fields are compared, by
+ * identity for a reference: a compare-and-set whose new value was derived from something two
+ * references away is not seen to be stale. An array, a value whose fields cannot be opened (a
+ * JDK collection) and a value whose fields are all final but reach mutable state cannot be
+ * compared, and are reported as before. An {@code AtomicStampedReference} is not asked: a pair
+ * that came back reused a stamp, which is the defect whatever the value holds. The agent's records
+ * keep no history, only each thread's last read, what the value held then, and whether the value
+ * left it and came back since, so a hot atomic costs one entry per thread. They are reported under the atomic's class and identity,
  * apart from the named variables above.
  *
  * <p>A value going A to B and back to A is not a finding on its own. One thread pushing and
@@ -701,11 +711,14 @@ public class ABAProblemDetector {
          * @return what the read returned
          */
         public @Nullable Object read(Object holder, @Nullable Object selector, int index, SlotRead read) {
+            Object value;
+            Premise mine;
             synchronized (lock) {
-                Object value = read.read(holder, selector, index);
-                read(value);
-                return value;
+                value = read.read(holder, selector, index);
+                mine = read(value);
             }
+            mine.rememberStateOf(value);
+            return value;
         }
 
         /**
@@ -883,7 +896,8 @@ public class ABAProblemDetector {
             if (mine != null && mine.live) {
                 if (swapped && mine.cameBack && mine.value == expected // NOPMD CompareObjectsWithEquals - identity, as the slot compares
                         && mine.stamp == expectedStamp
-                        && stateful && findings.size() < MAX_FINDINGS) {
+                        && stateful && (stamped || !mine.stateIsAsRead(expected))
+                        && findings.size() < MAX_FINDINGS) {
                     findings.add(stamped
                             ? new Object[] {expected, update, expectedStamp, newStamp}
                             : new Object[] {expected, update});
@@ -904,9 +918,75 @@ public class ABAProblemDetector {
             boolean live;
             boolean movedAway;
             boolean cameBack;
+            /**
+             * The mutable fields of {@link #value} whose values {@link #state} holds, or
+             * {@code null} when its state was not read. Touched only by this premise's thread.
+             */
+            Field @Nullable [] stateFields;
+            /** What {@link #stateFields} held just after the read. Touched only by this premise's thread. */
+            @Nullable Object @Nullable [] state;
 
             Premise(long thread) {
                 this.thread = thread;
+            }
+
+            /**
+             * Reads the mutable fields of the value this thread just read (#1325), so that a
+             * compare-and-set that finds the value back can tell whether it came back as it was.
+             * Called by the premise's thread after the slot's lock is released: the first answer
+             * for a class opens its fields, and nothing that can load a class runs under that lock.
+             * A value whose fields cannot all be opened, an array, and a value with no mutable
+             * field of its own are left unread, and are judged as having changed.
+             */
+            void rememberStateOf(@Nullable Object read) {
+                if (read == null) {
+                    return;
+                }
+                References own = MUTABLE_FIELDS.get(read.getClass());
+                Field[] fields = own.fields();
+                if (!own.readable() || fields.length == 0) {
+                    return;
+                }
+                @Nullable Object[] values = state != null && state.length == fields.length
+                        ? state : new Object[fields.length];
+                try {
+                    for (int i = 0; i < fields.length; i++) {
+                        values[i] = fields[i].get(read);
+                    }
+                } catch (IllegalAccessException | RuntimeException unreadable) {
+                    return;
+                }
+                state = values;
+                stateFields = fields;
+            }
+
+            /**
+             * {@return whether every mutable field of {@code expected} holds what it held when this
+             * thread read it} A reference field is compared by identity and a primitive by value.
+             * False when the state was not read.
+             */
+            @SuppressWarnings("ReferenceEquality") // a field that names another object names it by identity
+            boolean stateIsAsRead(@Nullable Object expected) {
+                Field[] fields = stateFields;
+                @Nullable Object[] values = state;
+                if (fields == null || values == null || expected == null) {
+                    return false;
+                }
+                try {
+                    for (int i = 0; i < fields.length; i++) {
+                        Object now = fields[i].get(expected);
+                        Object then = values[i];
+                        boolean same = fields[i].getType().isPrimitive()
+                                ? now.equals(then)
+                                : now == then; // NOPMD CompareObjectsWithEquals - identity
+                        if (!same) {
+                            return false;
+                        }
+                    }
+                } catch (IllegalAccessException | RuntimeException unreadable) {
+                    return false;
+                }
+                return true;
             }
         }
 
@@ -917,11 +997,14 @@ public class ABAProblemDetector {
          * @return what {@code get} returned
          */
         public @Nullable Object get(AtomicReference<Object> atomic) {
+            Object value;
+            Premise mine;
             synchronized (lock) {
-                Object value = atomic.get();
-                read(value);
-                return value;
+                value = atomic.get();
+                mine = read(value);
             }
+            mine.rememberStateOf(value);
+            return value;
         }
 
         /**
@@ -931,11 +1014,14 @@ public class ABAProblemDetector {
          * @return what {@code getAcquire} returned
          */
         public @Nullable Object getAcquire(AtomicReference<Object> atomic) {
+            Object value;
+            Premise mine;
             synchronized (lock) {
-                Object value = atomic.getAcquire();
-                read(value);
-                return value;
+                value = atomic.getAcquire();
+                mine = read(value);
             }
+            mine.rememberStateOf(value);
+            return value;
         }
 
         /**
@@ -1019,13 +1105,16 @@ public class ABAProblemDetector {
             }
         }
 
-        /** Records the calling thread's read. Call holding {@link #lock}. */
-        private void read(@Nullable Object value) {
-            read(value, 0);
+        /** Records the calling thread's read and returns its premise. Call holding {@link #lock}. */
+        private Premise read(@Nullable Object value) {
+            return read(value, 0);
         }
 
-        /** Records the calling thread's read of a value and its stamp. Call holding {@link #lock}. */
-        private void read(@Nullable Object value, int stamp) {
+        /**
+         * Records the calling thread's read of a value and its stamp, and returns its premise.
+         * Call holding {@link #lock}.
+         */
+        private Premise read(@Nullable Object value, int stamp) {
             long me = Thread.currentThread().threadId();
             Premise mine = premiseOf(me);
             if (mine == null) {
@@ -1041,6 +1130,8 @@ public class ABAProblemDetector {
             mine.live = true;
             mine.movedAway = false;
             mine.cameBack = false;
+            mine.stateFields = null;
+            return mine;
         }
 
         /**
@@ -1198,6 +1289,38 @@ public class ABAProblemDetector {
                 return References.UNREADABLE;
             }
             return new References(references.toArray(new Field[0]), true);
+        }
+    };
+
+    /**
+     * The non-final instance fields of each class, opened for reading (#1325): the state of its
+     * own an instance can have changed while it was away. Unreadable for an array, whose elements
+     * are not fields, and for a class with a field that cannot be opened.
+     */
+    private static final ClassValue<References> MUTABLE_FIELDS = new ClassValue<>() {
+        @Override
+        protected References computeValue(Class<?> type) {
+            if (type.isArray()) {
+                return References.UNREADABLE;
+            }
+            List<Field> mutable = new ArrayList<>();
+            try {
+                for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
+                    for (Field field : c.getDeclaredFields()) {
+                        int modifiers = field.getModifiers();
+                        if (Modifier.isStatic(modifiers) || Modifier.isFinal(modifiers)) {
+                            continue;
+                        }
+                        if (!field.trySetAccessible()) {
+                            return References.UNREADABLE;
+                        }
+                        mutable.add(field);
+                    }
+                }
+            } catch (LinkageError | RuntimeException unreadable) {
+                return References.UNREADABLE;
+            }
+            return new References(mutable.toArray(new Field[0]), true);
         }
     };
 

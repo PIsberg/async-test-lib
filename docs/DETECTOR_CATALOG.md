@@ -388,7 +388,13 @@ value is the (reference, stamp) pair: a stamp bumped on every store makes a stal
 one that succeeds after the pair left and came back reused a stamp. A compare-and-set expecting a
 value that carries no state, an enum constant, a boxed number, or a value whose final fields reach
 none (a record of numbers, not a record holding a `List`), is not reported: an A-B-A of such a
-value leaves nothing stale.
+value leaves nothing stale. A value that can carry state is asked whether it did (#1325): its own
+mutable fields are read when a thread reads the value and again when that thread's compare-and-set
+finds it back, and a value that came back holding what it held is not reported. A stack that
+allocates a node per push is therefore silent when a push and a pop above the head bring the head
+back, and one that pushes a popped node back over a different `next` is reported. An array, a JDK
+collection and a value whose final fields reach mutable state cannot be compared and are reported
+as before, and so is a reused stamp of an `AtomicStampedReference`.
 
 `SynchronizedNonFinalDetector` joined with #793. Recorded without the instance that declares the
 field, one instance whose lock was reassigned and several instances each with a lock of its own

@@ -72,8 +72,8 @@ class AbaSlotFeedWeavingTest {
     }
 
     /**
-     * Two workers swing the head from A to B and back, and a third reads it and then swaps A for
-     * C; {@code toggleFirst} says whether the toggle runs wholly before the read or after it.
+     * Two workers swing the head from A to B and back, A returning over a different node than it
+     * left on, and a third reads it and then swaps A for C; {@code toggleFirst} says whether the toggle runs wholly before the read or after it.
      * {@return the detector's report}
      */
     private static ABAProblemDetector.ABAReport run(int kind, boolean toggleFirst) throws InterruptedException {
@@ -108,6 +108,7 @@ class AbaSlotFeedWeavingTest {
         });
         Thread back = inContext(context, "aba-back", () -> {
             awaitQuietly(movedAway);
+            a.pushOver(b);                                // A comes back over a different node (#1325)
             stack.store(a);
             movedBack.countDown();
         });
