@@ -27,7 +27,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 83. Shared DecimalFormat Detector
 * **Severity**: `HIGH`
-* **Description**: Detects a single `DecimalFormat`/`NumberFormat` instance shared across threads without synchronization. Neither class is thread-safe; concurrent `format()`/`parse()` calls corrupt internal multiplier and grouping state, producing garbled output or `ParseException` — the numeric-formatting equivalent of `SimpleDateFormat` misuse.
+* **Description**: Detects a single `DecimalFormat`/`NumberFormat` instance shared across threads without synchronization. Neither class is thread-safe; concurrent `format()`/`parse()` calls corrupt internal multiplier and grouping state, producing garbled output or `ParseException` — the numeric-formatting equivalent of `SimpleDateFormat` misuse. With the agent attached, the calls seen are `format(double)`, `format(long)`, `format(Object)` (how a `BigDecimal` is formatted), `parse` and `parseObject`. A shared `java.text.MessageFormat` is reported here too, worded as a `MessageFormat`: its javadoc states that message formats are not synchronized.
 * **Buggy Code**:
   ```java
   private static final DecimalFormat CURRENCY = new DecimalFormat("#,##0.00");

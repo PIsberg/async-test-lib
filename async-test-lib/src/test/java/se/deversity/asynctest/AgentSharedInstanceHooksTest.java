@@ -360,6 +360,84 @@ class AgentSharedInstanceHooksTest {
     }
 
     @Test
+    @DisplayName("a DecimalFormat reached through Format.format(Object) or parseObject is reported (#1319)")
+    void decimalFormatThroughFormat() {
+        for (boolean parsing : new boolean[] {false, true}) {
+            AsyncTestContext shared = newContext();
+            java.text.Format one = rootDecimalFormat();
+            onTwoThreads(shared, true, () -> throughFormat(one, parsing, new java.math.BigDecimal("4.20"), "4.20"));
+            assertTrue(with(shared, () -> AsyncTestContext.sharedDecimalFormatDetector().analyze().hasIssues()),
+                    "one DecimalFormat used by two threads through Format must be reported, parsing=" + parsing);
+
+            AsyncTestContext confined = newContext();
+            onTwoThreads(confined, false,
+                    () -> throughFormat(rootDecimalFormat(), parsing, new java.math.BigDecimal("4.20"), "4.20"));
+            assertFalse(with(confined, () -> AsyncTestContext.sharedDecimalFormatDetector().analyze().hasIssues()),
+                    "one DecimalFormat per thread through Format is correct code, parsing=" + parsing);
+        }
+        assertEquals("4.20", AgentSharedInstanceHooks.format(
+                (java.text.Format) rootDecimalFormat(), new java.math.BigDecimal("4.20")), "format(Object) delegates");
+    }
+
+    @Test
+    @DisplayName("a SimpleDateFormat reached through Format.format(Object) or parseObject is reported (#1319)")
+    void simpleDateFormatThroughFormat() {
+        for (boolean parsing : new boolean[] {false, true}) {
+            AsyncTestContext shared = newContext();
+            java.text.Format one = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT);
+            onTwoThreads(shared, true, () -> throughFormat(one, parsing, new Date(0L), "2020-01-02"));
+            assertTrue(with(shared, () -> AsyncTestContext.simpleDateFormatDetector().analyze().hasIssues()),
+                    "one SimpleDateFormat used by two threads through Format must be reported, parsing=" + parsing);
+
+            AsyncTestContext confined = newContext();
+            onTwoThreads(confined, false, () -> throughFormat(
+                    new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT), parsing, new Date(0L), "2020-01-02"));
+            assertFalse(with(confined, () -> AsyncTestContext.simpleDateFormatDetector().analyze().hasIssues()),
+                    "one SimpleDateFormat per thread through Format is correct code, parsing=" + parsing);
+        }
+    }
+
+    @Test
+    @DisplayName("a shared MessageFormat is reported and named; one each, or an immutable Format, is not (#1319)")
+    void messageFormatThroughFormat() {
+        AsyncTestContext shared = newContext();
+        java.text.MessageFormat one = new java.text.MessageFormat("{0} has {1} items", Locale.ROOT);
+        onTwoThreads(shared, true, () -> {
+            AgentSharedInstanceHooks.format(one, new Object[] {"cart", 3});
+            quietly(() -> AgentSharedInstanceHooks.parse(one, "cart has 3 items"));
+        });
+        String report = with(shared, () -> AsyncTestContext.sharedDecimalFormatDetector().analyze().toString());
+        assertTrue(report.contains("MessageFormat is not thread-safe"),
+                "one MessageFormat used by two threads must be reported as a MessageFormat: " + report);
+        assertFalse(report.contains("DecimalFormat/NumberFormat is not thread-safe"),
+                "a MessageFormat finding must not call the instance a DecimalFormat: " + report);
+
+        AsyncTestContext confined = newContext();
+        java.text.Format immutable = java.time.format.DateTimeFormatter.ISO_LOCAL_DATE.toFormat();
+        onTwoThreads(confined, false, () -> {
+            java.text.MessageFormat mine = new java.text.MessageFormat("{0} has {1} items", Locale.ROOT);
+            assertEquals("cart has 3 items", AgentSharedInstanceHooks.format(mine, new Object[] {"cart", 3}),
+                    "format(Object) delegates");
+            quietly(() -> assertEquals("cart", AgentSharedInstanceHooks.parse(mine, "cart has 3 items")[0],
+                    "parse(String) delegates"));
+            assertEquals("1970-01-01", AgentSharedInstanceHooks.format(immutable, java.time.LocalDate.EPOCH),
+                    "a Format that is none of the unsafe types is called and not recorded");
+        });
+        assertFalse(with(confined, () -> AsyncTestContext.sharedDecimalFormatDetector().analyze().hasIssues()),
+                "one MessageFormat per thread and a shared immutable Format are correct code");
+        assertFalse(with(confined, () -> AsyncTestContext.simpleDateFormatDetector().analyze().hasIssues()),
+                "a shared DateTimeFormatter view is not a SimpleDateFormat");
+    }
+
+    private static void throughFormat(java.text.Format format, boolean parsing, Object value, String text) {
+        if (parsing) {
+            quietly(() -> AgentSharedInstanceHooks.parseObject(format, text));
+        } else {
+            AgentSharedInstanceHooks.format(format, value);
+        }
+    }
+
+    @Test
     @DisplayName("a Formatter two threads write through the hooks is reported; one each is not")
     void formatter() {
         AsyncTestContext shared = newContext();
@@ -424,7 +502,7 @@ class AgentSharedInstanceHooksTest {
                 .filter(m -> Modifier.isStatic(m.getModifiers()))
                 .filter(m -> m.getDeclaringClass() == AgentSharedInstanceHooks.class)
                 .count();
-        assertEquals(112, hooks,
+        assertEquals(115, hooks,
                 "the shared-instance hooks and the calls in this class are one list, written by "
                         + "hand because each family needs its own receiver and arguments. If this "
                         + "count moved, the new hook belongs in the family test above, or it is "

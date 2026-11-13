@@ -1168,6 +1168,7 @@ class CorpusIdiomLaneTest {
             new Rounds<>(ConcurrentHashMap::new);
     private static final Rounds<Map<String, Integer>> RACED_COUNTS =
             new Rounds<>(ConcurrentHashMap::new);
+    private static final Rounds<CyclicBarrier> COUNT_READS = new Rounds<>(() -> new CyclicBarrier(THREADS));
 
     /** Every thread counts one key with merge. */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
@@ -1175,12 +1176,20 @@ class CorpusIdiomLaneTest {
         correct(() -> MERGED_COUNTS.next().shared().merge("hits", 1, Integer::sum));
     }
 
-    /** The same count as a get and then a put. */
+    /**
+     * The same count as a get and then a put. The barrier lines the reads up so that every thread
+     * has read the count before any writes it back, the way the synchronized-list row does (#1159):
+     * the detector reports a write that landed between a thread's get and its own put, and without
+     * the barrier a runner on which no round interleaved left this row silent (Java 26 leg of
+     * PR #1320).
+     */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void idiom_concurrentMap_countsWithGetThenPut() {
         broken(() -> {
             Map<String, Integer> counts = RACED_COUNTS.next().shared();
+            CyclicBarrier read = COUNT_READS.next().shared();
             Integer seen = counts.get("hits");
+            awaitAll(read);
             counts.put("hits", seen == null ? 1 : seen + 1);
         });
     }
@@ -3025,6 +3034,49 @@ class CorpusIdiomLaneTest {
                 }
             }
         });
+    }
+
+    // --- A format reached through the calls java.text.Format declares (#1319) -----------------
+
+    private static final java.text.DecimalFormat SHARED_MONEY = new java.text.DecimalFormat("#,##0.00");
+    private static final ThreadLocal<java.text.DecimalFormat> MONEY_PER_THREAD =
+            ThreadLocal.withInitial(() -> new java.text.DecimalFormat("#,##0.00"));
+    private static final java.text.MessageFormat SHARED_MESSAGE =
+            new java.text.MessageFormat("{0} has {1} items", java.util.Locale.ROOT);
+    private static final java.text.MessageFormat GUARDED_MESSAGE =
+            new java.text.MessageFormat("{0} has {1} items", java.util.Locale.ROOT);
+
+    /** A DecimalFormat per thread formatting a BigDecimal, the documented way to reuse one. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_sharedFormat_perThreadFormatsABigDecimal() {
+        correct(() -> use(MONEY_PER_THREAD.get().format(new java.math.BigDecimal("12.50")).length()));
+    }
+
+    /**
+     * The same call on one static DecimalFormat shared by every thread.
+     *
+     * <p>{@code format(Object)} is the call a BigDecimal takes, and it was not woven while
+     * {@code format(double)} was, so this row was silent.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_sharedFormat_formatsABigDecimal() {
+        broken(() -> use(SHARED_MONEY.format(new java.math.BigDecimal("12.50")).length()));
+    }
+
+    /** One static MessageFormat formatting under its own monitor on every thread. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_sharedMessageFormat_underItsMonitor() {
+        correct(() -> {
+            synchronized (GUARDED_MESSAGE) {
+                use(GUARDED_MESSAGE.format(new Object[] {"cart", 3}).length());
+            }
+        });
+    }
+
+    /** The same call with no monitor held. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_sharedMessageFormat_formats() {
+        broken(() -> use(SHARED_MESSAGE.format(new Object[] {"cart", 3}).length()));
     }
 
     // --- Harness -----------------------------------------------------------------------------

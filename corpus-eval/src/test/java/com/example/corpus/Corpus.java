@@ -6385,6 +6385,38 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same code with the flag set first and the data written after it, so a "
                             + "reader that saw the flag reads data nothing ordered",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_sharedFormat_perThreadFormatsABigDecimal", JDK,
+                    "java.text.DecimalFormat",
+                    DetectorType.SHARED_DECIMAL_FORMAT, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same call on a DecimalFormat held in a ThreadLocal, so no instance is "
+                            + "reached by two threads"),
+
+            new RecordingSubject("idiom_sharedFormat_formatsABigDecimal", JDK,
+                    "java.text.DecimalFormat",
+                    DetectorType.SHARED_DECIMAL_FORMAT, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one static DecimalFormat formats a BigDecimal on every thread through "
+                            + "Format.format(Object), the call a BigDecimal takes; it drives the "
+                            + "same digit list format(double) does (#1319)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_sharedMessageFormat_underItsMonitor", JDK,
+                    "java.text.MessageFormat",
+                    DetectorType.SHARED_DECIMAL_FORMAT, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same call inside synchronized (format), the external synchronization "
+                            + "the javadoc asks for"),
+
+            new RecordingSubject("idiom_sharedMessageFormat_formats", JDK,
+                    "java.text.MessageFormat",
+                    DetectorType.SHARED_DECIMAL_FORMAT, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "one static MessageFormat formats on every thread. Its javadoc states that "
+                            + "message formats are not synchronized, and it formats a number "
+                            + "argument through a NumberFormat it owns (#1319)",
                     IssueSeverity.HIGH)
     );
 

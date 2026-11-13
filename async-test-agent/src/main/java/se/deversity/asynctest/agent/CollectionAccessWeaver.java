@@ -616,6 +616,19 @@ final class CollectionAccessWeaver {
             Entry.call(NumberFormat.class, "parse", "parse", String.class),
             Entry.call(NumberFormat.class, "parse", "parse", String.class,
                     java.text.ParsePosition.class),
+            // The two calls java.text.Format declares for every format. format(Object) is how a
+            // BigDecimal is formatted, so on a DecimalFormat in money code it is the ordinary
+            // call, and it was invisible while format(double) was woven (#1319). A call site's
+            // owner is the receiver's static type, DecimalFormat or SimpleDateFormat as often
+            // as Format, and each is a subtype of this entry's. Format is also the immutable
+            // view of a DateTimeFormatter and any format an application wrote, so the hooks
+            // record only a NumberFormat, a SimpleDateFormat or a MessageFormat receiver.
+            Entry.call(java.text.Format.class, "format", "format", Object.class),
+            Entry.call(java.text.Format.class, "parseObject", "parseObject", String.class),
+            // MessageFormat keeps its own parse beside the two above. The static
+            // MessageFormat.format(String, Object...) builds an instance per call and has a
+            // different descriptor, so it matches nothing here.
+            Entry.call(java.text.MessageFormat.class, "parse", "parse", String.class),
             Entry.call(Formatter.class, "format", "format", String.class, Object[].class),
             // The locale-taking overload is what an internationalised codebase calls, and it was
             // invisible while its sibling was woven (#434).

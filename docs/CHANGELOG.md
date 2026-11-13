@@ -20,6 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A shared `DecimalFormat` or `SimpleDateFormat` reached through `format(Object)` or
+  `parseObject(String)`, and a shared `MessageFormat`, are now reported (#1319).** The agent wove
+  `format(double)`, `format(long)` and `format(Date)` only, so `MONEY.format(12.5)` on a static
+  `DecimalFormat` was a VERDICT and `MONEY.format(new BigDecimal("12.50"))`, the ordinary call in
+  money code, drew nothing. One entry on `java.text.Format` now covers `format(Object)` and
+  `parseObject(String)` whatever the receiver is typed as, and its hook records a `NumberFormat`
+  or a `SimpleDateFormat` with the detector it already had. A `MessageFormat` (`format(Object)`,
+  `parse(String)`) is reported by `SharedDecimalFormatDetector`, worded as a `MessageFormat`.
+  Any other `Format`, the immutable view of a `DateTimeFormatter` among them, is called and not
+  recorded. Test first: `FormatObjectWeavingTest` missed all 7 call sites before the change;
+  `FormatObjectWeavingSparesConfinedUseTest` holds per-call, immutable and monitor-guarded
+  formats silent. Corpus pairs `idiom_sharedFormat_formatsABigDecimal` and `idiom_sharedMessageFormat_formats`.
+
 - **An `AtomicBoolean`, `AtomicInteger` or `AtomicLong` used as a completion flag now orders what
   was written before it (#1315).** A thread that wrote a plain field and then called
   `done.set(true)`, and another that spun on `done.get()` and then read the field, drew an

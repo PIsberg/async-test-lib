@@ -5,6 +5,8 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.io.IOException;
 import java.security.MessageDigest;
 import java.text.DateFormat;
+import java.text.Format;
+import java.text.MessageFormat;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.text.ParsePosition;
@@ -874,6 +876,79 @@ public final class AgentSharedInstanceHooks {
         ControlledSchedule.point();
         recordNumberFormat(receiver);
         return receiver.parse(source, position);
+    }
+
+    /**
+     * Weaves {@code Format.format(Object)}, the call every {@code java.text} format inherits.
+     *
+     * <p>It is how a {@code BigDecimal} or a boxed number reaches a {@code DecimalFormat} and how
+     * a {@code MessageFormat} is used at all, and it was invisible while the typed overloads
+     * were woven (#1319). {@code Format} is also the immutable view of a
+     * {@code DateTimeFormatter} and any format an application wrote, so only a
+     * {@code NumberFormat}, a {@code SimpleDateFormat} or a {@code MessageFormat} receiver is
+     * recorded.
+     *
+     * @param receiver the format
+     * @param value    the object to format
+     * @return the formatted text
+     * @since 1.14.3
+     */
+    public static String format(Format receiver, Object value) {
+        ControlledSchedule.point();
+        recordFormat(receiver, false);
+        return receiver.format(value);
+    }
+
+    /**
+     * Weaves {@code Format.parseObject(String)}; records what {@link #format(Format, Object)}
+     * does.
+     *
+     * @param receiver the format
+     * @param source   the text to parse
+     * @return the parsed object
+     * @throws ParseException if the text cannot be parsed
+     * @since 1.14.3
+     */
+    public static Object parseObject(Format receiver, String source) throws ParseException {
+        ControlledSchedule.point();
+        recordFormat(receiver, true);
+        return receiver.parseObject(source);
+    }
+
+    /**
+     * Weaves {@code MessageFormat.parse(String)}.
+     *
+     * @param receiver the format
+     * @param source   the text to parse
+     * @return the parsed arguments
+     * @throws ParseException if the text cannot be parsed
+     * @since 1.14.3
+     */
+    public static Object[] parse(MessageFormat receiver, String source) throws ParseException {
+        ControlledSchedule.point();
+        recordFormat(receiver, true);
+        return receiver.parse(source);
+    }
+
+    /** Records a call through {@code Format} with the detector the receiver's runtime type has. */
+    private static void recordFormat(Format receiver, boolean parsing) {
+        if (receiver instanceof NumberFormat number) {
+            recordNumberFormat(number);
+        } else if (receiver instanceof SimpleDateFormat simple) {
+            SimpleDateFormatDetector detector = AsyncTestContext.currentSimpleDateFormatDetector();
+            if (detector != null && parsing) {
+                detector.recordParse(simple, simple.getClass().getName());
+            } else if (detector != null) {
+                detector.recordFormat(simple, simple.getClass().getName());
+            }
+        } else if (receiver instanceof MessageFormat) {
+            SharedDecimalFormatDetector detector =
+                    AsyncTestContext.currentSharedDecimalFormatDetector();
+            if (detector != null) {
+                detector.recordAccess(receiver, receiver.getClass().getName(),
+                        Thread.currentThread());
+            }
+        }
     }
 
     private static void recordNumberFormat(NumberFormat receiver) {
