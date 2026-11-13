@@ -231,6 +231,12 @@ public final class AgentLockHooks {
         LockLeakDetector leak = AsyncTestContext.currentLockLeakDetector();
         if (leak != null) {
             leak.recordLockAcquired(lock, lock.getClass().getName());
+        } else {
+            // A thread the run handed work to (#1339): its hold is kept apart from the workers'.
+            leak = AsyncTestContext.helperLockLeakDetector();
+            if (leak != null) {
+                leak.recordHelperAcquired(lock, lock.getClass().getName());
+            }
         }
         TryLockMisuseDetector tryLocks = AsyncTestContext.currentTryLockMisuseDetector();
         if (tryLocks != null) {
@@ -252,6 +258,11 @@ public final class AgentLockHooks {
         LockLeakDetector leak = AsyncTestContext.currentLockLeakDetector();
         if (leak != null) {
             leak.recordLockReleased(lock, lock.getClass().getName());
+        } else {
+            leak = AsyncTestContext.helperLockLeakDetector();
+            if (leak != null) {
+                leak.recordHelperReleased(lock);
+            }
         }
     }
 

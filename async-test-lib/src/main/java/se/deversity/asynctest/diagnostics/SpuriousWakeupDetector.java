@@ -54,11 +54,14 @@ public final class SpuriousWakeupDetector extends AbstractInstanceDetector<Spuri
         final Object monitor;
         final String threadName;
         final long epoch;
+        /** Whether the thread is one the run handed work to, which a round's end does not stop. */
+        final boolean helper;
 
-        Woken(Object monitor, String threadName, long epoch) {
+        Woken(Object monitor, String threadName, long epoch, boolean helper) {
             this.monitor = monitor;
             this.threadName = threadName;
             this.epoch = epoch;
+            this.helper = helper;
         }
     }
 
@@ -88,10 +91,19 @@ public final class SpuriousWakeupDetector extends AbstractInstanceDetector<Spuri
             return;
         }
         woken.forEach((thread, wait) -> {
-            if (wait.epoch < epoch && woken.remove(thread, wait)) {
+            if (wait.epoch < epoch && leftBehind(thread, wait) && woken.remove(thread, wait)) {
                 settleOutsideLoop(wait);
             }
         });
+    }
+
+    /**
+     * {@return whether {@code thread} can no longer reach a back-edge for {@code wait}} A worker
+     * has finished its round when this is asked. A thread the run handed work to (#1339) may
+     * still be between its wakeup and its loop's back-edge, so only one that has ended counts.
+     */
+    private static boolean leftBehind(Thread thread, Woken wait) {
+        return !wait.helper || !thread.isAlive();
     }
 
     /**
@@ -103,9 +115,24 @@ public final class SpuriousWakeupDetector extends AbstractInstanceDetector<Spuri
      * @since 1.14.3
      */
     public void recordObservedWakeup(Object monitor) {
+        recordObservedWakeup(monitor, false);
+    }
+
+    /**
+     * Internal: {@link #recordObservedWakeup(Object)} for a caller that may be a thread the run
+     * handed work to and not one of its workers (#1339). Such a thread is not stopped by the end
+     * of a round or of the run, so a wakeup of its own that reached no back-edge is settled as an
+     * {@code if}'s by its next wakeup, or once the thread has ended, and dropped unjudged when
+     * the thread is still alive at analysis.
+     *
+     * @param monitor the monitor waited on
+     * @param helper  whether the calling thread is not a worker of the run
+     * @since 1.14.3
+     */
+    public void recordObservedWakeup(Object monitor, boolean helper) {
         Thread thread = Thread.currentThread();
         Woken previous = woken.put(thread,
-                new Woken(monitor, thread.getName(), invocationEpoch.get()));
+                new Woken(monitor, thread.getName(), invocationEpoch.get(), helper));
         if (previous != null) {
             settleOutsideLoop(previous);
         }
@@ -150,7 +177,7 @@ public final class SpuriousWakeupDetector extends AbstractInstanceDetector<Spuri
     public Report analyze() {
         // The run has quiesced: a wakeup no back-edge followed was left by an if.
         woken.forEach((thread, wait) -> {
-            if (woken.remove(thread, wait)) {
+            if (leftBehind(thread, wait) && woken.remove(thread, wait)) {
                 settleOutsideLoop(wait);
             }
         });

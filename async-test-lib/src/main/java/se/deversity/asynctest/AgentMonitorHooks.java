@@ -340,7 +340,7 @@ public final class AgentMonitorHooks {
     private static void returnedFromWait(Object receiver) {
         SpuriousWakeupDetector spurious = AsyncTestContext.currentSpuriousWakeupDetector();
         if (spurious != null) {
-            spurious.recordObservedWakeup(receiver);
+            spurious.recordObservedWakeup(receiver, AsyncTestContext.notAWorker());
         }
     }
 

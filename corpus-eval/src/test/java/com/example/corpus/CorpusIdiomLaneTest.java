@@ -3509,6 +3509,114 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    /** The helper thread takes the lock and releases it in a finally. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_releasesTheLockItTook() {
+        correct(() -> {
+            ReentrantLock lock = new ReentrantLock();
+            onAHelperThread(() -> {
+                lock.lock();
+                try {
+                    use(1);
+                } finally {
+                    lock.unlock();
+                }
+            });
+        });
+    }
+
+    /** The same helper thread, ending with the lock still held. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_endsHoldingTheLock() {
+        broken(() -> {
+            ReentrantLock lock = new ReentrantLock();
+            onAHelperThread(() -> {
+                lock.lock();
+                use(1);
+            });
+        });
+    }
+
+    /** A flag and the monitor that guards it. */
+    private static final class Gate37 {
+        private boolean open;
+    }
+
+    /** The helper thread waits for the flag in a loop; the body sets it and notifies. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_waitsInALoop() {
+        correct(() -> {
+            Gate37 gate = new Gate37();
+            Thread waiter = new Thread(() -> {
+                synchronized (gate) {
+                    while (!gate.open) {
+                        try {
+                            gate.wait(1);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    }
+                }
+            }, "idiom-helper");
+            waiter.start();
+            synchronized (gate) {
+                gate.open = true;
+                gate.notifyAll();
+            }
+            waiter.join();
+        });
+    }
+
+    /** The same wait under an if: the helper thread goes on after one wakeup, whatever woke it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_waitsUnderAnIf() {
+        broken(() -> {
+            Gate37 gate = new Gate37();
+            onAHelperThread(() -> {
+                synchronized (gate) {
+                    if (!gate.open) {
+                        try {
+                            gate.wait(1);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    /** The body counts the latch down to zero before the helper thread awaits it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_awaitsALatchAtZero() {
+        correct(() -> {
+            CountDownLatch done = new CountDownLatch(1);
+            done.countDown();
+            onAHelperThread(() -> awaitBriefly(done));
+        });
+    }
+
+    /** The same await on a latch created for two countdowns and given one. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_awaitsALatchOneCountShort() {
+        broken(() -> {
+            CountDownLatch done = new CountDownLatch(2);
+            done.countDown();
+            onAHelperThread(() -> awaitBriefly(done));
+        });
+    }
+
+    private static void awaitBriefly(CountDownLatch latch) {
+        try {
+            if (latch.await(1, TimeUnit.MILLISECONDS)) {
+                use(1);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     // --- 35. Plain data published by an AtomicBoolean flag (#1315) ----------------------------
 
     private static final class FlaggedMailbox {

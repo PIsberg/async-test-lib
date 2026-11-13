@@ -1,6 +1,7 @@
 package se.deversity.asynctest;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -58,6 +59,8 @@ class SpawnedWorkEventFeedTest {
                     AgentConcurrencyUtilHooks.get(future);
                 } finally {
                     executor.shutdownNow();
+                    // Its thread has ended before the run is analysed, as a closed pool's has.
+                    executor.awaitTermination(10, TimeUnit.SECONDS);
                 }
             }
         };
@@ -175,7 +178,7 @@ class SpawnedWorkEventFeedTest {
 
     /** {@return a started thread that holds {@code lock} until it is interrupted} */
     private static Thread holding(ReentrantLock lock) throws InterruptedException {
-        java.util.concurrent.CountDownLatch held = new java.util.concurrent.CountDownLatch(1);
+        CountDownLatch held = new CountDownLatch(1);
         Thread holder = new Thread(() -> {
             lock.lock();
             try {
@@ -270,5 +273,116 @@ class SpawnedWorkEventFeedTest {
         stray.start();
         stray.join(TimeUnit.SECONDS.toMillis(20));
         assertDoesNotThrow(() -> assertNull(failed.get(), () -> "a stray thread's hook threw: " + failed.get()));
+    }
+
+    // ---- Detectors that judge what a thread left behind (#1339) ----
+
+    @Test
+    @DisplayName("a lock a handed-over thread took and ended holding is reported")
+    void lockNeverReleased() throws Exception {
+        bothWays("a lock never released", AsyncTestConfig.builder().detectLockLeaks(true).build(),
+                () -> AgentLockHooks.lock(new ReentrantLock()),
+                () -> {
+                    Lock lock = new ReentrantLock();
+                    AgentLockHooks.lock(lock);
+                    AgentLockHooks.unlock(lock);
+                },
+                ctx -> AsyncTestContext.lockLeakDetector().analyze().hasIssues());
+    }
+
+    @Test
+    @DisplayName("a wait outside a loop on a handed-over thread is reported")
+    void waitOutsideALoop() throws Exception {
+        bothWays("a wait outside a loop",
+                AsyncTestConfig.builder().detectSpuriousWakeupHazard(true).build(),
+                () -> {
+                    Object monitor = new Object();
+                    synchronized (monitor) {
+                        AgentMonitorHooks.monitorWait(monitor, 2);
+                    }
+                },
+                () -> {
+                    Object monitor = new Object();
+                    synchronized (monitor) {
+                        AgentMonitorHooks.monitorWait(monitor, 2);
+                        AgentMonitorHooks.loopBackEdge();
+                    }
+                },
+                ctx -> AsyncTestContext.spuriousWakeupHazardDetector().analyze().hasIssues());
+    }
+
+    @Test
+    @DisplayName("a latch await that timed out on a handed-over thread is reported")
+    void latchAwaitTimedOut() throws Exception {
+        bothWays("a timed-out latch await",
+                AsyncTestConfig.builder().detectCountDownLatchIssues(true).build(),
+                () -> assertFalse(AgentConcurrencyUtilHooks.await(new CountDownLatch(1), 2, TimeUnit.MILLISECONDS)),
+                () -> {
+                    CountDownLatch latch = new CountDownLatch(1);
+                    AgentConcurrencyUtilHooks.countDown(latch);
+                    assertTrue(AgentConcurrencyUtilHooks.await(latch, 2, TimeUnit.SECONDS));
+                },
+                ctx -> AsyncTestContext.countDownLatchDetector().analyze().hasIssues());
+    }
+
+    /**
+     * A started thread that is still running when the run is analysed has left nothing behind
+     * yet: the lock it holds it may release, and the wakeup it has not looped on it may loop on.
+     * {@code atAnalysis} runs with the thread parked after {@code work}.
+     */
+    private static boolean reportedWhileStillRunning(AsyncTestConfig config, ThrowingRunnable work,
+                                                     Function<AsyncTestContext, Boolean> analysis)
+            throws Exception {
+        AsyncTestContext ctx = new AsyncTestContext(config);
+        AtomicReference<Throwable> failed = new AtomicReference<>();
+        CountDownLatch worked = new CountDownLatch(1);
+        CountDownLatch analysed = new CountDownLatch(1);
+        Thread child = new Thread(() -> runInto(() -> {
+            work.run();
+            worked.countDown();
+            analysed.await();
+        }, failed), "still-running");
+        Thread worker = new Thread(() -> {
+            AsyncTestContext.install(ctx);
+            try {
+                AgentThreadHooks.threadStart(child);
+            } finally {
+                AsyncTestContext.uninstall();
+            }
+        }, "worker-0");
+        worker.start();
+        worker.join(TimeUnit.SECONDS.toMillis(20));
+        try {
+            assertTrue(worked.await(10, TimeUnit.SECONDS), "the started thread did its work");
+            AsyncTestContext.install(ctx);
+            try {
+                return analysis.apply(ctx);
+            } finally {
+                AsyncTestContext.uninstall();
+            }
+        } finally {
+            analysed.countDown();
+            child.join(TimeUnit.SECONDS.toMillis(20));
+            assertNull(failed.get(), () -> "the started thread failed: " + failed.get());
+        }
+    }
+
+    @Test
+    @DisplayName("a started thread still running at analysis is not read as having leaked")
+    void aThreadStillRunningLeftNothingBehind() throws Exception {
+        assertFalse(reportedWhileStillRunning(AsyncTestConfig.builder().detectLockLeaks(true).build(),
+                        () -> AgentLockHooks.lock(new ReentrantLock()),
+                        ctx -> AsyncTestContext.lockLeakDetector().analyze().hasIssues()),
+                "the thread holding the lock is still working and may release it");
+        assertFalse(reportedWhileStillRunning(
+                        AsyncTestConfig.builder().detectSpuriousWakeupHazard(true).build(),
+                        () -> {
+                            Object monitor = new Object();
+                            synchronized (monitor) {
+                                AgentMonitorHooks.monitorWait(monitor, 2);
+                            }
+                        },
+                        ctx -> AsyncTestContext.spuriousWakeupHazardDetector().analyze().hasIssues()),
+                "the thread has not reached its loop's back-edge yet, and may");
     }
 }

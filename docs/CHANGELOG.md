@@ -20,6 +20,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A lock never released, a `wait` outside a loop and a timed-out latch await are reported on a
+  thread the test body started (#1339).** These three were silent there for the same reason as the
+  six below, and two of them could not simply follow the thread, because a started thread may
+  outlive the run. `LockLeakDetector` keeps such a thread's holds apart from the workers' and
+  reports one only for a `ReentrantLock` that is still locked and names a holder that has ended or
+  idles in its pool. `SpuriousWakeupDetector` settles such a thread's wakeup as an `if`'s only
+  when the thread waits again or has ended; one still alive at analysis is dropped unjudged.
+  `CountDownLatchDetector` reports an await that timed out during the run on whichever thread
+  waited. Test first: three tests in `SpawnedWorkEventFeedTest` red before the change, and a
+  control with the thread still running at analysis that goes red when either guard is removed
+  (checked by removing each). Corpus pairs `idiom_helperThread_endsHoldingTheLock`,
+  `_waitsUnderAnIf` and `_awaitsALatchOneCountShort` with their correct twins: the three broken
+  rows were silent against the previous jar. Still open on #1339: a signal no thread was waiting
+  for, and a latch await that never returned.
+
 - **Six detectors now report a bug that runs on a thread the test body started (#1339).** With
   the agent attached, `System.gc()`, a `Thread.sleep` under a lock, an `unlock()` after a
   `tryLock()` that returned `false`, a read-to-write upgrade of a `ReentrantReadWriteLock`, an
@@ -29,10 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as the shared-instance hooks have since #834. Each of these detectors judges one event on the
   thread it happens on, so a thread that outlives the run adds nothing after the analysis.
   Found by 30 probe bodies whose bug runs only on a started thread: 21 fired, 7 were real
-  misses, and this fixes 3 of those 7 plus three detectors the probes did not cover. Still
-  silent on such a thread and open on #1339: a lock never released, a latch never counted down,
-  a `wait` outside a loop and a signal nobody was waiting for, whose detectors judge what had
-  not happened by the end of the run. Test first: `SpawnedWorkEventFeedTest`, six tests red
+  misses, and this fixes 3 of those 7 plus three detectors the probes did not cover; the entry
+  above takes three more. Test first: `SpawnedWorkEventFeedTest`, six tests red
   before the change, each through a started thread and a submitted task, each with a correct
   twin that stays silent. Corpus pairs `idiom_helperThread_*` (sleep, tryLock, gc): all three
   broken rows were silent against the previous jar.
