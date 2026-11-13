@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `FutureTask` the caller runs itself now orders its callable before `get()` (#1307).** One
+  thread calling `task.run()` and the others reading what `task.get()` returned, the Memoizer
+  idiom, drew an `AtomicityValidator` PROMPT finding ("no lock and no happens-before edge"),
+  because only a task an executor runs was wrapped. A woven `FutureTask.run()` now releases to
+  the task when the run ends and a woven `Future.get` acquires it. A `run()` the JDK calls, a
+  `super.run()` and `runAndReset()` are not woven. Test first:
+  `AgentHappensBeforeFeedTest.aDirectlyRunFutureTaskPublishes`, and the corpus pair
+  `idiom_futureTask_runByOneThreadAndGotByTheRest` / `idiom_futureTask_resultWrittenAfterTheRun`,
+  whose correct row was reported before the change.
+
 - **A shared `java.util.BitSet` mutated from several threads is now reported (#1297).** `BitSet`
   is neither a `Collection` nor a `Map`, so no woven call reached a detector and six threads
   calling `set` on one instance with no lock drew nothing, although `set` is a read-modify-write

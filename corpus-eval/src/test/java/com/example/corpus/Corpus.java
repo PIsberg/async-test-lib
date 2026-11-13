@@ -6319,6 +6319,22 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same sets with no lock: set is a read-modify-write of one long word, "
                             + "so two threads setting bits of the same word lose one",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_futureTask_runByOneThreadAndGotByTheRest", JDK,
+                    "java.util.concurrent.FutureTask",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread runs a FutureTask itself and the others get its result, the "
+                            + "Memoizer idiom: get returns only after the callable finished, "
+                            + "so its writes precede every read (#1307)"),
+
+            new RecordingSubject("idiom_futureTask_resultWrittenAfterTheRun", JDK,
+                    "java.util.concurrent.FutureTask",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same task with the runner writing the result's field after the run "
+                            + "completed it, unordered with the other threads' reads",
                     IssueSeverity.HIGH)
     );
 

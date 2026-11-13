@@ -486,7 +486,8 @@ children share, and a terminated phaser orders nothing), and `Thread.start` and 
 `complete` the future refused publishes nothing; a task handed to `ExecutorService.submit` or
 `CompletableFuture.supplyAsync`/`runAsync`, which starts ordered after the call and is ordered before
 a `get` or `join` of its future on the thread that submitted it; and each side of an
-`Exchanger.exchange`, ordered before its partner's return. The submitted task runs wrapped, which only
+`Exchanger.exchange`, ordered before its partner's return. A `FutureTask` whose `run()` a woven class
+calls itself, the Memoizer idiom, is ordered before a woven `get` of it on any thread (#1307). The submitted task runs wrapped, which only
 the JDK's own executors get, since only there nothing a caller can reach returns the task; a get on
 another thread, or of one of more than 16 futures a thread submitted without getting, orders nothing.
 A function registered on a `CompletableFuture` with `thenApply`, `thenAccept`, `thenRun`,

@@ -35,6 +35,7 @@ import java.util.concurrent.Exchanger;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Phaser;
 import java.util.concurrent.Semaphore;
@@ -2854,6 +2855,47 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 33. A FutureTask the caller runs itself, the Memoizer idiom (#1307) ------------------
+
+    private static FutureTask<Limits> limitsTask() {
+        return new FutureTask<>(() -> {
+            Limits built = new Limits();
+            built.limit = 10;
+            return built;
+        });
+    }
+
+    private static final Rounds<FutureTask<Limits>> MEMOIZED = new Rounds<>(CorpusIdiomLaneTest::limitsTask);
+    private static final Rounds<FutureTask<Limits>> LATE_MEMOIZED =
+            new Rounds<>(CorpusIdiomLaneTest::limitsTask);
+
+    /** One thread runs the task on its own thread; the others get its result and read it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_futureTask_runByOneThreadAndGotByTheRest() {
+        correct(() -> {
+            Turn<FutureTask<Limits>> turn = MEMOIZED.next();
+            if (turn.opensTheRound()) {
+                turn.shared().run();
+            } else {
+                use(getUnchecked(turn.shared()).limit);
+            }
+        });
+    }
+
+    /** The same task, with the runner still writing the result after the run published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_futureTask_resultWrittenAfterTheRun() {
+        broken(() -> {
+            Turn<FutureTask<Limits>> turn = LATE_MEMOIZED.next();
+            if (turn.opensTheRound()) {
+                turn.shared().run();
+                getUnchecked(turn.shared()).limit = turn.ticket();
+            } else {
+                use(getUnchecked(turn.shared()).limit);
+            }
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**
@@ -2927,9 +2969,9 @@ class CorpusIdiomLaneTest {
         }
     }
 
-    private static void getUnchecked(Future<?> task) throws InterruptedException {
+    private static <T> T getUnchecked(Future<T> task) throws InterruptedException {
         try {
-            task.get();
+            return task.get();
         } catch (ExecutionException e) {
             throw new IllegalStateException("the task failed", e.getCause());
         }

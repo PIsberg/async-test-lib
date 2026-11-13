@@ -13,6 +13,8 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -381,6 +383,49 @@ class AgentHappensBeforeFeedTest {
         Deque<Object> plain = new ArrayDeque<>();
         assertTrue(containerHandOffReported(b -> AgentCollectionHooks.dequeAddFirst(plain, b),
                 () -> AgentCollectionHooks.dequePeekFirst(plain)), "an ArrayDeque orders nothing");
+    }
+
+    /**
+     * One thread runs a {@code FutureTask} itself, another gets its result and reads what the
+     * callable wrote (#1307).
+     */
+    private static boolean directRunReported(boolean wovenRun, boolean wovenGet)
+            throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        FutureTask<Object> task = new FutureTask<>(() -> {
+            Box box = new Box();
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            return box;
+        });
+        Thread runner = new Thread(() -> {
+            if (wovenRun) {
+                AgentConcurrencyUtilHooks.futureTaskRun(task);
+            } else {
+                task.run();
+            }
+        });
+        runner.start();
+        runner.join();
+        Thread getter = new Thread(() -> {
+            try {
+                Box got = (Box) (wovenGet ? AgentConcurrencyUtilHooks.get(task) : task.get());
+                detector.recordFieldRead(got, "value");
+            } catch (InterruptedException | ExecutionException e) {
+                throw new AssertionError(e);
+            }
+        });
+        getter.start();
+        getter.join();
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a FutureTask the caller runs itself orders its callable before a get (#1307)")
+    void aDirectlyRunFutureTaskPublishes() throws InterruptedException {
+        assertFalse(directRunReported(true, true), "run then get");
+        assertTrue(directRunReported(false, true), "an unwoven run released nothing");
+        assertTrue(directRunReported(true, false), "an unwoven get acquired nothing");
     }
 
     private static boolean startJoinReported(boolean woven) throws InterruptedException {

@@ -89,6 +89,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -832,6 +833,8 @@ final class CollectionAccessWeaver {
                     Function.class),
             Entry.call(CompletableFuture.class, "exceptionallyComposeAsync", "exceptionallyComposeAsync",
                     Function.class, Executor.class),
+            // A task the caller runs itself, with no executor to wrap it (#1307).
+            Entry.call(FutureTask.class, "run", "futureTaskRun"),
             Entry.call(Future.class, "get", "get"),
             Entry.call(Future.class, "get", "get", long.class, TimeUnit.class),
             Entry.call(CompletionStage.class, "thenApply", "thenApply", Function.class),
