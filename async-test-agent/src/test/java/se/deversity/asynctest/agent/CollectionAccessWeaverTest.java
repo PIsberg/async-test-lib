@@ -64,6 +64,46 @@ class CollectionAccessWeaverTest {
             return receiver.isEmpty();
         }
 
+        public static java.util.Map.Entry<Object, Object> navigableFirstEntry(
+                java.util.NavigableMap<Object, Object> receiver) {
+            return receiver.firstEntry();
+        }
+
+        public static java.util.Map.Entry<Object, Object> navigableLastEntry(
+                java.util.NavigableMap<Object, Object> receiver) {
+            return receiver.lastEntry();
+        }
+
+        public static java.util.Map.Entry<Object, Object> navigableFloorEntry(
+                java.util.NavigableMap<Object, Object> receiver, Object key) {
+            return receiver.floorEntry(key);
+        }
+
+        public static java.util.Map.Entry<Object, Object> navigableCeilingEntry(
+                java.util.NavigableMap<Object, Object> receiver, Object key) {
+            return receiver.ceilingEntry(key);
+        }
+
+        public static java.util.Map.Entry<Object, Object> navigableLowerEntry(
+                java.util.NavigableMap<Object, Object> receiver, Object key) {
+            return receiver.lowerEntry(key);
+        }
+
+        public static java.util.Map.Entry<Object, Object> navigableHigherEntry(
+                java.util.NavigableMap<Object, Object> receiver, Object key) {
+            return receiver.higherEntry(key);
+        }
+
+        public static java.util.Map.Entry<Object, Object> navigablePollFirstEntry(
+                java.util.NavigableMap<Object, Object> receiver) {
+            return receiver.pollFirstEntry();
+        }
+
+        public static java.util.Map.Entry<Object, Object> navigablePollLastEntry(
+                java.util.NavigableMap<Object, Object> receiver) {
+            return receiver.pollLastEntry();
+        }
+
         public static void bitSetSet(java.util.BitSet receiver, int bitIndex) {
             receiver.set(bitIndex);
         }

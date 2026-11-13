@@ -8,6 +8,7 @@ import java.util.BitSet;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Objects;
 import java.util.NoSuchElementException;
 import java.util.Queue;
@@ -325,7 +326,7 @@ public final class AgentCollectionHooks {
         java.util.stream.Stream<Object> elements = receiver.stream();
         // Each element is received as the pipeline reaches it, on the thread that does (#1294).
         return elements != null && HappensBefore.publishesElements(receiver)
-                ? elements.peek(HappensBefore::acquire) : elements;
+                ? elements.peek(AgentCollectionHooks::receive) : elements;
     }
 
     /**
@@ -382,9 +383,127 @@ public final class AgentCollectionHooks {
             return;
         }
         receiver.forEach(element -> {
-            HappensBefore.acquire(element);
+            receive(element);
             action.accept(element);
         });
+    }
+
+    /**
+     * Receives an element a walk over an ordering container handed out. A map entry stands for
+     * its key and value, which are what the walk reads next, so both are received with it: the
+     * values of an iterated {@code entrySet()} (#1294).
+     */
+    private static void receive(@Nullable Object element) {
+        HappensBefore.acquire(element);
+        if (element instanceof Map.Entry<?, ?> entry) {
+            receiveEntry(entry);
+        }
+    }
+
+    /** Receives what {@code entry} maps, and nothing when the entry no longer says. */
+    private static void receiveEntry(Map.Entry<?, ?> entry) {
+        try {
+            HappensBefore.acquire(entry.getKey());
+            HappensBefore.acquire(entry.getValue());
+        } catch (IllegalStateException removed) { // NOPMD EmptyCatchBlock - the entry left its map
+            // Map.Entry allows an entry whose mapping was removed to refuse; nothing to receive.
+        }
+    }
+
+    /**
+     * A navigation read's entry from a map that orders what passes through it: its key and
+     * value are received, as a {@code get} receives the value (#1294).
+     */
+    private static Map.@Nullable Entry<Object, Object> receivedEntry(
+            Object receiver, Map.@Nullable Entry<Object, Object> entry) {
+        if (entry != null && HappensBefore.publishesElements(receiver)) {
+            receiveEntry(entry);
+        }
+        return entry;
+    }
+
+    /** Weaves {@code NavigableMap.firstEntry}, a read (#1294). @param receiver the map @return its first entry, or null */
+    public static Map.@Nullable Entry<Object, Object> navigableFirstEntry(NavigableMap<Object, Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "firstEntry", false);
+        return receivedEntry(receiver, receiver.firstEntry());
+    }
+
+    /** Weaves {@code NavigableMap.lastEntry}, a read (#1294). @param receiver the map @return its last entry, or null */
+    public static Map.@Nullable Entry<Object, Object> navigableLastEntry(NavigableMap<Object, Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "lastEntry", false);
+        return receivedEntry(receiver, receiver.lastEntry());
+    }
+
+    /**
+     * Weaves {@code NavigableMap.floorEntry}, a read (#1294).
+     *
+     * @param receiver the map
+     * @param key      the key to search from
+     * @return the entry at or below {@code key}, or null
+     */
+    public static Map.@Nullable Entry<Object, Object> navigableFloorEntry(NavigableMap<Object, Object> receiver,
+                                                                         Object key) {
+        ControlledSchedule.point();
+        record(receiver, "floorEntry", false);
+        return receivedEntry(receiver, receiver.floorEntry(key));
+    }
+
+    /**
+     * Weaves {@code NavigableMap.ceilingEntry}, a read (#1294).
+     *
+     * @param receiver the map
+     * @param key      the key to search from
+     * @return the entry at or above {@code key}, or null
+     */
+    public static Map.@Nullable Entry<Object, Object> navigableCeilingEntry(NavigableMap<Object, Object> receiver,
+                                                                           Object key) {
+        ControlledSchedule.point();
+        record(receiver, "ceilingEntry", false);
+        return receivedEntry(receiver, receiver.ceilingEntry(key));
+    }
+
+    /**
+     * Weaves {@code NavigableMap.lowerEntry}, a read (#1294).
+     *
+     * @param receiver the map
+     * @param key      the key to search from
+     * @return the entry strictly below {@code key}, or null
+     */
+    public static Map.@Nullable Entry<Object, Object> navigableLowerEntry(NavigableMap<Object, Object> receiver,
+                                                                         Object key) {
+        ControlledSchedule.point();
+        record(receiver, "lowerEntry", false);
+        return receivedEntry(receiver, receiver.lowerEntry(key));
+    }
+
+    /**
+     * Weaves {@code NavigableMap.higherEntry}, a read (#1294).
+     *
+     * @param receiver the map
+     * @param key      the key to search from
+     * @return the entry strictly above {@code key}, or null
+     */
+    public static Map.@Nullable Entry<Object, Object> navigableHigherEntry(NavigableMap<Object, Object> receiver,
+                                                                          Object key) {
+        ControlledSchedule.point();
+        record(receiver, "higherEntry", false);
+        return receivedEntry(receiver, receiver.higherEntry(key));
+    }
+
+    /** Weaves {@code NavigableMap.pollFirstEntry}, a removal (#1294). @param receiver the map @return the entry removed, or null */
+    public static Map.@Nullable Entry<Object, Object> navigablePollFirstEntry(NavigableMap<Object, Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "pollFirstEntry", true);
+        return receivedEntry(receiver, receiver.pollFirstEntry());
+    }
+
+    /** Weaves {@code NavigableMap.pollLastEntry}, a removal (#1294). @param receiver the map @return the entry removed, or null */
+    public static Map.@Nullable Entry<Object, Object> navigablePollLastEntry(NavigableMap<Object, Object> receiver) {
+        ControlledSchedule.point();
+        record(receiver, "pollLastEntry", true);
+        return receivedEntry(receiver, receiver.pollLastEntry());
     }
 
     /**
@@ -801,7 +920,7 @@ public final class AgentCollectionHooks {
         @Override
         public @Nullable Object next() {
             Object element = delegate.next();
-            HappensBefore.acquire(element);
+            receive(element);
             return element;
         }
 
@@ -814,7 +933,7 @@ public final class AgentCollectionHooks {
         public void forEachRemaining(java.util.function.Consumer<? super Object> action) {
             Objects.requireNonNull(action);
             delegate.forEachRemaining(element -> {
-                HappensBefore.acquire(element);
+                receive(element);
                 action.accept(element);
             });
         }

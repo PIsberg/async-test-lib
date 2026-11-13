@@ -27,6 +27,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
@@ -2892,6 +2893,85 @@ class CorpusIdiomLaneTest {
                 getUnchecked(turn.shared()).limit = turn.ticket();
             } else {
                 use(getUnchecked(turn.shared()).limit);
+            }
+        });
+    }
+
+    // --- 34. Values read through a navigation read and through entrySet() (#1294) -------------
+
+    private static final Rounds<ConcurrentSkipListMap<String, Limits>> ORDERED =
+            new Rounds<>(ConcurrentSkipListMap::new);
+    private static final Rounds<ConcurrentSkipListMap<String, Limits>> LATE_ORDERED =
+            new Rounds<>(ConcurrentSkipListMap::new);
+    private static final Rounds<ConcurrentHashMap<String, Limits>> ENTRIES =
+            new Rounds<>(ConcurrentHashMap::new);
+    private static final Rounds<ConcurrentHashMap<String, Limits>> LATE_ENTRIES =
+            new Rounds<>(ConcurrentHashMap::new);
+
+    /** One thread puts a built value in a sorted map; the others read it through firstEntry. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_skipListMap_valueReadThroughFirstEntry() {
+        correct(() -> {
+            Turn<ConcurrentSkipListMap<String, Limits>> turn = ORDERED.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                built.limit = 10;
+                turn.shared().put("default", built);
+            } else {
+                awaitAnEntry(turn.shared());
+                use(turn.shared().firstEntry().getValue().limit);
+            }
+        });
+    }
+
+    /** The same sorted map, with the value filled in after the put that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_skipListMap_valueFilledInAfterThePut() {
+        broken(() -> {
+            Turn<ConcurrentSkipListMap<String, Limits>> turn = LATE_ORDERED.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                turn.shared().put("default", built);
+                built.limit = 10;
+            } else {
+                awaitAnEntry(turn.shared());
+                use(turn.shared().firstEntry().getValue().limit);
+            }
+        });
+    }
+
+    /** One thread puts a built value; the others loop over entrySet() and read each value. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentHashMap_valuesReadThroughEntrySet() {
+        correct(() -> {
+            Turn<ConcurrentHashMap<String, Limits>> turn = ENTRIES.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                built.limit = 10;
+                turn.shared().put("default", built);
+            } else {
+                awaitAnEntry(turn.shared());
+                for (Map.Entry<String, Limits> entry : turn.shared().entrySet()) {
+                    use(entry.getValue().limit);
+                }
+            }
+        });
+    }
+
+    /** The same loop, with the value filled in after the put that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentHashMap_entryValueFilledInAfterThePut() {
+        broken(() -> {
+            Turn<ConcurrentHashMap<String, Limits>> turn = LATE_ENTRIES.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                turn.shared().put("default", built);
+                built.limit = 10;
+            } else {
+                awaitAnEntry(turn.shared());
+                for (Map.Entry<String, Limits> entry : turn.shared().entrySet()) {
+                    use(entry.getValue().limit);
+                }
             }
         });
     }

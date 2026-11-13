@@ -31,6 +31,7 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Queue;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -360,6 +361,15 @@ final class CollectionAccessWeaver {
             Entry.call(Iterable.class, "forEach", "iterableForEach", Consumer.class),
             Entry.call(Deque.class, "peekFirst", "dequePeekFirst"),
             Entry.call(Deque.class, "peekLast", "dequePeekLast"),
+            // A sorted map's navigation reads, whose entries carry the value a put published (#1294).
+            Entry.call(NavigableMap.class, "firstEntry", "navigableFirstEntry"),
+            Entry.call(NavigableMap.class, "lastEntry", "navigableLastEntry"),
+            Entry.call(NavigableMap.class, "floorEntry", "navigableFloorEntry", Object.class),
+            Entry.call(NavigableMap.class, "ceilingEntry", "navigableCeilingEntry", Object.class),
+            Entry.call(NavigableMap.class, "lowerEntry", "navigableLowerEntry", Object.class),
+            Entry.call(NavigableMap.class, "higherEntry", "navigableHigherEntry", Object.class),
+            Entry.call(NavigableMap.class, "pollFirstEntry", "navigablePollFirstEntry"),
+            Entry.call(NavigableMap.class, "pollLastEntry", "navigablePollLastEntry"),
             // A BitSet is neither a Collection nor a Map, and as unsafe to share as either:
             // set is a read-modify-write of one long word (#1297).
             Entry.call(BitSet.class, "set", "bitSetSet", int.class),
