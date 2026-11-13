@@ -66,7 +66,13 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   shared-instance hooks (a `MessageDigest`, a `Calendar`, a `SimpleDateFormat` and the rest) reach
   the same threads: a thread started through a woven start works for the run of the thread that
   started it until that run is analysed, and a pool thread for the run that handed it a task or
-  stage function while it runs it (#834). Attribution goes by thread, not by task: a fork-join
+  stage function while it runs it (#834). So do the hooks of the detectors that judge one event on
+  the thread it happens on: `System.gc()`, a sleep under a lock, an unlock after a failed `tryLock`,
+  a read-to-write lock upgrade, `obtrudeValue` or `obtrudeException`, and a reassigned monitor field
+  (#1339). The detectors that judge what had not happened by the end of the run do not, and are
+  silent for a bug on such a thread: a lock never released, a latch never counted down, a `wait`
+  outside a loop, a signal no thread was waiting for (#1339; a started thread that outlives the
+  run would otherwise be read as the run's leak). Attribution goes by thread, not by task: a fork-join
   worker that, while waiting inside a task of the run, helps with work the run did not hand it (a
   parallel stream's subtasks, say) has that work counted as the run's, which can only add a
   finding. A thread started in unwoven code is never attributed: telling it apart would need a

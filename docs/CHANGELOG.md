@@ -20,6 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Six detectors now report a bug that runs on a thread the test body started (#1339).** With
+  the agent attached, `System.gc()`, a `Thread.sleep` under a lock, an `unlock()` after a
+  `tryLock()` that returned `false`, a read-to-write upgrade of a `ReentrantReadWriteLock`, an
+  `obtrudeValue` and a reassigned monitor field were reported on a worker and silent one
+  `new Thread(...).start()` or one `executor.submit(...)` away: their hooks read the worker's own
+  thread-local and dropped everything else. They now follow the thread to the run it works for,
+  as the shared-instance hooks have since #834. Each of these detectors judges one event on the
+  thread it happens on, so a thread that outlives the run adds nothing after the analysis.
+  Found by 30 probe bodies whose bug runs only on a started thread: 21 fired, 7 were real
+  misses, and this fixes 3 of those 7 plus three detectors the probes did not cover. Still
+  silent on such a thread and open on #1339: a lock never released, a latch never counted down,
+  a `wait` outside a loop and a signal nobody was waiting for, whose detectors judge what had
+  not happened by the end of the run. Test first: `SpawnedWorkEventFeedTest`, six tests red
+  before the change, each through a started thread and a submitted task, each with a correct
+  twin that stays silent. Corpus pairs `idiom_helperThread_*` (sleep, tryLock, gc): all three
+  broken rows were silent against the previous jar.
+
 - **An object published with `AtomicReference.updateAndGet` is ordered before the read that
   reaches it (#1334).** With the agent attached, a thread that built an object inside
   `updateAndGet`, `getAndUpdate`, `accumulateAndGet` or `getAndAccumulate`, or swapped one in

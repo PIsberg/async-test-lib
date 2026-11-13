@@ -785,9 +785,12 @@ public final class AsyncTestContext {
      * is running; else the run whose thread started this one through a woven {@code Thread.start}.
      * A run whose analysis has started lends nothing. Reads only; installs nothing.
      *
-     * <p>Only the shared-instance accessors use it, whose detectors judge overlap, and
-     * {@link #helperSemaphoreMisuseDetector}, whose helper counts are never a finding alone. A
-     * detector that
+     * <p>Three kinds of accessor use it: the shared-instance ones, whose detectors judge overlap;
+     * the ones whose detector judges a single event on the thread it happens on (an explicit
+     * collection, a sleep under a lock, an unlock after a failed {@code tryLock}, a read-to-write
+     * upgrade, an obtrude, a reassigned monitor field), which is the same bug on a thread the
+     * worker started as on the worker; and {@link #helperSemaphoreMisuseDetector}, whose helper
+     * counts are never a finding alone. A detector that
      * judges what never happened during the run, such as a latch never counted down, would read a
      * started thread that outlives the run as the run's own: the corpus agent-pair lane caught a
      * daemon thread waiting on a latch counted down after the run reported as latch misuse.
@@ -2302,17 +2305,24 @@ public final class AsyncTestContext {
     }
 
     /**
-     * {@return the {@link LockUpgradeDeadlockDetector} for the calling thread's test, or
-     * {@code null}}
+     * {@return the {@link LockUpgradeDeadlockDetector} of the run the calling thread works for,
+     * or {@code null}}: an event detector, as {@link #currentTryLockMisuseDetector()}.
      */
     static @Nullable LockUpgradeDeadlockDetector currentLockUpgradeDeadlockDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.lockUpgradeDeadlockDetector;
     }
 
-    /** {@return the {@link TryLockMisuseDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link TryLockMisuseDetector} of the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>One of the detectors that judge an event on the thread it happens on, so it follows a
+     * handed task and a started thread ({@link #agentContext}): an unlock after a failed
+     * {@code tryLock} is the same bug one {@code new Thread(...).start()} away from the worker.
+     */
     static @Nullable TryLockMisuseDetector currentTryLockMisuseDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.tryLockMisuseDetector;
     }
 
@@ -2462,21 +2472,30 @@ public final class AsyncTestContext {
         return context == null ? null : context.blockingQueueDetector;
     }
 
-    /** {@return the {@link SleepInLockDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link SleepInLockDetector} of the run the calling thread works for, or
+     * {@code null}}: an event detector, as {@link #currentTryLockMisuseDetector()}.
+     */
     static @Nullable SleepInLockDetector currentSleepInLockDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.sleepInLockDetector;
     }
 
-    /** {@return the {@link ExplicitGcDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link ExplicitGcDetector} of the run the calling thread works for, or
+     * {@code null}}: an event detector, as {@link #currentTryLockMisuseDetector()}.
+     */
     static @Nullable ExplicitGcDetector currentExplicitGcDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.explicitGcDetector;
     }
 
-    /** {@return the {@link CompletableFutureObtrudeDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link CompletableFutureObtrudeDetector} of the run the calling thread works
+     * for, or {@code null}}: an event detector, as {@link #currentTryLockMisuseDetector()}.
+     */
     static @Nullable CompletableFutureObtrudeDetector currentCompletableFutureObtrudeDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.completableFutureObtrudeDetector;
     }
 
@@ -2512,15 +2531,15 @@ public final class AsyncTestContext {
     }
 
     /**
-     * {@return the {@link SynchronizedNonFinalDetector} for the calling thread's test, or
-     * {@code null}}
+     * {@return the {@link SynchronizedNonFinalDetector} of the run the calling thread works for,
+     * or {@code null}}: an event detector, as {@link #currentTryLockMisuseDetector()}.
      *
      * <p>Same null-returning contract as {@link #currentSharedCollectionDetector()}: the caller is
      * {@link AgentMonitorHooks#monitorFieldEntered}, woven before a {@code synchronized} block that
      * does not know a test is in progress (#793).
      */
     static @Nullable SynchronizedNonFinalDetector currentSynchronizedNonFinalDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.synchronizedNonFinalDetector;
     }
 

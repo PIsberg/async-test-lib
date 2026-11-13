@@ -6475,6 +6475,55 @@ final class Corpus {
                             + "completed it, unordered with the other threads' reads",
                     IssueSeverity.HIGH),
 
+            // --- A bug on a thread the body starts and joins (#1339): the detectors that judge one
+            //     event on the thread it happens on heard nothing from such a thread.
+
+            new RecordingSubject("idiom_helperThread_sleepsAfterReleasingTheLock", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a thread the body starts and joins takes a lock, releases it and then "
+                            + "sleeps. Nothing waits on a sleeping holder (#1339)"),
+
+            new RecordingSubject("idiom_helperThread_sleepsUnderTheLock", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.SLEEP_IN_LOCK, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same helper thread sleeping with the lock held: the bug is the same "
+                            + "one thread start away from the worker",
+                    IssueSeverity.MEDIUM),
+
+            new RecordingSubject("idiom_helperThread_unlocksOnlyWhatTryLockTook", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.TRY_LOCK_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the body holds a lock, a thread it starts tries it, fails and unlocks "
+                            + "nothing, the unlock sitting inside the branch tryLock guards "
+                            + "(#1339)"),
+
+            new RecordingSubject("idiom_helperThread_unlocksAfterAFailedTryLock", JDK,
+                    "java.util.concurrent.locks.ReentrantLock",
+                    DetectorType.TRY_LOCK_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same helper thread ignoring what tryLock returned and unlocking a "
+                            + "lock the body holds",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_helperThread_leavesCollectionToTheJvm", JDK,
+                    "java.lang.System",
+                    DetectorType.EXPLICIT_GC, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a thread the body starts fills and clears its scratch space and asks "
+                            + "for no collection (#1339)"),
+
+            new RecordingSubject("idiom_helperThread_callsSystemGc", JDK,
+                    "java.lang.System",
+                    DetectorType.EXPLICIT_GC, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same helper thread calling System.gc() after it clears its scratch "
+                            + "space",
+                    IssueSeverity.LOW),
+
             // --- Elements read by another name than get, peek or iterator (#1294): the reads
             //     the agent did not weave received nothing of what the add published.
 

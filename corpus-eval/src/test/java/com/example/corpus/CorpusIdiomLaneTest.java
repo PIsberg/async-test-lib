@@ -3387,6 +3387,128 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 37. A bug on a thread the body starts and joins (#1339) ------------------------------
+
+    /** Runs {@code work} on a thread of its own and waits for it, as a body that fans out does. */
+    private static void onAHelperThread(Runnable work) throws InterruptedException {
+        Thread helper = new Thread(work, "idiom-helper");
+        helper.start();
+        helper.join();
+    }
+
+    /** The helper thread takes the lock, works, releases it and only then sleeps. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_sleepsAfterReleasingTheLock() {
+        correct(() -> {
+            ReentrantLock lock = new ReentrantLock();
+            onAHelperThread(() -> {
+                lock.lock();
+                try {
+                    use(1);
+                } finally {
+                    lock.unlock();
+                }
+                pause();
+            });
+        });
+    }
+
+    /** The same helper thread, sleeping with the lock still held. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_sleepsUnderTheLock() {
+        broken(() -> {
+            ReentrantLock lock = new ReentrantLock();
+            onAHelperThread(() -> {
+                lock.lock();
+                try {
+                    pause();
+                } finally {
+                    lock.unlock();
+                }
+            });
+        });
+    }
+
+    private static void pause() {
+        try {
+            Thread.sleep(1);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** The body holds the lock; the helper thread tries it and unlocks only what it took. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_unlocksOnlyWhatTryLockTook() {
+        correct(() -> {
+            ReentrantLock lock = new ReentrantLock();
+            lock.lock();
+            try {
+                onAHelperThread(() -> {
+                    if (lock.tryLock()) {
+                        try {
+                            use(1);
+                        } finally {
+                            lock.unlock();
+                        }
+                    }
+                });
+            } finally {
+                lock.unlock();
+            }
+        });
+    }
+
+    /** The same helper thread, ignoring what tryLock returned and unlocking anyway. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_unlocksAfterAFailedTryLock() {
+        broken(() -> {
+            ReentrantLock lock = new ReentrantLock();
+            lock.lock();
+            try {
+                onAHelperThread(() -> {
+                    lock.tryLock();
+                    try {
+                        use(1);
+                    } finally {
+                        try {
+                            lock.unlock();
+                        } catch (IllegalMonitorStateException notHeld) {
+                            use(2);
+                        }
+                    }
+                });
+            } finally {
+                lock.unlock();
+            }
+        });
+    }
+
+    /** The helper thread drops its references and leaves the collection to the JVM. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_leavesCollectionToTheJvm() {
+        correct(() -> {
+            List<byte[]> scratch = Collections.synchronizedList(new ArrayList<>());
+            onAHelperThread(() -> {
+                scratch.add(new byte[64]);
+                scratch.clear();
+            });
+        });
+    }
+
+    /** The same helper thread, asking for a collection after it clears its scratch space. */
+    @AsyncTest(threads = THREADS, invocations = 4, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_callsSystemGc() {
+        broken(() -> {
+            List<byte[]> scratch = Collections.synchronizedList(new ArrayList<>());
+            onAHelperThread(() -> {
+                scratch.add(new byte[64]);
+                scratch.clear();
+                System.gc();
+            });
+        });
+    }
+
     // --- 35. Plain data published by an AtomicBoolean flag (#1315) ----------------------------
 
     private static final class FlaggedMailbox {
