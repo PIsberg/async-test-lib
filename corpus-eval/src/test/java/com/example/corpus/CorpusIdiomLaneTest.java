@@ -13,6 +13,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
@@ -2821,6 +2822,35 @@ class CorpusIdiomLaneTest {
                     use(turn.shared().stream().mapToInt(listener -> listener.priority).sum());
                 }
             }
+        });
+    }
+
+    // --- 32. A shared java.util.BitSet used as a set of flags (#1297) -------------------------
+
+    private static final Rounds<BitSet> GUARDED_FLAGS = new Rounds<>(BitSet::new);
+    private static final Rounds<BitSet> RACED_FLAGS = new Rounds<>(BitSet::new);
+
+    /** Every thread sets its own bit and counts the set ones, inside synchronized on the BitSet. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_bitSet_setUnderItsOwnMonitor() {
+        correct(() -> {
+            Turn<BitSet> turn = GUARDED_FLAGS.next();
+            BitSet flags = turn.shared();
+            synchronized (flags) {
+                flags.set(turn.ticket() % 60);
+                use(flags.cardinality());
+            }
+        });
+    }
+
+    /** The same set with no lock: two threads updating one word lose a bit. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_bitSet_setByEveryThread() {
+        broken(() -> {
+            Turn<BitSet> turn = RACED_FLAGS.next();
+            BitSet flags = turn.shared();
+            flags.set(turn.ticket() % 60);
+            use(flags.cardinality());
         });
     }
 

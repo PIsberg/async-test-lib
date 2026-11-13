@@ -6303,6 +6303,22 @@ final class Corpus {
                     "the same listener configured after the add that published it, read "
                             + "through forEach and a stream with nothing ordering the reads "
                             + "after the write",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_bitSet_setUnderItsOwnMonitor", JDK,
+                    "java.util.BitSet",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread sets a bit of one BitSet and reads its cardinality inside "
+                            + "synchronized on the BitSet, the external synchronization its "
+                            + "javadoc asks for (#1297)"),
+
+            new RecordingSubject("idiom_bitSet_setByEveryThread", JDK,
+                    "java.util.BitSet",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same sets with no lock: set is a read-modify-write of one long word, "
+                            + "so two threads setting bits of the same word lose one",
                     IssueSeverity.HIGH)
     );
 

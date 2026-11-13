@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A shared `java.util.BitSet` mutated from several threads is now reported (#1297).** `BitSet`
+  is neither a `Collection` nor a `Map`, so no woven call reached a detector and six threads
+  calling `set` on one instance with no lock drew nothing, although `set` is a read-modify-write
+  of one `long` word and loses a bit. Twenty new `CollectionAccessWeaver` entries cover every
+  overload of `set`, `clear`, `flip`, `get`, and `and`, `or`, `xor`, `andNot`, `cardinality`,
+  `nextSetBit`, `nextClearBit`, `length` and `isEmpty`, recorded against the instance for
+  `SHARED_COLLECTIONS`; accesses under the `BitSet`'s own monitor count as guarded. Not woven:
+  `previousSetBit`, `previousClearBit`, `intersects`, `size`, `stream`, `toLongArray` and
+  `toByteArray`, all reads. Test first: the corpus pair `idiom_bitSet_setByEveryThread` /
+  `idiom_bitSet_setUnderItsOwnMonitor` failed the idioms lane before the change because the
+  unlocked row was silent.
+
 - **An object published through a concurrent collection is no longer reported as an unordered
   publication on its most common routes (#1294).** The happens-before model heard about
   `Map.put`/`get` and the queue offer and take forms only, so a value built inside

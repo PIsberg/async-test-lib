@@ -64,6 +64,86 @@ class CollectionAccessWeaverTest {
             return receiver.isEmpty();
         }
 
+        public static void bitSetSet(java.util.BitSet receiver, int bitIndex) {
+            receiver.set(bitIndex);
+        }
+
+        public static void bitSetSet(java.util.BitSet receiver, int bitIndex, boolean value) {
+            receiver.set(bitIndex, value);
+        }
+
+        public static void bitSetSet(java.util.BitSet receiver, int fromIndex, int toIndex) {
+            receiver.set(fromIndex, toIndex);
+        }
+
+        public static void bitSetSet(java.util.BitSet receiver, int fromIndex, int toIndex, boolean value) {
+            receiver.set(fromIndex, toIndex, value);
+        }
+
+        public static void bitSetClear(java.util.BitSet receiver, int bitIndex) {
+            receiver.clear(bitIndex);
+        }
+
+        public static void bitSetClear(java.util.BitSet receiver, int fromIndex, int toIndex) {
+            receiver.clear(fromIndex, toIndex);
+        }
+
+        public static void bitSetClear(java.util.BitSet receiver) {
+            receiver.clear();
+        }
+
+        public static void bitSetFlip(java.util.BitSet receiver, int bitIndex) {
+            receiver.flip(bitIndex);
+        }
+
+        public static void bitSetFlip(java.util.BitSet receiver, int fromIndex, int toIndex) {
+            receiver.flip(fromIndex, toIndex);
+        }
+
+        public static void bitSetAnd(java.util.BitSet receiver, java.util.BitSet other) {
+            receiver.and(other);
+        }
+
+        public static void bitSetOr(java.util.BitSet receiver, java.util.BitSet other) {
+            receiver.or(other);
+        }
+
+        public static void bitSetXor(java.util.BitSet receiver, java.util.BitSet other) {
+            receiver.xor(other);
+        }
+
+        public static void bitSetAndNot(java.util.BitSet receiver, java.util.BitSet other) {
+            receiver.andNot(other);
+        }
+
+        public static boolean bitSetGet(java.util.BitSet receiver, int bitIndex) {
+            return receiver.get(bitIndex);
+        }
+
+        public static java.util.BitSet bitSetGet(java.util.BitSet receiver, int fromIndex, int toIndex) {
+            return receiver.get(fromIndex, toIndex);
+        }
+
+        public static int bitSetCardinality(java.util.BitSet receiver) {
+            return receiver.cardinality();
+        }
+
+        public static int bitSetNextSetBit(java.util.BitSet receiver, int fromIndex) {
+            return receiver.nextSetBit(fromIndex);
+        }
+
+        public static int bitSetNextClearBit(java.util.BitSet receiver, int fromIndex) {
+            return receiver.nextClearBit(fromIndex);
+        }
+
+        public static int bitSetLength(java.util.BitSet receiver) {
+            return receiver.length();
+        }
+
+        public static boolean bitSetIsEmpty(java.util.BitSet receiver) {
+            return receiver.isEmpty();
+        }
+
         public static Object mapPutIfAbsent(Map<Object, Object> receiver, Object key, Object value) {
             return receiver.putIfAbsent(key, value);
         }
