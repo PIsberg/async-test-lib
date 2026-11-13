@@ -864,6 +864,137 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- Publication by compareAndSet (#1328) --------------------------------------------------
+
+    private static final Rounds<AtomicReference<Config>> LAZY_CONFIGS = new Rounds<>(AtomicReference::new);
+    private static final Rounds<PlainReference> PLAIN_LAZY_CONFIGS = new Rounds<>(PlainReference::new);
+
+    /**
+     * Every thread initialises the round's config if nobody has: it builds one, offers it with
+     * compareAndSet, and uses whichever config won. A loser reads the winner's config through a
+     * get that runs right after the winner's swap.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_compareAndSetLazyInit_losersReadTheWinnersObject() {
+        correct(() -> {
+            Turn<AtomicReference<Config>> turn = LAZY_CONFIGS.next();
+            AtomicReference<Config> reference = turn.shared();
+            Config config = reference.get();
+            if (config == null) {
+                Config mine = new Config();
+                mine.setPort(8080 + turn.ticket());
+                config = reference.compareAndSet(null, mine) ? mine : reference.get();
+            }
+            use(config.getPort());
+        });
+    }
+
+    /** The same initialisation through a plain field: check, build, assign. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_compareAndSetLazyInit_plainFieldCheckThenAssign() {
+        broken(() -> {
+            Turn<PlainReference> turn = PLAIN_LAZY_CONFIGS.next();
+            PlainReference reference = turn.shared();
+            Config config = reference.value;
+            if (config == null) {
+                config = new Config();
+                config.setPort(8080 + turn.ticket());
+                reference.value = config;
+            }
+            use(config.getPort());
+        });
+    }
+
+    /** A lock-free stack that allocates a node per push: the node's link is set before the swap. */
+    private static final class TreiberStack {
+
+        private static final class Node {
+            final int value;
+            Node next;
+
+            Node(int value) {
+                this.value = value;
+            }
+        }
+
+        private final AtomicReference<Node> head = new AtomicReference<>();
+
+        void push(int value) {
+            Node node = new Node(value);
+            Node seen;
+            do {
+                seen = head.get();
+                node.next = seen;
+            } while (!head.compareAndSet(seen, node));
+        }
+
+        int pop() {
+            Node seen;
+            do {
+                seen = head.get();
+                if (seen == null) {
+                    return -1;
+                }
+            } while (!head.compareAndSet(seen, seen.next));
+            return seen.value;
+        }
+    }
+
+    /** The same stack with a plain head: every push and pop is a read and a write nothing orders. */
+    private static final class PlainStack {
+
+        private static final class Node {
+            final int value;
+            Node next;
+
+            Node(int value) {
+                this.value = value;
+            }
+        }
+
+        private Node head;
+
+        void push(int value) {
+            Node node = new Node(value);
+            node.next = head;
+            head = node;
+        }
+
+        int pop() {
+            Node seen = head;
+            if (seen == null) {
+                return -1;
+            }
+            head = seen.next;
+            return seen.value;
+        }
+    }
+
+    private static final Rounds<TreiberStack> TREIBER_STACKS = new Rounds<>(TreiberStack::new);
+    private static final Rounds<PlainStack> PLAIN_STACKS = new Rounds<>(PlainStack::new);
+
+    /** Every thread pushes two values and pops two, on the round's stack. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_treiberStack_pushesAFreshNodePerValue() {
+        correct(() -> {
+            TreiberStack stack = TREIBER_STACKS.next().shared();
+            stack.push(1);
+            stack.push(2);
+            use(stack.pop() + stack.pop());
+        });
+    }
+
+    /** The same pushes and pops on the stack with the plain head. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_treiberStack_plainHead() {
+        broken(() -> {
+            PlainStack stack = PLAIN_STACKS.next().shared();
+            stack.push(1);
+            stack.push(2);
+            use(stack.pop() + stack.pop());
+        });
+    }
+
     // --- A MessageDigest pool that hands out holders (#747) -----------------------------------
 
     /** What the holder pool hands out: a wrapper around one digest, never the digest itself. */

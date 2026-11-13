@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import org.apiguardian.api.API;
@@ -126,6 +127,17 @@ import org.jspecify.annotations.Nullable;
  *       it publishes nothing. A field named by its simple name through the manual methods
  *       meets every field of that name on the object, a field and the one it shadows alike;
  *       the agent names each by its declaring class (#813).
+ *   <li>A reference slot's {@code compareAndSet} is released after the swap, because a failed one
+ *       publishes nothing and a slot's release is never withdrawn. Three things keep a read of
+ *       the swapped value ordered all the same (#1328). The swap is announced beforehand
+ *       ({@link #swapping}), and a read whose value no release stored waits for an announced
+ *       swap of that object to end, for at most a millisecond, and looks again. The hook notes
+ *       what the slot had released before its read ({@link #releasedSoFar}) and the value is
+ *       looked for there too. And a slot that has been swapped keeps sixteen releases, not
+ *       four. What is left: a swapping thread that loses its processor for more than that
+ *       millisecond between its store and its release, a ninth thread swapping one slot at
+ *       once, which is not announced, and sixteen completed swaps between a read and its
+ *       lookup. Each leaves the read with nothing, which can only add a finding.
  *   <li>A withdrawn release was visible for the length of the refused call, and one another
  *       thread folded into its own release in that time stays. An {@code addAll} into a queue
  *       that inherits {@code AbstractQueue}'s is offered element by element and withdraws the
@@ -406,12 +418,128 @@ public final class HappensBefore {
     @API(status = Status.INTERNAL)
     public static void acquireVolatileReference(@Nullable Object owner, String field,
                                                 @Nullable Object value) {
+        acquireVolatileReference(owner, field, value, null);
+    }
+
+    /**
+     * {@return what {@code owner}'s reference slot {@code field} has released so far, for a hook
+     * to take before its read and hand {@link #acquireVolatileReference(Object, String, Object,
+     * Object)} after it; {@code null} for nothing}
+     *
+     * <p>A slot keeps its last few releases, and a read looks for the one that stored its value
+     * only after it returned. A reader that loses its processor in between finds the slot several
+     * swaps on and its own release gone, and its use of the object read as a race (#1328). What
+     * was released before the read cannot be lost that way.
+     *
+     * @param owner the object the slot belongs to; {@code null} is ignored
+     * @param field the slot's name within it; {@code null} is ignored
+     * @since 1.14.3
+     */
+    @API(status = Status.INTERNAL)
+    public static @Nullable Object releasedSoFar(@Nullable Object owner, @Nullable String field) {
+        if (owner == null || field == null) {
+            return null;
+        }
+        return fieldClock(CLOCKS.get(), owner, field).latest();
+    }
+
+    /**
+     * {@link #acquireVolatileReference(Object, String, Object)} for a hook that took
+     * {@link #releasedSoFar} before its read: a value none of the slot's latest releases stored is
+     * looked for among the ones that had landed before the read as well (#1328). Those stored
+     * their values before the read ran, so one that stored this very object is a release the read
+     * saw, the same rule as for the latest ones; nothing a later write published is taken.
+     *
+     * @param owner  the object the slot belongs to; {@code null} is ignored
+     * @param field  the slot's name within it
+     * @param value  the object read, {@code null} included
+     * @param before what {@link #releasedSoFar} returned before the read; {@code null} for nothing
+     * @since 1.14.3
+     */
+    @API(status = Status.INTERNAL)
+    public static void acquireVolatileReference(@Nullable Object owner, String field,
+                                                @Nullable Object value, @Nullable Object before) {
         if (owner == null) {
             return;
         }
         ThreadClock me = CLOCKS.get();
-        acquireStamp(me, fieldClock(me, owner, field)
-                .publishedBy(System.identityHashCode(value), value, true));
+        FieldClock clock = fieldClock(me, owner, field);
+        int hash = System.identityHashCode(value);
+        Stamp published = clock.publishedBy(hash, value, true);
+        if (published == null && before instanceof Release earlier) {
+            published = earlier.publishedBy(hash, value, true, Release.KEPT_SWAPPED);
+        }
+        // No release stored this object, and a swap of it into this slot may be between its
+        // store and its release (#1328): let it finish, and look once more.
+        if (published == null && value != null && clock.awaitSwapOf(value)) {
+            published = clock.publishedBy(hash, value, true);
+        }
+        acquireStamp(me, published);
+    }
+
+    /**
+     * Announces that the calling thread is about to try to swap {@code value} into a reference
+     * slot, with a compare-and-set that may fail (#1328).
+     *
+     * <p>A successful swap is released after it, because a failed one publishes nothing and a
+     * volatile field's release is never withdrawn (#742). That leaves an instant in which a read
+     * already returns the value and its release has not landed. The announcement lets such a read
+     * wait for {@link #swapEnded} and look again; it publishes nothing itself, so a failed swap
+     * leaves no trace, and a read still takes only a release that stored the object it returned,
+     * through the slot it read.
+     *
+     * <p>Call it before the swap and {@link #swapEnded} after the release, on the same thread. A
+     * thread announces one swap at a time: a new announcement ends the last. Allocates an eight
+     * entry table the first time a slot is swapped, and nothing after. A slot more than eight
+     * threads are swapping at once is not announced by the ninth, whose reader keeps the answer
+     * it had before.
+     *
+     * @param owner the object the slot belongs to; {@code null} is ignored
+     * @param field the slot's name within it; {@code null} is ignored
+     * @param value the object the swap would store; {@code null} is ignored
+     * @since 1.14.3
+     */
+    @API(status = Status.INTERNAL)
+    public static void swapping(@Nullable Object owner, @Nullable String field,
+                                @Nullable Object value) {
+        if (owner == null || field == null || value == null) {
+            return;
+        }
+        ThreadClock me = CLOCKS.get();
+        endSwap(me);
+        Swappers swappers = fieldClock(me, owner, field).swappers();
+        // The value first: a reader that finds this thread in the table must find what it swaps.
+        me.swapping = value;
+        int start = (int) (me.thread & (Swappers.SIZE - 1));
+        for (int i = 0; i < Swappers.SIZE; i++) {
+            int at = (start + i) & (Swappers.SIZE - 1);
+            if (swappers.compareAndSet(at, null, me)) {
+                me.swappingInto = swappers;
+                me.swapperSlot = at;
+                return;
+            }
+        }
+        me.swapping = null;
+    }
+
+    /**
+     * Ends the calling thread's {@link #swapping} announcement: the swap failed, or it succeeded
+     * and its release has been made. Nothing when the thread announced none.
+     *
+     * @since 1.14.3
+     */
+    @API(status = Status.INTERNAL)
+    public static void swapEnded() {
+        endSwap(CLOCKS.get());
+    }
+
+    private static void endSwap(ThreadClock me) {
+        Swappers into = me.swappingInto;
+        if (into != null) {
+            me.swappingInto = null;
+            me.swapping = null;
+            into.set(me.swapperSlot, null);
+        }
     }
 
     /** Merges {@code theirs} into {@code me}; {@code null} is nothing to merge. */
@@ -841,6 +969,9 @@ public final class HappensBefore {
         private static final AtomicReferenceFieldUpdater<FieldClock, Release> LATEST =
                 AtomicReferenceFieldUpdater.newUpdater(FieldClock.class, Release.class, "latest");
 
+        private static final AtomicReferenceFieldUpdater<FieldClock, Swappers> SWAPPERS =
+                AtomicReferenceFieldUpdater.newUpdater(FieldClock.class, Swappers.class, "swappers");
+
         final SyncClock owner;
 
         final String field;
@@ -850,6 +981,9 @@ public final class HappensBefore {
 
         /** The last release of the field, {@code null} before the first; replaced, never mutated. */
         private volatile @Nullable Release latest;
+
+        /** The threads swapping into the field right now; {@code null} until the first swap. */
+        private volatile @Nullable Swappers swappers;
 
         FieldClock(SyncClock owner, String field, @Nullable FieldClock next) {
             this.owner = owner;
@@ -873,10 +1007,71 @@ public final class HappensBefore {
                     return;
                 }
                 if (LATEST.compareAndSet(this, seen, next)) {
-                    next.trim();
+                    next.trim(kept());
                     return;
                 }
             }
+        }
+
+        /** {@return the table of threads swapping into the field, created on first use} */
+        Swappers swappers() {
+            Swappers table = swappers;
+            if (table != null) {
+                return table;
+            }
+            Swappers created = new Swappers();
+            if (SWAPPERS.compareAndSet(this, null, created)) {
+                return created;
+            }
+            // Lost the race to create it: one table per field, the winner's.
+            Swappers theirs = swappers;
+            return theirs == null ? created : theirs;
+        }
+
+        /**
+         * Waits for every announced swap of {@code value} into the field to end, for at most
+         * {@link Swappers#WAIT_NANOS} in all. {@return whether the field has ever been swapped,
+         * which is when looking for a release again can find one}
+         *
+         * <p>A swap lasts a store and a release, so the wait is a few spins unless the swapping
+         * thread lost its processor in between, which is what the bound is for: past it the
+         * reader takes nothing, the answer it had before (#1328).
+         */
+        @SuppressWarnings("ReferenceEquality") // the object read, and the thread that announced it
+        boolean awaitSwapOf(Object value) {
+            Swappers table = swappers;
+            if (table == null) {
+                return false;
+            }
+            long deadline = 0L;
+            for (int i = 0; i < Swappers.SIZE; i++) {
+                ThreadClock swapper = table.get(i);
+                int spins = 0;
+                while (swapper != null && swapper.swapping == value && table.get(i) == swapper) { // NOPMD CompareObjectsWithEquals - identity is the point
+                    spins++;
+                    if (spins < Swappers.SPINS) {
+                        Thread.onSpinWait();
+                        continue;
+                    }
+                    if (deadline == 0L) {
+                        deadline = System.nanoTime() + Swappers.WAIT_NANOS;
+                    } else if (System.nanoTime() - deadline > 0L) {
+                        return true;
+                    }
+                    Thread.yield();
+                }
+            }
+            return true;
+        }
+
+        /** {@return how many releases the field keeps: more once it has been swapped (#1328)} */
+        private int kept() {
+            return swappers == null ? Release.KEPT : Release.KEPT_SWAPPED;
+        }
+
+        /** {@return the field's last release, {@code null} before the first} */
+        @Nullable Release latest() {
+            return latest;
         }
 
         /** {@return everything the field's writes published, {@code null} before the first} */
@@ -891,7 +1086,7 @@ public final class HappensBefore {
          */
         @Nullable Stamp publishedBy(long value, @Nullable Object read, boolean byReference) {
             Release release = latest;
-            return release == null ? null : release.publishedBy(value, read, byReference);
+            return release == null ? null : release.publishedBy(value, read, byReference, kept());
         }
 
         /** {@return whether this is the clock of {@code object}'s field {@code name}} */
@@ -907,8 +1102,32 @@ public final class HappensBefore {
     }
 
     /**
+     * The threads trying to swap a value into one reference slot right now, each listed from
+     * {@link HappensBefore#swapping} to {@link HappensBefore#swapEnded} (#1328). A fixed table, so
+     * announcing allocates nothing; a thread that finds it full is not listed.
+     */
+    private static final class Swappers extends AtomicReferenceArray<ThreadClock> {
+
+        private static final long serialVersionUID = 1L;
+
+        /** Entries, a power of two: more threads than this swapping one slot at once is rare. */
+        static final int SIZE = 8;
+
+        /** Spins before a waiting reader starts yielding. */
+        static final int SPINS = 64;
+
+        /** The longest a reader waits for swaps to end, one millisecond. */
+        static final long WAIT_NANOS = 1_000_000L;
+
+        Swappers() {
+            super(SIZE);
+        }
+    }
+
+    /**
      * One release of a volatile field: everything published up to and including the write of
-     * {@code value}, linked to the releases before it, the latest {@value #KEPT} of them kept.
+     * {@code value}, linked to the releases before it, the latest {@value #KEPT} of them kept, or
+     * {@value #KEPT_SWAPPED} for a reference slot that has been swapped (#1328).
      *
      * <p>More than one, because a release precedes its write: between a later writer's release
      * and its store, a read still returns the earlier value, and must take the earlier release.
@@ -927,6 +1146,19 @@ public final class HappensBefore {
         /** How many releases of a field a read looks back over, the latest included. */
         static final int KEPT = 4;
 
+        /**
+         * How many a reference slot that has been swapped keeps (#1328). A swap is released after
+         * its store, so the releases a late reader has to look past are not pending writers, of
+         * which there are few, but completed swaps, of which a busy slot makes many between a
+         * read and the lookup that follows it. Measured on a six-thread lock-free stack with every
+         * detector on: with 4 kept, 17 reads in 59,139 found their value's release gone (six
+         * runs); with 8, 5 in 74,129 and with 16, none in 73,878 (eight runs each). A field
+         * written that often
+         * keeps 1,289 to 1,743 bytes at 16 where it keeps 426 to 576 at 4, which is why a field
+         * nobody swaps stays at {@link #KEPT}.
+         */
+        static final int KEPT_SWAPPED = 16;
+
         /** Everything the field's releases published, up to and including this one. */
         final Stamp stamp;
 
@@ -941,7 +1173,7 @@ public final class HappensBefore {
 
         /**
          * The release before this one; {@code null} for none, and cleared once
-         * {@link #KEPT} later releases follow it, so a field keeps at most that many. A read
+         * as many later releases follow it as the field keeps, so it keeps at most that many. A read
          * racing the clearing sees the link or {@code null}, and either is a release it may take
          * or none; nothing is written here otherwise.
          */
@@ -972,10 +1204,10 @@ public final class HappensBefore {
             return new Release(merged, nextValue, nextKnown, nextStored, nextReference, this);
         }
 
-        /** Clears the link past the {@value #KEPT}th release, counting this one as the first. */
-        void trim() {
+        /** Clears the link past the {@code kept}th release, counting this one as the first. */
+        void trim(int kept) {
             Release last = this;
-            for (int i = 1; i < KEPT && last != null; i++) {
+            for (int i = 1; i < kept && last != null; i++) {
                 last = last.previous;
             }
             if (last != null) {
@@ -991,9 +1223,10 @@ public final class HappensBefore {
          * release with the same value is the write the read saw unless that writer has not
          * stored yet (the #813 limit a value stored twice keeps).
          */
-        @Nullable Stamp publishedBy(long read, @Nullable Object readObject, boolean byReference) {
+        @Nullable Stamp publishedBy(long read, @Nullable Object readObject, boolean byReference,
+                                    int kept) {
             Release release = this;
-            for (int i = 0; i < KEPT && release != null; i++) {
+            for (int i = 0; i < kept && release != null; i++) {
                 if (release.matches(read, readObject, byReference)) {
                     return release.stamp;
                 }
@@ -1094,6 +1327,19 @@ public final class HappensBefore {
 
         /** Where the next clock goes in {@link #fieldClocks}. */
         int nextFieldClock;
+
+        /**
+         * The object this thread is trying to swap into a slot, from {@link HappensBefore#swapping}
+         * to {@link HappensBefore#swapEnded}, and {@code null} otherwise. Written by the owning
+         * thread, read by a reader whose value no release stored (#1328).
+         */
+        volatile @Nullable Object swapping;
+
+        /** The table that lists this thread while it swaps. Read and written by the owning thread only. */
+        @Nullable Swappers swappingInto;
+
+        /** Where this thread is in {@link #swappingInto}. */
+        int swapperSlot;
 
         ThreadClock(long thread, Stamp current) {
             this.thread = thread;

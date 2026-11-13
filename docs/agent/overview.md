@@ -81,4 +81,9 @@ spin path is never taken.
   exception unwinding past a method, so the verdict cannot be cached between events.
 - Each volatile field the model has seen keeps up to four releases while its owner lives:
   measured at 340 bytes per field with one writer and 444 to 492 bytes with four to eight
-  (#813, #844). Fields are held weakly, so the state goes with the owner.
+  (#813, #844). Fields are held weakly, so the state goes with the owner. A reference slot
+  that has been swapped with a `compareAndSet` keeps sixteen (#1328), since a swap is released
+  after its store and a busy slot completes several between a read and the lookup that follows
+  it: a slot written 16 times or more measured 1,289 to 1,743 bytes with one to eight writers,
+  where the same writes to a slot nobody swaps measured 426 to 576. Its first swap also
+  allocates an eight-entry table that lists the threads swapping it.
