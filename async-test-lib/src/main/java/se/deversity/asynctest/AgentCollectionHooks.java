@@ -4,6 +4,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.AbstractQueue;
 import java.util.Collection;
+import java.util.BitSet;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
@@ -463,6 +464,256 @@ public final class AgentCollectionHooks {
         ControlledSchedule.point();
         record(receiver, "peekLast", false);
         return received(receiver, receiver.peekLast());
+    }
+
+    /**
+     * Weaves {@code BitSet.set(int)}, a write to the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param bitIndex the index of the bit
+     */
+    public static void bitSetSet(BitSet receiver, int bitIndex) {
+        ControlledSchedule.point();
+        record(receiver, "set", true);
+        receiver.set(bitIndex);
+    }
+
+    /**
+     * Weaves {@code BitSet.set(int, boolean)}, a write to the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param bitIndex the index of the bit
+     * @param value what the bit or range is set to
+     */
+    public static void bitSetSet(BitSet receiver, int bitIndex, boolean value) {
+        ControlledSchedule.point();
+        record(receiver, "set", true);
+        receiver.set(bitIndex, value);
+    }
+
+    /**
+     * Weaves {@code BitSet.set(int, int)}, a write to the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param fromIndex the first index of the range, inclusive
+     * @param toIndex the end of the range, exclusive
+     */
+    public static void bitSetSet(BitSet receiver, int fromIndex, int toIndex) {
+        ControlledSchedule.point();
+        record(receiver, "set", true);
+        receiver.set(fromIndex, toIndex);
+    }
+
+    /**
+     * Weaves {@code BitSet.set(int, int, boolean)}, a write to the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param fromIndex the first index of the range, inclusive
+     * @param toIndex the end of the range, exclusive
+     * @param value what the bit or range is set to
+     */
+    public static void bitSetSet(BitSet receiver, int fromIndex, int toIndex, boolean value) {
+        ControlledSchedule.point();
+        record(receiver, "set", true);
+        receiver.set(fromIndex, toIndex, value);
+    }
+
+    /**
+     * Weaves {@code BitSet.clear(int)}, a write to the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param bitIndex the index of the bit
+     */
+    public static void bitSetClear(BitSet receiver, int bitIndex) {
+        ControlledSchedule.point();
+        record(receiver, "clear", true);
+        receiver.clear(bitIndex);
+    }
+
+    /**
+     * Weaves {@code BitSet.clear(int, int)}, a write to the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param fromIndex the first index of the range, inclusive
+     * @param toIndex the end of the range, exclusive
+     */
+    public static void bitSetClear(BitSet receiver, int fromIndex, int toIndex) {
+        ControlledSchedule.point();
+        record(receiver, "clear", true);
+        receiver.clear(fromIndex, toIndex);
+    }
+
+    /**
+     * Weaves {@code BitSet.clear()}, a write to the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     */
+    public static void bitSetClear(BitSet receiver) {
+        ControlledSchedule.point();
+        record(receiver, "clear", true);
+        receiver.clear();
+    }
+
+    /**
+     * Weaves {@code BitSet.flip(int)}, a write to the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param bitIndex the index of the bit
+     */
+    public static void bitSetFlip(BitSet receiver, int bitIndex) {
+        ControlledSchedule.point();
+        record(receiver, "flip", true);
+        receiver.flip(bitIndex);
+    }
+
+    /**
+     * Weaves {@code BitSet.flip(int, int)}, a write to the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param fromIndex the first index of the range, inclusive
+     * @param toIndex the end of the range, exclusive
+     */
+    public static void bitSetFlip(BitSet receiver, int fromIndex, int toIndex) {
+        ControlledSchedule.point();
+        record(receiver, "flip", true);
+        receiver.flip(fromIndex, toIndex);
+    }
+
+    /**
+     * Weaves {@code BitSet.and(BitSet)}, a write to the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param other the bit set combined into the receiver, which is only read
+     */
+    public static void bitSetAnd(BitSet receiver, BitSet other) {
+        ControlledSchedule.point();
+        record(receiver, "and", true);
+        receiver.and(other);
+    }
+
+    /**
+     * Weaves {@code BitSet.or(BitSet)}, a write to the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param other the bit set combined into the receiver, which is only read
+     */
+    public static void bitSetOr(BitSet receiver, BitSet other) {
+        ControlledSchedule.point();
+        record(receiver, "or", true);
+        receiver.or(other);
+    }
+
+    /**
+     * Weaves {@code BitSet.xor(BitSet)}, a write to the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param other the bit set combined into the receiver, which is only read
+     */
+    public static void bitSetXor(BitSet receiver, BitSet other) {
+        ControlledSchedule.point();
+        record(receiver, "xor", true);
+        receiver.xor(other);
+    }
+
+    /**
+     * Weaves {@code BitSet.andNot(BitSet)}, a write to the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param other the bit set combined into the receiver, which is only read
+     */
+    public static void bitSetAndNot(BitSet receiver, BitSet other) {
+        ControlledSchedule.point();
+        record(receiver, "andNot", true);
+        receiver.andNot(other);
+    }
+
+    /**
+     * Weaves {@code BitSet.get(int)}, a read of the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param bitIndex the index of the bit
+     * @return what the call it replaced returns
+     */
+    public static boolean bitSetGet(BitSet receiver, int bitIndex) {
+        ControlledSchedule.point();
+        record(receiver, "get", false);
+        return receiver.get(bitIndex);
+    }
+
+    /**
+     * Weaves {@code BitSet.get(int, int)}, a read of the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param fromIndex the first index of the range, inclusive
+     * @param toIndex the end of the range, exclusive
+     * @return what the call it replaced returns
+     */
+    public static BitSet bitSetGet(BitSet receiver, int fromIndex, int toIndex) {
+        ControlledSchedule.point();
+        record(receiver, "get", false);
+        return receiver.get(fromIndex, toIndex);
+    }
+
+    /**
+     * Weaves {@code BitSet.cardinality()}, a read of the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @return what the call it replaced returns
+     */
+    public static int bitSetCardinality(BitSet receiver) {
+        ControlledSchedule.point();
+        record(receiver, "cardinality", false);
+        return receiver.cardinality();
+    }
+
+    /**
+     * Weaves {@code BitSet.nextSetBit(int)}, a read of the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param fromIndex the index the search starts at, inclusive
+     * @return what the call it replaced returns
+     */
+    public static int bitSetNextSetBit(BitSet receiver, int fromIndex) {
+        ControlledSchedule.point();
+        record(receiver, "nextSetBit", false);
+        return receiver.nextSetBit(fromIndex);
+    }
+
+    /**
+     * Weaves {@code BitSet.nextClearBit(int)}, a read of the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @param fromIndex the index the search starts at, inclusive
+     * @return what the call it replaced returns
+     */
+    public static int bitSetNextClearBit(BitSet receiver, int fromIndex) {
+        ControlledSchedule.point();
+        record(receiver, "nextClearBit", false);
+        return receiver.nextClearBit(fromIndex);
+    }
+
+    /**
+     * Weaves {@code BitSet.length()}, a read of the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @return what the call it replaced returns
+     */
+    public static int bitSetLength(BitSet receiver) {
+        ControlledSchedule.point();
+        record(receiver, "length", false);
+        return receiver.length();
+    }
+
+    /**
+     * Weaves {@code BitSet.isEmpty()}, a read of the shared words (#1297).
+     *
+     * @param receiver the bit set the call was made on
+     * @return what the call it replaced returns
+     */
+    public static boolean bitSetIsEmpty(BitSet receiver) {
+        ControlledSchedule.point();
+        record(receiver, "isEmpty", false);
+        return receiver.isEmpty();
     }
 
     /** Weaves {@code Map.put}. @param receiver the map @param key the key @param value the value @return the previous value */

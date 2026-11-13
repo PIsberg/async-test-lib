@@ -11,6 +11,7 @@ import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.BitSet;
 import java.util.Deque;
 import java.time.Duration;
 import java.util.Formatter;
@@ -358,6 +359,28 @@ final class CollectionAccessWeaver {
             Entry.call(Iterable.class, "forEach", "iterableForEach", Consumer.class),
             Entry.call(Deque.class, "peekFirst", "dequePeekFirst"),
             Entry.call(Deque.class, "peekLast", "dequePeekLast"),
+            // A BitSet is neither a Collection nor a Map, and as unsafe to share as either:
+            // set is a read-modify-write of one long word (#1297).
+            Entry.call(BitSet.class, "set", "bitSetSet", int.class),
+            Entry.call(BitSet.class, "set", "bitSetSet", int.class, boolean.class),
+            Entry.call(BitSet.class, "set", "bitSetSet", int.class, int.class),
+            Entry.call(BitSet.class, "set", "bitSetSet", int.class, int.class, boolean.class),
+            Entry.call(BitSet.class, "clear", "bitSetClear", int.class),
+            Entry.call(BitSet.class, "clear", "bitSetClear", int.class, int.class),
+            Entry.call(BitSet.class, "clear", "bitSetClear"),
+            Entry.call(BitSet.class, "flip", "bitSetFlip", int.class),
+            Entry.call(BitSet.class, "flip", "bitSetFlip", int.class, int.class),
+            Entry.call(BitSet.class, "and", "bitSetAnd", BitSet.class),
+            Entry.call(BitSet.class, "or", "bitSetOr", BitSet.class),
+            Entry.call(BitSet.class, "xor", "bitSetXor", BitSet.class),
+            Entry.call(BitSet.class, "andNot", "bitSetAndNot", BitSet.class),
+            Entry.call(BitSet.class, "get", "bitSetGet", int.class),
+            Entry.call(BitSet.class, "get", "bitSetGet", int.class, int.class),
+            Entry.call(BitSet.class, "cardinality", "bitSetCardinality"),
+            Entry.call(BitSet.class, "nextSetBit", "bitSetNextSetBit", int.class),
+            Entry.call(BitSet.class, "nextClearBit", "bitSetNextClearBit", int.class),
+            Entry.call(BitSet.class, "length", "bitSetLength"),
+            Entry.call(BitSet.class, "isEmpty", "bitSetIsEmpty"),
             // Iteration, and where a synchronized map's views come from: a wrapper from
             // Collections.synchronized* must be iterated under the monitor it synchronizes on,
             // which for a map's view is the map's.

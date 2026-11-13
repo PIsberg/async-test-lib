@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.AbstractQueue;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Hashtable;
@@ -123,6 +124,48 @@ class AgentCollectionHooksTest {
         assertEquals("q", AgentCollectionHooks.queuePeek(queue), "peek returns the head");
         assertEquals("q", AgentCollectionHooks.queuePoll(queue), "poll removes and returns the head");
         assertTrue(queue.isEmpty(), "poll actually removed");
+    }
+
+    @Test
+    @DisplayName("every BitSet hook performs the call it replaced (#1297)")
+    void bitSetHooksDelegate() {
+        BitSet bits = new BitSet();
+        AgentCollectionHooks.bitSetSet(bits, 1);
+        AgentCollectionHooks.bitSetSet(bits, 2, true);
+        AgentCollectionHooks.bitSetSet(bits, 2, false);
+        AgentCollectionHooks.bitSetSet(bits, 4, 8);
+        AgentCollectionHooks.bitSetSet(bits, 6, 8, false);
+        assertEquals(BitSet.valueOf(new long[] {0b110010L}), bits, "the four set forms");
+        assertTrue(AgentCollectionHooks.bitSetGet(bits, 1), "get sees a set bit");
+        assertFalse(AgentCollectionHooks.bitSetGet(bits, 2), "and a cleared one");
+        assertEquals(BitSet.valueOf(new long[] {0b11L}), AgentCollectionHooks.bitSetGet(bits, 4, 8),
+                "the range get returns a copy of the range");
+        assertEquals(3, AgentCollectionHooks.bitSetCardinality(bits), "cardinality");
+        assertEquals(6, AgentCollectionHooks.bitSetLength(bits), "length");
+        assertEquals(4, AgentCollectionHooks.bitSetNextSetBit(bits, 2), "nextSetBit");
+        assertEquals(2, AgentCollectionHooks.bitSetNextClearBit(bits, 1), "nextClearBit");
+
+        AgentCollectionHooks.bitSetFlip(bits, 0);
+        AgentCollectionHooks.bitSetFlip(bits, 4, 6);
+        assertEquals(BitSet.valueOf(new long[] {0b11L}), bits, "the two flip forms");
+        AgentCollectionHooks.bitSetOr(bits, BitSet.valueOf(new long[] {0b1100L}));
+        assertEquals(BitSet.valueOf(new long[] {0b1111L}), bits, "or");
+        AgentCollectionHooks.bitSetAnd(bits, BitSet.valueOf(new long[] {0b0111L}));
+        assertEquals(BitSet.valueOf(new long[] {0b0111L}), bits, "and");
+        AgentCollectionHooks.bitSetXor(bits, BitSet.valueOf(new long[] {0b0101L}));
+        assertEquals(BitSet.valueOf(new long[] {0b0010L}), bits, "xor");
+        AgentCollectionHooks.bitSetOr(bits, BitSet.valueOf(new long[] {0b1100L}));
+        AgentCollectionHooks.bitSetAndNot(bits, BitSet.valueOf(new long[] {0b1000L}));
+        assertEquals(BitSet.valueOf(new long[] {0b0110L}), bits, "andNot");
+
+        AgentCollectionHooks.bitSetClear(bits, 1);
+        assertEquals(BitSet.valueOf(new long[] {0b0100L}), bits, "clear of one bit");
+        AgentCollectionHooks.bitSetSet(bits, 0, 8);
+        AgentCollectionHooks.bitSetClear(bits, 2, 8);
+        assertEquals(BitSet.valueOf(new long[] {0b11L}), bits, "clear of a range");
+        assertFalse(AgentCollectionHooks.bitSetIsEmpty(bits), "isEmpty on set bits");
+        AgentCollectionHooks.bitSetClear(bits);
+        assertTrue(AgentCollectionHooks.bitSetIsEmpty(bits), "clear of everything");
     }
 
     @Test
