@@ -44,6 +44,10 @@ updates:
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "org.apache.maven:maven-core"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # 1.9.4 declares a Maven 3.9.16 prerequisite; the ubuntu-26.04 runner image ships 3.9.15 and
+      # every Clojure fixture leg fails there (versions/pom.xml). Drop this with that pin.
+      - dependency-name: "com.theoryinpractise:clojure-maven-plugin"
+        versions: ["1.9.4"]
     groups:
       per-dependency:
         group-by: dependency-name
