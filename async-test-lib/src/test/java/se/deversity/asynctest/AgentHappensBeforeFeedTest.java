@@ -27,6 +27,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Consumer;
@@ -500,6 +503,94 @@ class AgentHappensBeforeFeedTest {
         assertFalse(directRunReported(true, true), "run then get");
         assertTrue(directRunReported(false, true), "an unwoven run released nothing");
         assertTrue(directRunReported(true, false), "an unwoven get acquired nothing");
+    }
+
+    /**
+     * One thread writes a field and then stores into a primitive atomic, another reads the atomic
+     * and then the field (#1315). {@code store} and {@code load} are the woven or the unwoven call.
+     */
+    private static boolean flagPublicationReported(Runnable store, Runnable load)
+            throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box box = new Box();
+        Thread writer = new Thread(() -> {
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            store.run();
+        });
+        writer.start();
+        writer.join();
+        Thread reader = new Thread(() -> {
+            load.run();
+            detector.recordFieldRead(box, "value");
+        });
+        reader.start();
+        reader.join();
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a store into a primitive atomic orders the writer before a get that saw it (#1315)")
+    void aPrimitiveAtomicFlagPublishes() throws InterruptedException {
+        AtomicBoolean flag = new AtomicBoolean();
+        assertFalse(flagPublicationReported(() -> TelemetryRegistry.setAtomicBoolean(flag, true),
+                () -> TelemetryRegistry.getAtomicBoolean(flag)), "set then get");
+        AtomicBoolean unwovenStore = new AtomicBoolean();
+        assertTrue(flagPublicationReported(() -> unwovenStore.set(true),
+                () -> TelemetryRegistry.getAtomicBoolean(unwovenStore)), "an unwoven set released nothing");
+        AtomicBoolean unwovenLoad = new AtomicBoolean();
+        assertTrue(flagPublicationReported(() -> TelemetryRegistry.setAtomicBoolean(unwovenLoad, true),
+                unwovenLoad::get), "an unwoven get acquired nothing");
+
+        AtomicBoolean swapped = new AtomicBoolean();
+        assertFalse(flagPublicationReported(
+                () -> TelemetryRegistry.compareAndSetAtomicBoolean(swapped, false, true),
+                () -> TelemetryRegistry.getAtomicBoolean(swapped)), "compareAndSet then get");
+
+        AtomicInteger count = new AtomicInteger();
+        assertFalse(flagPublicationReported(() -> TelemetryRegistry.incrementAndGetAtomicInteger(count),
+                () -> TelemetryRegistry.getAtomicInteger(count)), "incrementAndGet then get");
+        AtomicInteger added = new AtomicInteger();
+        assertFalse(flagPublicationReported(() -> TelemetryRegistry.getAndAddAtomicInteger(added, 3),
+                () -> TelemetryRegistry.getAtomicInteger(added)), "getAndAdd then get");
+
+        AtomicLong total = new AtomicLong();
+        assertFalse(flagPublicationReported(() -> TelemetryRegistry.setAtomicLong(total, 7L),
+                () -> TelemetryRegistry.getAtomicLong(total)), "AtomicLong set then get");
+        AtomicLong decremented = new AtomicLong();
+        assertFalse(flagPublicationReported(() -> TelemetryRegistry.decrementAndGetAtomicLong(decremented),
+                () -> TelemetryRegistry.getAtomicLong(decremented)), "AtomicLong decrement then get");
+    }
+
+    @Test
+    @DisplayName("a get that returned a value no store published acquires nothing (#1315)")
+    void aStaleReadOfAPrimitiveAtomicAcquiresNothing() throws InterruptedException {
+        AtomicInteger count = new AtomicInteger();
+        AtomicInteger other = new AtomicInteger();
+        assertTrue(flagPublicationReported(() -> TelemetryRegistry.setAtomicInteger(count, 5),
+                () -> TelemetryRegistry.getAtomicInteger(other)), "a read of another atomic");
+    }
+
+    @Test
+    @DisplayName("the arithmetic hooks still return what the JDK call returns (#1315)")
+    void theArithmeticHooksKeepTheirResults() {
+        AtomicInteger count = new AtomicInteger(10);
+        org.junit.jupiter.api.Assertions.assertEquals(11, TelemetryRegistry.incrementAndGetAtomicInteger(count));
+        org.junit.jupiter.api.Assertions.assertEquals(11, TelemetryRegistry.getAndIncrementAtomicInteger(count));
+        org.junit.jupiter.api.Assertions.assertEquals(12, TelemetryRegistry.getAndAddAtomicInteger(count, 5));
+        org.junit.jupiter.api.Assertions.assertEquals(20, TelemetryRegistry.addAndGetAtomicInteger(count, 3));
+        org.junit.jupiter.api.Assertions.assertEquals(20, TelemetryRegistry.getAndDecrementAtomicInteger(count));
+        org.junit.jupiter.api.Assertions.assertEquals(18, TelemetryRegistry.decrementAndGetAtomicInteger(count));
+        org.junit.jupiter.api.Assertions.assertEquals(18, count.get());
+
+        AtomicLong total = new AtomicLong(10L);
+        org.junit.jupiter.api.Assertions.assertEquals(11L, TelemetryRegistry.incrementAndGetAtomicLong(total));
+        org.junit.jupiter.api.Assertions.assertEquals(11L, TelemetryRegistry.getAndIncrementAtomicLong(total));
+        org.junit.jupiter.api.Assertions.assertEquals(12L, TelemetryRegistry.getAndAddAtomicLong(total, 5L));
+        org.junit.jupiter.api.Assertions.assertEquals(20L, TelemetryRegistry.addAndGetAtomicLong(total, 3L));
+        org.junit.jupiter.api.Assertions.assertEquals(20L, TelemetryRegistry.getAndDecrementAtomicLong(total));
+        org.junit.jupiter.api.Assertions.assertEquals(18L, TelemetryRegistry.decrementAndGetAtomicLong(total));
+        org.junit.jupiter.api.Assertions.assertEquals(18L, total.get());
     }
 
     private static boolean startJoinReported(boolean woven) throws InterruptedException {

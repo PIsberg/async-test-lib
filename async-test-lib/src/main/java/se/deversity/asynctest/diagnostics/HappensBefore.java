@@ -96,6 +96,12 @@ import org.jspecify.annotations.Nullable;
  *   <li>Since #1307: a {@code FutureTask} whose {@code run()} the code under test calls itself,
  *       with no executor to wrap it, releases to the task when the run ends, and a {@code get}
  *       that observed the completion acquires it, on any thread.
+ *   <li>Since #1315, with {@code fields=true}: a store into an {@code AtomicBoolean},
+ *       {@code AtomicInteger} or {@code AtomicLong} through {@code set}, {@code getAndSet},
+ *       {@code compareAndSet} or an increment, decrement or add, and a {@code get} that
+ *       returned the value stored: the volatile-field model, on the atomic. A
+ *       compare-and-set releases before it is known to win, so a lost one leaves a release
+ *       of a value another thread stored, the two-writers limit below.
  * </ul>
  *
  * <p>Plain lock and monitor hand-offs are deliberately not edges. The detectors judge lock

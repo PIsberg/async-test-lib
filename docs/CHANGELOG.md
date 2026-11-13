@@ -20,6 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An `AtomicBoolean`, `AtomicInteger` or `AtomicLong` used as a completion flag now orders what
+  was written before it (#1315).** A thread that wrote a plain field and then called
+  `done.set(true)`, and another that spun on `done.get()` and then read the field, drew an
+  `AtomicityValidator` PROMPT finding ("no lock and no happens-before edge"), while the same code
+  with a `volatile boolean` or an `AtomicReference` was silent: only those two fed the
+  happens-before model. A woven `set`, `getAndSet`, `compareAndSet`, increment, decrement or add
+  on a primitive atomic now releases the atomic before the store, and a woven `get` acquires what
+  the store whose value it returned published; `AtomicBoolean.get` is woven for this
+  (`fields=true`). A flag set before the field is written still reports. Test first:
+  `AtomicFlagPublicationWeavingTest` (8 of its 11 cases failed before the change), and the corpus
+  pair `idiom_atomicFlag_publishesPlainData` / `idiom_atomicFlag_setBeforeTheData`.
 - **A `FutureTask` the caller runs itself now orders its callable before `get()` (#1307).** One
   thread calling `task.run()` and the others reading what `task.get()` returned, the Memoizer
   idiom, drew an `AtomicityValidator` PROMPT finding ("no lock and no happens-before edge"),
