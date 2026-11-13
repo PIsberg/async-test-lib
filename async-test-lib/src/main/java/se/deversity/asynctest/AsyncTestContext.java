@@ -2341,6 +2341,14 @@ public final class AsyncTestContext {
         AsyncTestContext context = agentContext();
         return context == null ? null : context.sharedMessageDigestDetector;
     }
+    /**
+     * {@return the {@link SharedStatefulCryptoDetector} for the calling thread's test, or
+     * {@code null}}
+     */
+    static @Nullable SharedStatefulCryptoDetector currentSharedStatefulCryptoDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.sharedStatefulCryptoDetector;
+    }
     /** {@return the {@link CalendarDetector} for the calling thread's test, or {@code null}} */
     static @Nullable CalendarDetector currentCalendarDetector() {
         AsyncTestContext context = agentContext();

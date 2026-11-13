@@ -192,6 +192,14 @@ class CorpusAgentPairLaneTest {
     private static final ThreadLocal<DecimalFormat> CONFINED_DECIMAL_FORMAT =
             ThreadLocal.withInitial(() -> new DecimalFormat("#,##0.00"));
 
+    /** Generated per run: the rows measure who shares the Mac, not what it authenticates. */
+    private static final javax.crypto.SecretKey HMAC_KEY = newHmacKey();
+
+    private static final javax.crypto.Mac SHARED_MAC = newMac();
+
+    private static final ThreadLocal<javax.crypto.Mac> CONFINED_MAC =
+            ThreadLocal.withInitial(CorpusAgentPairLaneTest::newMac);
+
     @BeforeAll
     static void installRecorder() throws NoSuchAlgorithmException {
         CorpusRecorder.install();
@@ -303,6 +311,33 @@ class CorpusAgentPairLaneTest {
             MessageDigest mine = CONFINED_DIGEST.get();
             mine.update(PAYLOAD);
             mine.digest();
+        });
+    }
+
+    // --- Mac (#1321) --------------------------------------------------------------------------
+
+    /**
+     * Every thread computes its tag on the one Mac.
+     *
+     * <p>{@code update} folds bytes into the instance's running state and {@code doFinal} finishes
+     * and resets it, so the tag covers an interleaving of every thread's input, or the provider
+     * throws from the middle of its own buffer.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_mac_oneInstanceForEveryThread() {
+        swallowingTheRace(() -> {
+            SHARED_MAC.update(PAYLOAD);
+            SHARED_MAC.doFinal();
+        });
+    }
+
+    /** The same two calls against a Mac the thread owns. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_mac_oneInstancePerThread() {
+        swallowingTheRace(() -> {
+            javax.crypto.Mac mine = CONFINED_MAC.get();
+            mine.update(PAYLOAD);
+            mine.doFinal();
         });
     }
 
@@ -2272,6 +2307,9 @@ class CorpusAgentPairLaneTest {
      */
     private static final Hasher SHARED_HASHER = Hashing.sha256().newHasher();
 
+    /** One Guava HMAC hasher for every thread; it wraps one {@code Mac}. */
+    private static final Hasher SHARED_HMAC_HASHER = Hashing.hmacSha256(HMAC_KEY).newHasher();
+
     /** One Jackson date format for every thread; it caches its {@code Calendar} on first use. */
     private static final StdDateFormat SHARED_STD_DATE_FORMAT = new StdDateFormat();
 
@@ -2330,6 +2368,23 @@ class CorpusAgentPairLaneTest {
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void agent_guavaHasher_oneHasherPerHash() {
         swallowingTheRace(() -> Hashing.sha256().newHasher().putBytes(PAYLOAD).hash());
+    }
+
+    /**
+     * Every thread feeds the one Guava HMAC hasher (#1321).
+     *
+     * <p>The {@code Mac.update} call is inside {@code MacHashFunction.MacHasher}, so this body
+     * contains no {@code Mac} call for the weaver to substitute.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_guavaHmacHasher_oneHasherForEveryThread() {
+        swallowingTheRace(() -> SHARED_HMAC_HASHER.putBytes(PAYLOAD));
+    }
+
+    /** A hasher per tag, each with a Mac of its own. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_guavaHmacHasher_oneHasherPerTag() {
+        swallowingTheRace(() -> Hashing.hmacSha256(HMAC_KEY).newHasher().putBytes(PAYLOAD).hash());
     }
 
     /**
@@ -3324,6 +3379,24 @@ class CorpusAgentPairLaneTest {
             body.run();
         } catch (RuntimeException expected) {
             // The bug, behaving like the bug. See the javadoc.
+        }
+    }
+
+    private static javax.crypto.SecretKey newHmacKey() {
+        try {
+            return javax.crypto.KeyGenerator.getInstance("HmacSHA256").generateKey();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("every JRE ships HmacSHA256", e);
+        }
+    }
+
+    private static javax.crypto.Mac newMac() {
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(HMAC_KEY);
+            return mac;
+        } catch (java.security.GeneralSecurityException e) {
+            throw new IllegalStateException("every JRE ships HmacSHA256", e);
         }
     }
 

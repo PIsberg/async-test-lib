@@ -629,6 +629,39 @@ final class CollectionAccessWeaver {
             // MessageFormat.format(String, Object...) builds an instance per call and has a
             // different descriptor, so it matches nothing here.
             Entry.call(java.text.MessageFormat.class, "parse", "parse", String.class),
+            // Mac, Signature and Cipher: every overload of the calls that feed or finish the
+            // running state (#1321). init, reset, wrap and unwrap are left alone: a shared
+            // primitive that is used is seen at the use.
+            Entry.call(javax.crypto.Mac.class, "update", "update", byte.class),
+            Entry.call(javax.crypto.Mac.class, "update", "update", byte[].class),
+            Entry.call(javax.crypto.Mac.class, "update", "update", byte[].class, int.class, int.class),
+            Entry.call(javax.crypto.Mac.class, "update", "update", ByteBuffer.class),
+            Entry.call(javax.crypto.Mac.class, "doFinal", "doFinal"),
+            Entry.call(javax.crypto.Mac.class, "doFinal", "doFinal", byte[].class),
+            Entry.call(javax.crypto.Mac.class, "doFinal", "doFinal", byte[].class, int.class),
+            Entry.call(java.security.Signature.class, "update", "update", byte.class),
+            Entry.call(java.security.Signature.class, "update", "update", byte[].class),
+            Entry.call(java.security.Signature.class, "update", "update", byte[].class, int.class, int.class),
+            Entry.call(java.security.Signature.class, "update", "update", ByteBuffer.class),
+            Entry.call(java.security.Signature.class, "sign", "sign"),
+            Entry.call(java.security.Signature.class, "sign", "sign", byte[].class, int.class, int.class),
+            Entry.call(java.security.Signature.class, "verify", "verify", byte[].class),
+            Entry.call(java.security.Signature.class, "verify", "verify", byte[].class, int.class, int.class),
+            Entry.call(javax.crypto.Cipher.class, "update", "update", byte[].class),
+            Entry.call(javax.crypto.Cipher.class, "update", "update", byte[].class, int.class, int.class),
+            Entry.call(javax.crypto.Cipher.class, "update", "update", byte[].class, int.class, int.class, byte[].class),
+            Entry.call(javax.crypto.Cipher.class, "update", "update", byte[].class, int.class, int.class, byte[].class, int.class),
+            Entry.call(javax.crypto.Cipher.class, "update", "update", ByteBuffer.class, ByteBuffer.class),
+            Entry.call(javax.crypto.Cipher.class, "doFinal", "doFinal"),
+            Entry.call(javax.crypto.Cipher.class, "doFinal", "doFinal", byte[].class, int.class),
+            Entry.call(javax.crypto.Cipher.class, "doFinal", "doFinal", byte[].class),
+            Entry.call(javax.crypto.Cipher.class, "doFinal", "doFinal", byte[].class, int.class, int.class),
+            Entry.call(javax.crypto.Cipher.class, "doFinal", "doFinal", byte[].class, int.class, int.class, byte[].class),
+            Entry.call(javax.crypto.Cipher.class, "doFinal", "doFinal", byte[].class, int.class, int.class, byte[].class, int.class),
+            Entry.call(javax.crypto.Cipher.class, "doFinal", "doFinal", ByteBuffer.class, ByteBuffer.class),
+            Entry.call(javax.crypto.Cipher.class, "updateAAD", "updateAAD", byte[].class),
+            Entry.call(javax.crypto.Cipher.class, "updateAAD", "updateAAD", byte[].class, int.class, int.class),
+            Entry.call(javax.crypto.Cipher.class, "updateAAD", "updateAAD", ByteBuffer.class),
             Entry.call(Formatter.class, "format", "format", String.class, Object[].class),
             // The locale-taking overload is what an internationalised codebase calls, and it was
             // invisible while its sibling was woven (#434).

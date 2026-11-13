@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A shared `Mac`, `Signature` or `Cipher` is now reported with the agent attached (#1321).**
+  `SharedStatefulCryptoDetector` had no agent feed, so it fired only when the test body called
+  the recording API. A static `Mac` used by 6 threads threw `ArrayIndexOutOfBoundsException` from
+  inside the provider and nothing named the cause. The agent now weaves every overload of
+  `update`, `doFinal`, `sign`, `verify` and `updateAAD` on the three types (30 call shapes), and
+  the detector moves from recording-only to agent-fed (53 agent-fed, 92 recording-only). `init`,
+  `reset`, `wrap` and `unwrap` are not woven. The hooks pass key material, plaintext and
+  signatures straight through and keep none of it. Test first: `SharedCryptoWeavingTest` missed
+  all 7 call sites before the change; `SharedCryptoWeavingSparesConfinedUseTest` holds per-call,
+  per-thread and monitor-guarded primitives silent; `AgentCryptoHooksTest` checks each of the
+  30 hooks against a tag, signature or plaintext computed without it.
+
 - **A shared `DecimalFormat` or `SimpleDateFormat` reached through `format(Object)` or
   `parseObject(String)`, and a shared `MessageFormat`, are now reported (#1319).** The agent wove
   `format(double)`, `format(long)` and `format(Date)` only, so `MONEY.format(12.5)` on a static

@@ -111,6 +111,15 @@ class AgentSharedInstanceHooksEachAloneTest {
         if (type == Calendar.class) {
             return Calendar.getInstance(Locale.ROOT);
         }
+        if (type == javax.crypto.Mac.class) {
+            return AgentCryptoHooksTest.mac();
+        }
+        if (type == java.security.Signature.class) {
+            return AgentCryptoHooksTest.signer();
+        }
+        if (type == javax.crypto.Cipher.class) {
+            return AgentCryptoHooksTest.decrypter(false);
+        }
         if (type == StringBuilder.class || type == Appendable.class) {
             return new StringBuilder();
         }
@@ -246,6 +255,10 @@ class AgentSharedInstanceHooksEachAloneTest {
             }
             if (receiver instanceof MessageDigest) {
                 return AsyncTestContext.sharedMessageDigestDetector().analyze().hasIssues();
+            }
+            if (receiver instanceof javax.crypto.Mac || receiver instanceof java.security.Signature
+                    || receiver instanceof javax.crypto.Cipher) {
+                return AsyncTestContext.sharedStatefulCryptoDetector().analyze().hasIssues();
             }
             if (receiver instanceof Calendar) {
                 return AsyncTestContext.calendarDetector().analyze().hasIssues();

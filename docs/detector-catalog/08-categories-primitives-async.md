@@ -117,7 +117,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 102. Shared Stateful Crypto Detector
 * **Severity**: `HIGH`
-* **Description**: Detects `Cipher`, `Mac`, and `Signature` instances shared across threads. Unlike `MessageDigest`, these carry mutable per-operation state across an `init → update* → doFinal` sequence; interleaved calls from different threads mix plaintext/ciphertext blocks or fold bytes from both callers into one running digest, silently breaking confidentiality, integrity, or authenticity.
+* **Description**: Detects `Cipher`, `Mac`, and `Signature` instances shared across threads. Unlike `MessageDigest`, these carry mutable per-operation state across an `init → update* → doFinal` sequence; interleaved calls from different threads mix plaintext/ciphertext blocks or fold bytes from both callers into one running digest, silently breaking confidentiality, integrity, or authenticity. With the agent attached the detector needs no recording call: it sees every overload of `update`, `doFinal`, `sign`, `verify` and `updateAAD` on the three types. `init`, `reset`, `wrap` and `unwrap` are not woven, so a shared primitive is reported where it is used, not where it is initialised.
 * **Buggy Code**:
   ```java
   private final Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");

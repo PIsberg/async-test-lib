@@ -73,6 +73,9 @@ public final class DetectorFeeds {
             DetectorType.SIMPLE_DATE_FORMAT,
             DetectorType.SHARED_MATCHER,
             DetectorType.SHARED_MESSAGE_DIGEST,
+            // Mac, Signature and Cipher: the update, doFinal, sign, verify and updateAAD calls
+            // of a primitive held in a field (#1321).
+            DetectorType.SHARED_STATEFUL_CRYPTO,
             DetectorType.CALENDAR,
             DetectorType.STRING_BUILDER,
             DetectorType.SHARED_DECIMAL_FORMAT,
