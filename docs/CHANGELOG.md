@@ -20,6 +20,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Two false positives on correct code: an object passed through `thenCompose`, and state filled
+  by `forEachOrdered`.** Found by probing 63 correct and broken bodies through the corpus idioms
+  lane; these two were the only wrong answers.
+  - A stage builds an object, `thenCompose` hands it to a second `supplyAsync` that updates it, and
+    the caller reads it after `join()`. `AtomicityValidator` reported the read against the inner
+    task's write. The composed stage's join observed only what a woven `complete` released to the
+    inner future; the task behind a `supplyAsync` completes its future in JDK code, and the
+    record of it is kept per thread, on the thread that ran the function. The stage now carries
+    that work, and a join of the composed stage, or a stage registered on it, receives it.
+  - `parallel().forEachOrdered(list::add)`, or the same summing into a plain field, was reported
+    by `SharedCollectionDetector` or `AtomicityValidator`: the actions were modelled as
+    `forEach`'s, unordered. `forEachOrdered` promises that the action for one element
+    happens-before the action for the next, so each action now receives the clock of the one
+    before it. `forEach` is unchanged and still reported.
+
+  Test first: `composedTasksPublish` and `aStageAfterAComposedTaskIsOrdered` in
+  `AgentHappensBeforeFeedTest` and `orderedActionsFollowOneAnother` in
+  `AgentParallelStreamHooksTest` were red before the change; `unorderedActionsStillRace` pins the
+  other direction. Corpus pairs `idiom_thenCompose_innerTaskUpdatesTheResult`,
+  `idiom_forEachOrdered_fillsAnArrayList` and `idiom_forEachOrdered_sumsIntoAPlainField` with
+  broken twins: the three correct rows were reported against the previous jar.
+
 - **A signal nobody was waiting for and a latch nobody counted down are reported on a thread the
   test body started (#1339).** `MissedSignalDetector`, `ConditionVariableDetector` and
   `LatchMisuseDetector` read only the worker's own thread, so a `notify`, `signal` or `countDown`

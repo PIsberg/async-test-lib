@@ -503,7 +503,9 @@ A function registered on a `CompletableFuture` with `thenApply`, `thenAccept`, `
 that runs it is ordered after the registering thread and after the completion of each stage it
 waits for, and a `join` or `get` of the stage it returned, on the registering thread, is ordered
 after it. A `thenCompose` or `exceptionallyCompose` stage completes when the stage its function
-returned does, so its join is also ordered after what a woven `complete` of that stage released.
+returned does, so its join, and a stage registered on it, is also ordered after what a woven
+`complete` of that stage released and after the task or stage behind it, when the function's own
+thread submitted or registered that one (a `supplyAsync` inside the function, say).
 The `Either` forms carry only the registering thread's clock, since which stage they followed is
 not known. A call typed against `CompletionStage` is woven too, and wraps the function
 only when the stage is a `CompletableFuture`: any other implementation gets the caller's own

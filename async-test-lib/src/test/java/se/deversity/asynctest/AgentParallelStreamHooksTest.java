@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.PrimitiveIterator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ForkJoinPool;
@@ -1084,5 +1085,114 @@ class AgentParallelStreamHooksTest {
 
         assertFalse(detector.analyzeRaceConditions().hasIssues(),
                 "each read follows the hasNext that waited for the write; the iterator joins its helpers");
+    }
+
+    // --- forEachOrdered: one action happens-before the next, on whichever threads they run -----
+
+    /**
+     * One of the four {@code forEachOrdered} forms over 0 to {@link #ELEMENTS}, given an unwoven
+     * upstream stage and the action, each told which element it runs for.
+     */
+    private interface OrderedForm {
+        void run(java.util.function.IntConsumer upstream, java.util.function.IntConsumer action);
+    }
+
+    private static Map<String, OrderedForm> orderedForms() {
+        Map<String, OrderedForm> forms = new java.util.LinkedHashMap<>();
+        forms.put("Stream", (upstream, action) -> AgentConcurrencyUtilHooks.streamForEachOrdered(
+                numbers().peek(value -> upstream.accept((Integer) value)),
+                value -> action.accept((Integer) value)));
+        forms.put("IntStream", (upstream, action) -> AgentConcurrencyUtilHooks.intStreamForEachOrdered(
+                IntStream.range(0, ELEMENTS).parallel().peek(upstream), action));
+        forms.put("LongStream", (upstream, action) -> AgentConcurrencyUtilHooks.longStreamForEachOrdered(
+                java.util.stream.LongStream.range(0, ELEMENTS).parallel().peek(value -> upstream.accept((int) value)),
+                value -> action.accept((int) value)));
+        forms.put("DoubleStream", (upstream, action) -> AgentConcurrencyUtilHooks.doubleStreamForEachOrdered(
+                IntStream.range(0, ELEMENTS).parallel().asDoubleStream().peek(value -> upstream.accept((int) value)),
+                value -> action.accept((int) value)));
+        return forms;
+    }
+
+    /**
+     * Runs one form with the second half of the stream held back until the first half's last
+     * action has run, and returns the threads that ran an action.
+     *
+     * <p>A leaf's thread runs the actions for its elements only when it finishes its upstream
+     * work after the leaf before it is done; otherwise the thread that finished that leaf runs
+     * them too, and on a small machine one thread ends up running every action, which observes
+     * nothing. So the thread working on the first element of the second half waits, in the
+     * upstream stage, for the action of the element before it: it is a different thread from the
+     * one running that action, and it then runs its own leaf's actions itself. The wait is
+     * bounded, for a machine where the same thread would have to do both.
+     */
+    private static Set<Thread> runOrdered(OrderedForm form, RaceConditionDetector detector, Object total) {
+        Set<Thread> threads = ConcurrentHashMap.newKeySet();
+        int half = ELEMENTS / 2;
+        java.util.concurrent.CountDownLatch firstHalfDone = new java.util.concurrent.CountDownLatch(1);
+        form.run(value -> {
+            if (value == half && commonPoolCanHelp()) {
+                try {
+                    firstHalfDone.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            pause(); // slow leaves, so the pool's threads take some; and time for the hand-over
+        }, value -> {
+            threads.add(Thread.currentThread());
+            detector.recordFieldRead(total, "value");
+            detector.recordFieldWrite(total, "value");
+            if (value == half - 1) {
+                firstHalfDone.countDown();
+            }
+        });
+        return threads;
+    }
+
+    @Test
+    @DisplayName("forEachOrdered actions are ordered one after the other, whichever threads run them")
+    void orderedActionsFollowOneAnother() {
+        installRun();
+        for (Map.Entry<String, OrderedForm> form : orderedForms().entrySet()) {
+            Set<Thread> threads = Set.of();
+            // Which thread runs a leaf is the pool's choice; a few tries cover an unlucky one.
+            for (int attempt = 0; attempt < 10 && threads.size() < 2; attempt++) {
+                RaceConditionDetector detector = new RaceConditionDetector();
+                Object total = new Object();
+
+                threads = runOrdered(form.getValue(), detector, total);
+                detector.recordFieldRead(total, "value");
+
+                assertFalse(detector.analyzeRaceConditions().hasIssues(), form.getKey()
+                        + ".forEachOrdered runs one action at a time, each after the one before it, "
+                        + "so a field only its action touches is never raced; ran on "
+                        + threads.size() + " thread(s)");
+            }
+            assertEquals(commonPoolCanHelp(), threads.size() > 1, form.getKey()
+                    + ": the actions should have run on several threads, or this test observed nothing");
+        }
+    }
+
+    @Test
+    @DisplayName("the same action under forEach is still unordered")
+    void unorderedActionsStillRace() {
+        installRun();
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Object total = new Object();
+        Set<Thread> threads = ConcurrentHashMap.newKeySet();
+
+        AgentConcurrencyUtilHooks.intStreamForEach(IntStream.range(0, ELEMENTS).parallel(), value -> {
+            pause();
+            threads.add(Thread.currentThread());
+            detector.recordFieldRead(total, "value");
+            detector.recordFieldWrite(total, "value");
+        });
+
+        assertEquals(commonPoolCanHelp(), threads.size() > 1,
+                "the common pool should have helped, or this test observed nothing");
+        if (threads.size() > 1) {
+            assertTrue(detector.analyzeRaceConditions().hasIssues(),
+                    "forEach promises no order between its actions");
+        }
     }
 }

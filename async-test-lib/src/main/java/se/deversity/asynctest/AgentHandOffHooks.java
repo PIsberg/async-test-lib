@@ -319,6 +319,28 @@ final class AgentHandOffHooks {
         volatile @Nullable Object composed;
 
         /**
+         * The work behind {@link #composed}, when the function's thread submitted or registered
+         * it: an inner {@code supplyAsync} task or stage completes its future in JDK code, with
+         * no woven {@code complete} to release anything, so what it did reaches a later observer
+         * only through this. {@link Submissions} is per thread, so it is looked up on the thread
+         * that ran the function, and written before {@link #composed}.
+         */
+        volatile @Nullable Handed composedWork;
+
+        /**
+         * Orders the calling thread after the stage {@code work}'s function returned, when it is
+         * a composing stage: the stage completed when that inner one did.
+         */
+        static void followComposed(@Nullable Handed work) {
+            if (work instanceof HandedStage stage) {
+                Object inner = stage.composed;
+                if (inner != null) {
+                    AgentConcurrencyUtilHooks.observed(inner, stage.composedWork);
+                }
+            }
+        }
+
+        /**
          * Takes the registering thread's clock, on that thread.
          *
          * @param source the stage the function follows, {@code null} when that is not known
@@ -354,11 +376,13 @@ final class AgentHandOffHooks {
             } else if (sourceWork != null) {
                 HappensBefore.receive(sourceWork.finished());
             }
+            followComposed(sourceWork);
             if (otherWork instanceof HandedAll all) {
                 all.observed();
             } else if (otherWork != null) {
                 HappensBefore.receive(otherWork.finished());
             }
+            followComposed(otherWork);
             AsyncTestContext lentBefore = AsyncTestContext.lend(registeredIn);
             TelemetryRegistry.taskStarted(token);
             // Inside the loan, so a callback a pool thread runs for the run is the run's.
@@ -414,6 +438,7 @@ final class AgentHandOffHooks {
             try {
                 Object result = ((Function<@Nullable Object, @Nullable Object>) function).apply(value);
                 if (result instanceof CompletableFuture) {
+                    composedWork = Submissions.peek(result);
                     composed = result;
                 }
                 return result;

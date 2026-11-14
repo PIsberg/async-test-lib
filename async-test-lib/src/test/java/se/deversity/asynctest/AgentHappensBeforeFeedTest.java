@@ -1457,6 +1457,64 @@ class AgentHappensBeforeFeedTest {
                 "the box read without the join is ordered by nothing");
     }
 
+    /**
+     * The function of a composed stage returns a future that is itself a submitted task, which
+     * writes a box on a pool thread. The registering thread joins the composed stage and
+     * reads the box. Nothing is released to the inner future by a woven {@code complete}: what
+     * orders the box is the task behind it, which only the thread that ran the function knows.
+     */
+    private static boolean composedTaskReported(boolean joined) throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box inner = new Box();
+        CompletableFuture<Object> source = new CompletableFuture<>();
+        AgentConcurrencyUtilHooks.complete(source, Boolean.TRUE);
+        CompletableFuture<Object> composed = AgentConcurrencyUtilHooks.thenCompose(source,
+                value -> AgentConcurrencyUtilHooks.supplyAsync(() -> {
+                    inner.value = 1;
+                    detector.recordFieldWrite(inner, "value");
+                    return inner;
+                }));
+        // The unwoven join waits without ordering anything as far as the model knows.
+        Object got = joined ? AgentConcurrencyUtilHooks.join(composed) : composed.join();
+        if (got != inner) {
+            throw new AssertionError("the composed stage did not return the inner box");
+        }
+        detector.recordFieldRead(inner, "value");
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a join of a composed stage is ordered after the task its function submitted")
+    void composedTasksPublish() throws Exception {
+        assertFalse(composedTaskReported(true),
+                "the composed stage completed when the inner task did, and the join returned the "
+                        + "box that task wrote: the task's end orders the box before the read");
+        assertTrue(composedTaskReported(false),
+                "the box read without the woven join is ordered by nothing");
+    }
+
+    @Test
+    @DisplayName("a stage following a composed stage is ordered after the task its function submitted")
+    void aStageAfterAComposedTaskIsOrdered() throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box inner = new Box();
+        CompletableFuture<Object> source = new CompletableFuture<>();
+        AgentConcurrencyUtilHooks.complete(source, Boolean.TRUE);
+        CompletableFuture<Object> composed = AgentConcurrencyUtilHooks.thenCompose(source,
+                value -> AgentConcurrencyUtilHooks.supplyAsync(() -> {
+                    inner.value = 1;
+                    detector.recordFieldWrite(inner, "value");
+                    return inner;
+                }));
+        composed.join(); // unwoven: the next stage's function then runs on this thread
+        AgentConcurrencyUtilHooks.thenApply(composed, value -> {
+            detector.recordFieldRead(inner, "value");
+            return value;
+        });
+        assertFalse(detector.analyzeRaceConditions().hasIssues(),
+                "the function ran after the composed stage completed, which is after the inner task ended");
+    }
+
     /** Which executor the task below is given to, and when the input is written. */
     private enum Execution {
         /** A ForkJoinPool, input written before execute. */

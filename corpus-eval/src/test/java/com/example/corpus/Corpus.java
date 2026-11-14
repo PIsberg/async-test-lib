@@ -6614,6 +6614,57 @@ final class Corpus {
                             + "await came back without the latch ever reaching zero",
                     IssueSeverity.CRITICAL),
 
+            // --- An object passed through thenCompose, and state filled by forEachOrdered: the
+            //     inner task's end and the order between the actions reached nobody.
+
+            new RecordingSubject("idiom_thenCompose_innerTaskUpdatesTheResult", JDK,
+                    "java.util.concurrent.CompletableFuture",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a stage builds an object, thenCompose hands it to a second supplyAsync that "
+                            + "updates it, and the body reads it after joining the composed "
+                            + "stage, which completes when that second task does. Reported while "
+                            + "the join received nothing of the task behind the inner future"),
+
+            new RecordingSubject("idiom_thenCompose_twoInnerTasksUpdateTheResult", JDK,
+                    IDIOM_LANE + "Tally39",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same function starting two tasks that both increment the object at "
+                            + "once: nothing orders one task's updates against the other's",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_forEachOrdered_fillsAnArrayList", JDK,
+                    "java.util.stream.Stream",
+                    DetectorType.SHARED_COLLECTIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a parallel stream adds to an ArrayList through forEachOrdered, whose "
+                            + "action for one element happens-before the action for the next, "
+                            + "whichever threads run them. Reported while the actions were "
+                            + "ordered like forEach's"),
+
+            new RecordingSubject("idiom_forEach_fillsAnArrayList", JDK,
+                    "java.util.ArrayList",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same fill through forEach: the pool's threads add to the list at once",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_forEachOrdered_sumsIntoAPlainField", JDK,
+                    "java.util.stream.IntStream",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a parallel stream sums into a plain field through forEachOrdered, one "
+                            + "action after the other"),
+
+            new RecordingSubject("idiom_forEach_sumsIntoAPlainField", JDK,
+                    IDIOM_LANE + "Tally39",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same sum through forEach: read, add and store from several pool "
+                            + "threads at once, losing updates",
+                    IssueSeverity.HIGH),
+
             // --- Elements read by another name than get, peek or iterator (#1294): the reads
             //     the agent did not weave received nothing of what the add published.
 
