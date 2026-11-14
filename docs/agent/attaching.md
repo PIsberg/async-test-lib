@@ -251,6 +251,13 @@ What is rewritten is an explicit table in `CollectionAccessWeaver`: `Map.put/get
 and the `Deque` end-specific offers and takes. Each call becomes a
 call to a hook that records and then performs the original operation, so behaviour is unchanged;
 `CollectionWeavingEndToEndTest` pins that a woven program still computes the same values.
+`EnumMap.put` has a row of its own, because the class narrows the key to `Enum` and a call compiled
+against `EnumMap` carries a descriptor the `Map.put` row does not match.
+
+A static initializer's collection calls are not rewritten, as its field accesses are not under
+`fields=true`. The JVM runs it once, under the class's initialization lock, and no other thread
+reads what it builds until it has returned, so a table it fills cannot race with the reads that
+follow. A method the initializer calls is still woven.
 
 On a `ConcurrentHashMap` a woven `compute`, `computeIfPresent`, `computeIfAbsent` or `merge` holds
 a per-key stand-in for the lock the map takes inside the JDK, so a value mutated inside the function

@@ -5775,6 +5775,38 @@ final class Corpus {
                             + "externally if multiple threads modify it",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_enumMap_putUnderALock", JDK,
+                    "java.util.EnumMap",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread puts into one EnumMap, held as an EnumMap, inside a "
+                            + "synchronized block on it"),
+
+            new RecordingSubject("idiom_enumMap_putByEveryThread", JDK,
+                    "java.util.EnumMap",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same puts with no lock. EnumMap.put takes an Enum key, so its call "
+                            + "site has a descriptor of its own, and before its row a run "
+                            + "recorded the gets and no write",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_staticTable_filledInAStaticInitializer", JDK,
+                    "java.util.ArrayList",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a static list is filled in a static initializer and only read after it. "
+                            + "The initializer runs once under the class's initialization lock, "
+                            + "on the first thread to get there, in the round the others read in"),
+
+            new RecordingSubject("idiom_staticTable_filledByEveryThread", JDK,
+                    "java.util.ArrayList",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same static list with the adds moved out of the initializer into the "
+                            + "body, where every thread runs them",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_synchronizedList_addedToByEveryThread", JDK,
                     "java.util.Collections",
                     DetectorType.SHARED_COLLECTIONS, Contract.THREAD_SAFE,

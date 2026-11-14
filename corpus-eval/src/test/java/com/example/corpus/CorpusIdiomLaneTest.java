@@ -1325,6 +1325,64 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    private static final Rounds<java.util.EnumMap<TimeUnit, Integer>> LOCKED_ENUM_MAPS =
+            new Rounds<>(() -> new java.util.EnumMap<>(TimeUnit.class));
+    private static final Rounds<java.util.EnumMap<TimeUnit, Integer>> PLAIN_ENUM_MAPS =
+            new Rounds<>(() -> new java.util.EnumMap<>(TimeUnit.class));
+
+    /** Every thread puts into one EnumMap, held as an EnumMap, under its monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_enumMap_putUnderALock() {
+        correct(() -> {
+            Turn<java.util.EnumMap<TimeUnit, Integer>> turn = LOCKED_ENUM_MAPS.next();
+            synchronized (turn.shared()) {
+                turn.shared().put(TimeUnit.values()[turn.ticket() % 7], turn.ticket());
+                use(turn.shared().get(TimeUnit.SECONDS) == null ? 0 : 1);
+            }
+        });
+    }
+
+    /** The same puts with no lock. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_enumMap_putByEveryThread() {
+        broken(() -> {
+            Turn<java.util.EnumMap<TimeUnit, Integer>> turn = PLAIN_ENUM_MAPS.next();
+            turn.shared().put(TimeUnit.values()[turn.ticket() % 7], turn.ticket());
+            use(turn.shared().get(TimeUnit.SECONDS) == null ? 0 : 1);
+        });
+    }
+
+    /** A table its static initializer fills; the first body execution to read it runs that. */
+    private static final class InitializedTable {
+        static final List<Integer> ROWS = new ArrayList<>();
+
+        static {
+            for (int i = 0; i < 16; i++) {
+                ROWS.add(i);
+            }
+        }
+    }
+
+    /** The same list with nothing in it until the bodies add. */
+    private static final class UninitializedTable {
+        static final List<Integer> ROWS = new ArrayList<>();
+    }
+
+    /** Every thread reads a static list that a static initializer filled. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_staticTable_filledInAStaticInitializer() {
+        correct(() -> use(InitializedTable.ROWS.get(3)));
+    }
+
+    /** The adds moved out of the initializer into the body, where every thread runs them. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_staticTable_filledByEveryThread() {
+        broken(() -> {
+            UninitializedTable.ROWS.add(3);
+            use(UninitializedTable.ROWS.get(0));
+        });
+    }
+
     private static final Rounds<List<Integer>> SYNCHRONIZED_LISTS =
             new Rounds<>(() -> Collections.synchronizedList(new ArrayList<>()));
     private static final Rounds<List<Integer>> PLAIN_LISTS = new Rounds<>(ArrayList::new);
