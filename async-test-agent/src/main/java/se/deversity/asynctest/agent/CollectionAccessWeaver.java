@@ -342,6 +342,9 @@ final class CollectionAccessWeaver {
 
     private static final List<Entry> ENTRIES = List.of(
             Entry.call(Map.class, "put", "mapPut", Object.class, Object.class),
+            // EnumMap narrows put's key to Enum, so a call compiled against the class carries a
+            // descriptor the row above does not match. Its other methods keep Map's.
+            Entry.call(java.util.EnumMap.class, "put", "enumMapPut", Enum.class, Object.class),
             Entry.call(Map.class, "get", "mapGet", Object.class),
             Entry.call(Map.class, "remove", "mapRemove", Object.class),
             // The conditional two-argument removal, which is a mutation like its sibling (#440).
@@ -1627,7 +1630,7 @@ final class CollectionAccessWeaver {
      * @param hooks the class holding the hook methods, resolved in the weaving class loader
      */
     static List<AsmVisitorWrapper> substitutions(Class<?> hooks) {
-        return List.of(new SubstitutionWrapper(targets(ENTRIES, hooks)));
+        return List.of(new SubstitutionWrapper(targets(ENTRIES, hooks), true));
     }
 
     /**
@@ -2200,7 +2203,12 @@ final class CollectionAccessWeaver {
     }
 
     /** Applies one table of {@link Target}s to every method of a woven class. */
-    private record SubstitutionWrapper(List<Target> targets) implements AsmVisitorWrapper {
+    private record SubstitutionWrapper(List<Target> targets, boolean sparesTypeInitializer)
+            implements AsmVisitorWrapper {
+
+        SubstitutionWrapper(List<Target> targets) {
+            this(targets, false);
+        }
 
         /**
          * Asks for {@code COMPUTE_MAXS}, never {@code COMPUTE_FRAMES}: a synchronized-method
@@ -2253,6 +2261,15 @@ final class CollectionAccessWeaver {
                                                      String signature, String[] exceptions) {
                         MethodVisitor delegate =
                                 super.visitMethod(access, name, descriptor, signature, exceptions);
+                        // The collection table leaves a type initializer alone, as
+                        // FieldAccessWeaver does: it runs once, under the class's initialization
+                        // lock, before another thread can read what it built, so a table it
+                        // fills cannot race with the reads that follow. Calls in a method the
+                        // initializer calls are still substituted.
+                        if (delegate == null
+                                || sparesTypeInitializer && "<clinit>".equals(name)) {
+                            return delegate;
+                        }
                         return new SubstitutingMethodVisitor(delegate, targets, typePool, assignable,
                                 access, name, instrumentedType.getInternalName(),
                                 Collections.emptySet(), null);

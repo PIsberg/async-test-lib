@@ -1077,6 +1077,21 @@ public final class AgentCollectionHooks {
         return receiver.put(key, value);
     }
 
+    /**
+     * Weaves {@code EnumMap.put}, whose key is narrowed to {@code Enum}: the same record as
+     * {@link #mapPut}.
+     *
+     * @param receiver the map
+     * @param key      the constant the value is stored under
+     * @param value    the value to store, or {@code null}
+     * @return the value the constant mapped to before, or {@code null} for none
+     * @since 1.14.3
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public static @Nullable Object enumMapPut(java.util.EnumMap receiver, Enum key, Object value) { // NOPMD LooseCoupling - the hook takes the class that declares the narrowed put
+        return mapPut((Map<Object, Object>) receiver, key, value);
+    }
+
     /** Weaves {@code Map.get}. @param receiver the map @param key the key @return the mapped value */
     public static @Nullable Object mapGet(Map<Object, Object> receiver, Object key) {
         ControlledSchedule.point();

@@ -1,8 +1,10 @@
 package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.DelegatedStateBean;
+import com.example.agentfixture.EnumKeyedStateBean;
 import com.example.agentfixture.GuardedDelegatedStateBean;
 import com.example.agentfixture.LockGuardedStateBean;
+import com.example.agentfixture.StaticTableBean;
 import com.example.agentfixture.SuperCallingMapBean;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.AfterAll;
@@ -42,6 +44,7 @@ class CollectionWeavingEndToEndTest {
     private final DelegatedStateBean unguarded = new DelegatedStateBean();
     private final GuardedDelegatedStateBean guarded = new GuardedDelegatedStateBean();
     private final LockGuardedStateBean lockGuarded = new LockGuardedStateBean();
+    private final EnumKeyedStateBean enumKeyed = new EnumKeyedStateBean();
 
     @BeforeAll
     static void attachWithCollectionWeaving() {
@@ -72,6 +75,17 @@ class CollectionWeavingEndToEndTest {
     @AsyncTest(threads = 4, invocations = 25, detectAll = true)
     void lockGuardedDelegatedState() {
         lockGuarded.record("key");
+    }
+
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
+    void unguardedEnumKeyedState() {
+        enumKeyed.record(java.util.concurrent.TimeUnit.SECONDS);
+    }
+
+    /** The first thread to get here runs the initializer, in the round the others read in. */
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
+    void tableFilledByAStaticInitializer() {
+        assertEquals("name-3", StaticTableBean.name(3));
     }
 
     @Test
@@ -143,6 +157,22 @@ class CollectionWeavingEndToEndTest {
                             + "CollectionAccessWeaver.lockSubstitutions is still applied and that "
                             + "AgentLockHooks still records after acquiring. Findings were: "
                             + findings.violations());
+            assertTrue(namesCollection("(EnumMap)"),
+                    "EnumKeyedStateBean reads and writes an EnumMap from four threads with no "
+                            + "lock. EnumMap.put takes an Enum key, so its call site carries a "
+                            + "descriptor Map.put's row does not match: check that "
+                            + "CollectionAccessWeaver still has a row for EnumMap.put. Without it "
+                            + "the gets are recorded and no write is, and a map nobody wrote has "
+                            + "nothing to report. Findings were: " + findings.violations());
+            // Every report's advice mentions ArrayList; "(ArrayList)" is the finding's own type.
+            assertFalse(namesCollection("(ArrayList)"),
+                    "StaticTableBean fills its list in a static initializer and only reads it "
+                            + "afterwards. The JVM runs an initializer once, under the class's "
+                            + "initialization lock, before any other thread can read the list, so "
+                            + "the adds cannot race with the gets: check that "
+                            + "CollectionAccessWeaver still leaves the collection calls of a "
+                            + "<clinit> alone, as FieldAccessWeaver does its field accesses. "
+                            + "Findings were: " + findings.violations());
         } finally {
             findings.close();
         }

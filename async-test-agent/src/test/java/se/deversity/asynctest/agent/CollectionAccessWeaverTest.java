@@ -39,6 +39,12 @@ class CollectionAccessWeaverTest {
             return receiver.put(key, value);
         }
 
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        public static Object enumMapPut(java.util.EnumMap receiver, Enum key, Object value) {
+            SEEN.add(receiver);
+            return receiver.put(key, value);
+        }
+
         public static Object mapGet(Map<Object, Object> receiver, Object key) {
             SEEN.add(receiver);
             return receiver.get(key);

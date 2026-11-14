@@ -29,6 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the fix the same class finishes in 87 to 101 s. Each check now reads only its own
   receiver's records. No finding changes: the checks skipped every other receiver's records
   already.
+- **Unguarded puts into an `EnumMap` were not seen, and a table filled by a static initializer
+  was reported.** `EnumMap.put` narrows its key to `Enum`, so a call compiled against `EnumMap`
+  matched no `Map.put` row under `collections=true`: a run recorded the gets and no write, and a
+  map nobody wrote had nothing to report. It has a row of its own now. In the other direction, the
+  collection calls of a `<clinit>` were woven, so a static `ArrayList` filled in its initializer
+  and only read afterwards was reported as shared and mutated. The JVM runs an initializer once,
+  under the class's initialization lock, before another thread can read the list, so the
+  collection weaving now leaves it alone, as field weaving always has. Two of the six wrong answers
+  the previous entry left behind. Test first in `CollectionWeavingEndToEndTest`: each assertion
+  red with its half of the change removed. Corpus idiom pairs pin both, and their twins (the same
+  puts with no lock, the same adds moved into the body) still fire.
 - **Four false positives on correct code that learns a task has finished without `get` or
   `join` on its own future.** A caller that polled `Future.isDone()` until it answered `true`, or
   joined `CompletableFuture.anyOf(...)` or a `copy()`, and then read what the task wrote, was
