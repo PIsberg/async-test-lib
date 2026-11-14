@@ -1515,6 +1515,99 @@ class AgentHappensBeforeFeedTest {
                 "the function ran after the composed stage completed, which is after the inner task ended");
     }
 
+    /** How the caller learns that the task which wrote the box has finished. */
+    private enum Learned {
+        /** A woven join of anyOf over the task's future. */
+        ANY_OF,
+        /** A woven join of a copy of the task's future. */
+        COPY,
+        /** A woven isDone on the task's CompletableFuture that returned true. */
+        IS_DONE,
+        /** A woven isDone on an executor's Future that returned true. */
+        IS_DONE_ON_A_POOL,
+        /** A woven isDone that returned false: the caller then waits unwoven. */
+        IS_DONE_TOO_EARLY
+    }
+
+    /** A task writes a box, the caller learns it finished in the given way, then reads the box. */
+    private static boolean learnedCompletionReported(Learned how) throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box box = new Box();
+        Runnable write = () -> {
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+        };
+        switch (how) {
+            case ANY_OF -> {
+                CompletableFuture<Void> task = AgentConcurrencyUtilHooks.runAsync(write);
+                CompletableFuture<Object> any = AgentConcurrencyUtilHooks.anyOf(
+                        new CompletableFuture<?>[] {task, new CompletableFuture<>()});
+                AgentConcurrencyUtilHooks.join(any);
+            }
+            case COPY -> {
+                CompletableFuture<Void> task = AgentConcurrencyUtilHooks.runAsync(write);
+                AgentConcurrencyUtilHooks.join(erased(AgentConcurrencyUtilHooks.copy(erased(task))));
+            }
+            case IS_DONE -> {
+                CompletableFuture<Void> task = AgentConcurrencyUtilHooks.runAsync(write);
+                task.join(); // unwoven: it waits, and orders nothing as far as the model knows
+                assertTrue(AgentConcurrencyUtilHooks.isDone(task));
+            }
+            case IS_DONE_ON_A_POOL -> {
+                ExecutorService pool = AgentConcurrencyUtilHooks.newFixedThreadPool(1);
+                try {
+                    Future<?> task = AgentConcurrencyUtilHooks.submit(pool, write);
+                    while (!AgentConcurrencyUtilHooks.isDone(task)) {
+                        Thread.onSpinWait();
+                    }
+                } finally {
+                    pool.shutdownNow();
+                }
+            }
+            case IS_DONE_TOO_EARLY -> {
+                CountDownLatch asked = new CountDownLatch(1);
+                CompletableFuture<Void> task = AgentConcurrencyUtilHooks.runAsync(() -> {
+                    try {
+                        asked.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    write.run();
+                });
+                assertFalse(AgentConcurrencyUtilHooks.isDone(task));
+                asked.countDown();
+                task.join(); // unwoven
+            }
+        }
+        detector.recordFieldRead(box, "value");
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a join on anyOf orders the caller after the child that had completed")
+    void anyOfPublishesTheChildThatCompleted() throws Exception {
+        assertFalse(learnedCompletionReported(Learned.ANY_OF),
+                "anyOf completed because the task's future did, and the other never completes");
+    }
+
+    @Test
+    @DisplayName("a join on a copy orders the caller after the future it copies")
+    void aCopyPublishesItsSource() throws Exception {
+        assertFalse(learnedCompletionReported(Learned.COPY),
+                "a copy completes when its source does, so a join on it observed the task");
+    }
+
+    @Test
+    @DisplayName("an isDone that returned true orders the caller after the task")
+    void isDoneThatReturnedTruePublishes() throws Exception {
+        assertFalse(learnedCompletionReported(Learned.IS_DONE),
+                "isDone read the completion, which is the read a get would have made");
+        assertFalse(learnedCompletionReported(Learned.IS_DONE_ON_A_POOL),
+                "the same for an executor's future, polled until it is done");
+        assertTrue(learnedCompletionReported(Learned.IS_DONE_TOO_EARLY),
+                "an isDone that returned false observed nothing, and nothing woven followed it");
+    }
+
     /** Which executor the task below is given to, and when the input is written. */
     private enum Execution {
         /** A ForkJoinPool, input written before execute. */

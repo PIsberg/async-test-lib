@@ -29,6 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the fix the same class finishes in 87 to 101 s. Each check now reads only its own
   receiver's records. No finding changes: the checks skipped every other receiver's records
   already.
+- **Four false positives on correct code that learns a task has finished without `get` or
+  `join` on its own future.** A caller that polled `Future.isDone()` until it answered `true`, or
+  joined `CompletableFuture.anyOf(...)` or a `copy()`, and then read what the task wrote, was
+  reported by `AtomicityValidator`: none of the three calls was woven, so nothing ordered the read
+  after the task. An `isDone` that answered `true` now orders its caller as a returned `get`
+  does, a join of a copy observes the future copied, and a join of an `anyOf` observes the
+  children that are done when it returns. An `isDone` that answered `false` still orders nothing.
+  Found by probing 56 bodies through the corpus idioms lane, where these were four of ten wrong
+  answers; the other six are not fixed here. Test first in `AgentHappensBeforeFeedTest` (three
+  tests, red with each hook made a pass-through), with three corpus idiom pairs whose broken
+  twins still fire.
 - **Two false positives on correct code: an object passed through `thenCompose`, and state filled
   by `forEachOrdered`.** Found by probing 63 correct and broken bodies through the corpus idioms
   lane; these two were the only wrong answers.

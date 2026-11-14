@@ -3518,6 +3518,53 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * Weaves {@code CompletableFuture.anyOf}: a join on what it returns observes the children
+     * that have completed by then, the one that completed it among them (see {@link HandedAll}).
+     *
+     * @param children the futures, the first of which to complete completes the result
+     * @return the future that completes when one of them has
+     * @since 1.14.3
+     */
+    public static CompletableFuture<Object> anyOf(CompletableFuture<?>[] children) {
+        ControlledSchedule.point();
+        CompletableFuture<Object> any = CompletableFuture.anyOf(children);
+        return Submissions.remember(any, new HandedAll(children, true));
+    }
+
+    /**
+     * Weaves {@code CompletableFuture.copy()}: the copy completes when the receiver does, so a
+     * join on it observes the receiver and the work behind it.
+     *
+     * @param receiver the future copied
+     * @return a new future that completes with the receiver's result, remembered on this thread
+     * @since 1.14.3
+     */
+    public static CompletableFuture<Object> copy(CompletableFuture<Object> receiver) {
+        ControlledSchedule.point();
+        return Submissions.remember(receiver.copy(),
+                new HandedAll(new CompletableFuture<?>[] {receiver}));
+    }
+
+    /**
+     * Weaves {@code Future.isDone()}: a {@code true} answer read the completion, the read a get
+     * would have made, so the caller is ordered after the task as after a returned get. A
+     * {@code false} answer orders nothing. The work stays remembered for a later get.
+     *
+     * @param receiver the future asked
+     * @return whether it has completed
+     * @since 1.14.3
+     */
+    public static boolean isDone(Future<?> receiver) {
+        // A point: a loop polling this under a controlled schedule has to let the task run.
+        ControlledSchedule.point();
+        boolean done = receiver.isDone();
+        if (done) {
+            observed(receiver, Submissions.peek(receiver));
+        }
+        return done;
+    }
+
+    /**
      * Weaves {@code CompletableFuture.runAsync(Runnable)}, as {@link #supplyAsync(Supplier)}.
      *
      * @param task the work to run asynchronously, not null; it is wrapped, so its start is ordered

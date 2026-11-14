@@ -43,7 +43,10 @@ final class AgentHandOffHooks {
 
     /**
      * The futures an {@code allOf} waits for, and the work this thread knew to be behind each. It
-     * completes only once they all have, so observing it observes every one of them. Taken when
+     * completes only once they all have, so observing it observes every one of them. An
+     * {@code anyOf} completes once one of them has, so observing it observes the ones that are
+     * done when the observer looks: reading that a child is done is the read a join of it would
+     * make, whichever child completed the {@code anyOf}. Taken when
      * {@code allOf} is called, because a thread remembers only its last {@link Submissions#MAX_KEPT}
      * submissions: a child submitted further back than that, like one this thread did not submit, is
      * observed only through what a woven {@code complete} released to it.
@@ -52,8 +55,19 @@ final class AgentHandOffHooks {
 
         private final CompletableFuture<?>[] children;
         private final @Nullable Handed[] work;
+        private final boolean onlyTheDone;
 
         HandedAll(CompletableFuture<?>[] children) {
+            this(children, false);
+        }
+
+        /**
+         * @param children    the futures waited for
+         * @param onlyTheDone whether observing this observes only the children already done, as
+         *                    for an {@code anyOf}
+         */
+        HandedAll(CompletableFuture<?>[] children, boolean onlyTheDone) {
+            this.onlyTheDone = onlyTheDone;
             this.children = children.clone();
             this.work = new Handed[children.length];
             for (int i = 0; i < children.length; i++) {
@@ -63,7 +77,9 @@ final class AgentHandOffHooks {
 
         void observed() {
             for (int i = 0; i < children.length; i++) {
-                AgentConcurrencyUtilHooks.observed(children[i], work[i]);
+                if (!onlyTheDone || children[i].isDone()) {
+                    AgentConcurrencyUtilHooks.observed(children[i], work[i]);
+                }
             }
         }
     }
