@@ -377,4 +377,31 @@ public class AtomicityValidatorTest {
                         + "under either confirms nothing. If this goes silent the per-round write "
                         + "lockset is excusing without looking.");
     }
+
+    /**
+     * A body that builds many small objects, a parallel stream over a list of them or a
+     * {@code ConcurrentHashMap.forEach}, leaves one field with tens of thousands of receivers.
+     * The per-instance excuses each walked the field's whole history for every receiver, so the
+     * analysis of 60,000 confined objects took minutes of CPU after a run that had long finished,
+     * past any {@code timeoutMs}, with nothing to report at the end of it.
+     */
+    @Test
+    void analysisTimeGrowsWithTheRecordsNotWithRecordsTimesReceivers() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        int receivers = 60_000;
+        Box[] boxes = new Box[receivers];
+        for (int i = 0; i < receivers; i++) {
+            boxes[i] = new Box();
+            ownerAwareIncrementUnguarded(validator, boxes[i]).run();
+        }
+
+        AtomicityValidator.AtomicityReport report = assertTimeoutPreemptively(
+                java.time.Duration.ofSeconds(20), validator::analyzeAtomicity,
+                "analysing " + receivers + " objects one thread each touched twice should take "
+                        + "milliseconds; a per-receiver walk of the whole history takes minutes");
+
+        assertFalse(report.hasIssues(), "one thread touched every object, so nothing is raced");
+        assertEquals(receivers, boxes.length);
+    }
 }
