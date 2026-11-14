@@ -3536,7 +3536,7 @@ public final class AgentConcurrencyUtilHooks {
      * join on it observes the receiver and the work behind it.
      *
      * @param receiver the future copied
-     * @return the copy
+     * @return a new future that completes with the receiver's result, remembered on this thread
      * @since 1.14.3
      */
     public static CompletableFuture<Object> copy(CompletableFuture<Object> receiver) {
