@@ -4509,6 +4509,32 @@ public final class AgentConcurrencyUtilHooks {
             element(body);
         }
 
+        /** The clock of the thread that ran the latest {@link #ordered} action, taken as it ended. */
+        private volatile HappensBefore.@Nullable Stamp lastOrdered;
+
+        /**
+         * Runs {@code body}, a {@code forEachOrdered} action, as an element ordered after the
+         * action before it.
+         *
+         * <p>{@code forEachOrdered} promises that the action for one element happens-before the
+         * action for the next, whichever threads run them; the hand-over between those threads
+         * is JDK code the agent does not see. Each action receives the clock its predecessor
+         * published, so state only the actions touch, an {@code ArrayList} they fill, is not
+         * read as raced. Nothing else is ordered: a {@code map} lambda upstream still runs
+         * unordered against its siblings and against the actions.
+         */
+        void ordered(Runnable body) {
+            HappensBefore.Stamp before = lastOrdered;
+            if (before != null) {
+                HappensBefore.receive(before);
+            }
+            try {
+                element(body);
+            } finally {
+                lastOrdered = HappensBefore.handOff();
+            }
+        }
+
         /** Orders the caller after every helper; the operation has returned. */
         void joined() {
             helpers.values().forEach(HappensBefore::receive);
@@ -4715,7 +4741,8 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
-     * Weaves {@code Stream.forEachOrdered}, as {@link #streamForEach}.
+     * Weaves {@code Stream.forEachOrdered}, as {@link #streamForEach}, with each action ordered
+     * after the one before it ({@link ParallelForEach#ordered}).
      *
      * @param receiver the stream
      * @param action   what to run for each element, in encounter order
@@ -4724,7 +4751,7 @@ public final class AgentConcurrencyUtilHooks {
     public static void streamForEachOrdered(Stream<Object> receiver, Consumer<Object> action) {
         parallelTerminal(receiver, operation -> {
             receiver.forEachOrdered(operation == null ? action
-                    : value -> operation.element(() -> action.accept(value)));
+                    : value -> operation.ordered(() -> action.accept(value)));
             return null;
         });
     }
@@ -6317,7 +6344,7 @@ public final class AgentConcurrencyUtilHooks {
     public static void intStreamForEachOrdered(IntStream receiver, IntConsumer action) {
         parallelTerminal(receiver, operation -> {
             receiver.forEachOrdered(operation == null ? action
-                    : value -> operation.element(() -> action.accept(value)));
+                    : value -> operation.ordered(() -> action.accept(value)));
             return null;
         });
     }
@@ -6617,7 +6644,7 @@ public final class AgentConcurrencyUtilHooks {
     public static void longStreamForEachOrdered(LongStream receiver, LongConsumer action) {
         parallelTerminal(receiver, operation -> {
             receiver.forEachOrdered(operation == null ? action
-                    : value -> operation.element(() -> action.accept(value)));
+                    : value -> operation.ordered(() -> action.accept(value)));
             return null;
         });
     }
@@ -6917,7 +6944,7 @@ public final class AgentConcurrencyUtilHooks {
     public static void doubleStreamForEachOrdered(DoubleStream receiver, DoubleConsumer action) {
         parallelTerminal(receiver, operation -> {
             receiver.forEachOrdered(operation == null ? action
-                    : value -> operation.element(() -> action.accept(value)));
+                    : value -> operation.ordered(() -> action.accept(value)));
             return null;
         });
     }
@@ -7665,11 +7692,9 @@ public final class AgentConcurrencyUtilHooks {
         if (handed != null) {
             HappensBefore.receive(handed.finished());
         }
-        if (handed instanceof HandedStage stage && stage.composed != null) {
-            // A composed stage completes when the stage its function returned does, so what was
-            // released to that one is observed too (#741).
-            HappensBefore.acquire(stage.composed);
-        }
+        // A composed stage completes when the stage its function returned does, so what was
+        // released to that one (#741), and what the work behind it did, is observed too.
+        HandedStage.followComposed(handed);
     }
 
     /** Ids for the pooled tasks the run hands over, one per task execution (#995). */

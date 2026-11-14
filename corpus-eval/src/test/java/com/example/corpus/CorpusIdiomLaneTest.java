@@ -3753,6 +3753,98 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 39. An object passed through thenCompose, and state filled by forEachOrdered ----------
+
+    /** A plain counter with nothing guarding it. */
+    private static final class Tally39 {
+        int n;
+    }
+
+    /**
+     * The first stage builds a tally, the function hands it to a second async task that updates
+     * it, and the body reads it after joining the composed stage: one writer at a time, each
+     * after the one before.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_thenCompose_innerTaskUpdatesTheResult() {
+        correct(() -> {
+            Tally39 tally = CompletableFuture.supplyAsync(() -> {
+                Tally39 built = new Tally39();
+                built.n = 1;
+                return built;
+            }).thenCompose(built -> CompletableFuture.supplyAsync(() -> {
+                built.n++;
+                return built;
+            })).join();
+            use(tally.n);
+        });
+    }
+
+    /** The same function starting two tasks that both update the tally at once. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_thenCompose_twoInnerTasksUpdateTheResult() {
+        broken(() -> {
+            Tally39 tally = CompletableFuture.supplyAsync(() -> {
+                Tally39 built = new Tally39();
+                built.n = 1;
+                return built;
+            }).thenCompose(built -> {
+                CompletableFuture<Void> first = CompletableFuture.runAsync(() -> {
+                    for (int i = 0; i < 200; i++) {
+                        built.n++;
+                    }
+                });
+                CompletableFuture<Void> second = CompletableFuture.runAsync(() -> {
+                    for (int i = 0; i < 200; i++) {
+                        built.n++;
+                    }
+                });
+                return first.thenCombine(second, (a, b) -> built);
+            }).join();
+            use(tally.n);
+        });
+    }
+
+    /** A parallel stream fills an ArrayList through forEachOrdered, which runs one action at a time. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_forEachOrdered_fillsAnArrayList() {
+        correct(() -> {
+            List<Integer> out = new ArrayList<>();
+            IntStream.range(0, 64).parallel().boxed().forEachOrdered(out::add);
+            use(out.size());
+        });
+    }
+
+    /** The same fill through forEach, whose actions run at once on the pool's threads. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_forEach_fillsAnArrayList() {
+        broken(() -> {
+            List<Integer> out = new ArrayList<>();
+            IntStream.range(0, 64).parallel().boxed().forEach(out::add);
+            use(out.size());
+        });
+    }
+
+    /** A parallel stream sums into a plain field through forEachOrdered. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_forEachOrdered_sumsIntoAPlainField() {
+        correct(() -> {
+            Tally39 tally = new Tally39();
+            IntStream.range(0, 64).parallel().forEachOrdered(value -> tally.n += value);
+            use(tally.n);
+        });
+    }
+
+    /** The same sum through forEach. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_forEach_sumsIntoAPlainField() {
+        broken(() -> {
+            Tally39 tally = new Tally39();
+            IntStream.range(0, 64).parallel().forEach(value -> tally.n += value);
+            use(tally.n);
+        });
+    }
+
     // --- 35. Plain data published by an AtomicBoolean flag (#1315) ----------------------------
 
     private static final class FlaggedMailbox {

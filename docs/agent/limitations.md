@@ -49,7 +49,9 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   `Stream`, `IntStream`, `LongStream` or `DoubleStream`, its `flatMap`, `mapMulti`, `takeWhile`,
   `dropWhile` and `sorted` comparator, and the lambdas of its woven terminal operations (`forEach`,
   `forEachOrdered`, `collect` and a `Collector`'s own supplier, accumulator and combiner, `reduce`,
-  `min`, `max`, the matches; #1156, #1172). A pipeline stays followed across every `mapTo*`,
+  `min`, `max`, the matches; #1156, #1172). The actions of one `forEachOrdered` are ordered each
+  after the one before it, as the JDK promises, so a list or a field only they touch is not read
+  as raced; no other lambda of a pipeline is ordered against its siblings. A pipeline stays followed across every `mapTo*`,
   `mapMultiTo*`, `mapToObj`, `boxed`, `as*Stream`, `sorted`, `distinct`, `limit`, `skip`,
   `parallel()`, `sequential()`, `unordered()` and `onClose`. A pipeline ended by `iterator()` lends its
   lambdas the run inside each `hasNext` and `next`, and orders the caller after them when the call
