@@ -6072,6 +6072,50 @@ final class Corpus {
                             + "run whose tasks all land on one thread has nothing to report (#1158)",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_isDone_polledUntilTheTaskFinished", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a task increments, the caller polls isDone until it answers true and then "
+                            + "increments too: the poll read the completion, as a get would"),
+
+            new RecordingSubject("idiom_isDone_askedOnceWhileTheTaskRuns", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the caller asks isDone once, is told false and increments anyway while the "
+                            + "task, held until then, increments too. An answer of false orders nothing",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_anyOf_incrementAfterTheJoin", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a task increments and the caller increments after joining an anyOf that only "
+                            + "that task can complete"),
+
+            new RecordingSubject("idiom_anyOf_completedByAnotherChild", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the anyOf has a second child that is already complete, so the join returns "
+                            + "while the task, held until then, has still to increment",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_copy_incrementAfterTheJoin", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a task increments and the caller increments after joining a copy of its future"),
+
+            new RecordingSubject("idiom_copy_ofAnotherFuture", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the caller joins a copy of a future that is not the task's, so the join says "
+                            + "nothing about the task, held until then, which has still to increment",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_synchronizedList_containsThenAddUnderItsMonitor", JDK,
                     "java.util.Collections",
                     DetectorType.SYNCHRONIZED_COLLECTION_ITERATION, Contract.THREAD_SAFE,

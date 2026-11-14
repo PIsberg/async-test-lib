@@ -922,6 +922,8 @@ final class CollectionAccessWeaver {
             Entry.call(FutureTask.class, "run", "futureTaskRun"),
             Entry.call(Future.class, "get", "get"),
             Entry.call(Future.class, "get", "get", long.class, TimeUnit.class),
+            // A poll that answered true read the completion, as a get would have.
+            Entry.call(Future.class, "isDone", "isDone"),
             Entry.call(CompletionStage.class, "thenApply", "thenApply", Function.class),
             Entry.call(CompletionStage.class, "thenApplyAsync", "thenApplyAsync", Function.class),
             Entry.call(CompletionStage.class, "thenApplyAsync", "thenApplyAsync",
@@ -1003,6 +1005,10 @@ final class CollectionAccessWeaver {
                     Executor.class).whenResultDiscarded("asyncResultDiscarded"),
             // A join on allOf orders the caller after every child, and nothing else says so.
             Entry.staticCall(CompletableFuture.class, "allOf", "allOf", CompletableFuture[].class),
+            // A join on anyOf orders the caller after the children that are done by then, and
+            // one on a copy after the future copied.
+            Entry.staticCall(CompletableFuture.class, "anyOf", "anyOf", CompletableFuture[].class),
+            Entry.call(CompletableFuture.class, "copy", "copy"),
             Entry.staticCall(CompletableFuture.class, "runAsync", "runAsync", Runnable.class)
                     .whenResultDiscarded("asyncResultDiscarded"),
             Entry.staticCall(CompletableFuture.class, "runAsync", "runAsync", Runnable.class,

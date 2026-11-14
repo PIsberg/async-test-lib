@@ -1987,6 +1987,101 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    /** A task increments; the caller polls isDone until it is told true, then increments too. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_isDone_polledUntilTheTaskFinished() {
+        correct(() -> {
+            Ledger ledger = new Ledger();
+            CompletableFuture<Void> task = CompletableFuture.runAsync(() -> ledger.balance++);
+            while (!task.isDone()) {
+                Thread.onSpinWait();
+            }
+            ledger.balance++;
+            use(ledger.balance);
+        });
+    }
+
+    /**
+     * The caller asks once, is told false, and increments anyway. The task is held until the caller
+     * has asked, so the answer is always false and the two increments always overlap.
+     */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_isDone_askedOnceWhileTheTaskRuns() {
+        broken(() -> {
+            Ledger ledger = new Ledger();
+            CompletableFuture<Void> task = heldIncrement(ledger);
+            boolean done = task.isDone();
+            ledger.tasksStarted.incrementAndGet();
+            ledger.balance++;
+            task.join();
+            use(done ? 1 : 0);
+        });
+    }
+
+    /** A task increments; the caller increments after joining an anyOf only that task completes. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_anyOf_incrementAfterTheJoin() {
+        correct(() -> {
+            Ledger ledger = new Ledger();
+            CompletableFuture<Void> task = CompletableFuture.runAsync(() -> ledger.balance++);
+            CompletableFuture<Void> other = new CompletableFuture<>();
+            CompletableFuture.anyOf(task, other).join();
+            other.complete(null); // only after the join, so the task is what completed the anyOf
+            ledger.balance++;
+            use(ledger.balance);
+        });
+    }
+
+    /** The task held until the caller has stopped waiting, so its increment overlaps the caller's. */
+    private static CompletableFuture<Void> heldIncrement(Ledger ledger) {
+        return CompletableFuture.runAsync(() -> {
+            for (int spins = 0; ledger.tasksStarted.get() == 0 && spins < SPIN_LIMIT; spins++) {
+                Thread.onSpinWait();
+            }
+            ledger.balance++;
+        });
+    }
+
+    /** The anyOf is completed by a child that was done already, not by the task. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_anyOf_completedByAnotherChild() {
+        broken(() -> {
+            Ledger ledger = new Ledger();
+            CompletableFuture<Void> task = heldIncrement(ledger);
+            CompletableFuture.anyOf(task, CompletableFuture.completedFuture(null)).join();
+            ledger.tasksStarted.incrementAndGet();
+            ledger.balance++;
+            task.join();
+            use(ledger.balance);
+        });
+    }
+
+    /** A task increments; the caller increments after joining a copy of the task's future. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_copy_incrementAfterTheJoin() {
+        correct(() -> {
+            Ledger ledger = new Ledger();
+            CompletableFuture<Void> task = CompletableFuture.runAsync(() -> ledger.balance++);
+            task.copy().join();
+            ledger.balance++;
+            use(ledger.balance);
+        });
+    }
+
+    /** The copy joined is of a future that is not the task's. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_copy_ofAnotherFuture() {
+        broken(() -> {
+            Ledger ledger = new Ledger();
+            CompletableFuture<Void> task = heldIncrement(ledger);
+            CompletableFuture.<Void>completedFuture(null).copy().join();
+            ledger.tasksStarted.incrementAndGet();
+            ledger.balance++;
+            task.join();
+            use(ledger.balance);
+        });
+    }
+
     private static final Rounds<List<Integer>> MONITORED_MEMBERS =
             new Rounds<>(() -> Collections.synchronizedList(new ArrayList<>()));
     private static final Rounds<List<Integer>> RACED_MEMBERS =

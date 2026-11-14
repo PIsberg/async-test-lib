@@ -671,6 +671,20 @@ class DiscardedOfferWeavingTest {
             return java.util.concurrent.CompletableFuture.allOf(children);
         }
 
+        public static java.util.concurrent.CompletableFuture<Object> anyOf(
+                java.util.concurrent.CompletableFuture<?>[] children) {
+            return java.util.concurrent.CompletableFuture.anyOf(children);
+        }
+
+        public static java.util.concurrent.CompletableFuture<Object> copy(
+                java.util.concurrent.CompletableFuture<Object> receiver) {
+            return receiver.copy();
+        }
+
+        public static boolean isDone(java.util.concurrent.Future<?> receiver) {
+            return receiver.isDone();
+        }
+
         public static java.util.List<java.util.concurrent.Future<Object>> invokeAll(
                 java.util.concurrent.ExecutorService receiver,
                 java.util.Collection<? extends java.util.concurrent.Callable<Object>> tasks)
