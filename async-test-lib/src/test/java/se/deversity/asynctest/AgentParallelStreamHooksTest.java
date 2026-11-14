@@ -1089,29 +1089,64 @@ class AgentParallelStreamHooksTest {
 
     // --- forEachOrdered: one action happens-before the next, on whichever threads they run -----
 
-    /** One of the four {@code forEachOrdered} forms, given what to run for each element. */
+    /**
+     * One of the four {@code forEachOrdered} forms over 0 to {@link #ELEMENTS}, given an unwoven
+     * upstream stage and the action, each told which element it runs for.
+     */
     private interface OrderedForm {
-        void run(Runnable action);
+        void run(java.util.function.IntConsumer upstream, java.util.function.IntConsumer action);
+    }
+
+    private static Map<String, OrderedForm> orderedForms() {
+        Map<String, OrderedForm> forms = new java.util.LinkedHashMap<>();
+        forms.put("Stream", (upstream, action) -> AgentConcurrencyUtilHooks.streamForEachOrdered(
+                numbers().peek(value -> upstream.accept((Integer) value)),
+                value -> action.accept((Integer) value)));
+        forms.put("IntStream", (upstream, action) -> AgentConcurrencyUtilHooks.intStreamForEachOrdered(
+                IntStream.range(0, ELEMENTS).parallel().peek(upstream), action));
+        forms.put("LongStream", (upstream, action) -> AgentConcurrencyUtilHooks.longStreamForEachOrdered(
+                java.util.stream.LongStream.range(0, ELEMENTS).parallel().peek(value -> upstream.accept((int) value)),
+                value -> action.accept((int) value)));
+        forms.put("DoubleStream", (upstream, action) -> AgentConcurrencyUtilHooks.doubleStreamForEachOrdered(
+                IntStream.range(0, ELEMENTS).parallel().asDoubleStream().peek(value -> upstream.accept((int) value)),
+                value -> action.accept((int) value)));
+        return forms;
     }
 
     /**
-     * The four forms, each behind a slow unwoven stage: a leaf's thread runs the action for its
-     * elements once the leaves before it are done, so slow leaves are what spreads the actions
-     * over several threads. With a slow action and fast leaves the caller runs them all.
+     * Runs one form with the second half of the stream held back until the first half's last
+     * action has run, and returns the threads that ran an action.
+     *
+     * <p>A leaf's thread runs the actions for its elements only when it finishes its upstream
+     * work after the leaf before it is done; otherwise the thread that finished that leaf runs
+     * them too, and on a small machine one thread ends up running every action, which observes
+     * nothing. So the thread working on the first element of the second half waits, in the
+     * upstream stage, for the action of the element before it: it is a different thread from the
+     * one running that action, and it then runs its own leaf's actions itself. The wait is
+     * bounded, for a machine where the same thread would have to do both.
      */
-    private static Map<String, OrderedForm> orderedForms() {
-        Map<String, OrderedForm> forms = new java.util.LinkedHashMap<>();
-        forms.put("Stream", action -> AgentConcurrencyUtilHooks.streamForEachOrdered(
-                numbers().peek(value -> pause()), value -> action.run()));
-        forms.put("IntStream", action -> AgentConcurrencyUtilHooks.intStreamForEachOrdered(
-                IntStream.range(0, ELEMENTS).parallel().peek(value -> pause()), value -> action.run()));
-        forms.put("LongStream", action -> AgentConcurrencyUtilHooks.longStreamForEachOrdered(
-                java.util.stream.LongStream.range(0, ELEMENTS).parallel().peek(value -> pause()),
-                value -> action.run()));
-        forms.put("DoubleStream", action -> AgentConcurrencyUtilHooks.doubleStreamForEachOrdered(
-                java.util.stream.DoubleStream.of(new double[ELEMENTS]).parallel().peek(value -> pause()),
-                value -> action.run()));
-        return forms;
+    private static Set<Thread> runOrdered(OrderedForm form, RaceConditionDetector detector, Object total) {
+        Set<Thread> threads = ConcurrentHashMap.newKeySet();
+        int half = ELEMENTS / 2;
+        java.util.concurrent.CountDownLatch firstHalfDone = new java.util.concurrent.CountDownLatch(1);
+        form.run(value -> {
+            if (value == half && commonPoolCanHelp()) {
+                try {
+                    firstHalfDone.await(5, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            pause(); // slow leaves, so the pool's threads take some; and time for the hand-over
+        }, value -> {
+            threads.add(Thread.currentThread());
+            detector.recordFieldRead(total, "value");
+            detector.recordFieldWrite(total, "value");
+            if (value == half - 1) {
+                firstHalfDone.countDown();
+            }
+        });
+        return threads;
     }
 
     @Test
@@ -1119,18 +1154,13 @@ class AgentParallelStreamHooksTest {
     void orderedActionsFollowOneAnother() {
         installRun();
         for (Map.Entry<String, OrderedForm> form : orderedForms().entrySet()) {
-            Set<Thread> threads = ConcurrentHashMap.newKeySet();
-            // Which thread runs an action is the pool's choice; a few tries find a spread.
-            for (int attempt = 0; attempt < 5 && threads.size() < 2; attempt++) {
+            Set<Thread> threads = Set.of();
+            // Which thread runs a leaf is the pool's choice; a few tries cover an unlucky one.
+            for (int attempt = 0; attempt < 10 && threads.size() < 2; attempt++) {
                 RaceConditionDetector detector = new RaceConditionDetector();
                 Object total = new Object();
-                threads.clear();
 
-                form.getValue().run(() -> {
-                    threads.add(Thread.currentThread());
-                    detector.recordFieldRead(total, "value");
-                    detector.recordFieldWrite(total, "value");
-                });
+                threads = runOrdered(form.getValue(), detector, total);
                 detector.recordFieldRead(total, "value");
 
                 assertFalse(detector.analyzeRaceConditions().hasIssues(), form.getKey()
