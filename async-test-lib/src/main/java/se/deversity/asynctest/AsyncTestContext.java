@@ -2464,29 +2464,48 @@ public final class AsyncTestContext {
      *
      * <p>Follows a handed task and a started thread (#1339): what it reports, an await that timed
      * out on a latch no await then saw at zero, is an event during the run on whichever thread
-     * waited. {@link #currentLatchMisuseDetector()}, which reports an await that never returned,
-     * stays with the workers for the reason {@link #agentContext} gives.
+     * waited. {@link #currentLatchMisuseDetector()} follows too, for an await that came back.
      */
     static @Nullable CountDownLatchDetector currentCountDownLatchDetector() {
         AsyncTestContext context = agentContext();
         return context == null ? null : context.countDownLatchDetector;
     }
 
-    /** {@return the {@link LatchMisuseDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link LatchMisuseDetector} of the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>Follows a handed task and a started thread (#1339). A countdown is an event wherever it
+     * runs. An await on such a thread is recorded by the hook only once it has come back, at
+     * zero or timed out ({@link #notAWorker()}): one still blocked may be counted down after the
+     * run and is not the run's to judge.
+     */
     static @Nullable LatchMisuseDetector currentLatchMisuseDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.latchMisuseDetector;
     }
 
-    /** {@return the {@link MissedSignalDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link MissedSignalDetector} of the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>Follows a handed task and a started thread (#1339). A notify is an event wherever it
+     * runs, and dropping one made a worker's wait look unsignalled or a lost notify look absent.
+     * The hook says whether a waiting caller is a worker ({@link #notAWorker()}), and the detector
+     * judges a helper's wait only once that thread has ended or idles in its pool.
+     */
     static @Nullable MissedSignalDetector currentMissedSignalDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.missedSignalDetector;
     }
 
-    /** {@return the {@link ConditionVariableDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link ConditionVariableDetector} of the run the calling thread works for, or
+     * {@code null}} Follows a handed task and a started thread on the terms
+     * {@link #currentMissedSignalDetector()} gives (#1339).
+     */
     static @Nullable ConditionVariableDetector currentConditionVariableDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.conditionVariableDetector;
     }
 

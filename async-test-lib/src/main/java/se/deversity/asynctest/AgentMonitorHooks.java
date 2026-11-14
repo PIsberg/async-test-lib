@@ -60,7 +60,8 @@ public final class AgentMonitorHooks {
         int orderHolds = releasingOrderForWait(receiver);
         try {
             MissedSignalDetector taken =
-                    detector != null && detector.recordObservedWait(receiver) ? detector : null;
+                    detector != null && detector.recordObservedWait(receiver, AsyncTestContext.notAWorker())
+                            ? detector : null;
             try {
                 receiver.wait();
             } finally {
@@ -89,7 +90,8 @@ public final class AgentMonitorHooks {
         int orderHolds = releasingOrderForWait(receiver);
         try {
             MissedSignalDetector taken =
-                    detector != null && detector.recordObservedWait(receiver) ? detector : null;
+                    detector != null && detector.recordObservedWait(receiver, AsyncTestContext.notAWorker())
+                            ? detector : null;
             try {
                 receiver.wait(timeoutMillis);
             } finally {
@@ -120,7 +122,8 @@ public final class AgentMonitorHooks {
         int orderHolds = releasingOrderForWait(receiver);
         try {
             MissedSignalDetector taken =
-                    detector != null && detector.recordObservedWait(receiver) ? detector : null;
+                    detector != null && detector.recordObservedWait(receiver, AsyncTestContext.notAWorker())
+                            ? detector : null;
             try {
                 receiver.wait(timeoutMillis, nanos);
             } finally {
@@ -329,7 +332,8 @@ public final class AgentMonitorHooks {
      */
     private static @Nullable ConditionVariableDetector observingAwait(Condition receiver) {
         ConditionVariableDetector conditions = AsyncTestContext.currentConditionVariableDetector();
-        return conditions != null && conditions.recordObservedAwait(receiver) ? conditions : null;
+        return conditions != null && conditions.recordObservedAwait(receiver, AsyncTestContext.notAWorker())
+                ? conditions : null;
     }
 
     /**

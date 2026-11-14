@@ -436,7 +436,21 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
      * @since 1.14.3
      */
     public boolean recordObservedAwait(Condition condition) {
-        return enabled && condition != null && observed.recordObservedWait(condition);
+        return recordObservedAwait(condition, false);
+    }
+
+    /**
+     * Internal: {@link #recordObservedAwait(Condition)} for a caller that may be a thread the run
+     * handed work to and not one of its workers (#1339); judged as
+     * {@link MissedSignalDetector#recordObservedWait(Object, boolean)} judges such a thread's wait.
+     *
+     * @param condition the woven call's receiver; null is ignored
+     * @param helper    whether the calling thread is not a worker of the run
+     * @return whether the await was taken, so its exit is to be recorded
+     * @since 1.14.3
+     */
+    public boolean recordObservedAwait(Condition condition, boolean helper) {
+        return enabled && condition != null && observed.recordObservedWait(condition, helper);
     }
 
     /**

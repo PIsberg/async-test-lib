@@ -7,6 +7,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -442,6 +443,134 @@ class SpawnedWorkEventFeedTest {
                             }
                         },
                         ctx -> AsyncTestContext.spuriousWakeupHazardDetector().analyze().hasIssues()),
+                "the thread has not reached its loop's back-edge yet, and may");
+    }
+
+    // ---- A signal no thread was waiting for, and a latch nobody counted down (#1339) ----
+
+    @Test
+    @DisplayName("a notify with no waiter, then a wait under an if, on a handed-over thread is reported")
+    void notifyBeforeTheWait() throws Exception {
+        bothWays("a notify before the wait",
+                AsyncTestConfig.builder().detectMissedSignals(true).build(),
+                () -> {
+                    Object monitor = new Object();
+                    synchronized (monitor) {
+                        AgentMonitorHooks.monitorNotify(monitor);
+                    }
+                    synchronized (monitor) {
+                        AgentMonitorHooks.monitorWait(monitor, 2);
+                    }
+                },
+                () -> {
+                    Object monitor = new Object();
+                    synchronized (monitor) {
+                        AgentMonitorHooks.monitorNotify(monitor);
+                    }
+                    synchronized (monitor) {
+                        AgentMonitorHooks.monitorWait(monitor, 2);
+                        AgentMonitorHooks.loopBackEdge();
+                    }
+                },
+                ctx -> AsyncTestContext.missedSignalDetector().analyze().hasIssues());
+    }
+
+    @Test
+    @DisplayName("a signal with no waiter, then an await under an if, on a handed-over thread is reported")
+    void signalBeforeTheAwait() throws Exception {
+        bothWays("a signal before the await",
+                AsyncTestConfig.builder().detectConditionVariableIssues(true).build(),
+                () -> {
+                    ReentrantLock lock = new ReentrantLock();
+                    Condition ready = lock.newCondition();
+                    lock.lock();
+                    try {
+                        AgentMonitorHooks.conditionSignal(ready);
+                        AgentMonitorHooks.conditionAwait(ready, 2, TimeUnit.MILLISECONDS);
+                    } finally {
+                        lock.unlock();
+                    }
+                },
+                () -> {
+                    ReentrantLock lock = new ReentrantLock();
+                    Condition ready = lock.newCondition();
+                    lock.lock();
+                    try {
+                        AgentMonitorHooks.conditionSignal(ready);
+                        AgentMonitorHooks.conditionAwait(ready, 2, TimeUnit.MILLISECONDS);
+                        AgentMonitorHooks.loopBackEdge();
+                    } finally {
+                        lock.unlock();
+                    }
+                },
+                ctx -> AsyncTestContext.conditionVariableDetector().analyze().hasIssues());
+    }
+
+    @Test
+    @DisplayName("an await that gave up on a latch nobody counted down, on a handed-over thread, is reported")
+    void latchNobodyCountedDown() throws Exception {
+        bothWays("an await on a latch nobody counted down",
+                AsyncTestConfig.builder().detectLatchMisuse(true).build(),
+                () -> assertFalse(AgentConcurrencyUtilHooks.await(new CountDownLatch(1), 2, TimeUnit.MILLISECONDS)),
+                () -> {
+                    CountDownLatch latch = new CountDownLatch(1);
+                    AgentConcurrencyUtilHooks.countDown(latch);
+                    assertTrue(AgentConcurrencyUtilHooks.await(latch, 2, TimeUnit.SECONDS));
+                },
+                ctx -> AsyncTestContext.latchMisuseDetector().analyze().hasIssues());
+    }
+
+    @Test
+    @DisplayName("a started thread's notify that found no waiter counts against a worker's later wait")
+    void aStartedThreadsLostNotifyStrandsTheWorker() throws Exception {
+        AsyncTestContext ctx = new AsyncTestContext(AsyncTestConfig.builder().detectMissedSignals(true).build());
+        AtomicReference<Throwable> failed = new AtomicReference<>();
+        Object monitor = new Object();
+        Thread worker = new Thread(() -> {
+            AsyncTestContext.install(ctx);
+            try {
+                Thread child = new Thread(() -> runInto(() -> {
+                    synchronized (monitor) {
+                        AgentMonitorHooks.monitorNotify(monitor);
+                    }
+                }, failed), "notifier");
+                AgentThreadHooks.threadStart(child);
+                AgentThreadHooks.threadJoin(child);
+                synchronized (monitor) {
+                    AgentMonitorHooks.monitorWait(monitor, 2);
+                }
+            } catch (Throwable t) { // NOPMD - handed to the test thread below
+                failed.set(t);
+            } finally {
+                AsyncTestContext.uninstall();
+            }
+        }, "worker-0");
+        worker.start();
+        worker.join(TimeUnit.SECONDS.toMillis(20));
+        assertNull(failed.get(), () -> "the body failed: " + failed.get());
+        AsyncTestContext.install(ctx);
+        try {
+            assertTrue(AsyncTestContext.missedSignalDetector().analyze().hasIssues(),
+                    "the notify came before the wait, on a thread the worker started and joined");
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("a started thread still between its wakeup and its loop's back-edge is not a lost signal")
+    void aThreadStillRunningHasNotMissedItsSignal() throws Exception {
+        assertFalse(reportedWhileStillRunning(AsyncTestConfig.builder().detectMissedSignals(true).build(),
+                        () -> {
+                            Object monitor = new Object();
+                            synchronized (monitor) {
+                                AgentMonitorHooks.monitorNotify(monitor);
+                            }
+                            synchronized (monitor) {
+                                AgentMonitorHooks.monitorWait(monitor, 2);
+                            }
+                        },
+                        ctx -> AsyncTestContext.missedSignalDetector().analyze().hasIssues()),
                 "the thread has not reached its loop's back-edge yet, and may");
     }
 }

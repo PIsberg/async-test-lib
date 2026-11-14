@@ -6569,6 +6569,51 @@ final class Corpus {
                             + "and given one: the await times out and nothing ever reaches zero",
                     IssueSeverity.CRITICAL),
 
+            new RecordingSubject("idiom_helperThread_notifiesThenWaitsInALoop", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a thread the body starts notifies before anyone waits, then waits for a "
+                            + "flag in a while loop, which re-tests what the notify announced (#1339)"),
+
+            new RecordingSubject("idiom_helperThread_notifiesThenWaitsOnce", JDK,
+                    "java.lang.Object",
+                    DetectorType.MISSED_SIGNAL, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same helper thread notifying before anyone waits and then waiting "
+                            + "once: the wait began after its signal was already lost",
+                    IssueSeverity.CRITICAL),
+
+            new RecordingSubject("idiom_helperThread_signalsThenAwaitsInALoop", JDK,
+                    "java.util.concurrent.locks.Condition",
+                    DetectorType.CONDITION_VARIABLES, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a thread the body starts signals a condition before anyone awaits it, "
+                            + "then awaits a flag in a while loop (#1339)"),
+
+            new RecordingSubject("idiom_helperThread_signalsThenAwaitsOnce", JDK,
+                    "java.util.concurrent.locks.Condition",
+                    DetectorType.CONDITION_VARIABLES, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same helper thread signalling before anyone awaits and then "
+                            + "awaiting once: the await began after its signal was already lost",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_helperThread_awaitsALatchItsStarterCounts", JDK,
+                    "java.util.concurrent.CountDownLatch",
+                    DetectorType.LATCH_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a thread the body starts awaits a latch the body then counts down, and "
+                            + "the await returns (#1339)"),
+
+            new RecordingSubject("idiom_helperThread_awaitsALatchNobodyCounts", JDK,
+                    "java.util.concurrent.CountDownLatch",
+                    DetectorType.LATCH_MISUSE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same helper thread giving up on a latch nobody counts down: the "
+                            + "await came back without the latch ever reaching zero",
+                    IssueSeverity.CRITICAL),
+
             // --- Elements read by another name than get, peek or iterator (#1294): the reads
             //     the agent did not weave received nothing of what the add published.
 

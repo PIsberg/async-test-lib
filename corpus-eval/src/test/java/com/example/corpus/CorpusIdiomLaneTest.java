@@ -46,6 +46,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.StampedLock;
 import java.util.function.Supplier;
@@ -3615,6 +3616,141 @@ class CorpusIdiomLaneTest {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    /** The helper thread signals early, then waits for the flag in a loop; the body sets it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_notifiesThenWaitsInALoop() {
+        correct(() -> {
+            Gate37 gate = new Gate37();
+            Thread waiter = new Thread(() -> {
+                synchronized (gate) {
+                    gate.notifyAll();
+                }
+                synchronized (gate) {
+                    while (!gate.open) {
+                        try {
+                            gate.wait(1);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    }
+                }
+            }, "idiom-helper");
+            waiter.start();
+            synchronized (gate) {
+                gate.open = true;
+                gate.notifyAll();
+            }
+            waiter.join();
+        });
+    }
+
+    /** The same early signal, then one wait with nothing re-tested: the signal it needed is gone. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_notifiesThenWaitsOnce() {
+        broken(() -> {
+            Gate37 gate = new Gate37();
+            onAHelperThread(() -> {
+                synchronized (gate) {
+                    gate.notifyAll();
+                }
+                synchronized (gate) {
+                    try {
+                        gate.wait(1);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            });
+        });
+    }
+
+    /** A flag, its lock and the condition that announces it. */
+    private static final class Signal38 {
+        private final ReentrantLock lock = new ReentrantLock();
+        private final Condition ready = lock.newCondition();
+        private boolean open;
+    }
+
+    /** The helper thread signals early, then awaits the flag in a loop; the body sets it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_signalsThenAwaitsInALoop() {
+        correct(() -> {
+            Signal38 signal = new Signal38();
+            Thread waiter = new Thread(() -> {
+                signal.lock.lock();
+                try {
+                    signal.ready.signalAll();
+                    while (!signal.open) {
+                        signal.ready.await(1, TimeUnit.MILLISECONDS);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    signal.lock.unlock();
+                }
+            }, "idiom-helper");
+            waiter.start();
+            signal.lock.lock();
+            try {
+                signal.open = true;
+                signal.ready.signalAll();
+            } finally {
+                signal.lock.unlock();
+            }
+            waiter.join();
+        });
+    }
+
+    /** The same early signal, then one await with nothing re-tested. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_signalsThenAwaitsOnce() {
+        broken(() -> {
+            Signal38 signal = new Signal38();
+            onAHelperThread(() -> {
+                signal.lock.lock();
+                try {
+                    signal.ready.signalAll();
+                    if (signal.ready.await(1, TimeUnit.MILLISECONDS)) {
+                        use(1);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    signal.lock.unlock();
+                }
+            });
+        });
+    }
+
+    /** The helper thread awaits a latch the body counts down once it has started it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_awaitsALatchItsStarterCounts() {
+        correct(() -> {
+            CountDownLatch go = new CountDownLatch(1);
+            Thread waiter = new Thread(() -> {
+                try {
+                    go.await();
+                    use(1);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "idiom-helper");
+            waiter.start();
+            go.countDown();
+            waiter.join();
+        });
+    }
+
+    /** The same helper thread giving up on a latch nobody counts down at all. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_awaitsALatchNobodyCounts() {
+        broken(() -> {
+            CountDownLatch go = new CountDownLatch(1);
+            onAHelperThread(() -> awaitBriefly(go));
+        });
     }
 
     // --- 35. Plain data published by an AtomicBoolean flag (#1315) ----------------------------

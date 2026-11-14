@@ -20,6 +20,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A signal nobody was waiting for and a latch nobody counted down are reported on a thread the
+  test body started (#1339).** `MissedSignalDetector`, `ConditionVariableDetector` and
+  `LatchMisuseDetector` read only the worker's own thread, so a `notify`, `signal` or `countDown`
+  on a started thread or in a submitted task was dropped, and so was a wait there. Two things
+  followed: a wait on such a thread that began after its signal was lost went unreported, and a
+  worker's wait was judged without the notifies a helper thread made. They are now recorded
+  wherever they run. A helper thread's wait is judged only once the thread has ended or idles in
+  its pool, its loop's back-edge counts in whichever round it comes, and one still blocked at
+  analysis is left unjudged, as is a helper thread still blocked in `CountDownLatch.await`: such
+  a thread may outlive the run. Test first: four tests in `SpawnedWorkEventFeedTest` red before
+  the change, and a control with the thread still running that goes red when the guard is
+  removed (checked). Corpus pairs `idiom_helperThread_notifiesThenWaitsOnce`,
+  `_signalsThenAwaitsOnce` and `_awaitsALatchNobodyCounts` with their correct twins: the three
+  broken rows were silent against the previous jar. This closes the seven misses on #1339.
+
 - **A lock never released, a `wait` outside a loop and a timed-out latch await are reported on a
   thread the test body started (#1339).** These three were silent there for the same reason as the
   six below, and two of them could not simply follow the thread, because a started thread may
@@ -33,8 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   control with the thread still running at analysis that goes red when either guard is removed
   (checked by removing each). Corpus pairs `idiom_helperThread_endsHoldingTheLock`,
   `_waitsUnderAnIf` and `_awaitsALatchOneCountShort` with their correct twins: the three broken
-  rows were silent against the previous jar. Still open on #1339: a signal no thread was waiting
-  for, and a latch await that never returned.
+  rows were silent against the previous jar.
 
 - **Six detectors now report a bug that runs on a thread the test body started (#1339).** With
   the agent attached, `System.gc()`, a `Thread.sleep` under a lock, an `unlock()` after a

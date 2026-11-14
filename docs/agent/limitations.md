@@ -73,10 +73,14 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   behind follow it with a condition, because a started thread may outlive the run: a
   `ReentrantLock` such a thread still holds is reported only when the lock itself names a holder
   that has ended or idles in its pool, and a `wait` that returned without reaching its loop's
-  back-edge only once the thread has ended, idles in its pool or has waited again (#1339). The rest are silent for a
-  bug on such a thread: a signal no thread was waiting for (`MissedSignalDetector`,
-  `ConditionVariableDetector`) and an await on a latch that never returned
-  (`LatchMisuseDetector`), open on #1339. Attribution goes by thread, not by task: a fork-join
+  back-edge only once the thread has ended, idles in its pool or has waited again (#1339). A
+  `notify`, a `signal` and a `countDown` on such a thread are recorded as they happen, and a
+  `wait` or `await` that began after a signal nobody was waiting for is judged on the same
+  condition as the wakeup (`MissedSignalDetector`, `ConditionVariableDetector`). What stays
+  unjudged is a helper thread still blocked when the run is analysed, in a `wait`, an `await` or
+  a `CountDownLatch.await`: it may be signalled or counted down after the run, so it is neither a
+  lost signal nor a missing countdown (`LatchMisuseDetector` records such a thread's await only
+  once it has come back). Attribution goes by thread, not by task: a fork-join
   worker that, while waiting inside a task of the run, helps with work the run did not hand it (a
   parallel stream's subtasks, say) has that work counted as the run's, which can only add a
   finding. A thread started in unwoven code is never attributed: telling it apart would need a
