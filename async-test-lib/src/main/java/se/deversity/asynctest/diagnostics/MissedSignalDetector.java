@@ -138,9 +138,15 @@ public class MissedSignalDetector {
         final int lostNotifiesAtStart;
         /** Whether this wait is the loop's back-edge: its thread re-tested and waited again. */
         final boolean loopObserved;
+        /**
+         * Whether the thread is one the run handed work to and not one of its workers (#1339).
+         * Such a thread may outlive the run, so its wait is never judged while it is still open.
+         */
+        final boolean helper;
 
         OpenWait(Thread thread, Guard guard, long notifiesAtStart, boolean afterLostNotify,
-                 int lostNotifiesAtStart, boolean loopObserved) {
+                 int lostNotifiesAtStart, boolean loopObserved, boolean helper) {
+            this.helper = helper;
             this.thread = thread;
             this.guard = guard;
             this.notifiesAtStart = notifiesAtStart;
@@ -178,8 +184,16 @@ public class MissedSignalDetector {
         final boolean observed;
         /** Whether a check after the wakeup found the predicate unsatisfied. */
         boolean checkedUnsatisfied;
+        /**
+         * Whether the thread is one the run handed work to (#1339): no round's end stops it, so
+         * its back-edge counts in whichever round it comes, and nothing settles the wait for it
+         * until it has {@link #leftBehind left it behind}.
+         */
+        final boolean helper;
 
-        PendingWait(boolean missedItsSignal, boolean loopObserved, long epoch, boolean observed) {
+        PendingWait(boolean missedItsSignal, boolean loopObserved, long epoch, boolean observed,
+                    boolean helper) {
+            this.helper = helper;
             this.missedItsSignal = missedItsSignal;
             this.loopObserved = loopObserved;
             this.epoch = epoch;
@@ -237,6 +251,10 @@ public class MissedSignalDetector {
 
         /** {@return whether the wait was taken; an observed wait behind a recorded one is not} */
         synchronized boolean waitStarted(Thread thread, Guard declared, long epoch) {
+            return waitStarted(thread, declared, epoch, false);
+        }
+
+        synchronized boolean waitStarted(Thread thread, Guard declared, long epoch, boolean helper) {
             Guard guard = declared;
             if (guard == Guard.OBSERVED) {
                 for (OpenWait open : openWaits) {
@@ -259,7 +277,7 @@ public class MissedSignalDetector {
                 settle(previous, backEdge || previous.confirmedWithoutAnotherWait());
             }
             openWaits.add(new OpenWait(thread, guard, notifies, lastNotifyLost, notifiesWithNoWaiter,
-                    backEdge));
+                    backEdge, helper));
             return true;
         }
 
@@ -277,7 +295,7 @@ public class MissedSignalDetector {
                     }
                     PendingWait replaced = pendingWaits.put(thread,
                             new PendingWait(missed, wait.loopObserved, epoch,
-                                    wait.guard == Guard.OBSERVED));
+                                    wait.guard == Guard.OBSERVED, wait.helper));
                     if (replaced != null) { // waitStarted settled it already; kept for safety
                         settle(replaced, replaced.confirmedWithoutAnotherWait());
                     }
@@ -316,7 +334,7 @@ public class MissedSignalDetector {
          */
         synchronized void loopBackEdge(Thread thread, long epoch) {
             PendingWait pending = pendingWaits.get(thread);
-            if (pending != null && pending.observed && pending.epoch == epoch) {
+            if (pending != null && pending.observed && (pending.epoch == epoch || pending.helper)) {
                 pendingWaits.remove(thread);
                 settle(pending, true);
             }
@@ -345,13 +363,24 @@ public class MissedSignalDetector {
         /** Settles every woken wait from a round before {@code epoch}: nothing can confirm it now. */
         synchronized void closeRoundsBefore(long epoch) {
             recordedNotifies.clear();
-            for (Iterator<PendingWait> it = pendingWaits.values().iterator(); it.hasNext(); ) {
-                PendingWait pending = it.next();
-                if (pending.epoch < epoch) {
+            for (Iterator<Map.Entry<Thread, PendingWait>> it = pendingWaits.entrySet().iterator(); it.hasNext(); ) {
+                Map.Entry<Thread, PendingWait> entry = it.next();
+                PendingWait pending = entry.getValue();
+                if (pending.epoch < epoch && leftBehind(entry.getKey(), pending)) {
                     it.remove();
                     settle(pending, pending.confirmedWithoutAnotherWait());
                 }
             }
+        }
+
+        /**
+         * {@return whether {@code thread} can no longer confirm {@code wait} as a loop's} A worker
+         * has finished its round when this is asked. A thread the run handed work to (#1339) may
+         * still be on its way to the back-edge, so it counts only once it has ended or waits in
+         * its pool for the next task.
+         */
+        private static boolean leftBehind(Thread thread, PendingWait wait) {
+            return !wait.helper || !thread.isAlive() || ReentrantLockDetector.idleInAPool(thread);
         }
 
         /** Folds a wait that can no longer change into the count; must hold the monitor. */
@@ -367,14 +396,17 @@ public class MissedSignalDetector {
 
         synchronized void describeInto(List<String> findings, String waitWord, String signalWord) {
             int ended = unsignalledWaits;
-            for (PendingWait wait : pendingWaits.values()) {
-                if (wait.missedItsSignal && !wait.confirmedWithoutAnotherWait()) {
+            for (Map.Entry<Thread, PendingWait> entry : pendingWaits.entrySet()) {
+                PendingWait wait = entry.getValue();
+                if (wait.missedItsSignal && !wait.confirmedWithoutAnotherWait()
+                        && leftBehind(entry.getKey(), wait)) {
                     ended++;
                 }
             }
             int stillWaiting = 0;
             for (OpenWait wait : openWaits) {
-                if (wait.missedItsSignal(notifies)) {
+                // A helper thread still waiting may be signalled after the run (#1339).
+                if (!wait.helper && wait.missedItsSignal(notifies)) {
                     stillWaiting++;
                 }
             }
@@ -657,8 +689,24 @@ public class MissedSignalDetector {
      * @since 1.12.2
      */
     public boolean recordObservedWait(Object monitor) {
+        return recordObservedWait(monitor, false);
+    }
+
+    /**
+     * Internal: {@link #recordObservedWait(Object)} for a caller that may be a thread the run
+     * handed work to and not one of its workers (#1339). Such a thread may outlive the run: its
+     * wait is not judged while it is still waiting, and once woken only when the thread has
+     * ended or idles in its pool without having reached the loop's back-edge, in whichever round
+     * that back-edge comes.
+     *
+     * @param monitor the object whose {@code wait} is about to be called; {@code null} is ignored
+     * @param helper  whether the calling thread is not a worker of the run
+     * @return whether the wait was taken, so that {@link #recordObservedWakeup(Object)} is owed
+     * @since 1.14.3
+     */
+    public boolean recordObservedWait(Object monitor, boolean helper) {
         return monitor != null && byMonitor(monitor).waitStarted(Thread.currentThread(),
-                Guard.OBSERVED, invocationEpoch.get());
+                Guard.OBSERVED, invocationEpoch.get(), helper);
     }
 
     /**

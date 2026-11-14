@@ -70,6 +70,12 @@ public class LockLeakDetector {
          * detector's lifetime, which is one run.
          */
         final Set<Thread> threads = ConcurrentHashMap.newKeySet();
+        /**
+         * Acquires not yet released, per thread the run handed work to and that is not one of its
+         * workers (#1339). Kept out of the counts above: such a thread may outlive the run, so its
+         * hold is a finding only when the lock confirms it at analysis.
+         */
+        final Map<Thread, AtomicInteger> helperHolds = new ConcurrentHashMap<>();
 
         LockState(String name, UnnamedLabels labels) {
             this.name = name != null ? name : labels.next("lock");
@@ -157,8 +163,51 @@ public class LockLeakDetector {
     }
 
     /**
+     * Internal: an acquire by a thread the run handed work to, a started thread or a pool thread
+     * running its task, that is not one of the run's workers (#1339). Never a finding alone: see
+     * {@link #analyze()}.
+     *
+     * @param lock the lock acquired, tracked by identity
+     * @param name the label to report it under
+     * @since 1.14.3
+     */
+    public void recordHelperAcquired(Lock lock, String name) {
+        if (!enabled || lock == null) {
+            return;
+        }
+        LockState state = locks.computeIfAbsent(new IdentityKey(lock),
+                                                ignored -> new LockState(name, unnamedLabels));
+        Thread thread = Thread.currentThread();
+        state.threads.add(thread);
+        state.helperHolds.computeIfAbsent(thread, ignored -> new AtomicInteger()).incrementAndGet();
+    }
+
+    /**
+     * Internal: the release half of {@link #recordHelperAcquired}. A release with no recorded
+     * acquire, such as one whose acquire ran in unwoven code, is ignored.
+     *
+     * @param lock the lock released, tracked by identity
+     * @since 1.14.3
+     */
+    public void recordHelperReleased(Lock lock) {
+        if (!enabled || lock == null) {
+            return;
+        }
+        LockState state = locks.get(new IdentityKey(lock));
+        AtomicInteger holds = state == null ? null : state.helperHolds.get(Thread.currentThread());
+        if (holds != null) {
+            holds.updateAndGet(count -> Math.max(0, count - 1));
+        }
+    }
+
+    /**
      * Analyze lock usage for leak patterns.
-     * 
+     *
+     * <p>A hold recorded by {@link #recordHelperAcquired} is reported only for a
+     * {@code ReentrantLock} that is still locked and names that thread as a holder that has ended
+     * or idles in its pool, the confirmation a worker's leak is graded by (#837). A helper thread
+     * still working may yet release the lock and is not the run's to judge (#1339).
+     *
      * @return a report of detected issues
      */
     public LockLeakReport analyze() {
@@ -203,6 +252,27 @@ public class LockLeakDetector {
                 report.heldLocks.add(confirmed == null ? held : held + confirmed);
                 if (confirmed != null) {
                     report.observed.add(held + confirmed);
+                }
+            }
+
+            // A hold of a thread the run handed work to (#1339), when the lock confirms it.
+            if (!leaked && !state.currentlyHeld && entry.getKey().referent() instanceof ReentrantLock lock) {
+                for (Map.Entry<Thread, AtomicInteger> hold : state.helperHolds.entrySet()) {
+                    if (hold.getValue().get() <= 0) {
+                        continue;
+                    }
+                    if (platformThreads == null) {
+                        platformThreads = Thread.getAllStackTraces().keySet();
+                    }
+                    String byLock = confirmedHold(lock, hold.getKey(), platformThreads, state.threads);
+                    if (byLock != null) {
+                        String leak = String.format(
+                            "%s: acquired by a thread the test started and never released", state.name)
+                            + byLock;
+                        report.lockLeaks.add(leak);
+                        report.observed.add(leak);
+                        break;
+                    }
                 }
             }
 

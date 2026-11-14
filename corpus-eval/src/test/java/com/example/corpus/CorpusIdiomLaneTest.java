@@ -46,6 +46,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.StampedLock;
 import java.util.function.Supplier;
@@ -3384,6 +3385,371 @@ class CorpusIdiomLaneTest {
                 awaitAnElement(turn.shared());
                 use(turn.shared().toArray(new Limits[0])[0].limit);
             }
+        });
+    }
+
+    // --- 37. A bug on a thread the body starts and joins (#1339) ------------------------------
+
+    /** Runs {@code work} on a thread of its own and waits for it, as a body that fans out does. */
+    private static void onAHelperThread(Runnable work) throws InterruptedException {
+        Thread helper = new Thread(work, "idiom-helper");
+        helper.start();
+        helper.join();
+    }
+
+    /** The helper thread takes the lock, works, releases it and only then sleeps. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_sleepsAfterReleasingTheLock() {
+        correct(() -> {
+            ReentrantLock lock = new ReentrantLock();
+            onAHelperThread(() -> {
+                lock.lock();
+                try {
+                    use(1);
+                } finally {
+                    lock.unlock();
+                }
+                pause();
+            });
+        });
+    }
+
+    /** The same helper thread, sleeping with the lock still held. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_sleepsUnderTheLock() {
+        broken(() -> {
+            ReentrantLock lock = new ReentrantLock();
+            onAHelperThread(() -> {
+                lock.lock();
+                try {
+                    pause();
+                } finally {
+                    lock.unlock();
+                }
+            });
+        });
+    }
+
+    private static void pause() {
+        try {
+            Thread.sleep(1);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** The body holds the lock; the helper thread tries it and unlocks only what it took. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_unlocksOnlyWhatTryLockTook() {
+        correct(() -> {
+            ReentrantLock lock = new ReentrantLock();
+            lock.lock();
+            try {
+                onAHelperThread(() -> {
+                    if (lock.tryLock()) {
+                        try {
+                            use(1);
+                        } finally {
+                            lock.unlock();
+                        }
+                    }
+                });
+            } finally {
+                lock.unlock();
+            }
+        });
+    }
+
+    /** The same helper thread, ignoring what tryLock returned and unlocking anyway. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_unlocksAfterAFailedTryLock() {
+        broken(() -> {
+            ReentrantLock lock = new ReentrantLock();
+            lock.lock();
+            try {
+                onAHelperThread(() -> {
+                    lock.tryLock();
+                    try {
+                        use(1);
+                    } finally {
+                        try {
+                            lock.unlock();
+                        } catch (IllegalMonitorStateException notHeld) {
+                            use(2);
+                        }
+                    }
+                });
+            } finally {
+                lock.unlock();
+            }
+        });
+    }
+
+    /** The helper thread drops its references and leaves the collection to the JVM. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_leavesCollectionToTheJvm() {
+        correct(() -> {
+            List<byte[]> scratch = Collections.synchronizedList(new ArrayList<>());
+            onAHelperThread(() -> {
+                scratch.add(new byte[64]);
+                scratch.clear();
+            });
+        });
+    }
+
+    /** The same helper thread, asking for a collection after it clears its scratch space. */
+    @AsyncTest(threads = THREADS, invocations = 4, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_callsSystemGc() {
+        broken(() -> {
+            List<byte[]> scratch = Collections.synchronizedList(new ArrayList<>());
+            onAHelperThread(() -> {
+                scratch.add(new byte[64]);
+                scratch.clear();
+                System.gc();
+            });
+        });
+    }
+
+    /** The helper thread takes the lock and releases it in a finally. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_releasesTheLockItTook() {
+        correct(() -> {
+            ReentrantLock lock = new ReentrantLock();
+            onAHelperThread(() -> {
+                lock.lock();
+                try {
+                    use(1);
+                } finally {
+                    lock.unlock();
+                }
+            });
+        });
+    }
+
+    /** The same helper thread, ending with the lock still held. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_endsHoldingTheLock() {
+        broken(() -> {
+            ReentrantLock lock = new ReentrantLock();
+            onAHelperThread(() -> {
+                lock.lock();
+                use(1);
+            });
+        });
+    }
+
+    /** A flag and the monitor that guards it. */
+    private static final class Gate37 {
+        private boolean open;
+    }
+
+    /** The helper thread waits for the flag in a loop; the body sets it and notifies. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_waitsInALoop() {
+        correct(() -> {
+            Gate37 gate = new Gate37();
+            Thread waiter = new Thread(() -> {
+                synchronized (gate) {
+                    while (!gate.open) {
+                        try {
+                            gate.wait(1);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    }
+                }
+            }, "idiom-helper");
+            waiter.start();
+            synchronized (gate) {
+                gate.open = true;
+                gate.notifyAll();
+            }
+            waiter.join();
+        });
+    }
+
+    /** The same wait under an if: the helper thread goes on after one wakeup, whatever woke it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_waitsUnderAnIf() {
+        broken(() -> {
+            Gate37 gate = new Gate37();
+            onAHelperThread(() -> {
+                synchronized (gate) {
+                    if (!gate.open) {
+                        try {
+                            gate.wait(1);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    /** The body counts the latch down to zero before the helper thread awaits it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_awaitsALatchAtZero() {
+        correct(() -> {
+            CountDownLatch done = new CountDownLatch(1);
+            done.countDown();
+            onAHelperThread(() -> awaitBriefly(done));
+        });
+    }
+
+    /** The same await on a latch created for two countdowns and given one. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_awaitsALatchOneCountShort() {
+        broken(() -> {
+            CountDownLatch done = new CountDownLatch(2);
+            done.countDown();
+            onAHelperThread(() -> awaitBriefly(done));
+        });
+    }
+
+    private static void awaitBriefly(CountDownLatch latch) {
+        try {
+            if (latch.await(1, TimeUnit.MILLISECONDS)) {
+                use(1);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /** The helper thread signals early, then waits for the flag in a loop; the body sets it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_notifiesThenWaitsInALoop() {
+        correct(() -> {
+            Gate37 gate = new Gate37();
+            Thread waiter = new Thread(() -> {
+                synchronized (gate) {
+                    gate.notifyAll();
+                }
+                synchronized (gate) {
+                    while (!gate.open) {
+                        try {
+                            gate.wait(1);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                    }
+                }
+            }, "idiom-helper");
+            waiter.start();
+            synchronized (gate) {
+                gate.open = true;
+                gate.notifyAll();
+            }
+            waiter.join();
+        });
+    }
+
+    /** The same early signal, then one wait with nothing re-tested: the signal it needed is gone. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_notifiesThenWaitsOnce() {
+        broken(() -> {
+            Gate37 gate = new Gate37();
+            onAHelperThread(() -> {
+                synchronized (gate) {
+                    gate.notifyAll();
+                }
+                synchronized (gate) {
+                    try {
+                        gate.wait(1);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            });
+        });
+    }
+
+    /** A flag, its lock and the condition that announces it. */
+    private static final class Signal38 {
+        private final ReentrantLock lock = new ReentrantLock();
+        private final Condition ready = lock.newCondition();
+        private boolean open;
+    }
+
+    /** The helper thread signals early, then awaits the flag in a loop; the body sets it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_signalsThenAwaitsInALoop() {
+        correct(() -> {
+            Signal38 signal = new Signal38();
+            Thread waiter = new Thread(() -> {
+                signal.lock.lock();
+                try {
+                    signal.ready.signalAll();
+                    while (!signal.open) {
+                        signal.ready.await(1, TimeUnit.MILLISECONDS);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    signal.lock.unlock();
+                }
+            }, "idiom-helper");
+            waiter.start();
+            signal.lock.lock();
+            try {
+                signal.open = true;
+                signal.ready.signalAll();
+            } finally {
+                signal.lock.unlock();
+            }
+            waiter.join();
+        });
+    }
+
+    /** The same early signal, then one await with nothing re-tested. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_signalsThenAwaitsOnce() {
+        broken(() -> {
+            Signal38 signal = new Signal38();
+            onAHelperThread(() -> {
+                signal.lock.lock();
+                try {
+                    signal.ready.signalAll();
+                    if (signal.ready.await(1, TimeUnit.MILLISECONDS)) {
+                        use(1);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    signal.lock.unlock();
+                }
+            });
+        });
+    }
+
+    /** The helper thread awaits a latch the body counts down once it has started it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_awaitsALatchItsStarterCounts() {
+        correct(() -> {
+            CountDownLatch go = new CountDownLatch(1);
+            Thread waiter = new Thread(() -> {
+                try {
+                    go.await();
+                    use(1);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "idiom-helper");
+            waiter.start();
+            go.countDown();
+            waiter.join();
+        });
+    }
+
+    /** The same helper thread giving up on a latch nobody counts down at all. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_helperThread_awaitsALatchNobodyCounts() {
+        broken(() -> {
+            CountDownLatch go = new CountDownLatch(1);
+            onAHelperThread(() -> awaitBriefly(go));
         });
     }
 

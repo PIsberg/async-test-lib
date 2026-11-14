@@ -785,9 +785,12 @@ public final class AsyncTestContext {
      * is running; else the run whose thread started this one through a woven {@code Thread.start}.
      * A run whose analysis has started lends nothing. Reads only; installs nothing.
      *
-     * <p>Only the shared-instance accessors use it, whose detectors judge overlap, and
-     * {@link #helperSemaphoreMisuseDetector}, whose helper counts are never a finding alone. A
-     * detector that
+     * <p>Three kinds of accessor use it: the shared-instance ones, whose detectors judge overlap;
+     * the ones whose detector judges a single event on the thread it happens on (an explicit
+     * collection, a sleep under a lock, an unlock after a failed {@code tryLock}, a read-to-write
+     * upgrade, an obtrude, a reassigned monitor field), which is the same bug on a thread the
+     * worker started as on the worker; and {@link #helperSemaphoreMisuseDetector} and
+     * {@link #helperLockLeakDetector}, whose helper records are never a finding alone. A detector that
      * judges what never happened during the run, such as a latch never counted down, would read a
      * started thread that outlives the run as the run's own: the corpus agent-pair lane caught a
      * daemon thread waiting on a latch counted down after the run reported as latch misuse.
@@ -2302,17 +2305,46 @@ public final class AsyncTestContext {
     }
 
     /**
-     * {@return the {@link LockUpgradeDeadlockDetector} for the calling thread's test, or
-     * {@code null}}
+     * {@return the {@link LockLeakDetector} of the run the calling thread works for without being
+     * one of its workers, or {@code null}, also on a worker}
+     *
+     * <p>For the detector's helper holds only (#1339): a hold such a thread still has at analysis
+     * is a finding only when the lock itself names a holder that has ended or idles in its pool,
+     * which is what keeps a started thread that outlives the run from being read as the run's
+     * leak ({@link #agentContext}).
+     */
+    static @Nullable LockLeakDetector helperLockLeakDetector() {
+        if (CURRENT.get() != null) {
+            return null;
+        }
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.lockLeakDetector;
+    }
+
+    /** {@return whether the calling thread is not a worker of any run: a helper or a stranger} */
+    static boolean notAWorker() {
+        return CURRENT.get() == null;
+    }
+
+    /**
+     * {@return the {@link LockUpgradeDeadlockDetector} of the run the calling thread works for,
+     * or {@code null}}: an event detector, as {@link #currentTryLockMisuseDetector()}.
      */
     static @Nullable LockUpgradeDeadlockDetector currentLockUpgradeDeadlockDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.lockUpgradeDeadlockDetector;
     }
 
-    /** {@return the {@link TryLockMisuseDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link TryLockMisuseDetector} of the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>One of the detectors that judge an event on the thread it happens on, so it follows a
+     * handed task and a started thread ({@link #agentContext}): an unlock after a failed
+     * {@code tryLock} is the same bug one {@code new Thread(...).start()} away from the worker.
+     */
     static @Nullable TryLockMisuseDetector currentTryLockMisuseDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.tryLockMisuseDetector;
     }
 
@@ -2426,33 +2458,67 @@ public final class AsyncTestContext {
         return context == null ? null : context.semaphoreMisuseDetector;
     }
 
-    /** {@return the {@link CountDownLatchDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link CountDownLatchDetector} of the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>Follows a handed task and a started thread (#1339): what it reports, an await that timed
+     * out on a latch no await then saw at zero, is an event during the run on whichever thread
+     * waited. {@link #currentLatchMisuseDetector()} follows too, for an await that came back.
+     */
     static @Nullable CountDownLatchDetector currentCountDownLatchDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.countDownLatchDetector;
     }
 
-    /** {@return the {@link LatchMisuseDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link LatchMisuseDetector} of the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>Follows a handed task and a started thread (#1339). A countdown is an event wherever it
+     * runs. An await on such a thread is recorded by the hook only once it has come back, at
+     * zero or timed out ({@link #notAWorker()}): one still blocked may be counted down after the
+     * run and is not the run's to judge.
+     */
     static @Nullable LatchMisuseDetector currentLatchMisuseDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.latchMisuseDetector;
     }
 
-    /** {@return the {@link MissedSignalDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link MissedSignalDetector} of the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>Follows a handed task and a started thread (#1339). A notify is an event wherever it
+     * runs, and dropping one made a worker's wait look unsignalled or a lost notify look absent.
+     * The hook says whether a waiting caller is a worker ({@link #notAWorker()}), and the detector
+     * judges a helper's wait only once that thread has ended or idles in its pool.
+     */
     static @Nullable MissedSignalDetector currentMissedSignalDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.missedSignalDetector;
     }
 
-    /** {@return the {@link ConditionVariableDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link ConditionVariableDetector} of the run the calling thread works for, or
+     * {@code null}} Follows a handed task and a started thread on the terms
+     * {@link #currentMissedSignalDetector()} gives (#1339).
+     */
     static @Nullable ConditionVariableDetector currentConditionVariableDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.conditionVariableDetector;
     }
 
-    /** {@return the {@link SpuriousWakeupDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link SpuriousWakeupDetector} of the run the calling thread works for, or
+     * {@code null}}
+     *
+     * <p>Follows a handed task and a started thread (#1339). The hook says whether the caller is
+     * a worker ({@link #notAWorker()}): a helper's wakeup that reached no back-edge is settled by
+     * the helper itself or once its thread has ended, never by the end of a round it may outlive.
+     */
     static @Nullable SpuriousWakeupDetector currentSpuriousWakeupDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.spuriousWakeupHazardDetector;
     }
 
@@ -2462,21 +2528,30 @@ public final class AsyncTestContext {
         return context == null ? null : context.blockingQueueDetector;
     }
 
-    /** {@return the {@link SleepInLockDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link SleepInLockDetector} of the run the calling thread works for, or
+     * {@code null}}: an event detector, as {@link #currentTryLockMisuseDetector()}.
+     */
     static @Nullable SleepInLockDetector currentSleepInLockDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.sleepInLockDetector;
     }
 
-    /** {@return the {@link ExplicitGcDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link ExplicitGcDetector} of the run the calling thread works for, or
+     * {@code null}}: an event detector, as {@link #currentTryLockMisuseDetector()}.
+     */
     static @Nullable ExplicitGcDetector currentExplicitGcDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.explicitGcDetector;
     }
 
-    /** {@return the {@link CompletableFutureObtrudeDetector} for the calling thread's test, or {@code null}} */
+    /**
+     * {@return the {@link CompletableFutureObtrudeDetector} of the run the calling thread works
+     * for, or {@code null}}: an event detector, as {@link #currentTryLockMisuseDetector()}.
+     */
     static @Nullable CompletableFutureObtrudeDetector currentCompletableFutureObtrudeDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.completableFutureObtrudeDetector;
     }
 
@@ -2512,15 +2587,15 @@ public final class AsyncTestContext {
     }
 
     /**
-     * {@return the {@link SynchronizedNonFinalDetector} for the calling thread's test, or
-     * {@code null}}
+     * {@return the {@link SynchronizedNonFinalDetector} of the run the calling thread works for,
+     * or {@code null}}: an event detector, as {@link #currentTryLockMisuseDetector()}.
      *
      * <p>Same null-returning contract as {@link #currentSharedCollectionDetector()}: the caller is
      * {@link AgentMonitorHooks#monitorFieldEntered}, woven before a {@code synchronized} block that
      * does not know a test is in progress (#793).
      */
     static @Nullable SynchronizedNonFinalDetector currentSynchronizedNonFinalDetector() {
-        AsyncTestContext context = CURRENT.get();
+        AsyncTestContext context = agentContext();
         return context == null ? null : context.synchronizedNonFinalDetector;
     }
 

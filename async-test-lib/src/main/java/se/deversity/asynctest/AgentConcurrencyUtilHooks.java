@@ -480,15 +480,22 @@ public final class AgentConcurrencyUtilHooks {
             blocking("CountDownLatch.await", false);
         }
         LatchMisuseDetector misuse = AsyncTestContext.currentLatchMisuseDetector();
+        // A thread the run handed work to may outlive it, so its await counts once it is back.
+        boolean helper = misuse != null && AsyncTestContext.notAWorker();
         if (misuse != null) {
             misuse.observeLatch(receiver);
-            misuse.recordAwait(receiver);
+            if (!helper) {
+                misuse.recordAwait(receiver);
+            }
         }
         receiver.await();
         HappensBefore.acquire(receiver);
         // Reached only at zero, which is what tells LatchMisuseDetector that countdowns it never
         // saw happened in unwoven code rather than not at all (#499).
         if (misuse != null) {
+            if (helper) {
+                misuse.recordAwait(receiver);
+            }
             misuse.recordAwaitReturned(receiver);
         }
         CountDownLatchDetector counts = AsyncTestContext.currentCountDownLatchDetector();
@@ -513,13 +520,20 @@ public final class AgentConcurrencyUtilHooks {
             throws InterruptedException {
         ControlledSchedule.point();
         LatchMisuseDetector misuse = AsyncTestContext.currentLatchMisuseDetector();
+        // As in await(): a helper thread's await is recorded once it has come back (#1339).
+        boolean helper = misuse != null && AsyncTestContext.notAWorker();
         if (misuse != null) {
             misuse.observeLatch(receiver);
-            misuse.recordAwait(receiver);
+            if (!helper) {
+                misuse.recordAwait(receiver);
+            }
         }
         boolean reachedZero = receiver.await(timeout, unit);
         if (reachedZero) {
             HappensBefore.acquire(receiver);
+        }
+        if (misuse != null && helper) {
+            misuse.recordAwait(receiver);
         }
         // Only the true branch: a timed-out await proves nothing about the latch reaching zero.
         if (misuse != null && reachedZero) {
