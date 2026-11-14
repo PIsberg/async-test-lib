@@ -42,6 +42,11 @@ keep the patch number. japicmp sees neither kind of change, because the signatur
 turn a green build red, listed under Upgrading in [its changelog entry](CHANGELOG.md). The owner chose
 on 2026-11-08 to keep the patch number.
 
+**The 1.14.3 exception.** 1.14.3 is a patch release carrying minor content a third time: a new
+agent option, `arrays=true`, and detectors that now fire on cases they missed, listed under
+Upgrading in [its changelog entry](CHANGELOG.md). The owner chose on 2026-11-14 to keep the patch
+number.
+
 **What is not covered.** Anything in a package containing `internal`,
 the exact text of a report or an assertion message, and the `async-test-agent` and
 `async-test-analysis` artifacts' internals. The agent's `-javaagent` contract and the analysis

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.3] - 2026-11-14
+
+### Upgrading
+
+Like 1.14.1 and 1.14.2, this patch carries what [SUPPORT_POLICY.md](SUPPORT_POLICY.md) calls
+minor: a new agent option, and detectors that now fire on cases they missed. The owner chose on
+2026-11-14 to keep the patch number. Each change below can turn a green build red, on a real
+defect:
+
+- Check-then-act on concurrent types is reported: a `get` then an increment on an atomic, an
+  `isEmpty` or `peek` then a `remove` on a concurrent queue, a `size` or `isEmpty` then a `put` on
+  a concurrent map (#1249).
+- With the agent attached, more code is observed: a parallel `ConcurrentHashMap.forEach` and
+  `Arrays.parallelSetAll`, the rest of a parallel stream pipeline (#1172), a `ThreadPoolExecutor`
+  subclass with `beforeExecute` or `afterExecute` and a pool with its own rejection handler
+  (#1173), a task on `Executors.newSingleThreadExecutor()` (#1269), and threads the test body
+  started (#1339). A race or misuse there is now reported.
+- New agent feeds report without the recording API: a shared `Mac`, `Signature` or `Cipher`
+  (#1321), `format(Object)`, `parseObject` and `MessageFormat` (#1319), a shared `BitSet` (#1297),
+  `EnumMap.put`, a lost `Condition` signal, an `if`-guarded `wait` and a read-write lock upgrade
+  (#1255), a periodic task that throws (#1254), and lock-order inversions on `synchronized` (#1243)
+  and behind a reentrant hold (#1244).
+- `arrays=true` is new and off by default; it is not implied by `fields=true` (#1250).
+
+Most of the Fixed entries below go the other way: false positives on correct code that are gone.
+
 ### Added
 
 - **`arrays=true`: races on plain array elements (#1250).** No array instruction was woven, so a
