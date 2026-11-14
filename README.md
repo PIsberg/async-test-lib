@@ -799,11 +799,23 @@ rest is documentation and tooling around them.
 
 ## Publications
 
-Books that cover `@AsyncTest` and the problem it exists to solve.
+Books and articles that cover `@AsyncTest`, the problem it exists to solve, and how this repository is built and checked.
+
+### Books
 
 **[Vibe Architecture: Designing, Scaling, and Guardrailing Large-Scale Systems in the Age of AI Orchestration](https://www.amazon.com/dp/B0HF3MLBB8)** by Peter Isberg.
 
 Chapter 17, "The Asynchronous Trap", is about the class of bug AI-generated concurrent code produces and sequential unit tests never see. It uses this library as the worked example: forced-collision testing on a `CyclicBarrier`, what the detectors turn a bare timeout into, and how to feed that named diagnosis back to the assistant that wrote the bug.
+
+### Articles
+
+**[Green on Someone Else's Code: Corpus Evaluation for Tools and AI Agents](https://www.linkedin.com/pulse/green-someone-elses-code-corpus-evaluation-tools-ai-agents-isberg-letdf/)** by Peter Isberg.
+
+How to evaluate a tool or an agent against a corpus of other people's code: borrowing an answer key, the control build, why a zero needs a denominator, and what a gate would have to see to fail. This library's corpus evaluation ([docs/analysis/corpus-eval.md](docs/analysis/corpus-eval.md)) is the running example.
+
+**[Surviving Vulnerageddon: A Coder's 7-Layer Prepper Guide](https://www.linkedin.com/pulse/surviving-vulnerageddon-coders-7-layer-prepper-guide-peter-isberg-ccrbf/)** by Peter Isberg.
+
+Supply-chain hardening for a library in seven layers, starting from an honest dependency inventory, GitHub Actions pinned by SHA and a locked-down CI runner, with this repository as one of the three libraries it walks through.
 
 ---
 
