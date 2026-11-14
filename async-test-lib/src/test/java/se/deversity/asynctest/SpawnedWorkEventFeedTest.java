@@ -51,7 +51,12 @@ class SpawnedWorkEventFeedTest {
         SUBMITTED_TASK {
             @Override
             void run(ThrowingRunnable work, AtomicReference<Throwable> failed) throws Exception {
-                ExecutorService executor = Executors.newSingleThreadExecutor();
+                AtomicReference<Thread> poolThread = new AtomicReference<>();
+                ExecutorService executor = Executors.newSingleThreadExecutor(task -> {
+                    Thread thread = new Thread(task, "pool-thread");
+                    poolThread.set(thread);
+                    return thread;
+                });
                 try {
                     Runnable task = () -> runInto(work, failed);
                     @SuppressWarnings("unchecked")
@@ -59,8 +64,11 @@ class SpawnedWorkEventFeedTest {
                     AgentConcurrencyUtilHooks.get(future);
                 } finally {
                     executor.shutdownNow();
-                    // Its thread has ended before the run is analysed, as a closed pool's has.
+                    // Its thread has ended before the run is analysed, as a closed pool's has. A
+                    // terminated pool says so while its thread is still on its way out, so the
+                    // thread is joined: analysis asks the thread, not the pool.
                     executor.awaitTermination(10, TimeUnit.SECONDS);
+                    poolThread.get().join(TimeUnit.SECONDS.toMillis(10));
                 }
             }
         };
@@ -323,6 +331,57 @@ class SpawnedWorkEventFeedTest {
                     assertTrue(AgentConcurrencyUtilHooks.await(latch, 2, TimeUnit.SECONDS));
                 },
                 ctx -> AsyncTestContext.countDownLatchDetector().analyze().hasIssues());
+    }
+
+    @Test
+    @DisplayName("a wait outside a loop in a task is reported while its pool stays open")
+    void waitOutsideALoopOnAPoolLeftOpen() throws Exception {
+        AsyncTestContext ctx = new AsyncTestContext(
+                AsyncTestConfig.builder().detectSpuriousWakeupHazard(true).build());
+        AtomicReference<Throwable> failed = new AtomicReference<>();
+        AtomicReference<Thread> poolThread = new AtomicReference<>();
+        ExecutorService executor = Executors.newSingleThreadExecutor(task -> {
+            Thread thread = new Thread(task, "open-pool-thread");
+            poolThread.set(thread);
+            return thread;
+        });
+        try {
+            Thread worker = new Thread(() -> {
+                AsyncTestContext.install(ctx);
+                try {
+                    Runnable task = () -> runInto(() -> {
+                        Object monitor = new Object();
+                        synchronized (monitor) {
+                            AgentMonitorHooks.monitorWait(monitor, 2);
+                        }
+                    }, failed);
+                    @SuppressWarnings("unchecked")
+                    Future<Object> future = (Future<Object>) AgentConcurrencyUtilHooks.submit(executor, task);
+                    AgentConcurrencyUtilHooks.get(future);
+                } catch (Throwable t) { // NOPMD - handed to the test thread below
+                    failed.set(t);
+                } finally {
+                    AsyncTestContext.uninstall();
+                }
+            }, "worker-0");
+            worker.start();
+            worker.join(TimeUnit.SECONDS.toMillis(20));
+            assertNull(failed.get(), () -> "the hand-over failed: " + failed.get());
+            // The task has ended once its thread is back waiting for the pool's next one.
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (poolThread.get().getState() != Thread.State.WAITING && System.nanoTime() < deadline) {
+                Thread.onSpinWait();
+            }
+            AsyncTestContext.install(ctx);
+            try {
+                assertTrue(AsyncTestContext.spuriousWakeupHazardDetector().analyze().hasIssues(),
+                        "the task returned without a back-edge; its thread idling in the pool cannot reach one");
+            } finally {
+                AsyncTestContext.uninstall();
+            }
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     /**

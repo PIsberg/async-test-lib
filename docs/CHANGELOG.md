@@ -26,7 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   outlive the run. `LockLeakDetector` keeps such a thread's holds apart from the workers' and
   reports one only for a `ReentrantLock` that is still locked and names a holder that has ended or
   idles in its pool. `SpuriousWakeupDetector` settles such a thread's wakeup as an `if`'s only
-  when the thread waits again or has ended; one still alive at analysis is dropped unjudged.
+  when the thread waits again, has ended or idles in its pool; one still working at analysis
+  is dropped unjudged.
   `CountDownLatchDetector` reports an await that timed out during the run on whichever thread
   waited. Test first: three tests in `SpawnedWorkEventFeedTest` red before the change, and a
   control with the thread still running at analysis that goes red when either guard is removed

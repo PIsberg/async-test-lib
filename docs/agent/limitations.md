@@ -73,7 +73,7 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   behind follow it with a condition, because a started thread may outlive the run: a
   `ReentrantLock` such a thread still holds is reported only when the lock itself names a holder
   that has ended or idles in its pool, and a `wait` that returned without reaching its loop's
-  back-edge only once the thread has ended or has waited again (#1339). The rest are silent for a
+  back-edge only once the thread has ended, idles in its pool or has waited again (#1339). The rest are silent for a
   bug on such a thread: a signal no thread was waiting for (`MissedSignalDetector`,
   `ConditionVariableDetector`) and an await on a latch that never returned
   (`LatchMisuseDetector`), open on #1339. Attribution goes by thread, not by task: a fork-join

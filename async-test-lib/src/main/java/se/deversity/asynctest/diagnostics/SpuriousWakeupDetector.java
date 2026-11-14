@@ -100,10 +100,11 @@ public final class SpuriousWakeupDetector extends AbstractInstanceDetector<Spuri
     /**
      * {@return whether {@code thread} can no longer reach a back-edge for {@code wait}} A worker
      * has finished its round when this is asked. A thread the run handed work to (#1339) may
-     * still be between its wakeup and its loop's back-edge, so only one that has ended counts.
+     * still be between its wakeup and its loop's back-edge, so only one that has ended, or that
+     * waits in its pool for the next task with the one that waited behind it, counts.
      */
     private static boolean leftBehind(Thread thread, Woken wait) {
-        return !wait.helper || !thread.isAlive();
+        return !wait.helper || !thread.isAlive() || ReentrantLockDetector.idleInAPool(thread);
     }
 
     /**
@@ -122,8 +123,8 @@ public final class SpuriousWakeupDetector extends AbstractInstanceDetector<Spuri
      * Internal: {@link #recordObservedWakeup(Object)} for a caller that may be a thread the run
      * handed work to and not one of its workers (#1339). Such a thread is not stopped by the end
      * of a round or of the run, so a wakeup of its own that reached no back-edge is settled as an
-     * {@code if}'s by its next wakeup, or once the thread has ended, and dropped unjudged when
-     * the thread is still alive at analysis.
+     * {@code if}'s by its next wakeup, or once the thread has ended or idles in its pool, and
+     * dropped unjudged when the thread is still working at analysis.
      *
      * @param monitor the monitor waited on
      * @param helper  whether the calling thread is not a worker of the run
