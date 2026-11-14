@@ -824,6 +824,72 @@ class DiscardedOfferWeavingTest {
             receiver.forEach(action);
         }
 
+        public static void concurrentMapForEach(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                                                long threshold,
+                                                java.util.function.BiConsumer<Object, Object> action) {
+            receiver.forEach(threshold, action);
+        }
+
+        public static void concurrentMapForEachKey(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                                                   long threshold, java.util.function.Consumer<Object> action) {
+            receiver.forEachKey(threshold, action);
+        }
+
+        public static void concurrentMapForEachValue(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                                                     long threshold, java.util.function.Consumer<Object> action) {
+            receiver.forEachValue(threshold, action);
+        }
+
+        public static void concurrentMapForEachEntry(
+                java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long threshold,
+                java.util.function.Consumer<java.util.Map.Entry<Object, Object>> action) {
+            receiver.forEachEntry(threshold, action);
+        }
+
+        public static void concurrentMapForEach(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                                                long threshold,
+                                                java.util.function.BiFunction<Object, Object, Object> transformer,
+                                                java.util.function.Consumer<Object> action) {
+            receiver.forEach(threshold, transformer, action);
+        }
+
+        public static void concurrentMapForEachKey(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                                                   long threshold,
+                                                   java.util.function.Function<Object, Object> transformer,
+                                                   java.util.function.Consumer<Object> action) {
+            receiver.forEachKey(threshold, transformer, action);
+        }
+
+        public static void concurrentMapForEachValue(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                                                     long threshold,
+                                                     java.util.function.Function<Object, Object> transformer,
+                                                     java.util.function.Consumer<Object> action) {
+            receiver.forEachValue(threshold, transformer, action);
+        }
+
+        public static void concurrentMapForEachEntry(
+                java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long threshold,
+                java.util.function.Function<java.util.Map.Entry<Object, Object>, Object> transformer,
+                java.util.function.Consumer<Object> action) {
+            receiver.forEachEntry(threshold, transformer, action);
+        }
+
+        public static void arraysParallelSetAll(Object[] array, java.util.function.IntFunction<Object> generator) {
+            java.util.Arrays.parallelSetAll(array, generator);
+        }
+
+        public static void arraysParallelSetAll(int[] array, java.util.function.IntUnaryOperator generator) {
+            java.util.Arrays.parallelSetAll(array, generator);
+        }
+
+        public static void arraysParallelSetAll(long[] array, java.util.function.IntToLongFunction generator) {
+            java.util.Arrays.parallelSetAll(array, generator);
+        }
+
+        public static void arraysParallelSetAll(double[] array, java.util.function.IntToDoubleFunction generator) {
+            java.util.Arrays.parallelSetAll(array, generator);
+        }
+
         public static void intStreamForEach(java.util.stream.IntStream receiver,
                                             java.util.function.IntConsumer action) {
             receiver.forEach(action);

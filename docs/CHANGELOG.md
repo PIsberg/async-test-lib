@@ -29,6 +29,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the fix the same class finishes in 87 to 101 s. Each check now reads only its own
   receiver's records. No finding changes: the checks skipped every other receiver's records
   already.
+- **A tally bumped with no lock from a parallel `ConcurrentHashMap.forEach` or an
+  `Arrays.parallelSetAll` drew no finding.** The common pool's workers ran the action or generator
+  in JDK code nothing woven hands work to, so they ran unattributed, and with one caller there was
+  only one thread to see. A `forEach`, `forEachKey`, `forEachValue` or `forEachEntry` given a
+  parallelism threshold, with or without a transformer, and each `parallelSetAll` overload, now
+  lend the run to the workers as a
+  parallel stream's `forEach` does (#1156): each call ordered after the caller's writes, and the
+  caller after every call once the operation returns. Two of the four misses PR #1348 left
+  behind. Test first in `AgentParallelBulkHooksTest`, with two corpus idiom pairs whose locked
+  twins stay silent.
 - **Unguarded puts into an `EnumMap` were not seen, and a table filled by a static initializer
   was reported.** `EnumMap.put` narrows its key to `Enum`, so a call compiled against `EnumMap`
   matched no `Map.put` row under `collections=true`: a run recorded the gets and no write, and a

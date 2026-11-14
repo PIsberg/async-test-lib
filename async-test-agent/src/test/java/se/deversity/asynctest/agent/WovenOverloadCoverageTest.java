@@ -73,6 +73,9 @@ class WovenOverloadCoverageTest {
         decided("java.lang.StringBuilder#append(java.lang.CharSequence, int, int)",
                 "the ranged form; append(CharSequence) covers the whole-sequence case a shared "
                         + "builder is used for");
+        decided("java.util.concurrent.ConcurrentHashMap#forEach(java.util.function.BiConsumer)",
+                "Map.forEach, which the Map row weaves: a call site typed to this class is "
+                        + "assignable to it, and the map runs it on the caller alone");
         decided("java.text.NumberFormat#format(java.lang.Object)",
                 "inherited from java.text.Format, where it is woven: a call site typed to this "
                         + "class is assignable to the Format.format(Object) entry, whose hook "
