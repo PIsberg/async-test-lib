@@ -1405,11 +1405,21 @@ public class AtomicityValidator {
             // all inside one round, is exactly what a two-thread race over an inconsistent
             // lockset looks like, and it keeps reporting; a receiver built once and then read
             // round after round is the hand-off the rule exists for.
+            // Each receiver's own records, in recorded order. Every per-instance question below
+            // reads only its receiver's records, and asking it of the whole history made a field
+            // with many receivers (the elements of a list a parallel stream walks) cost records
+            // times receivers: minutes of analysis for a run that took a second.
+            Map<Long, List<FieldAccessRecord>> ofInstance = new HashMap<>();
+            for (FieldAccessRecord access : copy) {
+                ofInstance.computeIfAbsent(access.instanceKey, ignored -> new ArrayList<>())
+                        .add(access);
+            }
             Map<Long, Boolean> corroborated = new HashMap<>();
             for (FieldAccessRecord access : copy) {
                 if (access.exclusivePhase) {
                     corroborated.computeIfAbsent(access.instanceKey,
-                            instance -> spansLaterRounds(copy, instance));
+                            instance -> spansLaterRounds(
+                                    ofInstance.getOrDefault(instance, List.of()), instance));
                 }
             }
             Map<AccessGroup, List<FieldAccessRecord>> byEpoch = new HashMap<>();
@@ -1499,16 +1509,17 @@ public class AtomicityValidator {
                     FieldGuard guard = locks;
                     boolean handOff = Boolean.TRUE.equals(corroborated.get(groupInstance));
                     String excuse = excusedInstances.computeIfAbsent(groupInstance, instance -> {
-                        if (handOff && postShareAccessesShareALock(copy, instance)) {
+                        List<FieldAccessRecord> own = ofInstance.getOrDefault(instance, List.of());
+                        if (handOff && postShareAccessesShareALock(own, instance)) {
                             return "postShareLock";
                         }
-                        if (hintReadsConfirmedUnderTheWriteLock(copy, instance, guard, handOff)) {
+                        if (hintReadsConfirmedUnderTheWriteLock(own, instance, guard, handOff)) {
                             return "hintReadsConfirmed";
                         }
-                        if (settledSingleCheckCache(copy, instance, guard, handOff)) {
+                        if (settledSingleCheckCache(own, instance, guard, handOff)) {
                             return "settledCache";
                         }
-                        return everyOwnershipGenerationAgreesOnALock(copy, instance)
+                        return everyOwnershipGenerationAgreesOnALock(own, instance)
                                 ? "ownershipGenerationsAgree" : "";
                     });
                     if (!excuse.isEmpty()) {

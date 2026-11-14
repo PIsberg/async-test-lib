@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A run that built many small objects could spend minutes in analysis after the body had
+  finished.** A body that updates a field of each element of a list in a parallel stream, or of
+  each value in a `ConcurrentHashMap.forEach`, leaves one field with tens of thousands of
+  receivers. `AtomicityValidator`'s per-receiver checks each walked the field's whole history, so
+  the cost was records times receivers. Measured on 56 probe bodies through the corpus idioms
+  lane: two of three runs were killed after 280 s with the test thread inside the analysis, and
+  with the fix the same class finishes in 87 to 101 s. Each check now reads only its own
+  receiver's records. No finding changes: the checks skipped every other receiver's records
+  already.
 - **Two false positives on correct code: an object passed through `thenCompose`, and state filled
   by `forEachOrdered`.** Found by probing 63 correct and broken bodies through the corpus idioms
   lane; these two were the only wrong answers.
