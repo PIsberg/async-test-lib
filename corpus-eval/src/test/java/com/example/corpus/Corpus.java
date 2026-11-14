@@ -5999,6 +5999,35 @@ final class Corpus {
                             + "copy (#1156)",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_concurrentMapForEach_countsUnderALock", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "a ConcurrentHashMap.forEach with parallelism threshold 1: the common pool's "
+                            + "workers increment under one lock, and the caller reads after it returns"),
+
+            new RecordingSubject("idiom_concurrentMapForEach_plainCounter", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same forEach with no lock. Its workers ran the action unattributed, so "
+                            + "with one caller there was only one thread to see",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_parallelSetAll_countsUnderALock", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "an Arrays.parallelSetAll whose generator counts under one lock"),
+
+            new RecordingSubject("idiom_parallelSetAll_plainCounter", JDK,
+                    IDIOM_LANE + "Ledger",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same generator counting with no lock, unattributed on the pool's workers "
+                            + "as the forEach above was",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_parallelMap_countsUnderALock", JDK,
                     IDIOM_LANE + "Ledger",
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,

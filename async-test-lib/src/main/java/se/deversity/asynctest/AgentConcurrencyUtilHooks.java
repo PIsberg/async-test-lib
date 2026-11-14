@@ -4732,6 +4732,253 @@ public final class AgentConcurrencyUtilHooks {
         }
     }
 
+    // --- Parallel bulk operations outside the Stream API --------------------------------------
+
+    /**
+     * Runs one parallel bulk operation that is not a stream, a {@code ConcurrentHashMap.forEach}
+     * with a parallelism threshold or an {@code Arrays.parallelSetAll}: with a fresh
+     * {@link ParallelForEach} when a run is in progress, and with null otherwise, which is the call
+     * as it was. Each returns only once every task it forked is done, so the caller then receives
+     * every helper's clock, as after a stream's {@code forEach} (#1156).
+     */
+    private static void parallelBulk(Consumer<@Nullable ParallelForEach> operation) {
+        ControlledSchedule.point();
+        if (AsyncTestContext.agentContext() == null) {
+            operation.accept(null);
+            return;
+        }
+        ParallelForEach parallel = new ParallelForEach();
+        try {
+            operation.accept(parallel);
+        } finally {
+            parallel.joined();
+        }
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.forEach(long, BiConsumer)}: the common pool's workers run the
+     * action once the map holds at least {@code parallelismThreshold} mappings, so each runs as an
+     * element of a {@link ParallelForEach}. Outside a run the call is as it was.
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param action               what to run for each mapping
+     * @since 1.14.3
+     */
+    public static void concurrentMapForEach(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
+                                            long parallelismThreshold,
+                                            BiConsumer<Object, Object> action) {
+        parallelBulk(operation -> receiver.forEach(parallelismThreshold, operation == null ? action
+                : (key, value) -> operation.element(() -> action.accept(key, value))));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.forEachKey(long, Consumer)}, as {@link #concurrentMapForEach}.
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param action               what to run for each key
+     * @since 1.14.3
+     */
+    public static void concurrentMapForEachKey(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
+                                               long parallelismThreshold, Consumer<Object> action) {
+        parallelBulk(operation -> receiver.forEachKey(parallelismThreshold, operation == null ? action
+                : key -> operation.element(() -> action.accept(key))));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.forEachValue(long, Consumer)}, as
+     * {@link #concurrentMapForEach}.
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param action               what to run for each value
+     * @since 1.14.3
+     */
+    public static void concurrentMapForEachValue(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
+                                                 long parallelismThreshold, Consumer<Object> action) {
+        parallelBulk(operation -> receiver.forEachValue(parallelismThreshold, operation == null ? action
+                : value -> operation.element(() -> action.accept(value))));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.forEachEntry(long, Consumer)}, as
+     * {@link #concurrentMapForEach}.
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param action               what to run for each entry
+     * @since 1.14.3
+     */
+    public static void concurrentMapForEachEntry(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
+                                                 long parallelismThreshold,
+                                                 Consumer<Map.Entry<Object, Object>> action) {
+        parallelBulk(operation -> receiver.forEachEntry(parallelismThreshold, operation == null ? action
+                : entry -> operation.element(() -> action.accept(entry))));
+    }
+
+    /**
+     * Runs {@code transformer} as an element of {@code operation}, or as it was when it is null.
+     * The transformer and the action of one mapping run one after the other on the same thread,
+     * so each is an element of its own.
+     */
+    private static <A, B> Function<A, B> transformerElement(@Nullable ParallelForEach operation,
+                                                            Function<A, B> transformer) {
+        if (operation == null) {
+            return transformer;
+        }
+        return input -> {
+            List<B> result = new ArrayList<>(1);
+            operation.element(() -> result.add(transformer.apply(input)));
+            return result.get(0);
+        };
+    }
+
+    /** {@return {@code action} run as an element of {@code operation}, or as it was when it is null} */
+    private static <A> Consumer<A> actionElement(@Nullable ParallelForEach operation, Consumer<A> action) {
+        return operation == null ? action : value -> operation.element(() -> action.accept(value));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.forEach(long, BiFunction, Consumer)}, as
+     * {@link #concurrentMapForEach}: the transformer and the action each run as an element.
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param transformer          what turns each mapping into the action's input, or null to skip it
+     * @param action               what to run for each non-null transformation
+     * @since 1.14.3
+     */
+    public static void concurrentMapForEach(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
+                                            long parallelismThreshold,
+                                            BiFunction<Object, Object, Object> transformer,
+                                            Consumer<Object> action) {
+        parallelBulk(operation -> receiver.forEach(parallelismThreshold, operation == null ? transformer
+                        : (key, value) -> {
+                            List<Object> result = new ArrayList<>(1);
+                            operation.element(() -> result.add(transformer.apply(key, value)));
+                            return result.get(0);
+                        },
+                actionElement(operation, action)));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.forEachKey(long, Function, Consumer)}, as
+     * {@link #concurrentMapForEach}.
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param transformer          what turns each key into the action's input, or null to skip it
+     * @param action               what to run for each non-null transformation
+     * @since 1.14.3
+     */
+    public static void concurrentMapForEachKey(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
+                                               long parallelismThreshold,
+                                               Function<Object, Object> transformer,
+                                               Consumer<Object> action) {
+        parallelBulk(operation -> receiver.forEachKey(parallelismThreshold,
+                transformerElement(operation, transformer), actionElement(operation, action)));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.forEachValue(long, Function, Consumer)}, as
+     * {@link #concurrentMapForEach}.
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param transformer          what turns each value into the action's input, or null to skip it
+     * @param action               what to run for each non-null transformation
+     * @since 1.14.3
+     */
+    public static void concurrentMapForEachValue(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
+                                                 long parallelismThreshold,
+                                                 Function<Object, Object> transformer,
+                                                 Consumer<Object> action) {
+        parallelBulk(operation -> receiver.forEachValue(parallelismThreshold,
+                transformerElement(operation, transformer), actionElement(operation, action)));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.forEachEntry(long, Function, Consumer)}, as
+     * {@link #concurrentMapForEach}.
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param transformer          what turns each entry into the action's input, or null to skip it
+     * @param action               what to run for each non-null transformation
+     * @since 1.14.3
+     */
+    public static void concurrentMapForEachEntry(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
+                                                 long parallelismThreshold,
+                                                 Function<Map.Entry<Object, Object>, Object> transformer,
+                                                 Consumer<Object> action) {
+        parallelBulk(operation -> receiver.forEachEntry(parallelismThreshold,
+                transformerElement(operation, transformer), actionElement(operation, action)));
+    }
+
+    /**
+     * Weaves {@code Arrays.parallelSetAll(Object[], IntFunction)}: the common pool's workers call
+     * the generator, so each call runs as an element of a {@link ParallelForEach}. Outside a run
+     * the call is as it was.
+     *
+     * @param array     the array to fill
+     * @param generator what computes the value at each index
+     * @since 1.14.3
+     */
+    public static void arraysParallelSetAll(Object[] array, IntFunction<Object> generator) {
+        parallelBulk(operation -> Arrays.parallelSetAll(array, operation == null ? generator : index -> {
+            Object[] value = new Object[1];
+            operation.element(() -> value[0] = generator.apply(index));
+            return value[0];
+        }));
+    }
+
+    /**
+     * Weaves {@code Arrays.parallelSetAll(int[], IntUnaryOperator)}, as the {@code Object[]} form.
+     *
+     * @param array     the array to fill
+     * @param generator what computes the value at each index
+     * @since 1.14.3
+     */
+    public static void arraysParallelSetAll(int[] array, IntUnaryOperator generator) {
+        parallelBulk(operation -> Arrays.parallelSetAll(array, operation == null ? generator : index -> {
+            int[] value = new int[1];
+            operation.element(() -> value[0] = generator.applyAsInt(index));
+            return value[0];
+        }));
+    }
+
+    /**
+     * Weaves {@code Arrays.parallelSetAll(long[], IntToLongFunction)}, as the {@code Object[]} form.
+     *
+     * @param array     the array to fill
+     * @param generator what computes the value at each index
+     * @since 1.14.3
+     */
+    public static void arraysParallelSetAll(long[] array, IntToLongFunction generator) {
+        parallelBulk(operation -> Arrays.parallelSetAll(array, operation == null ? generator : index -> {
+            long[] value = new long[1];
+            operation.element(() -> value[0] = generator.applyAsLong(index));
+            return value[0];
+        }));
+    }
+
+    /**
+     * Weaves {@code Arrays.parallelSetAll(double[], IntToDoubleFunction)}, as the {@code Object[]}
+     * form.
+     *
+     * @param array     the array to fill
+     * @param generator what computes the value at each index
+     * @since 1.14.3
+     */
+    public static void arraysParallelSetAll(double[] array, IntToDoubleFunction generator) {
+        parallelBulk(operation -> Arrays.parallelSetAll(array, operation == null ? generator : index -> {
+            double[] value = new double[1];
+            operation.element(() -> value[0] = generator.applyAsDouble(index));
+            return value[0];
+        }));
+    }
+
     /**
      * Weaves {@code Stream.map}: see {@link StageSlot}. Outside a run the call is as it was.
      *

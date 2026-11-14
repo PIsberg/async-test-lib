@@ -1042,6 +1042,32 @@ final class CollectionAccessWeaver {
             Entry.call(IntStream.class, "forEach", "intStreamForEach", IntConsumer.class),
             Entry.call(LongStream.class, "forEach", "longStreamForEach", LongConsumer.class),
             Entry.call(DoubleStream.class, "forEach", "doubleStreamForEach", DoubleConsumer.class),
+            // The same holds for a parallel bulk operation outside the Stream API: a
+            // ConcurrentHashMap.forEach given a parallelism threshold, and Arrays.parallelSetAll.
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "forEach",
+                    "concurrentMapForEach", long.class, BiConsumer.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "forEachKey",
+                    "concurrentMapForEachKey", long.class, Consumer.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "forEachValue",
+                    "concurrentMapForEachValue", long.class, Consumer.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "forEachEntry",
+                    "concurrentMapForEachEntry", long.class, Consumer.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "forEach",
+                    "concurrentMapForEach", long.class, BiFunction.class, Consumer.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "forEachKey",
+                    "concurrentMapForEachKey", long.class, Function.class, Consumer.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "forEachValue",
+                    "concurrentMapForEachValue", long.class, Function.class, Consumer.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "forEachEntry",
+                    "concurrentMapForEachEntry", long.class, Function.class, Consumer.class),
+            Entry.staticCall(java.util.Arrays.class, "parallelSetAll", "arraysParallelSetAll",
+                    Object[].class, IntFunction.class),
+            Entry.staticCall(java.util.Arrays.class, "parallelSetAll", "arraysParallelSetAll",
+                    int[].class, IntUnaryOperator.class),
+            Entry.staticCall(java.util.Arrays.class, "parallelSetAll", "arraysParallelSetAll",
+                    long[].class, IntToLongFunction.class),
+            Entry.staticCall(java.util.Arrays.class, "parallelSetAll", "arraysParallelSetAll",
+                    double[].class, IntToDoubleFunction.class),
             // The rest of a Stream pipeline (#1172): a lambda given to map, filter or peek waits in
             // a slot the terminal operation lends the run to while it runs, and a terminal
             // operation's own lambdas run like forEach's action. A terminal operation not listed

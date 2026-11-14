@@ -1817,6 +1817,70 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    /** A map big enough that a forEach with threshold 1 splits across the common pool. */
+    private static final java.util.concurrent.ConcurrentHashMap<Integer, Integer> PARALLEL_MAP =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    static {
+        for (int i = 0; i < PARALLEL_ELEMENTS; i++) {
+            PARALLEL_MAP.put(i, i);
+        }
+    }
+
+    /** A ConcurrentHashMap.forEach with a parallelism threshold, counting under one lock. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentMapForEach_countsUnderALock() {
+        correct(() -> {
+            Ledger ledger = new Ledger();
+            PARALLEL_MAP.forEach(1, (key, value) -> {
+                synchronized (ledger.lock) {
+                    ledger.balance++;
+                }
+            });
+            use(ledger.balance);
+        });
+    }
+
+    /** The same forEach with no lock. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentMapForEach_plainCounter() {
+        broken(() -> {
+            Ledger ledger = new Ledger();
+            PARALLEL_MAP.forEach(1, (key, value) -> ledger.balance++);
+            use(ledger.balance);
+        });
+    }
+
+    /** An Arrays.parallelSetAll whose generator also counts, under one lock. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelSetAll_countsUnderALock() {
+        correct(() -> {
+            Ledger ledger = new Ledger();
+            int[] squares = new int[PARALLEL_ELEMENTS];
+            java.util.Arrays.parallelSetAll(squares, i -> {
+                synchronized (ledger.lock) {
+                    ledger.balance++;
+                }
+                return i * i;
+            });
+            use(ledger.balance + squares[3]);
+        });
+    }
+
+    /** The same generator counting with no lock. */
+    @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_parallelSetAll_plainCounter() {
+        broken(() -> {
+            Ledger ledger = new Ledger();
+            int[] squares = new int[PARALLEL_ELEMENTS];
+            java.util.Arrays.parallelSetAll(squares, i -> {
+                ledger.balance++;
+                return i * i;
+            });
+            use(ledger.balance + squares[3]);
+        });
+    }
+
     /** A parallel map whose lambda counts under one lock, collected by toList (#1172). */
     @AsyncTest(threads = 1, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
     void idiom_parallelMap_countsUnderALock() {

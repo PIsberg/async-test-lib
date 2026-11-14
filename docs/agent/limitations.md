@@ -56,7 +56,12 @@ or `lock::lock` compiles to an `invokedynamic`, and the JVM makes the call from 
   `parallel()`, `sequential()`, `unordered()` and `onClose`. A pipeline ended by `iterator()` lends its
   lambdas the run inside each `hasNext` and `next`, and orders the caller after them when the call
   returns. A lambda reaches the workers only through a chain of woven calls: one in a pipeline ended
-  by `spliterator()` or in unwoven code runs unattributed (#1240).
+  by `spliterator()` or in unwoven code runs unattributed (#1240). Two parallel bulk operations
+  outside the Stream API carry the run the same way: the action, and the transformer where there is
+  one, of a `ConcurrentHashMap.forEach`, `forEachKey`, `forEachValue` or `forEachEntry` given a
+  parallelism threshold, and the generator of an `Arrays.parallelSetAll`, each ordered after the
+  call and the caller after them. The map's `search` and `reduce` families, and
+  `Arrays.parallelPrefix` and `parallelSort`, are not woven, and run unattributed.
   Accesses on other application threads during the round, a thread started in unwoven code or a task
   given to `execute` on a `ThreadPoolExecutor` subclass that overrides `execute`, `remove` or
   `shutdownNow`, or a `beforeExecute` or `afterExecute` outside `includes=`, included, are treated as
