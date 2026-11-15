@@ -107,7 +107,8 @@ as `ThreadGroup` would, so it never swallows one. An `AssertionError` is queued 
 taken after each round's latch, failing that round, and once more after the last round, before
 analysis; anything else feeds `UncaughtExceptionHandlerDetector`. A run whose analysis has started
 takes nothing. With the agent, a thread a worker starts through a woven `Thread.start` belongs to
-its run through `agentContext()`, and a pool thread killed by a task handed over through a woven
+its run through `agentContext()`, including one constructed under a run whose analysis has
+started, and a pool thread killed by a task handed over through a woven
 `execute` belongs to the run that handed the task over: the hand-off wrapper marks the pool thread
 with that run and the throwable, matched by identity when the thread dies.
 

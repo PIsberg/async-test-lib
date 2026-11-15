@@ -887,6 +887,11 @@ public final class AsyncTestContext {
         }
     }
 
+    /** {@return whether this run's analysis has started, after which it takes nothing more} */
+    boolean isAnalysed() {
+        return analysed;
+    }
+
     /** Stops lending this run to the threads its threads started, once its analysis starts. */
     private void stopLending() {
         analysed = true;

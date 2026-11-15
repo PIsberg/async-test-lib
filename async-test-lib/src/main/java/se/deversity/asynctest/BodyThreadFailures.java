@@ -26,6 +26,7 @@ import java.lang.ref.WeakReference;
  * worker through a woven {@code Thread.start} belongs to the run that started it
  * ({@link AsyncTestContext#agentContext()}), and a pool thread killed by a task a run handed over
  * through a woven {@code execute} belongs to that run, whichever run constructed the thread. A
+ * thread constructed under a run that is over and started by a later one belongs to the later. A
  * thread that belongs to no run, or to one whose analysis has started, is only passed on: without
  * the agent, a pool kept in a static belongs to the run that first constructed its thread, so a
  * later run's task that kills it is missed rather than blamed on the wrong test.
@@ -203,6 +204,12 @@ public final class BodyThreadFailures {
         }
         WeakReference<AsyncTestContext> constructedUnder = RUN.get();
         AsyncTestContext run = constructedUnder == null ? null : constructedUnder.get();
-        return run != null ? run : AsyncTestContext.agentContext();
+        if (run != null && !run.isAnalysed()) {
+            return run;
+        }
+        // Constructed under a run that is over, or under none: a run that started the thread
+        // through a woven Thread.start since then is the one it works for.
+        AsyncTestContext startedBy = AsyncTestContext.agentContext();
+        return startedBy != null ? startedBy : run;
     }
 }

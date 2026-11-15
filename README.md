@@ -403,7 +403,7 @@ on every `@AsyncTest`: `includes` still select exactly their list and `excludes`
 
 **What feeds them.** Four read the JVM and the harness directly and need no configuration at
 all. With the agent attached that becomes 57, because the woven streams carry what 53 more
-detectors need without a line of instrumentation. The remaining 92 observe what the test body
+detectors need without a line of instrumentation. The remaining 91 observe what the test body
 records explicitly through `AsyncTestContext`, and the catalog says which of three reasons
 keeps each of them there. When a detector is
 enabled but nothing can feed it, the runner says so once per JVM at INFO rather than letting an
