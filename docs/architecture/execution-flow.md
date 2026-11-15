@@ -96,6 +96,21 @@ the runner relies on that in its outermost `finally`. A leaked ThreadLocal propa
 state across invocations, causing false positives or missed detections. `@BeforeEachInvocation` /
 `@AfterEachInvocation` hooks are discovered once per test and invoked around every round.
 
+**Threads the body starts (#1253).** `install` also marks the worker in an inheritable
+thread-local, `BodyThreadFailures`, so every thread a worker constructs belongs to the run, with or
+without the agent; `uninstall` clears it. For the duration of `execute` the runner makes
+`BodyThreadFailures` the JVM-wide default uncaught exception handler, installed immediately before
+the try whose `finally` removes it, and counted, because test classes running in parallel overlap:
+the last run out restores the handler the first one found, unless something replaced it meanwhile.
+The handler hands a death to the dying thread's run and then to the default it found, or prints it
+as `ThreadGroup` would, so it never swallows one. An `AssertionError` is queued on the context and
+taken after each round's latch, failing that round, and once more after the last round, before
+analysis; anything else feeds `UncaughtExceptionHandlerDetector`. A run whose analysis has started
+takes nothing. With the agent, a thread a worker starts through a woven `Thread.start` belongs to
+its run through `agentContext()`, and a pool thread killed by a task handed over through a woven
+`execute` belongs to the run that handed the task over: the hand-off wrapper marks the pool thread
+with that run and the throwable, matched by identity when the thread dies.
+
 **Replay seeds.** Failures print a `replaySeed` that reproduces the failing round's randomness when
 pasted into `@AsyncTest(replaySeed = N)`. The default `0` draws a fresh seed per round; a non-zero
 seed fixes every round to that value. On its own the seed does not fix the thread schedule.

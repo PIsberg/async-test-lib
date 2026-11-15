@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (behaviour)
+
+- **An `AssertionError` on a thread the test body started now fails the test (#1253).** A body
+  that started a thread, had it assert and joined it passed, with only the JVM's stack trace on
+  stderr: the most familiar way an asynchronous test lies, and no detector saw it. For the duration
+  of a run the runner now makes its own handler the JVM-wide default uncaught exception handler
+  (counted across runs that overlap, and restored to what it found by the last one), and a thread
+  that dies of an uncaught `AssertionError` fails the round it dies in with that error as the
+  cause, whatever `failOn` or the detector selection say. One that dies after its round, before
+  analysis, fails the run. Any other uncaught throwable becomes an
+  `UncaughtExceptionHandlerDetector` finding at `HIGH` (the detector is in the default
+  `ESSENTIALS` preset; with the default `failOn = NONE` it is reported, not thrown), so the
+  detector moves from recording-only to zero-config (5 zero-config, 91 recording-only) with
+  `OBSERVED` evidence. A thread is the body's when a worker constructed it or a thread that was
+  (an inheritable thread-local, so no agent is needed), or, with the agent, when a worker started
+  it through a woven `Thread.start`, or when a task a worker handed over through a woven `execute`
+  killed it, whichever run built the pool thread. Unchanged: a thread with a handler of its own is
+  that handler's (not wrapped, so `getUncaughtExceptionHandler()` returns what the test set), a
+  JVM-wide default handler the suite set still receives every death and still covers a thread for
+  the detector (#758), and every death is still printed or handed on, never swallowed. Not
+  reported: a thread that dies after its run's analysis has started (never blamed on a later
+  test), and, without the agent, a pool kept in a static whose thread an earlier run built.
+  Existing suites whose body-started threads have been failing assertions unnoticed will go red.
+
 ### Fixed
 
 - **A reference `compareAndSet` that threw left its swap announced (#1356).** The seven woven

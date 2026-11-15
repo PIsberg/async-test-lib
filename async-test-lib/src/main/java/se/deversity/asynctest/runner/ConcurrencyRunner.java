@@ -11,6 +11,7 @@ import se.deversity.asynctest.AfterEachInvocation;
 import se.deversity.asynctest.AgentThreadHooks;
 import se.deversity.asynctest.AsyncTestConfig;
 import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.BodyThreadFailures;
 import se.deversity.asynctest.AsyncTestListenerRegistry;
 import se.deversity.asynctest.BeforeEachInvocation;
 import se.deversity.asynctest.DetectorType;
@@ -519,6 +520,10 @@ public class ConcurrencyRunner {
                 : null;
         phase2Analysis.drainBeforeAnalysis(pinningStream);
 
+        // A thread the body starts that dies of an uncaught exception is the run's to report
+        // (#1253). Process-wide state, so counted and restored in the finally below; installed
+        // immediately before that try for the reason the stream above is opened there.
+        BodyThreadFailures.install();
         try {
             for (int i = 0; i < config.invocations; i++) {
                 long remainingMs = remainingMillis(deadlineNanos);
@@ -642,6 +647,11 @@ public class ConcurrencyRunner {
                     benchmarkRecorder.recordInvocationEnd(benchmarkStart);
                 }
             }
+            // A thread the body started without joining it can fail after its round was checked.
+            List<Throwable> late = new ArrayList<>(phase2Context.takeBodyThreadAssertions());
+            if (!late.isEmpty()) {
+                throw buildMultiFailureError(late);
+            }
         } catch (AssertionError e) {
             if (timeoutAlreadyReported) {
                 // Thrown by the pre-round deadline check above, which already went through
@@ -678,6 +688,7 @@ public class ConcurrencyRunner {
             reportFailure(t, currentSeed, lastSchedule, phase2Analysis);
             throw unwrap(t);
         } finally {
+            BodyThreadFailures.uninstall();
             executor.shutdownNow();
             try {
                 executor.awaitTermination(1, TimeUnit.SECONDS);
@@ -1248,6 +1259,9 @@ public class ConcurrencyRunner {
         }
 
         boolean completed = latch.await(roundTimeoutMs, TimeUnit.MILLISECONDS);
+        // An assertion that failed on a thread a worker started is this round's failure (#1253): a
+        // body that joined the thread has seen it die, and the death was recorded before that.
+        failures.addAll(phase2Context.takeBodyThreadAssertions());
         if (!completed) {
             // Interrupt any worker still stuck (e.g. blocked on a now-broken barrier, or
             // never reached it at all) instead of leaving it to run until execute()'s

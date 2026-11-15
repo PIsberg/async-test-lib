@@ -1,5 +1,6 @@
 package se.deversity.asynctest.diagnostics;
 
+import se.deversity.asynctest.BodyThreadFailures;
 import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
 import java.time.Instant;
@@ -13,6 +14,13 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Detects threads that are started without a custom {@link Thread.UncaughtExceptionHandler},
  * with no JVM-wide default handler set either, and that subsequently throw an uncaught exception.
+ *
+ * <p>Fed by the runner since 1.15.0 (#1253), with no recording call: a thread the test body
+ * started (constructed on a worker, or, with the agent, started there through a woven
+ * {@code Thread.start}) that dies of an uncaught exception other than an {@link AssertionError} is
+ * recorded here. An {@code AssertionError} is not a finding: it fails the test, as it would have
+ * on the worker. A thread with a handler of its own is never seen, since the JVM gives the
+ * exception to that handler. See {@link BodyThreadFailures}.
  *
  * <p>Without an explicit handler, uncaught exceptions are routed only to the thread group's
  * default handler (typically a stderr print). The submitting code has no way to detect
@@ -69,7 +77,9 @@ public class UncaughtExceptionHandlerDetector {
      * <p>A thread with no handler of its own dispatches to its {@link ThreadGroup}, which hands the
      * exception to {@link Thread#getDefaultUncaughtExceptionHandler()} when one is set. That
      * JVM-wide default is sampled here, at the moment of the exception, because that is the
-     * handler the dispatch would reach; a thread covered by it is not reported (#758).
+     * handler the dispatch would reach; a thread covered by it is not reported (#758). The
+     * handler the runner sets as the default for the duration of a run is not one: it passes every
+     * death on to the default it found, which is the one sampled (#1253).
      *
      * @param thread    the thread that threw (null-safe)
      * @param throwable the uncaught exception
@@ -78,7 +88,7 @@ public class UncaughtExceptionHandlerDetector {
         if (thread == null) return;
         ThreadRecord rec = threads.get(thread.threadId());
         if (rec != null) {
-            rec.coveredByDefaultHandler = Thread.getDefaultUncaughtExceptionHandler() != null;
+            rec.coveredByDefaultHandler = BodyThreadFailures.userDefaultHandler() != null;
             rec.uncaughtException = throwable;
         }
     }

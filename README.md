@@ -34,7 +34,7 @@
 - **149 detectors** — deadlocks, race conditions, virtual-thread pinning, lifecycle bugs, misused JDK types and more; a bare `@AsyncTest` runs the 12 in `Preset.ESSENTIALS` and `detectAll = true` runs them all. See [Detectors](#detectors) for what feeds them.
 - **JUnit native, 5 and 6** — a plain `@TestTemplate`: no JVM flags, no required configuration, and it works from Kotlin, Groovy, Scala and Clojure. Jupiter 5.9.3 through 6.1.2, verified per release ([compatibility table](docs/BUILDING.md#junit-compatibility), [language notes](docs/JVM_LANGUAGES.md)).
 - **Every finding says how far to trust it** — each detector carries a trust tier, so `failOn` can gate a merge on the measured end of the scale while everything else is still reported ([the tiers](docs/DETECTOR_CATALOG.md#trust-tiers), [Evidence](#evidence-what-has-been-measured-and-on-whose-code)).
-- **Optional agent** — `async-test-agent` rewrites field accesses, collection and lock calls, shared JDK objects, coordination primitives, `Object.wait` and `notify`, `Thread.sleep`, `System.gc`, `Thread.start` and `Thread.setDaemon`, and the monitor of `synchronized (owner.field)`, with Byte Buddy, so **57 of them can see code you did not modify** instead of 4. Being able to see is not the same as firing: on 82 third-party subjects two of the 21 exposed at the time produced every finding, and the other nineteen were correctly silent because nothing in that corpus writes the idiom they model. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
+- **Optional agent** — `async-test-agent` rewrites field accesses, collection and lock calls, shared JDK objects, coordination primitives, `Object.wait` and `notify`, `Thread.sleep`, `System.gc`, `Thread.start` and `Thread.setDaemon`, and the monitor of `synchronized (owner.field)`, with Byte Buddy, so **58 of them can see code you did not modify** instead of 5. Being able to see is not the same as firing: on 82 third-party subjects two of the 21 exposed at the time produced every finding, and the other nineteen were correctly silent because nothing in that corpus writes the idiom they model. Not needed for default use, and the core artifact does not depend on Byte Buddy ([docs/AGENT.md](docs/AGENT.md)).
 - **CI-ready out of the box** — JUnit XML, machine-readable JSON, SARIF, or plain `AssertionError` fail-gates, straight into GitHub Actions, Jenkins and GitLab CI.
 
 <div align="center">
@@ -494,6 +494,16 @@ Gate CI on serious findings while adopting incrementally:
 @AsyncTest(failOn = FailOn.HIGH)   // HIGH and CRITICAL findings fail the test
 void checkout_concurrently() { ... }
 ```
+
+Whatever `failOn` says, a body that throws fails the test, and since 1.15.0 so does an
+`AssertionError` on a thread the body started that no handler of its own took: it is the test's
+own assertion, on the wrong thread, and used to pass with only a stack trace on stderr (#1253).
+Any other exception that kills such a thread is an `UncaughtExceptionHandlerDetector` finding at
+`HIGH`, which `failOn` gates like any other. A thread is the body's when a worker constructed it
+(or a thread that was), or, with the agent, when a worker started it through a woven
+`Thread.start` or killed a pool thread with a task it handed over through a woven `execute`. A
+thread that dies after its run's analysis has started is not reported, and without the agent a pool
+kept in a static belongs to the run that first built its thread.
 
 For a legacy codebase, record the current findings once and ratchet them down:
 

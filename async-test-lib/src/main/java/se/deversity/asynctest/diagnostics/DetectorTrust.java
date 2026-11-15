@@ -302,7 +302,7 @@ public final class DetectorTrust {
             row(DetectorType.SHARED_XML_PARSER, "SharedXmlParserDetector", "SharedXmlParser", TrustTier.VERDICT, Evidence.CONTEXTUAL),
             row(DetectorType.BOXED_PRIMITIVE_LOCK, "BoxedPrimitiveLockDetector", "BoxedPrimitiveLock", TrustTier.PROMPT, Evidence.OBSERVED),
             row(DetectorType.SHARED_TIMEZONE, "SharedTimeZoneDetector", "SharedTimeZone", TrustTier.VERDICT, Evidence.CONTEXTUAL),
-            row(DetectorType.UNCAUGHT_EXCEPTION_HANDLER, "UncaughtExceptionHandlerDetector", "UncaughtExceptionHandler", TrustTier.FACT, Evidence.ASSERTED),
+            row(DetectorType.UNCAUGHT_EXCEPTION_HANDLER, "UncaughtExceptionHandlerDetector", "UncaughtExceptionHandler", TrustTier.FACT, Evidence.OBSERVED),
             row(DetectorType.DAEMON_THREAD_HYGIENE, "DaemonThreadHygieneDetector", "DaemonThreadHygiene", TrustTier.VERDICT, Evidence.OBSERVED),
             row(DetectorType.NOTIFY_WITHOUT_MONITOR, "NotifyWithoutMonitorDetector", "NotifyWithoutMonitor", TrustTier.VERDICT, Evidence.OBSERVED),
             row(DetectorType.SHARED_SECURE_RANDOM, "SharedSecureRandomDetector", "SharedSecureRandom", TrustTier.ADVISORY, Evidence.CONTEXT_FREE),
