@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   unjoined future in another. Chain membership is now the identity `recordChainOperation`
   records, and a handler still accounts for every future of its own chain. A result recorded with
   `recordFutureCreated` before it was chained now joins the chain too.
+- **A disabled `ATOMICITY` detector still fed its lock and volatility state (#1361).** The
+  agent-fed `recordFieldAccessUnderLocks` overloads marked a field volatile, noted its locks, its
+  written constant and its receiver's construction phase before `record` reached the `enabled`
+  check. An access drained while the detector was disabled therefore left a volatile mark that a
+  later enabled run read as safe publication, which silenced double-checked locking on a plain
+  field. Every recording entry point now returns before touching any state when disabled.
 
 ## [1.14.3] - 2026-11-14
 

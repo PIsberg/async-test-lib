@@ -781,6 +781,11 @@ public class AtomicityValidator {
     public void recordFieldAccessUnderLocks(String fieldName, @Nullable Object value,
                                             boolean isWrite, long threadId,
                                             long lockFingerprint, boolean volatileField) {
+        // The guard is fed before record() reaches its own check, so a disabled detector has to
+        // stop here or it keeps marking fields volatile for the next run to read (#1361).
+        if (!enabled) {
+            return;
+        }
         if (volatileField && fieldName != null && !fieldName.isBlank()) {
             FieldGuard guard = fieldLocks.computeIfAbsent(fieldName, ignored -> new FieldGuard());
             guard.noteVolatile();
@@ -971,6 +976,11 @@ public class AtomicityValidator {
                                             boolean volatileField, int constantTag, int identity,
                                             int storedIdentity, @Nullable Object receiver,
                                             HappensBefore.@Nullable Stamp stamp, long round) {
+        // noteGuard and generationOf advance per-receiver state ahead of record()'s own check, so
+        // a disabled detector has to stop here (#1361).
+        if (!enabled) {
+            return;
+        }
         boolean exclusive = noteGuard(fieldName, isWrite, lockFingerprint, ownMonitor,
                 methodMonitor, volatileField, constantTag, identity, threadId);
         record(fieldName, value, isWrite, threadId, null, false, lockFingerprint, identity,
@@ -991,6 +1001,10 @@ public class AtomicityValidator {
 
     private void record(String fieldName, @Nullable Object value, boolean isWrite, long threadId,
                         @Nullable Object owner, boolean ownerKnown, long lockFingerprint) {
+        // Before instanceOf, which numbers the owner in a map a disabled detector must not grow.
+        if (!enabled) {
+            return;
+        }
         // The owner, when named, is the instance its accesses are grouped by: without it two
         // objects that each stay on one thread merge into one history under the field name
         // (#750). Keying the guard by the owner's identity hash also aligns it with the
