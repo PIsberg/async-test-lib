@@ -52,6 +52,8 @@ Three findings, each tied to something observed rather than to the mere use of a
   finish lost nothing, and is not reported.
 - 🔴 **High** — the group was read with `getNow`/`isDone` at a point when fewer constituents had
   completed than the combinator was given.
+- For `anyOf`, both of these need *no* constituent to have completed: `anyOf` is done with its
+  first, and losers still running is what it is for.
 - 🟡 **Medium** — an `anyOf` constituent failed after the combined future had already been read.
 
 ## Run it

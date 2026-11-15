@@ -146,6 +146,68 @@ class CompletableFutureCombinatorMisuseDetectorTest {
         assertFalse(d.analyze().hasIssues());
     }
 
+    /**
+     * {@code anyOf} is complete once one constituent is: reading it with {@code getNow} or
+     * {@code isDone} after the first completion proceeds on a finished future (#1357).
+     */
+    @Test
+    void anyOfReadWithoutBlockingAfterItsFirstCompletionIsSilent() {
+        var d = new CompletableFutureCombinatorMisuseDetector();
+        var any = new CompletableFuture<Object>();
+
+        d.recordCombinator(any, "first-answer", "anyOf", 3, here());
+        d.recordConstituentCompleted(any, "fast", false, here());
+        d.recordAwait(any, "getNow", here());
+        d.recordAwait(any, "isDone", here());
+        d.recordConstituentCompleted(any, "slow", false, here());
+        d.recordConstituentCompleted(any, "slower", false, here());
+
+        assertFalse(d.analyze().hasIssues(),
+                "anyOf completed with its first constituent; the losers still running is what anyOf means");
+    }
+
+    /** The buggy twin: an {@code anyOf} read before any constituent completed proceeds on nothing. */
+    @Test
+    void anyOfReadWithoutBlockingBeforeAnyCompletionIsHigh() {
+        var d = new CompletableFutureCombinatorMisuseDetector();
+        var any = new CompletableFuture<Object>();
+
+        d.recordCombinator(any, "first-answer", "anyOf", 2, here());
+        d.recordAwait(any, "getNow", here());
+        d.recordConstituentCompleted(any, "fast", false, here());
+        d.recordConstituentCompleted(any, "slow", false, here());
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues());
+        assertTrue(report.violations.get(0).contains("only 0 of 2"), report.violations.get(0));
+        assertEquals(IssueSeverity.HIGH, report.structuredViolations.get(0).severity());
+    }
+
+    /** An unawaited {@code anyOf} whose winner is in lost nothing; the losers are anyOf's design. */
+    @Test
+    void unawaitedAnyOfWithAWinnerIsSilent() {
+        var d = new CompletableFutureCombinatorMisuseDetector();
+        var any = new CompletableFuture<Object>();
+
+        d.recordCombinator(any, "first-answer", "anyOf", 3, here());
+        d.recordConstituentCompleted(any, "fast", false, here());
+
+        assertFalse(d.analyze().hasIssues());
+    }
+
+    @Test
+    void unawaitedAnyOfWithNothingCompletedIsHigh() {
+        var d = new CompletableFutureCombinatorMisuseDetector();
+        var any = new CompletableFuture<Object>();
+
+        d.recordCombinator(any, "first-answer", "anyOf", 2, here());
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues());
+        assertTrue(report.violations.get(0).contains("never awaited"), report.violations.get(0));
+        assertEquals(IssueSeverity.HIGH, report.structuredViolations.get(0).severity());
+    }
+
     @Test
     void eventsForAnUnregisteredCombinatorAreIgnored() {
         var d = new CompletableFutureCombinatorMisuseDetector();

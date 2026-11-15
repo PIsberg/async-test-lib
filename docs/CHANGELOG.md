@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returned the same object from the same slot, with no release recording how it got there, was
   then ordered after the throwing thread, hiding a race on that object. The announcement now
   ends in a `finally`.
+- **`COMPLETABLE_FUTURE_COMBINATOR_MISUSE` reported a correct `anyOf` (#1357).** Both HIGH rules
+  compared the constituents completed against the combinator's arity whatever its kind, so an
+  `anyOf(a, b, c).getNow(...)` or `isDone()` after its first constituent completed read as
+  "proceeded on a group still running", and so did an unawaited `anyOf` whose winner was in. An
+  `anyOf` is complete once one constituent is: both rules now need one for `anyOf` and every
+  constituent for the rest. An `anyOf` read before any constituent completed is still HIGH.
 
 ## [1.14.3] - 2026-11-14
 
