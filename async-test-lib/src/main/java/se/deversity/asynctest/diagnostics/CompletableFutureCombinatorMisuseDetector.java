@@ -28,13 +28,12 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>Every finding is anchored to an observation, never to the mere use of a combinator:
  * <ul>
- *   <li>{@link IssueSeverity#HIGH} - the combined future was never awaited and constituents
- *       were <em>still incomplete</em> when the run ended. A combinator whose constituents all
- *       finished produces no finding, even if nobody awaited it.</li>
+ *   <li>{@link IssueSeverity#HIGH} - the combined future was never awaited and was <em>still
+ *       incomplete</em> when the run ended. A combinator whose constituents all finished produces
+ *       no finding, even if nobody awaited it.</li>
  *   <li>{@link IssueSeverity#HIGH} - the combined future was read with a non-blocking probe
- *       ({@code getNow}, {@code isDone}) at a point when fewer constituents had completed than
- *       the combinator was given. The detector compares recorded event order, so this is what
- *       happened, not what might.</li>
+ *       ({@code getNow}, {@code isDone}) before it was complete. The detector compares recorded
+ *       event order, so this is what happened, not what might.</li>
  *   <li>{@link IssueSeverity#MEDIUM} - an {@code anyOf} constituent completed exceptionally
  *       after the combined future was already read. {@code anyOf} propagates only the first
  *       completion, so a loser's failure reaches no handler through the combinator whenever it
@@ -43,6 +42,10 @@ import java.util.concurrent.atomic.AtomicLong;
  *       alone: the caller could still have inspected it at the point of reading, and this rule
  *       cannot see whether it did, so silence there is the conservative side.</li>
  * </ul>
+ *
+ * <p>"Complete" means every constituent had completed, except for {@code anyOf}, which is
+ * complete once one has (#1357): its losers still running is what {@code anyOf} is for, so an
+ * {@code anyOf} read or left unawaited after its first completion is silent.
  *
  * <p>Usage inside {@code @AsyncTest(includes = DetectorType.COMPLETABLE_FUTURE_COMBINATOR_MISUSE)}:
  * <pre>{@code
@@ -210,11 +213,13 @@ public final class CompletableFutureCombinatorMisuseDetector extends AbstractIns
         for (CombinatorState s : states()) {
             List<ConstituentEvent> done = new ArrayList<>(s.constituents);
             List<AwaitEvent> awaits = new ArrayList<>(s.awaits);
+            // anyOf is complete once one constituent is; every other combinator needs them all (#1357).
+            int needed = sameIgnoringCase("anyOf", s.kind) ? 1 : s.arity;
 
             if (awaits.isEmpty()) {
                 // Only a fact if constituents were genuinely still outstanding at the end of the
                 // run. An unawaited combinator whose constituents all finished lost nothing.
-                if (s.arity > 0 && done.size() < s.arity) {
+                if (s.arity > 0 && done.size() < needed) {
                     String msg = String.format(
                             "%s combinator '%s' (created on '%s' over %d futures) was never awaited, and only "
                             + "%d constituent(s) had completed when the run ended. The future returned by %s is "
@@ -237,7 +242,7 @@ public final class CompletableFutureCombinatorMisuseDetector extends AbstractIns
                 if (!isNonBlockingRead(a.how)) continue;
                 int completedBefore = 0;
                 for (ConstituentEvent c : done) if (c.seq < a.seq) completedBefore++;
-                if (s.arity > 0 && completedBefore < s.arity) {
+                if (s.arity > 0 && completedBefore < needed) {
                     String msg = String.format(
                             "%s combinator '%s' was read with %s() on thread '%s' when only %d of %d "
                             + "constituent(s) had completed. A non-blocking read does not wait; the caller "

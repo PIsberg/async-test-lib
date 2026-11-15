@@ -55,7 +55,7 @@ Each stays silent on the correctly written twin — see [examples 139–142](../
 
 ### 138. CompletableFuture Combinator Misuse
 * **Severity**: `HIGH`
-* **Trust tier**: **fact** — an unawaited combinator is reported only with constituents still outstanding, an early read only when fewer had completed than the arity given.
+* **Trust tier**: **fact** — an unawaited combinator is reported only with constituents still outstanding, an early read only when fewer had completed than the arity given, or, for `anyOf`, which is complete with its first constituent, when none had (#1357).
 * **Description**: Detects code that moves past a combinator before the group has finished. `allOf` and `anyOf` wait for nothing — they return a new future, and that future is the only thing that knows when the group is done. Dropping it, or reading it with `getNow`/`isDone`, lets the caller proceed mid-write. A third finding covers `anyOf` losers: once one constituent wins, a failure in any of the others reaches no handler. Overlaps `COMPLETABLEFUTURE_CHAIN`'s unawaited-chain finding, which tracks individual futures rather than the combinator API.
 * **Buggy Code**:
   ```java
