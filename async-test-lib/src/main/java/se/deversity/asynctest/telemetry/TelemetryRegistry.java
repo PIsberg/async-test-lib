@@ -2889,20 +2889,24 @@ public final class TelemetryRegistry {
         ControlledSchedule.point();
         ownershipOffered(update, slot);
         HappensBefore.swapping(slot, SLOT_VALUE, update);
-        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
-        boolean swapped = aba == null ? slot.compareAndSet(expected, update)
-                : aba.compareAndSet(slot, expected, update);
-        if (!swapped) {
-            ownershipRefused(update, slot);
-        } else {
-            // After the swap, not before: a slot's release cannot be withdrawn, and one a failed
-            // swap left behind would match a later read of the same value stored by somebody else.
-            // A read that returns the value before this lands finds the swap announced above,
-            // waits for it to end below, and then finds the release (#1328).
-            slotStored(slot, update);
+        try {
+            ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+            boolean swapped = aba == null ? slot.compareAndSet(expected, update)
+                    : aba.compareAndSet(slot, expected, update);
+            if (!swapped) {
+                ownershipRefused(update, slot);
+            } else {
+                // After the swap, not before: a slot's release cannot be withdrawn, and one a failed
+                // swap left behind would match a later read of the same value stored by somebody else.
+                // A read that returns the value before this lands finds the swap announced above,
+                // waits for it to end below, and then finds the release (#1328).
+                slotStored(slot, update);
+            }
+            return swapped;
+        } finally {
+            // A swap that throws stored nothing, and its announcement must not outlive it (#1356).
+            HappensBefore.swapEnded();
         }
-        HappensBefore.swapEnded();
-        return swapped;
     }
 
     /**
@@ -3169,14 +3173,18 @@ public final class TelemetryRegistry {
         ControlledSchedule.point();
         slotOffered(update, receiver, System.identityHashCode(updater));
         HappensBefore.swapping(receiver, ReferenceSlots.fieldOf(updater), update);
-        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
-        boolean swapped = aba == null ? updater.compareAndSet(receiver, expected, update)
-                : aba.compareAndSet(receiver, updater, 0, expected, update, (h, s, i, e, u) -> asUpdater(s).compareAndSet(h, e, u));
-        if (swapped) {
-            slotReleased(receiver, ReferenceSlots.fieldOf(updater), update);
+        try {
+            ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, updater);
+            boolean swapped = aba == null ? updater.compareAndSet(receiver, expected, update)
+                    : aba.compareAndSet(receiver, updater, 0, expected, update, (h, s, i, e, u) -> asUpdater(s).compareAndSet(h, e, u));
+            if (swapped) {
+                slotReleased(receiver, ReferenceSlots.fieldOf(updater), update);
+            }
+            return swapped;
+        } finally {
+            // A swap that throws stored nothing, and its announcement must not outlive it (#1356).
+            HappensBefore.swapEnded();
         }
-        HappensBefore.swapEnded();
-        return swapped;
     }
 
     /**
@@ -3280,14 +3288,18 @@ public final class TelemetryRegistry {
         ControlledSchedule.point();
         slotOffered(update, slots, index);
         HappensBefore.swapping(slots, ReferenceSlots.element(index), update);
-        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
-        boolean swapped = aba == null ? slots.compareAndSet(index, expected, update)
-                : aba.compareAndSet(slots, null, index, expected, update, (h, s, i, e, u) -> asArray(h).compareAndSet(i, e, u));
-        if (swapped) {
-            slotReleased(slots, ReferenceSlots.element(index), update);
+        try {
+            ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slots, index);
+            boolean swapped = aba == null ? slots.compareAndSet(index, expected, update)
+                    : aba.compareAndSet(slots, null, index, expected, update, (h, s, i, e, u) -> asArray(h).compareAndSet(i, e, u));
+            if (swapped) {
+                slotReleased(slots, ReferenceSlots.element(index), update);
+            }
+            return swapped;
+        } finally {
+            // A swap that throws stored nothing, and its announcement must not outlive it (#1356).
+            HappensBefore.swapEnded();
         }
-        HappensBefore.swapEnded();
-        return swapped;
     }
 
     /**
@@ -3410,14 +3422,18 @@ public final class TelemetryRegistry {
         ControlledSchedule.point();
         slotOffered(update, receiver, System.identityHashCode(handle));
         HappensBefore.swapping(receiver, ReferenceSlots.fieldOf(handle), update);
-        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
-        boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(receiver, expected, update)
-                : aba.compareAndSet(receiver, handle, 0, expected, update, (h, s, i, e, u) -> (boolean) asHandle(s).withInvokeBehavior().compareAndSet(h, e, u));
-        if (swapped) {
-            slotReleased(receiver, ReferenceSlots.fieldOf(handle), update);
+        try {
+            ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(receiver, handle);
+            boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(receiver, expected, update)
+                    : aba.compareAndSet(receiver, handle, 0, expected, update, (h, s, i, e, u) -> (boolean) asHandle(s).withInvokeBehavior().compareAndSet(h, e, u));
+            if (swapped) {
+                slotReleased(receiver, ReferenceSlots.fieldOf(handle), update);
+            }
+            return swapped;
+        } finally {
+            // A swap that throws stored nothing, and its announcement must not outlive it (#1356).
+            HappensBefore.swapEnded();
         }
-        HappensBefore.swapEnded();
-        return swapped;
     }
 
     /**
@@ -3534,14 +3550,18 @@ public final class TelemetryRegistry {
         ControlledSchedule.point();
         slotOffered(update, handle, 0);
         HappensBefore.swapping(handle, SLOT_VALUE, update);
-        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
-        boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(expected, update)
-                : aba.compareAndSet(handle, null, 0, expected, update, (h, s, i, e, u) -> (boolean) asHandle(h).withInvokeBehavior().compareAndSet(e, u));
-        if (swapped) {
-            slotReleased(handle, SLOT_VALUE, update);
+        try {
+            ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(handle);
+            boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(expected, update)
+                    : aba.compareAndSet(handle, null, 0, expected, update, (h, s, i, e, u) -> (boolean) asHandle(h).withInvokeBehavior().compareAndSet(e, u));
+            if (swapped) {
+                slotReleased(handle, SLOT_VALUE, update);
+            }
+            return swapped;
+        } finally {
+            // A swap that throws stored nothing, and its announcement must not outlive it (#1356).
+            HappensBefore.swapEnded();
         }
-        HappensBefore.swapEnded();
-        return swapped;
     }
 
     /**
@@ -3669,14 +3689,18 @@ public final class TelemetryRegistry {
         ControlledSchedule.point();
         slotOffered(update, array, index);
         HappensBefore.swapping(array, ReferenceSlots.element(index), update);
-        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
-        boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(array, index, expected, update)
-                : aba.compareAndSet(array, handle, index, expected, update, (h, s, i, e, u) -> (boolean) asHandle(s).withInvokeBehavior().compareAndSet(h, i, e, u));
-        if (swapped) {
-            slotReleased(array, ReferenceSlots.element(index), update);
+        try {
+            ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(array, index);
+            boolean swapped = aba == null ? handle.withInvokeBehavior().compareAndSet(array, index, expected, update)
+                    : aba.compareAndSet(array, handle, index, expected, update, (h, s, i, e, u) -> (boolean) asHandle(s).withInvokeBehavior().compareAndSet(h, i, e, u));
+            if (swapped) {
+                slotReleased(array, ReferenceSlots.element(index), update);
+            }
+            return swapped;
+        } finally {
+            // A swap that throws stored nothing, and its announcement must not outlive it (#1356).
+            HappensBefore.swapEnded();
         }
-        HappensBefore.swapEnded();
-        return swapped;
     }
 
     /**
@@ -3796,19 +3820,23 @@ public final class TelemetryRegistry {
     private static boolean stampedSwap(AtomicStampedReference<Object> slot, @Nullable Object expected,
                                        @Nullable Object update, int expectedStamp, int newStamp, boolean weak) {
         HappensBefore.swapping(slot, SLOT_VALUE, update);
-        ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
-        boolean swapped;
-        if (aba == null) {
-            swapped = weak ? slot.weakCompareAndSet(expected, update, expectedStamp, newStamp)
-                    : slot.compareAndSet(expected, update, expectedStamp, newStamp);
-        } else {
-            swapped = aba.compareAndSetStamped(slot, expected, update, expectedStamp, newStamp, weak);
+        try {
+            ABAProblemDetector.AgentSlot aba = AgentConcurrencyUtilHooks.abaSlot(slot);
+            boolean swapped;
+            if (aba == null) {
+                swapped = weak ? slot.weakCompareAndSet(expected, update, expectedStamp, newStamp)
+                        : slot.compareAndSet(expected, update, expectedStamp, newStamp);
+            } else {
+                swapped = aba.compareAndSetStamped(slot, expected, update, expectedStamp, newStamp, weak);
+            }
+            if (swapped) {
+                HappensBefore.releaseVolatileReference(slot, SLOT_VALUE, update);
+            }
+            return swapped;
+        } finally {
+            // A swap that throws stored nothing, and its announcement must not outlive it (#1356).
+            HappensBefore.swapEnded();
         }
-        if (swapped) {
-            HappensBefore.releaseVolatileReference(slot, SLOT_VALUE, update);
-        }
-        HappensBefore.swapEnded();
-        return swapped;
     }
 
     /**

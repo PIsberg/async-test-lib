@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A reference `compareAndSet` that threw left its swap announced (#1356).** The seven woven
+  reference compare-and-set hooks (`AtomicReference`, its field updater and array,
+  `AtomicStampedReference`, and instance, static and array `VarHandle`s) announce a swap before it
+  so a read in the window before its release waits for it (#1328), and ended the announcement only
+  when the swap returned. A swap that threw (a `VarHandle` cast, an array index out of bounds)
+  kept it until its thread's next swap, or for good once the thread ended. A later read that
+  returned the same object from the same slot, with no release recording how it got there, was
+  then ordered after the throwing thread, hiding a race on that object. The announcement now
+  ends in a `finally`.
+
 ## [1.14.3] - 2026-11-14
 
 ### Upgrading
