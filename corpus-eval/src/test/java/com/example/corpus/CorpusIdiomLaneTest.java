@@ -3605,6 +3605,119 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 40. Elements read through listIterator, elements() and search (#1294) -----------------
+
+    private static void awaitAMapping(java.util.Map<?, ?> mappings) {
+        while (mappings.isEmpty()) {
+            Thread.onSpinWait();
+        }
+    }
+
+    private static final Rounds<java.util.concurrent.CopyOnWriteArrayList<Limits>> LIST_ITERATED = new Rounds<>(java.util.concurrent.CopyOnWriteArrayList::new);
+    private static final Rounds<java.util.concurrent.CopyOnWriteArrayList<Limits>> LATE_LIST_ITERATED = new Rounds<>(java.util.concurrent.CopyOnWriteArrayList::new);
+
+    /** One thread adds a built element to a copy-on-write list; the others read it through listIterator(). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_copyOnWriteList_elementReadThroughListIterator() {
+        correct(() -> {
+            Turn<java.util.concurrent.CopyOnWriteArrayList<Limits>> turn = LIST_ITERATED.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                built.limit = 10;
+                turn.shared().add(built);
+            } else {
+                awaitAnElement(turn.shared());
+                use(turn.shared().listIterator().next().limit);
+            }
+        });
+    }
+
+    /** The same collection, with the element filled in after the add that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_copyOnWriteList_listIteratedElementFilledInLate() {
+        broken(() -> {
+            Turn<java.util.concurrent.CopyOnWriteArrayList<Limits>> turn = LATE_LIST_ITERATED.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                turn.shared().add(built);
+                built.limit = 10;
+            } else {
+                awaitAnElement(turn.shared());
+                use(turn.shared().listIterator().next().limit);
+            }
+        });
+    }
+
+    private static final Rounds<java.util.Hashtable<String, Limits>> TABLE_ENUMERATED = new Rounds<>(java.util.Hashtable::new);
+    private static final Rounds<java.util.Hashtable<String, Limits>> LATE_TABLE_ENUMERATED = new Rounds<>(java.util.Hashtable::new);
+
+    /** One thread puts a built value in a Hashtable; the others read it through elements(). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_hashtable_valueReadThroughElements() {
+        correct(() -> {
+            Turn<java.util.Hashtable<String, Limits>> turn = TABLE_ENUMERATED.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                built.limit = 10;
+                turn.shared().put("limits", built);
+            } else {
+                awaitAMapping(turn.shared());
+                use(turn.shared().elements().nextElement().limit);
+            }
+        });
+    }
+
+    /** The same map, with the value filled in after the put that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_hashtable_enumeratedValueFilledInLate() {
+        broken(() -> {
+            Turn<java.util.Hashtable<String, Limits>> turn = LATE_TABLE_ENUMERATED.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                turn.shared().put("limits", built);
+                built.limit = 10;
+            } else {
+                awaitAMapping(turn.shared());
+                use(turn.shared().elements().nextElement().limit);
+            }
+        });
+    }
+
+    private static final Rounds<ConcurrentHashMap<String, Limits>> SEARCHED = new Rounds<>(ConcurrentHashMap::new);
+    private static final Rounds<ConcurrentHashMap<String, Limits>> LATE_SEARCHED = new Rounds<>(ConcurrentHashMap::new);
+
+    /** One thread puts a built value in a ConcurrentHashMap; the others find it with search(). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentMap_valueReadThroughSearch() {
+        correct(() -> {
+            Turn<ConcurrentHashMap<String, Limits>> turn = SEARCHED.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                built.limit = 10;
+                turn.shared().put("limits", built);
+            } else {
+                awaitAMapping(turn.shared());
+                use(turn.shared().search(1L, (key, value) -> value).limit);
+            }
+        });
+    }
+
+    /** The same map, with the value filled in after the put that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentMap_searchedValueFilledInLate() {
+        broken(() -> {
+            Turn<ConcurrentHashMap<String, Limits>> turn = LATE_SEARCHED.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                turn.shared().put("limits", built);
+                built.limit = 10;
+            } else {
+                awaitAMapping(turn.shared());
+                use(turn.shared().search(1L, (key, value) -> value).limit);
+            }
+        });
+    }
+
     // --- 37. A bug on a thread the body starts and joins (#1339) ------------------------------
 
     /** Runs {@code work} on a thread of its own and waits for it, as a body that fans out does. */

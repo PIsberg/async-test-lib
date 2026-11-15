@@ -290,6 +290,39 @@ class CollectionAccessWeaverTest {
             return receiver.parallelStream();
         }
 
+        public static java.util.ListIterator<Object> listListIterator(java.util.List<Object> receiver) {
+            return receiver.listIterator();
+        }
+
+        public static java.util.ListIterator<Object> listListIterator(java.util.List<Object> receiver, int index) {
+            return receiver.listIterator(index);
+        }
+
+        public static java.util.Enumeration<Object> concurrentMapElements(
+                java.util.concurrent.ConcurrentHashMap<Object, Object> receiver) {
+            return receiver.elements();
+        }
+
+        public static java.util.Enumeration<Object> hashtableElements(java.util.Hashtable<Object, Object> receiver) {
+            return receiver.elements();
+        }
+
+        public static Object concurrentMapSearch(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                long parallelismThreshold, java.util.function.BiFunction<Object, Object, Object> searchFunction) {
+            return receiver.search(parallelismThreshold, searchFunction);
+        }
+
+        public static Object concurrentMapReduceValues(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                long parallelismThreshold, java.util.function.BiFunction<Object, Object, Object> reducer) {
+            return receiver.reduceValues(parallelismThreshold, reducer);
+        }
+
+        public static Object concurrentMapReduceValues(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                long parallelismThreshold, java.util.function.Function<Object, Object> transformer,
+                java.util.function.BiFunction<Object, Object, Object> reducer) {
+            return receiver.reduceValues(parallelismThreshold, transformer, reducer);
+        }
+
         public static Object[] collectionToArray(java.util.Collection<Object> receiver) {
             return receiver.toArray();
         }

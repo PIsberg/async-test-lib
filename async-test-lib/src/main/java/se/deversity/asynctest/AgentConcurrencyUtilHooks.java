@@ -1108,9 +1108,10 @@ public final class AgentConcurrencyUtilHooks {
         if (detector != null) {
             detector.observeQueue(receiver);
         }
-        int drained = receiver.drainTo(target);
+        List<Object> moved = notesMoves(receiver, target) ? new ArrayList<>() : null;
+        int drained = receiver.drainTo(moved == null ? target : noting(target, moved));
         TelemetryRegistry.ownershipDrained(receiver);
-        receiveDrained(receiver, target, drained);
+        receiveDrained(receiver, target, drained, moved);
         return drained;
     }
 
@@ -1118,13 +1119,20 @@ public final class AgentConcurrencyUtilHooks {
      * The acquire half of a drain (#1295): the calling thread receives what each element's offer
      * published, as a {@code take} of it would have.
      *
-     * <p>Only a {@code List} target says which elements moved: a drain appends, so they are its
-     * last {@code drained}. Any other target acquires nothing, as every target did before, which
-     * leaves the detectors with the answer they had. A target another thread changes during the
-     * drain may name the wrong elements; the drain's own contract already leaves that undefined.
+     * <p>A {@code List} target says which elements moved: a drain appends, so they are its last
+     * {@code drained}. Any other target, a set above all, does not, so the drain was handed a
+     * {@link #noting} wrapper that listed each element on its way in (#1294). Either way they are
+     * received only once the drain has returned. A target another thread changes during the drain
+     * may name the wrong elements; the drain's own contract already leaves that undefined.
      */
     private static void receiveDrained(BlockingQueue<Object> receiver, @Nullable Collection<Object> target,
-                                       int drained) {
+                                       int drained, @Nullable List<Object> noted) {
+        if (noted != null) {
+            for (Object element : noted) {
+                HappensBefore.acquire(element);
+            }
+            return;
+        }
         if (drained <= 0 || !(target instanceof List<Object> list)
                 || !HappensBefore.publishesElements(receiver)) {
             return;
@@ -1137,6 +1145,45 @@ public final class AgentConcurrencyUtilHooks {
         } catch (RuntimeException ignored) { // NOPMD - recording never fails the caller
             // A list that cannot be walked now leaves the drain as it was before #1295.
         }
+    }
+
+    /**
+     * {@return whether a drain into {@code target} must list what it moves to receive it (#1294)}
+     * A list already says what moved; the queue itself and null must reach the drain as they
+     * are, so it still refuses them.
+     */
+    @SuppressWarnings("ReferenceEquality") // the drain refuses itself by identity
+    private static boolean notesMoves(BlockingQueue<Object> receiver, @Nullable Collection<Object> target) {
+        return target != null && !(target instanceof List) && target != receiver // NOPMD CompareObjectsWithEquals - identity
+                && HappensBefore.publishesElements(receiver);
+    }
+
+    /**
+     * {@return what a drain into anything but a list is handed instead of {@code target}} Each
+     * {@code add} goes to the target unchanged and lists the element in {@code moved}, which
+     * {@link #receiveDrained} acquires once the drain has returned (#1294). Every JDK blocking
+     * queue drains through {@code add}; {@code addAll} comes to it through
+     * {@code AbstractCollection}.
+     */
+    private static Collection<Object> noting(Collection<Object> target, List<Object> moved) {
+        return new java.util.AbstractCollection<>() {
+            @Override
+            public boolean add(Object element) {
+                boolean added = target.add(element);
+                moved.add(element);
+                return added;
+            }
+
+            @Override
+            public Iterator<Object> iterator() {
+                return target.iterator();
+            }
+
+            @Override
+            public int size() {
+                return target.size();
+            }
+        };
     }
 
     /**
@@ -1155,9 +1202,10 @@ public final class AgentConcurrencyUtilHooks {
         if (detector != null) {
             detector.observeQueue(receiver);
         }
-        int drained = receiver.drainTo(target, maxElements);
+        List<Object> moved = notesMoves(receiver, target) ? new ArrayList<>() : null;
+        int drained = receiver.drainTo(moved == null ? target : noting(target, moved), maxElements);
         TelemetryRegistry.ownershipDrained(receiver);
-        receiveDrained(receiver, target, drained);
+        receiveDrained(receiver, target, drained, moved);
         return drained;
     }
 
