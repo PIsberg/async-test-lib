@@ -43,6 +43,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   check. An access drained while the detector was disabled therefore left a volatile mark that a
   later enabled run read as safe publication, which silenced double-checked locking on a plain
   field. Every recording entry point now returns before touching any state when disabled.
+- **A task submission that threw anything but a rejection stalled a controlled round (#1360).**
+  The woven `submit`, `execute`, `supplyAsync(..., executor)` and `runAsync(..., executor)` adopt
+  the task into the controlled schedule before handing it over, and released the adoption only on
+  a `RejectedExecutionException`. A `null` executor, or a rejection handler that throws its own
+  exception, left the slot waiting for a task that never ran, until the stall bound counted it an
+  escape: the round was slower and its seed no longer replayed. Every throw now releases it, and
+  the exception still propagates unchanged.
 
 ## [1.14.3] - 2026-11-14
 
