@@ -109,7 +109,8 @@ class AgentHappensBeforeFeedTest {
     /**
      * The hand-off of {@link #handOffReported}, taken out with a drain (#1295): 0 through the
      * woven {@code drainTo(Collection)}, 1 through the woven {@code drainTo(Collection, int)},
-     * 2 through the plain call. The put is woven in all three.
+     * 2 through the plain call. The put is woven in all three. 3 and 4 are the two woven drains
+     * into a {@code HashSet}, which says nothing about which of its elements moved (#1294).
      */
     private static boolean drainHandOffReported(int how) throws InterruptedException {
         RaceConditionDetector detector = new RaceConditionDetector();
@@ -125,17 +126,17 @@ class AgentHappensBeforeFeedTest {
             }
         });
         Thread consumer = new Thread(() -> {
-            List<Object> drained = new java.util.ArrayList<>();
+            Collection<Object> drained = how >= 3 ? new java.util.HashSet<>() : new java.util.ArrayList<>();
             drained.add("already there"); // only what the drain moved is received
             while (drained.size() == 1) {
                 switch (how) {
-                    case 0 -> AgentConcurrencyUtilHooks.drainTo(queue, drained);
-                    case 1 -> AgentConcurrencyUtilHooks.drainTo(queue, drained, 1);
+                    case 0, 3 -> AgentConcurrencyUtilHooks.drainTo(queue, drained);
+                    case 1, 4 -> AgentConcurrencyUtilHooks.drainTo(queue, drained, 1);
                     default -> queue.drainTo(drained);
                 }
                 Thread.onSpinWait();
             }
-            Box taken = (Box) drained.get(1);
+            Box taken = (Box) drained.stream().filter(Box.class::isInstance).findFirst().orElseThrow();
             detector.recordFieldRead(taken, "value");
             taken.value++;
             detector.recordFieldWrite(taken, "value");
@@ -153,6 +154,13 @@ class AgentHappensBeforeFeedTest {
         assertFalse(drainHandOffReported(0), "the drain received what the put published");
         assertFalse(drainHandOffReported(1), "the bounded drain did too");
         assertTrue(drainHandOffReported(2), "the unwoven twin: nothing told the model");
+    }
+
+    @Test
+    @DisplayName("a woven BlockingQueue drainTo into a set receives each element it moved (#1294)")
+    void wovenDrainIntoASetHandOff() throws InterruptedException {
+        assertFalse(drainHandOffReported(3), "the drain into a HashSet received what the put published");
+        assertFalse(drainHandOffReported(4), "the bounded drain into a HashSet did too");
     }
 
     /**
@@ -190,6 +198,59 @@ class AgentHappensBeforeFeedTest {
             last = each.next();
         }
         return last;
+    }
+
+    @Test
+    @DisplayName("a concurrent list's listIterator receives what the add published (#1294)")
+    void wovenListIterator() throws InterruptedException {
+        List<Object> list = new CopyOnWriteArrayList<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(list, b),
+                () -> AgentCollectionHooks.listListIterator(list).next()), "add then listIterator().next()");
+        List<Object> indexed = new CopyOnWriteArrayList<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(indexed, b),
+                () -> AgentCollectionHooks.listListIterator(indexed, 1).previous()),
+                "add then listIterator(1).previous()");
+        List<Object> unwoven = new CopyOnWriteArrayList<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(unwoven, b),
+                () -> unwoven.listIterator().next()), "the unwoven listIterator received nothing");
+        List<Object> plain = new ArrayList<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.collectionAdd(plain, b),
+                () -> AgentCollectionHooks.listListIterator(plain).next()), "an ArrayList orders nothing");
+    }
+
+    @Test
+    @DisplayName("elements() on a ConcurrentHashMap or a Hashtable receives what the put published (#1294)")
+    void wovenElementsEnumeration() throws InterruptedException {
+        ConcurrentHashMap<Object, Object> map = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(map, "k", b),
+                () -> AgentCollectionHooks.concurrentMapElements(map).nextElement()), "put then elements()");
+        java.util.Hashtable<Object, Object> table = new java.util.Hashtable<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(table, "k", b),
+                () -> AgentCollectionHooks.hashtableElements(table).nextElement()), "Hashtable put then elements()");
+        java.util.Hashtable<Object, Object> unwoven = new java.util.Hashtable<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.mapPut(unwoven, "k", b),
+                () -> unwoven.elements().nextElement()), "the unwoven elements() received nothing");
+    }
+
+    @Test
+    @DisplayName("a ConcurrentHashMap search or reduceValues receives the value it returns (#1294)")
+    void wovenSearchAndReduceValues() throws InterruptedException {
+        ConcurrentHashMap<Object, Object> searched = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(searched, "k", b),
+                () -> AgentCollectionHooks.concurrentMapSearch(searched, 1L, (k, v) -> v)), "put then search");
+        ConcurrentHashMap<Object, Object> reduced = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(reduced, "k", b),
+                () -> AgentCollectionHooks.concurrentMapReduceValues(reduced, 1L, (a, b) -> a)),
+                "put then reduceValues");
+        ConcurrentHashMap<Object, Object> transformed = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(transformed, "k", b),
+                () -> AgentCollectionHooks.concurrentMapReduceValues(transformed, 1L, v -> v, (a, b) -> a)),
+                "put then reduceValues with a transformer");
+        ConcurrentHashMap<Object, Object> unwoven = new ConcurrentHashMap<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.mapPut(unwoven, "k", b),
+                () -> unwoven.search(1L, (k, v) -> v)), "the unwoven search received nothing");
+        assertEquals("v", AgentCollectionHooks.concurrentMapSearch(
+                new ConcurrentHashMap<>(Map.of("k", "v")), 1L, (k, v) -> v), "search returns what the function found");
     }
 
     @Test

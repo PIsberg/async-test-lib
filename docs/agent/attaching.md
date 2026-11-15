@@ -469,8 +469,8 @@ stream the accessing thread's clock is stamped at publish time and travels throu
 the event, since the drain thread's own clock orders nothing. The edges are the ones the Java memory
 model names for the woven calls: an element offered to and taken from a `java.util.concurrent` queue
 (or any `BlockingQueue` or `ConcurrentMap`, and the synchronized wrappers), where an offer the queue
-refused publishes nothing, and a `BlockingQueue.drainTo` into a `List` takes each element it moved
-(#1295; a drain into any other collection orders nothing), a value put into and read back from such a map,
+refused publishes nothing, and a `BlockingQueue.drainTo` takes each element it moved, into a
+`List` (#1295) or any other collection (#1294), a value put into and read back from such a map,
 an element added to such a collection with `add`, `addAll` or `List.set` and read back with
 `List.get`, `Queue.peek` or `element`, `Deque.peekFirst` or `peekLast`, or a for-each, `forEach`
 or `stream()` over it, a value stored with `putIfAbsent` and one read with `getOrDefault` or
@@ -482,9 +482,11 @@ hands out, and of the entry a `NavigableMap` `firstEntry`, `lastEntry`, `floorEn
 an element read with `Vector.elementAt`, `firstElement` or `lastElement`, pushed on a `Stack` and
 read with `peek` or `pop`, read with `getFirst` or `getLast` on a `Deque` or a `List`, with
 `SortedSet.first` or `last` or a `NavigableSet` `floor`, `ceiling`, `lower`, `higher`, `pollFirst`
-or `pollLast`, through `Deque.descendingIterator`, out of `toArray`, or as a `parallelStream()`
-reaches it (an object published as a map key, `listIterator()`, the `elements()` and `keys()`
-enumerations and `ConcurrentHashMap.search` and `reduce` are not modelled yet),
+or `pollLast`, through `Deque.descendingIterator` or a `listIterator()` in either direction, out
+of `toArray`, or as a `parallelStream()` reaches it, a value read through the `elements()`
+enumeration of a `ConcurrentHashMap` or `Hashtable`, and what a `ConcurrentHashMap.search` or
+`reduceValues` returns (an object published as a map key, the `keys()` enumeration and the other
+`ConcurrentHashMap` `search*` and `reduce*` forms are not modelled yet),
 `CountDownLatch.countDown` and an `await` that reached zero, `Semaphore.release` and an acquire that
 took a permit, a `CyclicBarrier.await` and the normal returns from the same generation (#1246; the
 generation is read under the barrier's own lock, which needs `collections=true`), with the

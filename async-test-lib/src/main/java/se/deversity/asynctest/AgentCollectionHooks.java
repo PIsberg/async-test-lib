@@ -750,6 +750,138 @@ public final class AgentCollectionHooks {
     }
 
     /**
+     * Weaves {@code List.listIterator()}, a walk of the list in either direction: each element is
+     * received as {@code next} or {@code previous} hands it out, as {@link #iterableIterator} does
+     * (#1294).
+     *
+     * @param receiver the list
+     * @return its list iterator
+     */
+    public static java.util.ListIterator<Object> listListIterator(List<Object> receiver) {
+        ControlledSchedule.point();
+        iterated(receiver);
+        return receivingListIterator(receiver, receiver.listIterator());
+    }
+
+    /**
+     * Weaves {@code List.listIterator(int)}, as {@link #listListIterator(List)} from {@code index}.
+     *
+     * @param receiver the list
+     * @param index    the position the walk starts at
+     * @return its list iterator
+     */
+    public static java.util.ListIterator<Object> listListIterator(List<Object> receiver, int index) {
+        ControlledSchedule.point();
+        iterated(receiver);
+        return receivingListIterator(receiver, receiver.listIterator(index));
+    }
+
+    private static java.util.ListIterator<Object> receivingListIterator(List<Object> receiver,
+            java.util.ListIterator<Object> elements) {
+        return elements != null && HappensBefore.publishesElements(receiver)
+                ? new ReceivingListIterator(elements) : elements;
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.elements()}, the legacy walk of the values: each value is
+     * received as {@code nextElement} hands it out (#1294).
+     *
+     * @param receiver the map
+     * @return its values, one at a time
+     */
+    public static java.util.Enumeration<Object> concurrentMapElements(
+            java.util.concurrent.ConcurrentHashMap<Object, Object> receiver) { // NOPMD LooseCoupling - elements() is declared by ConcurrentHashMap
+        ControlledSchedule.point();
+        record(receiver, "elements", false);
+        return receivingEnumeration(receiver, receiver.elements());
+    }
+
+    /**
+     * Weaves {@code Hashtable.elements()}, as {@link #concurrentMapElements} (#1294).
+     *
+     * @param receiver the table
+     * @return its values, one at a time
+     */
+    public static java.util.Enumeration<Object> hashtableElements(java.util.Hashtable<Object, Object> receiver) { // NOPMD LooseCoupling - elements() is declared by Hashtable
+        ControlledSchedule.point();
+        record(receiver, "elements", false);
+        return receivingEnumeration(receiver, receiver.elements());
+    }
+
+    private static java.util.Enumeration<Object> receivingEnumeration(Object receiver,
+            java.util.Enumeration<Object> elements) {
+        if (elements == null || !HappensBefore.publishesElements(receiver)) {
+            return elements;
+        }
+        return new java.util.Enumeration<>() {
+            @Override
+            public boolean hasMoreElements() {
+                return elements.hasMoreElements();
+            }
+
+            @Override
+            public @Nullable Object nextElement() {
+                Object element = elements.nextElement();
+                receive(element);
+                return element;
+            }
+        };
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.search(long, BiFunction)}: what the search returns, most
+     * often the value it stopped at, is received by the caller (#1294).
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the search across the pool
+     * @param searchFunction       the function that returns non-null for a match
+     * @return the first non-null result, or null
+     */
+    public static @Nullable Object concurrentMapSearch(
+            java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - search is declared by ConcurrentHashMap
+            BiFunction<Object, Object, Object> searchFunction) {
+        ControlledSchedule.point();
+        record(receiver, "search", false);
+        return received(receiver, receiver.search(parallelismThreshold, searchFunction));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.reduceValues(long, BiFunction)}: the reduction, one of the
+     * values when the reducer picks rather than combines, is received by the caller (#1294).
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param reducer              the function combining two values
+     * @return the reduction, or null when the map is empty
+     */
+    public static @Nullable Object concurrentMapReduceValues(
+            java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - reduceValues is declared by ConcurrentHashMap
+            BiFunction<Object, Object, Object> reducer) {
+        ControlledSchedule.point();
+        record(receiver, "reduceValues", false);
+        return received(receiver, receiver.reduceValues(parallelismThreshold, reducer));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.reduceValues(long, Function, BiFunction)}, as
+     * {@link #concurrentMapReduceValues(java.util.concurrent.ConcurrentHashMap, long, BiFunction)}
+     * on what the transformer made of each value.
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param transformer          the function applied to each value first, null to skip one
+     * @param reducer              the function combining two transformed values
+     * @return the reduction, or null when nothing was left to reduce
+     */
+    public static @Nullable Object concurrentMapReduceValues(
+            java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - reduceValues is declared by ConcurrentHashMap
+            Function<Object, Object> transformer, BiFunction<Object, Object, Object> reducer) {
+        ControlledSchedule.point();
+        record(receiver, "reduceValues", false);
+        return received(receiver, receiver.reduceValues(parallelismThreshold, transformer, reducer));
+    }
+
+    /**
      * Weaves {@code Collection.toArray()}, which hands out every element at once: all of them are
      * received by the caller (#1294).
      *
@@ -1171,6 +1303,73 @@ public final class AgentCollectionHooks {
         @Override
         public void remove() {
             delegate.remove();
+        }
+
+        @Override
+        public void forEachRemaining(java.util.function.Consumer<? super Object> action) {
+            Objects.requireNonNull(action);
+            delegate.forEachRemaining(element -> {
+                receive(element);
+                action.accept(element);
+            });
+        }
+    }
+
+    /** {@link ReceivingIterator} for a walk that can go back: {@code previous} is a read too (#1294). */
+    private static final class ReceivingListIterator implements java.util.ListIterator<Object> {
+        private final java.util.ListIterator<Object> delegate;
+
+        ReceivingListIterator(java.util.ListIterator<Object> delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return delegate.hasNext();
+        }
+
+        @Override
+        public @Nullable Object next() {
+            Object element = delegate.next();
+            receive(element);
+            return element;
+        }
+
+        @Override
+        public boolean hasPrevious() {
+            return delegate.hasPrevious();
+        }
+
+        @Override
+        public @Nullable Object previous() {
+            Object element = delegate.previous();
+            receive(element);
+            return element;
+        }
+
+        @Override
+        public int nextIndex() {
+            return delegate.nextIndex();
+        }
+
+        @Override
+        public int previousIndex() {
+            return delegate.previousIndex();
+        }
+
+        @Override
+        public void remove() {
+            delegate.remove();
+        }
+
+        @Override
+        public void set(Object element) {
+            delegate.set(element);
+        }
+
+        @Override
+        public void add(Object element) {
+            delegate.add(element);
         }
 
         @Override

@@ -402,6 +402,16 @@ final class CollectionAccessWeaver {
             Entry.call(Collection.class, "toArray", "collectionToArray", Object[].class),
             Entry.call(Collection.class, "toArray", "collectionToArray", IntFunction.class),
             Entry.call(Collection.class, "parallelStream", "collectionParallelStream"),
+            Entry.call(List.class, "listIterator", "listListIterator"),
+            Entry.call(List.class, "listIterator", "listListIterator", int.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "elements", "concurrentMapElements"),
+            Entry.call(java.util.Hashtable.class, "elements", "hashtableElements"),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "search", "concurrentMapSearch",
+                    long.class, BiFunction.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "reduceValues",
+                    "concurrentMapReduceValues", long.class, BiFunction.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "reduceValues",
+                    "concurrentMapReduceValues", long.class, Function.class, BiFunction.class),
             // A BitSet is neither a Collection nor a Map, and as unsafe to share as either:
             // set is a read-modify-write of one long word (#1297).
             Entry.call(BitSet.class, "set", "bitSetSet", int.class),

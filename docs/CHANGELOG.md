@@ -50,6 +50,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exception, left the slot waiting for a task that never ran, until the stall bound counted it an
   escape: the round was slower and its seed no longer replayed. Every throw now releases it, and
   the exception still propagates unchanged.
+- **An object read back from a thread-safe container through `listIterator()`, `elements()`,
+  `ConcurrentHashMap.search` or `reduceValues`, or drained into a set, read as unordered (#1294).**
+  With the agent attached, a value built by one thread, put into a `CopyOnWriteArrayList`, a
+  `Hashtable` or a `ConcurrentHashMap` and read by another through one of those calls drew an
+  `ATOMICITY` PROMPT finding: the container orders the build before the read, and the model never
+  heard of the read, because the agent wove none of those calls. Seven more calls are now woven:
+  both `List.listIterator` forms (receiving on `next` and `previous`), `elements()` on a
+  `ConcurrentHashMap` or a `Hashtable`, `ConcurrentHashMap.search(long, BiFunction)` and both
+  `reduceValues` forms, which receive what they return. A `BlockingQueue.drainTo` into a
+  collection that is not a `List` now receives each element it moved, once the drain has returned.
+  Corpus pairs `idiom_copyOnWriteList_*ListIterat*`, `idiom_hashtable_*` and
+  `idiom_concurrentMap_*Search*`. Still open on #1294: an object published as a map key.
 
 ## [1.14.3] - 2026-11-14
 

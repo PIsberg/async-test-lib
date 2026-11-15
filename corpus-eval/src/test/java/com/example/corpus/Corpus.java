@@ -6841,6 +6841,60 @@ final class Corpus {
                             + "unordered",
                     IssueSeverity.HIGH),
 
+            // --- Elements read through listIterator(), elements() and search (#1294): the
+            //     reads the agent did not weave received nothing of what the add or put published.
+
+            new RecordingSubject("idiom_copyOnWriteList_elementReadThroughListIterator", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread adds a built element to a copy-on-write list, the others read it "
+                            + "through listIterator(). The collection orders the build before each "
+                            + "read (#1294)"),
+
+            new RecordingSubject("idiom_copyOnWriteList_listIteratedElementFilledInLate", JDK,
+                    "java.util.concurrent.CopyOnWriteArrayList",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same collection with the element's field written after the add "
+                            + "published it: the write and the other threads' reads are "
+                            + "unordered",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_hashtable_valueReadThroughElements", JDK,
+                    "java.util.Hashtable",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread puts a built value in a Hashtable, the others read it "
+                            + "through elements(). The collection orders the build before each "
+                            + "read (#1294)"),
+
+            new RecordingSubject("idiom_hashtable_enumeratedValueFilledInLate", JDK,
+                    "java.util.Hashtable",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same map with the element's field written after the put "
+                            + "published it: the write and the other threads' reads are "
+                            + "unordered",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_concurrentMap_valueReadThroughSearch", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread puts a built value in a ConcurrentHashMap, the others read it "
+                            + "through search(1, ...). The collection orders the build before each "
+                            + "read (#1294)"),
+
+            new RecordingSubject("idiom_concurrentMap_searchedValueFilledInLate", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same map with the element's field written after the put "
+                            + "published it: the write and the other threads' reads are "
+                            + "unordered",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_skipListMap_valueReadThroughFirstEntry", JDK,
                     "java.util.concurrent.ConcurrentSkipListMap",
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
