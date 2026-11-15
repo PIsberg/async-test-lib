@@ -504,7 +504,9 @@ public final class HappensBefore {
      * swap of the same object is stalled, where the read is ordered after a thread that published
      * nothing.
      *
-     * <p>Call it before the swap and {@link #swapEnded} after the release, on the same thread. A
+     * <p>Call it before the swap and {@link #swapEnded} after the release, on the same thread,
+     * from a {@code finally}: a swap that throws stored nothing, and an announcement it left
+     * behind would order a later read of the object after the thrower (#1356). A
      * thread announces one swap at a time: a new announcement ends the last. Allocates an eight
      * entry table the first time a slot is swapped, and nothing after. A slot more than eight
      * threads are swapping at once is not announced by the ninth, whose reader keeps the answer

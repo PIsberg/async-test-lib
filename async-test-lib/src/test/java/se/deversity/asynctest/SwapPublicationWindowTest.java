@@ -1,5 +1,7 @@
 package se.deversity.asynctest;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -18,6 +20,7 @@ import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -534,5 +537,52 @@ class SwapPublicationWindowTest {
                 "A swap is released after its store, so on a busy slot completed swaps pile up "
                         + "between a read and its lookup; a slot that has been swapped keeps "
                         + "sixteen releases, and the box's is still among them ten stores later.");
+    }
+
+    /** A field a {@link VarHandle} swaps; typed, so a swap expecting another type throws. */
+    static final class Holder {
+        volatile Box box;
+
+        static final VarHandle BOX;
+
+        static {
+            try {
+                BOX = MethodHandles.lookup().findVarHandle(Holder.class, "box", Box.class);
+            } catch (ReflectiveOperationException e) {
+                throw new ExceptionInInitializerError(e);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("a compareAndSet that throws ends its announcement, so a later get is not ordered after it (#1356)")
+    void aSwapThatThrewLeavesNoAnnouncement() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box box = new Box();
+        Holder holder = new Holder();
+        Holder.BOX.setVolatile(holder, box); // unwoven: a store no release records
+        Thread writer = new Thread(() -> {
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            // The field holds a Box, so expecting a String fails the handle's cast after the hook
+            // has announced the swap of the box.
+            assertThrows(ClassCastException.class, () ->
+                    TelemetryRegistry.compareAndSetReferenceHandle(Holder.BOX, holder, "not a box", box));
+        });
+        writer.start();
+        writer.join(); // unwoven, so it orders nothing as far as the model knows
+        Thread reader = new Thread(() -> {
+            Box got = (Box) TelemetryRegistry.getVolatileReferenceHandle(Holder.BOX, holder);
+            detector.recordFieldRead(got, "value");
+            got.value++;
+            detector.recordFieldWrite(got, "value");
+        });
+        reader.start();
+        reader.join();
+        assertTrue(detector.analyzeRaceConditions().hasIssues(),
+                "The writer's swap threw and stored nothing; the box the reader got was stored "
+                        + "before the writer touched it, by a store no release records. A swap "
+                        + "announcement the throw left behind would order the writer's write "
+                        + "before the read, as if that swap had put the box there.");
     }
 }
