@@ -232,6 +232,94 @@ class AgentHappensBeforeFeedTest {
                 () -> unwoven.elements().nextElement()), "the unwoven elements() received nothing");
     }
 
+    /** The first key a for-each over {@code map.keySet()} sees, through the woven calls. */
+    private static Object firstKey(Map<Object, Object> map) {
+        return AgentCollectionHooks.iterableIterator(AgentCollectionHooks.mapKeySet(map)).next();
+    }
+
+    @Test
+    @DisplayName("an object put into a concurrent map as the key is published to a woven keySet walk (#1294)")
+    void wovenKeyPublication() throws InterruptedException {
+        ConcurrentHashMap<Object, Object> map = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(map, b, Boolean.TRUE),
+                () -> firstKey(map)), "put(key, TRUE) then keySet() for-each");
+        ConcurrentHashMap<Object, Object> absent = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPutIfAbsent(absent, b, Boolean.TRUE),
+                () -> firstKey(absent)), "putIfAbsent(key, TRUE) then keySet() for-each");
+        ConcurrentHashMap<Object, Object> computed = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapComputeIfAbsent(computed, b, k -> Boolean.TRUE),
+                () -> firstKey(computed)), "computeIfAbsent(key, ...) then keySet() for-each");
+        ConcurrentHashMap<Object, Object> remapped = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapCompute(remapped, b, (k, v) -> Boolean.TRUE),
+                () -> firstKey(remapped)), "compute(key, ...) then keySet() for-each");
+        ConcurrentHashMap<Object, Object> merged = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapMerge(merged, b, Boolean.TRUE, (a, c) -> a),
+                () -> firstKey(merged)), "merge(key, ...) then keySet() for-each");
+        ConcurrentHashMap<Object, Object> enumerated = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(enumerated, b, Boolean.TRUE),
+                () -> AgentCollectionHooks.concurrentMapKeys(enumerated).nextElement()), "put(key, TRUE) then keys()");
+        java.util.Hashtable<Object, Object> table = new java.util.Hashtable<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(table, b, Boolean.TRUE),
+                () -> AgentCollectionHooks.hashtableKeys(table).nextElement()), "Hashtable put(key, TRUE) then keys()");
+        java.util.Hashtable<Object, Object> unwovenTable = new java.util.Hashtable<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.mapPut(unwovenTable, b, Boolean.TRUE),
+                () -> unwovenTable.keys().nextElement()), "the unwoven keys() received nothing");
+        ConcurrentHashMap<Object, Object> unwoven = new ConcurrentHashMap<>();
+        assertTrue(containerHandOffReported(b -> unwoven.put(b, Boolean.TRUE), () -> firstKey(unwoven)),
+                "the unwoven put published nothing");
+        Map<Object, Object> plain = new HashMap<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.mapPut(plain, b, Boolean.TRUE),
+                () -> firstKey(plain)), "a HashMap orders nothing");
+
+        // A refused putIfAbsent under a key that is itself published must still withdraw the
+        // value's release: HappensBefore.retract withdraws only the thread's last release.
+        ConcurrentHashMap<Object, Object> taken = new ConcurrentHashMap<>();
+        Box key = new Box();
+        taken.put(key, "first");
+        AtomicReference<Object> refused = new AtomicReference<>();
+        assertTrue(containerHandOffReported(b -> {
+            refused.setPlain(b);
+            AgentCollectionHooks.mapPutIfAbsent(taken, key, b);
+        }, () -> {
+            HappensBefore.acquire(refused.getPlain());
+            return refused.getPlain();
+        }), "a refused putIfAbsent under a published key published nothing");
+    }
+
+    /** An enum constant is one object for the whole JVM, shared by every map that uses it as a key. */
+    enum Shared {
+        KEY;
+        int value;
+    }
+
+    @Test
+    @DisplayName("an enum key is not published: one constant shared by two maps would order their unrelated threads")
+    void enumKeyIsNotPublished() throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        ConcurrentHashMap<Object, Object> elsewhere = new ConcurrentHashMap<>();
+        elsewhere.put(Shared.KEY, Boolean.TRUE); // filled before either thread, through no hook
+        ConcurrentHashMap<Object, Object> producers = new ConcurrentHashMap<>();
+        Thread producer = new Thread(() -> {
+            Shared.KEY.value = 1;
+            detector.recordFieldWrite(Shared.KEY, "value");
+            AgentCollectionHooks.mapPut(producers, Shared.KEY, Boolean.TRUE);
+        });
+        producer.start();
+        producer.join();
+        Thread consumer = new Thread(() -> {
+            Shared taken = (Shared) firstKey(elsewhere);
+            detector.recordFieldRead(taken, "value");
+            taken.value++;
+            detector.recordFieldWrite(taken, "value");
+        });
+        consumer.start();
+        consumer.join();
+        assertTrue(detector.analyzeRaceConditions().hasIssues(),
+                "the consumer read the constant out of a map the producer never touched, so nothing "
+                        + "orders the producer's write before it; a key release on the producer's put "
+                        + "would hide that race");
+    }
+
     @Test
     @DisplayName("a ConcurrentHashMap search or reduceValues receives the value it returns (#1294)")
     void wovenSearchAndReduceValues() throws InterruptedException {

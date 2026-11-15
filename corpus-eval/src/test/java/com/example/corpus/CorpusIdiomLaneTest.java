@@ -3718,6 +3718,45 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    private static final Rounds<ConcurrentHashMap<Limits, Boolean>> KEYED = new Rounds<>(ConcurrentHashMap::new);
+    private static final Rounds<ConcurrentHashMap<Limits, Boolean>> LATE_KEYED = new Rounds<>(ConcurrentHashMap::new);
+
+    /** One thread puts a built object in a ConcurrentHashMap as the key; the others walk keySet(). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentMap_objectPublishedAsKey() {
+        correct(() -> {
+            Turn<ConcurrentHashMap<Limits, Boolean>> turn = KEYED.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                built.limit = 10;
+                turn.shared().put(built, Boolean.TRUE);
+            } else {
+                awaitAMapping(turn.shared());
+                for (Limits key : turn.shared().keySet()) {
+                    use(key.limit);
+                }
+            }
+        });
+    }
+
+    /** The same map, with the key filled in after the put that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentMap_keyFilledInLate() {
+        broken(() -> {
+            Turn<ConcurrentHashMap<Limits, Boolean>> turn = LATE_KEYED.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                turn.shared().put(built, Boolean.TRUE);
+                built.limit = 10;
+            } else {
+                awaitAMapping(turn.shared());
+                for (Limits key : turn.shared().keySet()) {
+                    use(key.limit);
+                }
+            }
+        });
+    }
+
     // --- 37. A bug on a thread the body starts and joins (#1339) ------------------------------
 
     /** Runs {@code work} on a thread of its own and waits for it, as a body that fans out does. */
