@@ -485,8 +485,10 @@ read with `peek` or `pop`, read with `getFirst` or `getLast` on a `Deque` or a `
 or `pollLast`, through `Deque.descendingIterator` or a `listIterator()` in either direction, out
 of `toArray`, or as a `parallelStream()` reaches it, a value read through the `elements()`
 enumeration of a `ConcurrentHashMap` or `Hashtable`, and what a `ConcurrentHashMap.search` or
-`reduceValues` returns (an object published as a map key, the `keys()` enumeration and the other
-`ConcurrentHashMap` `search*` and `reduce*` forms are not modelled yet),
+`reduceValues` returns, an object put into such a map as the key and read back through
+`keySet()`, `keys()` or an entry (a `String`, a boxed number or an enum constant is not published
+as a key, since unrelated code shares it; the other `ConcurrentHashMap` `search*` and `reduce*`
+forms are not modelled yet, #1375),
 `CountDownLatch.countDown` and an `await` that reached zero, `Semaphore.release` and an acquire that
 took a permit, a `CyclicBarrier.await` and the normal returns from the same generation (#1246; the
 generation is read under the barrier's own lock, which needs `collections=true`), with the

@@ -61,7 +61,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `reduceValues` forms, which receive what they return. A `BlockingQueue.drainTo` into a
   collection that is not a `List` now receives each element it moved, once the drain has returned.
   Corpus pairs `idiom_copyOnWriteList_*ListIterat*`, `idiom_hashtable_*` and
-  `idiom_concurrentMap_*Search*`. Still open on #1294: an object published as a map key.
+  `idiom_concurrentMap_*Search*`.
+- **An object published as a map key read as unordered (#1294).** A concurrent map's `put`,
+  `putIfAbsent`, `compute`, `computeIfAbsent` and `merge` released the value they stored and not
+  the key, so an object built by one thread, put into a `ConcurrentHashMap` as the key and read by
+  another through a `keySet()` for-each drew an `ATOMICITY` PROMPT finding. They now release the
+  key too, and the `keys()` enumeration of a `ConcurrentHashMap` or `Hashtable` is woven to receive
+  it. A key whose class the bootstrap loader defined (a `String`, a boxed number) or an enum
+  constant is not released: it is one object shared by unrelated code, and a release on it would
+  order a thread that read the same constant out of another map, hiding a race. Corpus pair
+  `idiom_concurrentMap_objectPublishedAsKey`.
 
 ## [1.14.3] - 2026-11-14
 

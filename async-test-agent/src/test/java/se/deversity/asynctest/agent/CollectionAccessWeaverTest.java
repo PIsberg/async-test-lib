@@ -307,6 +307,15 @@ class CollectionAccessWeaverTest {
             return receiver.elements();
         }
 
+        public static java.util.Enumeration<Object> concurrentMapKeys(
+                java.util.concurrent.ConcurrentHashMap<Object, Object> receiver) {
+            return receiver.keys();
+        }
+
+        public static java.util.Enumeration<Object> hashtableKeys(java.util.Hashtable<Object, Object> receiver) {
+            return receiver.keys();
+        }
+
         public static Object concurrentMapSearch(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
                 long parallelismThreshold, java.util.function.BiFunction<Object, Object, Object> searchFunction) {
             return receiver.search(parallelismThreshold, searchFunction);

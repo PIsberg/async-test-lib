@@ -406,6 +406,8 @@ final class CollectionAccessWeaver {
             Entry.call(List.class, "listIterator", "listListIterator", int.class),
             Entry.call(java.util.concurrent.ConcurrentHashMap.class, "elements", "concurrentMapElements"),
             Entry.call(java.util.Hashtable.class, "elements", "hashtableElements"),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "keys", "concurrentMapKeys"),
+            Entry.call(java.util.Hashtable.class, "keys", "hashtableKeys"),
             Entry.call(java.util.concurrent.ConcurrentHashMap.class, "search", "concurrentMapSearch",
                     long.class, BiFunction.class),
             Entry.call(java.util.concurrent.ConcurrentHashMap.class, "reduceValues",

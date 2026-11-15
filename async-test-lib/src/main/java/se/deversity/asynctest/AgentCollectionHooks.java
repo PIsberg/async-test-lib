@@ -546,8 +546,9 @@ public final class AgentCollectionHooks {
     }
 
     /**
-     * Weaves {@code Map.putIfAbsent}: the value is published before the call, and the release is
-     * withdrawn when the key was taken; the value already there is received (#1294).
+     * Weaves {@code Map.putIfAbsent}: the value and the key are published before the call, as by
+     * {@link #mapPut}, and the value's release is withdrawn when the key was taken; the value
+     * already there is received (#1294).
      *
      * @param receiver the map
      * @param key      the key the value is stored under when absent
@@ -558,6 +559,10 @@ public final class AgentCollectionHooks {
                                                   Object value) {
         ControlledSchedule.point();
         record(receiver, "putIfAbsent", true);
+        // The key first: retract withdraws only this thread's last release, which must be the
+        // value's. A refused key's release stays, and orders nothing it should not: the map holds
+        // either an equal object this call never touched or this same one, published by its put.
+        publishingKey(receiver, key);
         boolean published = publishing(receiver, value);
         boolean stored = false;
         try {
@@ -806,6 +811,32 @@ public final class AgentCollectionHooks {
         ControlledSchedule.point();
         record(receiver, "elements", false);
         return receivingEnumeration(receiver, receiver.elements());
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.keys()}, the legacy walk of the keys: each key is received
+     * as {@code nextElement} hands it out, since a put publishes its key too (#1294).
+     *
+     * @param receiver the map
+     * @return its keys, one at a time
+     */
+    public static java.util.Enumeration<Object> concurrentMapKeys(
+            java.util.concurrent.ConcurrentHashMap<Object, Object> receiver) { // NOPMD LooseCoupling - keys() is declared by ConcurrentHashMap
+        ControlledSchedule.point();
+        record(receiver, "keys", false);
+        return receivingEnumeration(receiver, receiver.keys());
+    }
+
+    /**
+     * Weaves {@code Hashtable.keys()}, as {@link #concurrentMapKeys} (#1294).
+     *
+     * @param receiver the table
+     * @return its keys, one at a time
+     */
+    public static java.util.Enumeration<Object> hashtableKeys(java.util.Hashtable<Object, Object> receiver) { // NOPMD LooseCoupling - keys() is declared by Hashtable
+        ControlledSchedule.point();
+        record(receiver, "keys", false);
+        return receivingEnumeration(receiver, receiver.keys());
     }
 
     private static java.util.Enumeration<Object> receivingEnumeration(Object receiver,
@@ -1206,7 +1237,27 @@ public final class AgentCollectionHooks {
         if (value != null && HappensBefore.publishesElements(receiver)) {
             HappensBefore.release(value);
         }
+        publishingKey(receiver, key);
         return receiver.put(key, value);
+    }
+
+    /**
+     * Releases {@code key} on its way into {@code receiver}, as the value is: a walk of
+     * {@code keySet()} reads it, and an object used as a key is published by the put like one
+     * stored as a value (#1294).
+     *
+     * <p>Only a key whose class an application loader defined, and never an enum constant. A
+     * {@code String}, a boxed number or an enum constant is one object shared by code that has
+     * nothing to do with this map, so a release on it would order a thread that read the same
+     * constant out of another map after this one, hiding a race on everything else between them.
+     * Those types carry no woven field for the release to protect.
+     *
+     */
+    private static void publishingKey(Object receiver, @Nullable Object key) {
+        if (key != null && !(key instanceof Enum) && key.getClass().getClassLoader() != null
+                && HappensBefore.publishesElements(receiver)) {
+            HappensBefore.release(key);
+        }
     }
 
     /**
@@ -1451,6 +1502,7 @@ public final class AgentCollectionHooks {
         Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
         HeldLocks.acquired(token);
         try {
+            publishingKey(receiver, key);
             return received(receiver, receiver.compute(key, publishing(receiver, remapping)));
         } finally {
             HeldLocks.released(token);
@@ -1477,6 +1529,7 @@ public final class AgentCollectionHooks {
         Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
         HeldLocks.acquired(token);
         try {
+            publishingKey(receiver, key);
             Function<Object, Object> publishing = mapping;
             if (mapping != null && HappensBefore.publishesElements(receiver)) {
                 publishing = absent -> {
@@ -1501,7 +1554,8 @@ public final class AgentCollectionHooks {
         try {
             // An absent key stores the value itself, so it is released first; a present one
             // stores what the function returns, and the value's release is withdrawn if no other
-            // release followed it.
+            // release followed it. The key goes first, so the value's stays the last to withdraw.
+            publishingKey(receiver, key);
             boolean published = publishing(receiver, value);
             Object merged = receiver.merge(key, value, publishing(receiver, remapping));
             if (published && merged != value) { // NOPMD CompareObjectsWithEquals - the same object went in, or it did not
