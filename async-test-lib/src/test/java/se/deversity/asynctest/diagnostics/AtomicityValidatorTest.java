@@ -224,6 +224,73 @@ public class AtomicityValidatorTest {
         };
     }
 
+    /** Two reads of {@code box.value}, naming the owner, under the read view of {@code rw}. */
+    private static Runnable ownerAwareReadsUnderReadLock(AtomicityValidator validator, Box box,
+                                                         java.util.concurrent.locks.ReentrantReadWriteLock rw) {
+        return () -> {
+            rw.readLock().lock();
+            HeldLocks.acquired(rw, true);
+            try {
+                validator.recordFieldAccessOn(box, "Box.value", box.value, false);
+                validator.recordFieldAccessOn(box, "Box.value", box.value, false);
+            } finally {
+                HeldLocks.released(rw, true);
+                rw.readLock().unlock();
+            }
+        };
+    }
+
+    /** A read then a write of {@code box.value}, naming the owner, under the write view of {@code rw}. */
+    private static Runnable ownerAwareIncrementUnderWriteLock(AtomicityValidator validator, Box box,
+                                                              java.util.concurrent.locks.ReentrantReadWriteLock rw) {
+        return () -> {
+            rw.writeLock().lock();
+            HeldLocks.acquired(rw, false);
+            try {
+                validator.recordFieldAccessOn(box, "Box.value", box.value, false);
+                box.value++;
+                validator.recordFieldAccessOn(box, "Box.value", box.value, true);
+            } finally {
+                HeldLocks.released(rw, false);
+                rw.writeLock().unlock();
+            }
+        };
+    }
+
+    @Test
+    void readsUnderTheReadLockBesideAWriterUnderTheWriteLockAreGuarded() throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        Box shared = new Box();
+        var rw = new java.util.concurrent.locks.ReentrantReadWriteLock();
+        validator.markInvocationStart();
+        onThreads(ownerAwareReadsUnderReadLock(validator, shared, rw),
+                ownerAwareIncrementUnderWriteLock(validator, shared, rw),
+                ownerAwareReadsUnderReadLock(validator, shared, rw));
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertFalse(report.hasIssues(),
+                "every read held the read lock and the write held the write lock of one "
+                        + "ReentrantReadWriteLock, the textbook idiom: a read lock keeps writers "
+                        + "out, so it guards a read (#1358). Got " + report);
+    }
+
+    @Test
+    void readsWithNoLockBesideAWriterUnderTheWriteLockStillFire() throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        Box shared = new Box();
+        var rw = new java.util.concurrent.locks.ReentrantReadWriteLock();
+        validator.markInvocationStart();
+        onThreads(() -> {
+                    validator.recordFieldAccessOn(shared, "Box.value", shared.value, false);
+                    validator.recordFieldAccessOn(shared, "Box.value", shared.value, false);
+                },
+                ownerAwareIncrementUnderWriteLock(validator, shared, rw));
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertTrue(report.hasIssues(),
+                "the reader held no lock, so the write lock kept nothing out of its way: " + report);
+    }
+
     @Test
     void twoConfinedObjectsWithTheSameFieldAreNotOneHistory() throws InterruptedException {
         AtomicityValidator validator = new AtomicityValidator();
