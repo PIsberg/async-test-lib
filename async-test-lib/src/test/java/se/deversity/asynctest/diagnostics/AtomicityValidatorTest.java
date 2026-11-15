@@ -446,6 +446,58 @@ public class AtomicityValidatorTest {
     }
 
     /**
+     * A disabled detector records nothing, including the per-instance bookkeeping the agent-fed
+     * overload did in {@code noteGuard} before reaching the {@code enabled} check (#1361). The
+     * volatile mark is the part a later analysis can see: it is what excuses double-checked
+     * locking, so a plain field must stay plain when its only volatile access came while disabled.
+     */
+    @Test
+    void disabledAgentFedAccessLeavesNoGuardState() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.disable();
+        validator.recordFieldAccessUnderLocks("Segment.resizeThreshold", null, true, 303L, 4242L,
+                0, 0, true, Integer.MIN_VALUE, 91);
+        validator.enable();
+
+        validator.markInvocationStart();
+        for (long thread : new long[] {101L, 202L}) {
+            thresholdAccess(validator, false, thread, 0L);
+        }
+        for (long thread : new long[] {101L, 202L}) {
+            thresholdAccess(validator, true, thread, 4242L);
+        }
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertFalse(report.unsafeFieldAccesses.isEmpty(),
+                "double-checked locking on a plain field is a finding; a volatile mark left by an "
+                        + "access recorded while disabled excused it");
+    }
+
+    /**
+     * The volatile overload marked the field volatile before reaching the {@code enabled}
+     * check (#1361), and that mark is what excuses double-checked locking. A plain field must
+     * stay plain when the only volatile access was recorded while disabled.
+     */
+    @Test
+    void disabledVolatileAccessDoesNotMarkTheFieldVolatile() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.disable();
+        validator.recordFieldAccessUnderLocks("Holder.instance", null, true, 303L, 4242L, true);
+        validator.enable();
+
+        validator.markInvocationStart();
+        validator.recordFieldAccessUnderLocks("Holder.instance", null, false, 101L, 0L, false);
+        validator.recordFieldAccessUnderLocks("Holder.instance", null, false, 202L, 0L, false);
+        validator.recordFieldAccessUnderLocks("Holder.instance", null, true, 101L, 4242L, false);
+        validator.recordFieldAccessUnderLocks("Holder.instance", null, true, 202L, 4242L, false);
+
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertFalse(report.unsafeFieldAccesses.isEmpty(),
+                "double-checked locking on a plain field is a finding; a volatile mark left by an "
+                        + "access recorded while disabled excused it");
+    }
+
+    /**
      * A body that builds many small objects, a parallel stream over a list of them or a
      * {@code ConcurrentHashMap.forEach}, leaves one field with tens of thousands of receivers.
      * The per-instance excuses each walked the field's whole history for every receiver, so the
