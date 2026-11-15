@@ -262,4 +262,78 @@ class CompletableFutureChainDetectorTest {
         CompletableFutureChainDetector d = new CompletableFutureChainDetector();
         AbstractInstanceDetectorTest.assertNotRetained(CompletableFuture<String>::new, f -> d.recordFutureCreated(f, null));
     }
+
+    /**
+     * A handler counts for the chain it was attached to, and for nothing else: "op" is a prefix of
+     * "op2", but the two futures share no stage (#1359).
+     */
+    @Test
+    void aHandlerDoesNotReachAnUnrelatedFutureWhoseNameItPrefixes() {
+        CompletableFuture<String> op = new CompletableFuture<>();
+        CompletableFuture<String> op2 = new CompletableFuture<>();
+        detector.recordFutureCreated(op, "op");
+        detector.recordFutureCreated(op2, "op2");
+        detector.recordExceptionally(op);
+
+        var report = detector.analyze();
+        assertEquals(1, report.unjoinedFutures.size(), report.toString());
+        assertTrue(report.unjoinedFutures.get(0).startsWith("op2:"), report.toString());
+    }
+
+    /** Workers recording the same name each own a future; one worker's handler is not another's. */
+    @Test
+    void aHandlerDoesNotReachAnotherFutureOfTheSameName() {
+        CompletableFuture<String> handled = new CompletableFuture<>();
+        CompletableFuture<String> dropped = new CompletableFuture<>();
+        detector.recordFutureCreated(handled, "async-operation");
+        detector.recordFutureCreated(dropped, "async-operation");
+        detector.recordHandle(handled);
+
+        var report = detector.analyze();
+        assertEquals(1, report.unjoinedFutures.size(), report.toString());
+    }
+
+    /** An empty name is a prefix of every name, and must not make a handler reach every future. */
+    @Test
+    void aHandlerOnAnEmptyNamedFutureReachesOnlyItsChain() {
+        CompletableFuture<String> unnamed = new CompletableFuture<>();
+        CompletableFuture<String> other = new CompletableFuture<>();
+        detector.recordFutureCreated(unnamed, "");
+        detector.recordFutureCreated(other, "other");
+        detector.recordExceptionally(unnamed);
+
+        var report = detector.analyze();
+        assertEquals(1, report.unjoinedFutures.size(), report.toString());
+        assertTrue(report.unjoinedFutures.get(0).startsWith("other:"), report.toString());
+    }
+
+    /**
+     * A handler on the tail of a chain observes the head's failure too, since each stage
+     * propagates it: the whole chain is accounted for, however the names read.
+     */
+    @Test
+    void aHandlerOnTheTailCoversTheWholeChain() {
+        CompletableFuture<String> head = new CompletableFuture<>();
+        detector.recordFutureCreated(head, "joined-chain");
+        CompletableFuture<String> middle = head.thenApply(v -> v);
+        detector.recordChainOperation(head, middle, "thenApply");
+        CompletableFuture<String> tail = middle.thenApply(v -> v);
+        detector.recordChainOperation(middle, tail, "thenApply");
+        detector.recordHandle(tail);
+
+        assertFalse(detector.analyze().hasIssues(), detector.analyze().toString());
+    }
+
+    /** A result recorded before it was chained still joins the chain it was chained into. */
+    @Test
+    void aResultRecordedBeforeItWasChainedJoinsTheChain() {
+        CompletableFuture<String> head = new CompletableFuture<>();
+        CompletableFuture<String> tail = head.thenApply(v -> v);
+        detector.recordFutureCreated(head, "head");
+        detector.recordFutureCreated(tail, "separately-named-tail");
+        detector.recordChainOperation(head, tail, "thenApply");
+        detector.recordHandle(tail);
+
+        assertFalse(detector.analyze().hasIssues(), detector.analyze().toString());
+    }
 }

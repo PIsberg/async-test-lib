@@ -39,8 +39,6 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class CompletableFutureChainDetector extends AbstractInstanceDetector<CompletableFutureChainDetector.FutureState> {
 
-    private static final java.util.regex.Pattern ARROW = java.util.regex.Pattern.compile("->");
-
     static final class FutureState {
         final String name;
         final long createdTime;
@@ -49,6 +47,13 @@ public class CompletableFutureChainDetector extends AbstractInstanceDetector<Com
         volatile boolean exceptionallyAdded;
         volatile boolean handled;
         final List<String> chainOperations = new java.util.concurrent.CopyOnWriteArrayList<>();
+        /**
+         * The state of the first future of the chain this one belongs to, itself for a future no
+         * recorded chain operation produced. Chain membership is decided by this identity, never
+         * by the names, which workers share and which can prefix each other (#1359). It holds the
+         * head's state, not the head future, so a recorded future is not kept alive.
+         */
+        volatile FutureState root = this;
 
         FutureState(String name) {
             this.name = name;
@@ -115,9 +120,14 @@ public class CompletableFutureChainDetector extends AbstractInstanceDetector<Com
             state.chainOperations.add(operation);
         }
         
-        // Track the new future too
-        if (trackedState(result) == null) {
-            stateFor(result, state != null ? state.name + "->" + operation : "chained-" + operation);
+        // Track the new future too, as a member of the original's chain. A result recorded before
+        // it was chained joins the chain now, unless it already belongs to another one.
+        FutureState resultState = trackedState(result);
+        if (resultState == null) {
+            resultState = stateFor(result, state != null ? state.name + "->" + operation : "chained-" + operation);
+        }
+        if (state != null && resultState != state && resultState.root == resultState) { // NOPMD CompareObjectsWithEquals - chain identity is the point
+            resultState.root = state.root;
         }
         
         totalChained.incrementAndGet();
@@ -125,6 +135,11 @@ public class CompletableFutureChainDetector extends AbstractInstanceDetector<Com
 
     /**
      * Record .exceptionally() being added to a CompletableFuture.
+     *
+     * <p>The handler accounts for every future of the chain {@code future} belongs to: the one
+     * {@link #recordFutureCreated} started and each result {@link #recordChainOperation} linked to
+     * it. Those count as handled and joined. Futures of other chains are untouched, whatever their
+     * names (#1359).
      *
      * @param future the future instance
      */
@@ -135,10 +150,11 @@ public class CompletableFutureChainDetector extends AbstractInstanceDetector<Com
         FutureState state = trackedState(future);
         if (state != null) {
             state.exceptionallyAdded = true;
-            // Mark all futures in this chain
-            String baseName = ARROW.split(state.name, -1)[0];
+            // A handler on any stage sees a failure the chain propagates to it, so it accounts
+            // for every future of this chain, and only this chain's (#1359).
+            FutureState root = state.root;
             for (FutureState otherState : states()) {
-                if (otherState.name.startsWith(baseName)) {
+                if (otherState.root == root) { // NOPMD CompareObjectsWithEquals - chain identity is the point
                     otherState.exceptionallyAdded = true;
                     otherState.joined = true;
                 }
@@ -149,6 +165,11 @@ public class CompletableFutureChainDetector extends AbstractInstanceDetector<Com
     /**
      * Record .handle() being added to a CompletableFuture.
      *
+     * <p>The handler accounts for every future of the chain {@code future} belongs to: the one
+     * {@link #recordFutureCreated} started and each result {@link #recordChainOperation} linked to
+     * it. Those count as handled and joined. Futures of other chains are untouched, whatever their
+     * names (#1359).
+     *
      * @param future the future instance
      */
     public void recordHandle(CompletableFuture<?> future) {
@@ -158,10 +179,11 @@ public class CompletableFutureChainDetector extends AbstractInstanceDetector<Com
         FutureState state = trackedState(future);
         if (state != null) {
             state.handled = true;
-            // Mark all futures in this chain
-            String baseName = ARROW.split(state.name, -1)[0];
+            // A handler on any stage sees a failure the chain propagates to it, so it accounts
+            // for every future of this chain, and only this chain's (#1359).
+            FutureState root = state.root;
             for (FutureState otherState : states()) {
-                if (otherState.name.startsWith(baseName)) {
+                if (otherState.root == root) { // NOPMD CompareObjectsWithEquals - chain identity is the point
                     otherState.handled = true;
                     otherState.joined = true;
                 }

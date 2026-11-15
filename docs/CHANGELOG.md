@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read under the read lock therefore counted as unguarded, and the textbook read-write idiom drew
   an unsafe-access finding. The probe now passes the access's kind, as `RaceConditionDetector`
   already did: a read lock guards a read and still guards no write.
+- **`COMPLETABLEFUTURE_CHAIN`: a handler on one future silenced unrelated futures (#1359).**
+  `recordExceptionally` and `recordHandle` marked as handled and joined every tracked future whose
+  name started with the handled chain's first name. Futures named `op` and `op2`, every worker
+  recording the same name, or a future named `""` were all one chain, so a handler on one hid an
+  unjoined future in another. Chain membership is now the identity `recordChainOperation`
+  records, and a handler still accounts for every future of its own chain. A result recorded with
+  `recordFutureCreated` before it was chained now joins the chain too.
 
 ## [1.14.3] - 2026-11-14
 
