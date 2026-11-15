@@ -214,4 +214,44 @@ class ControlledScheduleTaskTest {
             pool.shutdownNow();
         }
     }
+
+    /**
+     * A submission that throws anything other than {@code RejectedExecutionException} never ran
+     * its task either: a rejection handler that throws its own exception, or no executor at all
+     * (#1360). The adopted slot must be done at once, as for a rejection, or the schedule waits for
+     * it until the stall bound counts an escape.
+     */
+    @Test
+    void aTaskWhoseSubmissionThrowsIsDoneAtOnce() throws Throwable {
+        CountDownLatch release = new CountDownLatch(1);
+        ThreadPoolExecutor pool = saturatedPool((task, executor) -> {
+            throw new IllegalStateException("refused by a handler of its own");
+        }, release);
+        try {
+            for (long seed = 1; seed <= 4; seed++) {
+                AsyncTestRunner.run(AsyncTestConfig.builder().threads(1).invocations(1).replaySeed(seed)
+                        .controlledSchedule(true).timeoutMs(10_000).licenseMockMode(true).build(), () -> {
+                    assertThrows(IllegalStateException.class,
+                            () -> AgentConcurrencyUtilHooks.submit(pool, (Runnable) () -> { }));
+                    assertThrows(IllegalStateException.class,
+                            () -> AgentConcurrencyUtilHooks.execute(pool, () -> { }));
+                    assertThrows(IllegalStateException.class,
+                            () -> AgentConcurrencyUtilHooks.supplyAsync(() -> null, pool));
+                    assertThrows(IllegalStateException.class,
+                            () -> AgentConcurrencyUtilHooks.runAsync(() -> { }, pool));
+                    assertThrows(NullPointerException.class,
+                            () -> AgentConcurrencyUtilHooks.supplyAsync(() -> null, null));
+                    assertThrows(NullPointerException.class,
+                            () -> AgentConcurrencyUtilHooks.runAsync(() -> { }, null));
+                    for (int i = 0; i < 3; i++) {
+                        AsyncTestContext.schedulePoint();
+                    }
+                });
+            }
+            assertEveryRoundCleanAndCounted(4);
+        } finally {
+            release.countDown();
+            pool.shutdownNow();
+        }
+    }
 }

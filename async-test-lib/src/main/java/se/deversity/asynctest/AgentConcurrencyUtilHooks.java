@@ -3497,7 +3497,9 @@ public final class AgentConcurrencyUtilHooks {
         }
         try {
             return Submissions.remember(CompletableFuture.supplyAsync(handed, executor), handed);
-        } catch (RejectedExecutionException e) {
+        } catch (RuntimeException | Error e) {
+            // Any throw means the task never ran: a rejection, a null executor, a handler that
+            // throws its own exception. Left adopted, its slot stalls the round (#1360).
             handed.abandoned();
             throw e;
         }
@@ -3599,7 +3601,9 @@ public final class AgentConcurrencyUtilHooks {
         }
         try {
             return Submissions.remember(CompletableFuture.runAsync(handed, executor), handed);
-        } catch (RejectedExecutionException e) {
+        } catch (RuntimeException | Error e) {
+            // Any throw means the task never ran: a rejection, a null executor, a handler that
+            // throws its own exception. Left adopted, its slot stalls the round (#1360).
             handed.abandoned();
             throw e;
         }
@@ -4020,6 +4024,13 @@ public final class AgentConcurrencyUtilHooks {
                 handed.abandoned();
             }
             throw rejected(receiver, e);
+        } catch (RuntimeException | Error e) {
+            // Any other throw means the task never ran (#1360), or ran inline under a caller-runs
+            // policy and threw, which already marked its slot done; marking it again is a no-op.
+            if (handed != null) {
+                handed.abandoned();
+            }
+            throw e;
         }
     }
 
@@ -4047,6 +4058,13 @@ public final class AgentConcurrencyUtilHooks {
                 handed.abandoned();
             }
             throw rejected(receiver, e);
+        } catch (RuntimeException | Error e) {
+            // Any other throw means the task never ran (#1360), or ran inline under a caller-runs
+            // policy and threw, which already marked its slot done; marking it again is a no-op.
+            if (handed != null) {
+                handed.abandoned();
+            }
+            throw e;
         }
     }
 
@@ -4077,6 +4095,13 @@ public final class AgentConcurrencyUtilHooks {
                 handed.abandoned();
             }
             throw rejected(receiver, e);
+        } catch (RuntimeException | Error e) {
+            // Any other throw means the task never ran (#1360), or ran inline under a caller-runs
+            // policy and threw, which already marked its slot done; marking it again is a no-op.
+            if (handed != null) {
+                handed.abandoned();
+            }
+            throw e;
         }
     }
 
@@ -4493,6 +4518,13 @@ public final class AgentConcurrencyUtilHooks {
                 handed.abandoned();
             }
             throw rejected(receiver, e);
+        } catch (RuntimeException | Error e) {
+            // Any other throw means the task never ran (#1360), or ran inline under a caller-runs
+            // policy and threw, which already marked its slot done; marking it again is a no-op.
+            if (handed != null) {
+                handed.abandoned();
+            }
+            throw e;
         }
     }
 
