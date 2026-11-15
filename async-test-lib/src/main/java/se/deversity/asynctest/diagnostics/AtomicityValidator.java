@@ -214,8 +214,12 @@ public class AtomicityValidator {
         private static final class Locks extends SelfGuard.TrackedInstance {
         }
 
-        void noteOwner(@Nullable Object owner) {
-            objectLocks.noteAccess(owner);
+        /**
+         * Notes an access to {@code owner}'s field with the locks held now. A read keeps a lock
+         * held in shared mode, which keeps writers out; a write drops it (#500, #1358).
+         */
+        void noteOwner(@Nullable Object owner, boolean isWrite) {
+            objectLocks.noteAccess(owner, isWrite);
         }
 
         void noteWriteConstant(int tag) {
@@ -1011,9 +1015,10 @@ public class AtomicityValidator {
                 ignored -> new FieldGuard());
         int[] ownerLocks = null;
         if (ownerKnown) {
-            guard.noteOwner(owner);
-            // The same probe the streamed intersection just took, kept for the per-round one.
-            ownerLocks = owner == null ? HeldLocks.NONE : HeldLocks.intersect(null, owner, true);
+            guard.noteOwner(owner, isWrite);
+            // The same probe the streamed intersection just took, kept for the per-round one. A
+            // read keeps a read lock, which guards it against a writer under the write lock (#1358).
+            ownerLocks = owner == null ? HeldLocks.NONE : HeldLocks.intersect(null, owner, isWrite);
         } else if (lockFingerprint != UNMODELLED) {
             if (identity == 0) {
                 // This is the guard the analysis consults for this access; with an identity the

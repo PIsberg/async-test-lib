@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "proceeded on a group still running", and so did an unawaited `anyOf` whose winner was in. An
   `anyOf` is complete once one constituent is: both rules now need one for `anyOf` and every
   constituent for the rest. An `anyOf` read before any constituent completed is still HIGH.
+- **`ATOMICITY` reported a field read under a `ReentrantReadWriteLock`'s read lock beside a writer
+  under its write lock (#1358).** `recordFieldAccessOn(owner, ...)` probed the held locks as if
+  every access were a write, and a write does not count a lock held in shared mode (#500). A
+  read under the read lock therefore counted as unguarded, and the textbook read-write idiom drew
+  an unsafe-access finding. The probe now passes the access's kind, as `RaceConditionDetector`
+  already did: a read lock guards a read and still guards no write.
 
 ## [1.14.3] - 2026-11-14
 
