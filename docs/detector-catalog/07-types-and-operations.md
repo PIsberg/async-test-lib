@@ -304,7 +304,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 96. Uncaught Exception Handler Detector
 * **Severity**: `MEDIUM`
-* **Description**: Detects threads started without a custom `Thread.UncaughtExceptionHandler` that subsequently throw an uncaught exception. Without a handler, the exception only reaches the thread group's default (stderr) handler, so the submitting code has no way to detect that the thread died. A JVM-wide handler set with `Thread.setDefaultUncaughtExceptionHandler` when the exception is recorded counts as a handler, and such a thread is not reported.
+* **Description**: Detects threads started without a custom `Thread.UncaughtExceptionHandler` that subsequently throw an uncaught exception. Without a handler, the exception only reaches the thread group's default (stderr) handler, so the submitting code has no way to detect that the thread died. A JVM-wide handler set with `Thread.setDefaultUncaughtExceptionHandler` when the exception is recorded counts as a handler, and such a thread is not reported (the one the runner itself installs during a run does not count). Since 1.15.0 the runner feeds it with no recording call (#1253): a thread the body started that dies of an uncaught exception is recorded, except an `AssertionError`, which fails the test instead. See [What fails a test](../../README.md#fail-gates--baseline).
 * **Buggy Code**:
   ```java
   Thread worker = new Thread(this::riskyTask);

@@ -567,11 +567,20 @@ VERDICT, so a `minTrust = VERDICT` gate keeps failing on it.
 `ThreadLeakDetector`, `ThreadPoolMonitor`, `CompletableFutureCompletionLeakDetector`,
 `AtomicNonAtomicUpdateDetector`, `ExecutorDeadlockDetector`, `KotlinMutexReentrancyDetector`
 
-### Zero-config (4)
+### Zero-config (5)
 
 Watch the JVM and the harness themselves (`ThreadMXBean` deadlock scans, the state of the workers
-still in their bodies when a round times out, live `<clinit>` stacks, the JVM's `jdk.VirtualThreadPinned` JFR event) and can fire with
-no agent and no recording call.
+still in their bodies when a round times out, live `<clinit>` stacks, the JVM's `jdk.VirtualThreadPinned` JFR event, the JVM's dispatch of an
+uncaught exception) and can fire with no agent and no recording call.
+
+The uncaught-exception detector takes the deaths the runner's default handler sees for the duration
+of a run (#1253): a thread the body started, constructed on a worker or by a thread that was, or with
+the agent started by a worker through a woven `Thread.start`, or a pool thread killed by a task a
+worker handed over through a woven `execute`, that dies of an uncaught exception other than an
+`AssertionError`. An `AssertionError` there is not a finding: it fails the test, whatever the
+selection. A thread with a handler of its own, or one a JVM-wide default handler set by the suite
+covers (#758), is not reported. The runner's handler passes every death on to the default it found,
+or prints it as the JVM would.
 
 The pinning detector takes the JFR feed for a run on virtual workers (`useVirtualThreads`, the
 default), and for pins on those workers or on threads they started. JFR reports every virtual
@@ -603,10 +612,10 @@ declared on that stack, a JNI call back into Java, keeps the pin the code's. The
 the running JDK's own verdict, so it
 fires for a blocking `synchronized` block up to JDK 23 and not from 24 (JEP 491), and for blocking
 inside a class initializer or under a native frame on every JDK. Without a usable JFR (a runtime
-image without `jdk.jfr`) the detector keeps its recording feed. The four:
+image without `jdk.jfr`) the detector keeps its recording feed. The five:
 
 `DeadlockDetector`, `LivelockDetector`, `StaticInitDeadlockDetector`,
-`VirtualThreadPinningDetector`
+`VirtualThreadPinningDetector`, `UncaughtExceptionHandlerDetector`
 
 ### Why the rest are recording-only
 
@@ -632,7 +641,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (92)
+### Recording-only (91)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -664,7 +673,7 @@ recording is the feed:
 `WeakReferenceRaceDetector`,
 `StatefulLambdaDetector`,
 `DeprecatedThreadApiDetector`, `SharedXmlParserDetector`,
-`BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`, `UncaughtExceptionHandlerDetector`,
+`BoxedPrimitiveLockDetector`, `SharedTimeZoneDetector`,
 `NotifyWithoutMonitorDetector`, `SharedSecureRandomDetector`,
 `WeakHashMapSharedDetector`,
 `ThisEscapeDetector`,

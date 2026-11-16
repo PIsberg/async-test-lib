@@ -245,6 +245,13 @@ public final class AsyncTestContext {
     private volatile boolean analysed;
 
     /**
+     * Assertions that failed on threads the body started, waiting for the runner to fail the
+     * round with them (#1253). Concurrent: dying threads add while the runner takes.
+     */
+    private final java.util.Queue<AssertionError> bodyThreadAssertions =
+            new java.util.concurrent.ConcurrentLinkedQueue<>();
+
+    /**
      * Ids of the threads this run's threads started through a woven {@code Thread.start} (#983).
      * Concurrent: the workers add while the pinning feed reads.
      */
@@ -880,6 +887,11 @@ public final class AsyncTestContext {
         }
     }
 
+    /** {@return whether this run's analysis has started, after which it takes nothing more} */
+    boolean isAnalysed() {
+        return analysed;
+    }
+
     /** Stops lending this run to the threads its threads started, once its analysis starts. */
     private void stopLending() {
         analysed = true;
@@ -900,6 +912,7 @@ public final class AsyncTestContext {
     @AICallersOnly({"se.deversity.asynctest.runner.ConcurrencyRunner"})
     public static void install(AsyncTestContext ctx) {
         SelfGuard.Scope.bind(ctx.sharingScope);
+        BodyThreadFailures.enter(ctx);
         CURRENT.set(ctx);
     }
 
@@ -916,6 +929,7 @@ public final class AsyncTestContext {
     public static void install(AsyncTestContext ctx, int workerSlot) {
         WorkerSlot.set(workerSlot);
         SelfGuard.Scope.bind(ctx.sharingScope);
+        BodyThreadFailures.enter(ctx);
         CURRENT.set(ctx);
     }
 
@@ -931,7 +945,50 @@ public final class AsyncTestContext {
         HeldLocks.clear();
         WorkerSlot.clear();
         SelfGuard.Scope.unbind();
+        BodyThreadFailures.exit();
         CURRENT.remove();
+    }
+
+    /**
+     * Called by {@link BodyThreadFailures} on a thread that works for this run and is dying of an
+     * uncaught exception no handler of its own took (#1253). An {@link AssertionError} is the
+     * test's own assertion on another thread: it waits for the runner to fail the round with it.
+     * Anything else goes to the uncaught-handler detector when it is enabled. Nothing is taken once
+     * analysis has started.
+     */
+    void bodyThreadDied(Thread thread, Throwable thrown) {
+        if (analysed) {
+            return;
+        }
+        if (thrown instanceof AssertionError assertion) {
+            bodyThreadAssertions.add(new AssertionError("Thread '" + thread.getName()
+                    + "', started by the test body, failed: " + assertion.getMessage(), assertion));
+            return;
+        }
+        UncaughtExceptionHandlerDetector detector = registry.uncaughtExceptionHandlerDetector;
+        if (detector != null) {
+            detector.recordThreadStart(thread);
+            detector.recordUncaughtException(thread, thrown);
+        }
+    }
+
+    /**
+     * Internal: takes the assertions that failed on threads this run's body started since the last
+     * call, so the runner can fail the round with them (#1253). Public only so the runner, in
+     * another package, can call it; not part of the stable public API.
+     *
+     * @return the failures in the order the threads died, each wrapping the thread's own error
+     * @since 1.15.0
+     */
+    @API(status = Status.INTERNAL, since = "1.15.0")
+    public List<AssertionError> takeBodyThreadAssertions() {
+        List<AssertionError> taken = new ArrayList<>();
+        AssertionError failure = bodyThreadAssertions.poll();
+        while (failure != null) {
+            taken.add(failure);
+            failure = bodyThreadAssertions.poll();
+        }
+        return taken;
     }
 
     /**

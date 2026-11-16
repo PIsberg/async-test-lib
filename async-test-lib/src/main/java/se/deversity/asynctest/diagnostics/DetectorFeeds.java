@@ -196,21 +196,26 @@ public final class DetectorFeeds {
     /**
      * Fed by the JVM and the harness with no recording call.
      *
-     * <p>Four, each with the deciding source: {@code DeadlockDetector.analyze()} samples
+     * <p>Five, each with the deciding source: {@code DeadlockDetector.analyze()} samples
      * {@code ThreadMXBean.findDeadlockedThreads()} on its own; {@code ConcurrencyRunner} tells
      * {@code LivelockDetector} which workers are in their bodies, and asks it to classify them when a
      * round times out;
      * {@code StaticInitDeadlockDetector.analyze()} walks the live stacks for threads parked in
      * {@code <clinit>} frames; and {@code ConcurrencyRunner} opens a {@link JfrPinningStream} that
      * hands {@code VirtualThreadPinningDetector} the JVM's {@code jdk.VirtualThreadPinned} events
-     * for the run's virtual workers. Nothing else in the harness feeds a detector by itself: the
-     * sweep behind #300 checked every {@code record*}/{@code register*} call site in main code.
+     * for the run's virtual workers; and for the duration of a run {@code ConcurrencyRunner} makes
+     * {@code BodyThreadFailures} the JVM's default uncaught handler, which hands
+     * {@code UncaughtExceptionHandlerDetector} a thread the body started that died of an uncaught
+     * exception other than an {@code AssertionError} (#1253). Nothing else in the harness feeds a
+     * detector by itself: the sweep behind #300 checked every {@code record*}/{@code register*}
+     * call site in main code.
      */
     private static final Set<DetectorType> ZERO_CONFIG_FED = EnumSet.of(
             DetectorType.DEADLOCKS,
             DetectorType.LIVELOCKS,
             DetectorType.STATIC_INIT_DEADLOCK,
-            DetectorType.VIRTUAL_THREAD_PINNING);
+            DetectorType.VIRTUAL_THREAD_PINNING,
+            DetectorType.UNCAUGHT_EXCEPTION_HANDLER);
 
     private static final Map<DetectorType, DetectorFeed> FEEDS = buildTable();
 

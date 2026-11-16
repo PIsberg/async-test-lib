@@ -229,6 +229,10 @@ final class AgentHandOffHooks {
             AgentConcurrencyUtilHooks.RUNNING_HANDED.set(this);
             try {
                 ((Runnable) task).run();
+            } catch (Throwable thrown) { // NOPMD AvoidCatchingThrowable - marked and rethrown as is
+                // If it kills this pool thread, the death is the submitting run's (#1253).
+                BodyThreadFailures.handedTaskThrew(submittedIn, thrown);
+                throw thrown;
             } finally {
                 AgentConcurrencyUtilHooks.RUNNING_HANDED.set(outerRunning);
                 leavePool(entered, outer);
