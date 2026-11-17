@@ -112,7 +112,7 @@ public class DeadlockDetector {
     }
 
     /** {@return whether a new cycle with these members is this run's to report} */
-    private boolean isThisRuns(long[] members) {
+    private boolean belongsToThisRun(long[] members) {
         LongPredicate owns = runThreads;
         if (owns == null) {
             return true;
@@ -397,7 +397,7 @@ public class DeadlockDetector {
             long[] fresh = Arrays.stream(current)
                     .filter(id -> !preexistingDeadlockedThreads.contains(id))
                     .toArray();
-            if (fresh.length > 0 && isThisRuns(fresh)) {
+            if (fresh.length > 0 && belongsToThisRun(fresh)) {
                 return DetectorFailurePolicy.checkedReport(this, new DeadlockReport(true));
             }
         }
@@ -422,7 +422,7 @@ public class DeadlockDetector {
         List<String> lines = new ArrayList<>();
         for (VirtualThreadLockGraph.Cycle cycle : scan.get()) {
             if (preexistingVirtualCycles.contains(Set.copyOf(cycle.threadNames()))
-                    || !isThisRuns(idsOf(cycle.threadIds()))) {
+                    || !belongsToThisRun(idsOf(cycle.threadIds()))) {
                 continue;
             }
             lines.add(String.format("%s, each waiting for a monitor or lock the next one holds (%s)",

@@ -47,7 +47,7 @@ final class RunOverlap {
      */
     boolean overlapped() {
         synchronized (LOCK) {
-            return exited ? overlappedAtExit : othersInProgressAtEntry || entered != enteredAs;
+            return exited ? overlappedAtExit : overlappedSoFar();
         }
     }
 
@@ -57,10 +57,15 @@ final class RunOverlap {
             if (exited) {
                 return;
             }
-            overlappedAtExit = othersInProgressAtEntry || entered != enteredAs;
+            overlappedAtExit = overlappedSoFar();
             exited = true;
             left();
         }
+    }
+
+    /** {@return whether a run was in progress at entry or has entered since} Called under LOCK. */
+    private boolean overlappedSoFar() {
+        return othersInProgressAtEntry || entered != enteredAs;
     }
 
     /** One run fewer in progress. Called under LOCK. */

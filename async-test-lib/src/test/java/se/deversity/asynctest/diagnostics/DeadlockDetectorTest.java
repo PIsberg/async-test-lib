@@ -9,6 +9,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -137,11 +138,10 @@ public class DeadlockDetectorTest {
     @Order(13)
     void aCycleWithAThreadOfTheRunIsReportedWhateverElseRan() throws InterruptedException {
         DeadlockDetector detector = new DeadlockDetector();
-        long[] members = new long[2];
-        detector.attributeTo(id -> id == members[0], () -> true);
+        AtomicLong runThread = new AtomicLong(-1);
+        detector.attributeTo(id -> id == runThread.get(), () -> true);
 
-        long[] created = createLeakedDeadlock();
-        members[0] = created[0];
+        runThread.set(createLeakedDeadlock()[0]);
 
         assertTrue(detector.analyze().hasIssues(),
                 "one member is this run's thread, so the deadlock is this run's");

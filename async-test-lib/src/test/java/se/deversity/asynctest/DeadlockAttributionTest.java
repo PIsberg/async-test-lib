@@ -74,27 +74,10 @@ class DeadlockAttributionTest {
     @EnabledIf("dumpNamesLockOwners")
     @DisplayName("a ReentrantLock deadlock between virtual workers is reported")
     void aLockDeadlockBetweenVirtualWorkersIsReported() {
-        CountDownLatch bothHoldTheirFirst = new CountDownLatch(2);
-        Lock a = new ReentrantLock();
-        Lock b = new ReentrantLock();
-        AtomicInteger arrivals = new AtomicInteger();
-
-        AssertionError timeout = (AssertionError) assertInstanceOf(AssertionError.class,
+        AssertionError timeout = assertInstanceOf(AssertionError.class,
                 runOnItsOwnThread(() -> AsyncTestRunner.run(
-                        deadlockOnly().threads(2).invocations(1).timeoutMs(3_000).build(), () -> {
-                            boolean first = arrivals.getAndIncrement() % 2 == 0;
-                            Lock x = first ? a : b;
-                            Lock y = first ? b : a;
-                            x.lock();
-                            try {
-                                bothHoldTheirFirst.countDown();
-                                bothHoldTheirFirst.await();
-                                y.lock();
-                                y.unlock();
-                            } finally {
-                                x.unlock();
-                            }
-                        })).join());
+                        deadlockOnly().threads(2).invocations(1).timeoutMs(3_000).build(),
+                        invertedLocks())).join());
 
         assertTrue(timeout.getMessage().contains("DeadlockDetector"),
                 "the two virtual workers are parked on each other's lock: " + timeout.getMessage());
@@ -123,6 +106,7 @@ class DeadlockAttributionTest {
         return Runtime.version().feature() >= 25;
     }
 
+    /** Two workers taking two monitors in opposite orders once {@code go} opens. */
     private static AsyncTestRunner.Body invertedMonitors(CountDownLatch go, CountDownLatch bothHoldTheirFirst) {
         Object a = new Object();
         Object b = new Object();
@@ -138,6 +122,28 @@ class DeadlockAttributionTest {
                 synchronized (y) {
                     arrivals.incrementAndGet();
                 }
+            }
+        };
+    }
+
+    /** Two workers taking two {@code ReentrantLock}s in opposite orders, each waiting for the other. */
+    private static AsyncTestRunner.Body invertedLocks() {
+        CountDownLatch bothHoldTheirFirst = new CountDownLatch(2);
+        Lock a = new ReentrantLock();
+        Lock b = new ReentrantLock();
+        AtomicInteger arrivals = new AtomicInteger();
+        return () -> {
+            boolean first = arrivals.getAndIncrement() % 2 == 0;
+            Lock x = first ? a : b;
+            Lock y = first ? b : a;
+            x.lock();
+            try {
+                bothHoldTheirFirst.countDown();
+                bothHoldTheirFirst.await();
+                y.lock();
+                y.unlock();
+            } finally {
+                x.unlock();
             }
         };
     }

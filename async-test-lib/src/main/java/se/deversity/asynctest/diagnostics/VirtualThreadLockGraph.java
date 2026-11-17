@@ -399,12 +399,8 @@ final class VirtualThreadLockGraph {
         if (at < 0) {
             return null;
         }
-        int colon = object.indexOf(':', at + key.length() + 2);
-        int open = colon < 0 ? -1 : colon + 1;
-        while (open > 0 && open < object.length() && Character.isWhitespace(object.charAt(open))) {
-            open++;
-        }
-        if (open < 0 || open >= object.length() || object.charAt(open) != opening) {
+        int open = valueStart(object, at + key.length() + 2);
+        if (open < 0 || object.charAt(open) != opening) {
             return null;                        // absent, null, or not the shape asked for
         }
         int depth = 0;
@@ -440,6 +436,23 @@ final class VirtualThreadLockGraph {
     private static String withoutArray(String object, String key) {
         String array = arrayOf(object, key);
         return array == null ? object : object.replace(array, "[]");
+    }
+
+    /**
+     * {@return the index of the first character of the value after the colon that follows
+     * {@code from}, or -1 when there is no colon or nothing after it}
+     */
+    private static int valueStart(String object, int from) {
+        int colon = object.indexOf(':', from);
+        if (colon < 0) {
+            return -1;
+        }
+        for (int i = colon + 1; i < object.length(); i++) {
+            if (!Character.isWhitespace(object.charAt(i))) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /** {@return every quoted string in {@code text}, unescaped} */
