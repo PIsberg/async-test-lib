@@ -675,7 +675,7 @@ final class FieldAccessWeaver {
         private String staticOwner(String owner, String name) {
             return staticOwners.computeIfAbsent(owner + '.' + name, key -> {
                 String declaring = declaringOwner(owner, name);
-                return declaring.equals(owner) || loadableFromHere(declaring) ? declaring : owner;
+                return (declaring.equals(owner) || loadableFromHere(declaring)) ? declaring : owner;
             });
         }
 
@@ -1514,6 +1514,8 @@ final class FieldAccessWeaver {
                 fieldsReadInThisMethod.add(identifier);
             }
             boolean isStaticAccess = opcode == Opcodes.GETSTATIC || opcode == Opcodes.PUTSTATIC;
+            // The class a static field's hooks name; an instance field's hooks take its receiver.
+            String hookOwner = isStaticAccess ? staticOwner(owner, name) : owner;
             // An instance field touched before the super constructor has run belongs to an object
             // that cannot have escaped yet: no other thread can hold a reference to something still
             // being constructed, so there is nothing to observe. Recording it anyway would be worse
@@ -1527,7 +1529,6 @@ final class FieldAccessWeaver {
                 boolean isWrite = write;
                 boolean isStatic = isStaticAccess;
                 boolean isVolatile = isVolatile(owner, name);
-                String hookOwner = isStatic ? staticOwner(owner, name) : owner;
                 if (isStatic) {
                     liftStaticReceiver(hookOwner, isWrite, descriptor);
                 } else {
@@ -1568,8 +1569,7 @@ final class FieldAccessWeaver {
             }
             super.visitFieldInsn(opcode, owner, name, descriptor);
             if (volatileLoad) {
-                emitVolatileLoad(isStaticAccess ? staticOwner(owner, name) : owner, isStaticAccess,
-                        descriptor, identifier);
+                emitVolatileLoad(hookOwner, isStaticAccess, descriptor, identifier);
             }
         }
 
