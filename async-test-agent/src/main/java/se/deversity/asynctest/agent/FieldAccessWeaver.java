@@ -657,6 +657,46 @@ final class FieldAccessWeaver {
             });
         }
 
+        /** {@link #staticOwner} answers already given in this method, keyed by owner and name. */
+        private final Map<String, String> staticOwners = new java.util.HashMap<>();
+
+        /**
+         * {@return the class a static field's hooks name as its owner: the declaring class when this
+         * class can load it as a constant, else the instruction's owner}
+         *
+         * <p>javac names a static field instruction by its qualifying type, so a static volatile
+         * declared on {@code Base} and written as {@code Base.f} but read as {@code Sub.f} handed
+         * {@code volatileStore} one class and {@code volatileLoad} another, and the read acquired
+         * nothing; the same split made one static field look like two objects to the race
+         * detectors (#1362). A package-private declaring class in another package cannot be loaded
+         * with {@code LDC} from here, which would throw {@code IllegalAccessError}, so there the
+         * instruction's owner is kept, as before.
+         */
+        private String staticOwner(String owner, String name) {
+            return staticOwners.computeIfAbsent(owner + '.' + name, key -> {
+                String declaring = declaringOwner(owner, name);
+                return declaring.equals(owner) || loadableFromHere(declaring) ? declaring : owner;
+            });
+        }
+
+        /** {@return whether this class may load {@code internalName} as a class constant} */
+        private boolean loadableFromHere(String internalName) {
+            if (packageOf(internalName).equals(packageOf(classInternalName))) {
+                return true;
+            }
+            try {
+                TypeDescription type = typePool.describe(internalName.replace('/', '.')).resolve();
+                return (type.getActualModifiers(false) & Opcodes.ACC_PUBLIC) != 0;
+            } catch (RuntimeException e) { // NOPMD - an unresolvable type is not known to be loadable
+                return false;
+            }
+        }
+
+        private static String packageOf(String internalName) {
+            int slash = internalName.lastIndexOf('/');
+            return slash < 0 ? "" : internalName.substring(0, slash);
+        }
+
         /**
          * {@return whether {@code owner.name} is declared {@code volatile}}
          *
@@ -1487,8 +1527,9 @@ final class FieldAccessWeaver {
                 boolean isWrite = write;
                 boolean isStatic = isStaticAccess;
                 boolean isVolatile = isVolatile(owner, name);
+                String hookOwner = isStatic ? staticOwner(owner, name) : owner;
                 if (isStatic) {
-                    liftStaticReceiver(owner, isWrite, descriptor);
+                    liftStaticReceiver(hookOwner, isWrite, descriptor);
                 } else {
                     liftReceiver(isWrite, descriptor);
                 }
@@ -1510,7 +1551,7 @@ final class FieldAccessWeaver {
                     restoreReceiverBelowValue(descriptor);
                 }
                 if (isVolatile && isWrite) {
-                    emitVolatileStore(owner, isStatic, descriptor, identifier);
+                    emitVolatileStore(hookOwner, isStatic, descriptor, identifier);
                 } else if (isVolatile && !isStatic) {
                     // A copy of the receiver waits under the load, for the call after it (#742).
                     super.visitInsn(Opcodes.DUP);
@@ -1527,7 +1568,8 @@ final class FieldAccessWeaver {
             }
             super.visitFieldInsn(opcode, owner, name, descriptor);
             if (volatileLoad) {
-                emitVolatileLoad(owner, isStaticAccess, descriptor, identifier);
+                emitVolatileLoad(isStaticAccess ? staticOwner(owner, name) : owner, isStaticAccess,
+                        descriptor, identifier);
             }
         }
 

@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A static field reached through a subclass is one field to the agent (#1362).** javac names a
+  static field instruction by its qualifying type, so a static volatile declared on `Base`,
+  written as `Base.f` and read as `Sub.f`, gave the volatile store one class and the load
+  another: the read acquired nothing, and the guarded data drew a false race finding. The same
+  split made one plain static field look like two objects, hiding a real race between an access
+  through the declaring class and one through a subclass. With `fields=true` the weaver now names
+  the declaring class in a static field's hooks, except where the woven class cannot load it as a
+  constant (a package-private class in another package), where it keeps the instruction's owner as
+  before. `VolatilePublicationWeavingTest`.
+
 - **Five detector defects from one review (#1363, #1364, #1365, #1366, #1367).**
   `ScopeConfigurationMisuseDetector`'s duplicate-name finding counted every scope that ever had
   the name ("was on 3 scopes alive at the same time" for two that were); it now counts the ones
