@@ -88,7 +88,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="232.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">resolveTimeoutMultiplier()…</text>
   <text x="232.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeAndGate(AsyncTestCo…</text>
   <text x="232.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">reportAndGate(AsyncTestCon…</text>
-  <text x="232.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+28 more)</text>
+  <text x="232.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+29 more)</text>
 </g>
 <g id="LicenseGuard">
   <title>LicenseGuard [CLASS]</title>
@@ -147,7 +147,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="RunOverlap">
   <title>RunOverlap [CLASS]</title>
-  <rect class="node-rect" x="224.0" y="204.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="224.0" y="204.0" width="180.0" height="250.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="314.0" y="226.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">RunOverlap</text>
   <line x1="224.0" y1="248.0" x2="404.0" y2="248.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="232.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">LOCK: Object</text>
@@ -161,7 +161,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="232.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enter(): RunOverlap</text>
   <text x="232.0" y="393.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">overlapped(): boolean</text>
   <text x="232.0" y="408.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">exit(): void</text>
-  <text x="232.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">left(): void</text>
+  <text x="232.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">overlappedSoFar(): boolean</text>
+  <text x="232.0" y="438.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">left(): void</text>
 </g>
 <g id="SpinContentionBarrier">
   <title>SpinContentionBarrier [CLASS]</title>

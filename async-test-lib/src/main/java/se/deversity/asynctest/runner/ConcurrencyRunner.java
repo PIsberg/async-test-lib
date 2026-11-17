@@ -57,6 +57,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Orchestrates the N-invocations × M-threads test execution pattern for
@@ -513,6 +514,11 @@ public class ConcurrencyRunner {
         // around it was memoized.)
         boolean timeoutAlreadyReported = false;
 
+        // How far the run got, for what a timeout says about it (#1386). Updated at each round's
+        // start; read on the timeout paths below.
+        int roundsCompleted = 0;
+        long lastRoundBudgetMs = effectiveTimeoutMs;
+
         // Opened immediately before the try whose finally closes it, so nothing can throw in
         // between and leave a JFR recording running for the life of the JVM. start() never
         // throws: without a usable JFR it returns null and the detector keeps its recorded feed.
@@ -536,10 +542,12 @@ public class ConcurrencyRunner {
         try {
             for (int i = 0; i < config.invocations; i++) {
                 long remainingMs = remainingMillis(deadlineNanos);
+                roundsCompleted = i;
+                lastRoundBudgetMs = remainingMs;
                 if (remainingMs <= 0) {
                     timeoutAlreadyReported = true;
                     throw timeoutError(effectiveTimeoutMs, null, phase2Analysis,
-                            config.detectDeadlocks);
+                            config.detectDeadlocks, new RunProgress(roundsCompleted, config.invocations, remainingMs));
                 }
 
                 // Seed for this round — fixed from annotation, or freshly drawn.
@@ -684,7 +692,7 @@ public class ConcurrencyRunner {
             quiesceWorkers(executor, testMethod);
             if (isTimeoutLike(e)) {
                 throw timeoutError(effectiveTimeoutMs, e, phase2Analysis,
-                        config.detectDeadlocks);
+                        config.detectDeadlocks, new RunProgress(roundsCompleted, config.invocations, lastRoundBudgetMs));
             }
             reportFailure(e, currentSeed, lastSchedule, phase2Analysis);
             throw e;
@@ -1184,6 +1192,9 @@ public class ConcurrencyRunner {
         ContentionBarrier barrier = createBarrier(threads, roundTimeoutMs, useVirtualThreads);
         List<Throwable> failures = new CopyOnWriteArrayList<>();
         CountDownLatch latch = new CountDownLatch(threads);
+        // Workers that got past the start barrier, so a timed-out round can say whether any never
+        // reached the body rather than guessing (#1386).
+        AtomicInteger pastBarrier = new AtomicInteger();
 
         Object target = context.getTarget().orElse(null);
         Object[] args = context.getArguments().toArray();
@@ -1215,6 +1226,7 @@ public class ConcurrencyRunner {
                     installed = true;
                     try {
                         barrier.arrive();
+                        pastBarrier.incrementAndGet();
                         // After the barrier, so every worker joins the schedule; left in a finally,
                         // so a body that throws hands the round on and clears the thread's slot
                         // before a pooled thread runs the next round.
@@ -1273,6 +1285,10 @@ public class ConcurrencyRunner {
         // body that joined the thread has seen it die, and the death was recorded before that.
         failures.addAll(phase2Context.takeBodyThreadAssertions());
         if (!completed) {
+            // Read before the cancels below: a cancelled worker counts the latch down too, and
+            // read after them a hung round reported "2/2 threads completed" (#1386).
+            int finished = threads - (int) latch.getCount();
+            int reachedTheBody = pastBarrier.get();
             // Interrupt any worker still stuck (e.g. blocked on a now-broken barrier, or
             // never reached it at all) instead of leaving it to run until execute()'s
             // outer executor.shutdownNow(). cancel(true) on an already-finished future
@@ -1288,12 +1304,8 @@ public class ConcurrencyRunner {
             for (Future<?> future : workerFutures) {
                 future.cancel(true);
             }
-            AssertionError roundTimeout = new RoundTimeoutError(
-                "Invocation round timed out: " + (threads - (int) latch.getCount()) + "/" + threads
-                    + " threads completed within " + roundTimeoutMs + "ms. "
-                    + "A thread may be stuck before the test body (e.g. broken barrier)."
-                    + (failures.isEmpty() ? "" : " " + failures.size()
-                        + " worker failure(s) from this round are attached as suppressed."));
+            AssertionError roundTimeout = new RoundTimeoutError(roundTimeoutMessage(
+                    threads, finished, reachedTheBody, roundTimeoutMs, failures.size()));
             // The workers that DID finish often carry the diagnosis: a worker that threw
             // before the barrier is the most common reason its peers never arrived, and
             // throwing here without them reported only a thread count. `failures` is a
@@ -1307,6 +1319,83 @@ public class ConcurrencyRunner {
 
         if (!failures.isEmpty()) {
             throw buildMultiFailureError(failures);
+        }
+    }
+
+    /**
+     * {@return what a timed-out round says about itself (#1386)}
+     *
+     * <p>The broken-barrier hint is given only when a worker never got past the barrier: every
+     * hang the hint used to accompany had its workers inside the body. A round whose workers all
+     * finished in the moment between its deadline and the count being read says that, instead of
+     * "2/2 threads completed" beside a hint that one may be stuck.
+     *
+     * @param threads        the round's workers
+     * @param finished       how many had finished when the deadline passed
+     * @param pastBarrier    how many had got past the start barrier
+     * @param roundTimeoutMs the time the round was given
+     * @param failureCount   worker failures attached to the error as suppressed
+     */
+    static String roundTimeoutMessage(int threads, int finished, int pastBarrier, long roundTimeoutMs,
+                                      int failureCount) {
+        String round;
+        if (finished >= threads) {
+            round = "Invocation round timed out after " + roundTimeoutMs + "ms, though all " + threads
+                    + " workers finished just after it ran out.";
+        } else {
+            int neverStarted = threads - pastBarrier;
+            round = "Invocation round timed out: " + finished + "/" + threads + " threads completed within "
+                    + roundTimeoutMs + "ms."
+                    + (neverStarted > 0 ? " " + neverStarted + " worker(s) never got past the start barrier "
+                            + "(a worker that failed before it, or a broken barrier)." : "");
+        }
+        return round + (failureCount == 0 ? ""
+                : " " + failureCount + " worker failure(s) from this round are attached as suppressed.");
+    }
+
+    /**
+     * How far a run got before its budget ran out, which decides what its timeout says (#1386).
+     *
+     * <p>{@code timeoutMs} is the budget for the whole run. A correct body that makes steady
+     * progress and outgrows it is not a deadlock, and saying so sent readers looking for a hang
+     * that was not there. A round that had well over the time earlier rounds took, and still did
+     * not finish, is.
+     *
+     * @param roundsCompleted   rounds that finished before the one that ran out
+     * @param invocations       rounds the run asked for
+     * @param lastRoundBudgetMs what was left of the budget when the last round started, zero or
+     *                          less when it ran out between rounds
+     */
+    record RunProgress(int roundsCompleted, int invocations, long lastRoundBudgetMs) {
+
+        /** A round with less than this many average rounds' worth of budget left ran out, not hung. */
+        private static final int ROOMY_ROUNDS = 4;
+
+        /** {@return the first sentence of the run's timeout} */
+        String headline(long timeoutMs) {
+            String done = roundsCompleted + " of " + invocations + " rounds completed";
+            if (!budgetRanOut(timeoutMs)) {
+                return "Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue. "
+                        + done + ".";
+            }
+            long spentMs = timeoutMs - Math.max(lastRoundBudgetMs, 0);
+            return "Test timed out after " + timeoutMs + "ms: the budget ran out while the run was making progress, "
+                    + done + " in " + spentMs + " ms"
+                    + (lastRoundBudgetMs > 0 ? " and the next had " + lastRoundBudgetMs + " ms left" : "")
+                    + ". timeoutMs covers the whole run, not one round: raise it or lower invocations. A round"
+                    + " that hangs looks the same when little budget is left, so if raising it does not help,"
+                    + " look for a hang.";
+        }
+
+        private boolean budgetRanOut(long timeoutMs) {
+            if (lastRoundBudgetMs <= 0) {
+                return true;
+            }
+            if (roundsCompleted == 0) {
+                return false;
+            }
+            long averageRoundMs = (timeoutMs - lastRoundBudgetMs) / roundsCompleted;
+            return lastRoundBudgetMs < ROOMY_ROUNDS * averageRoundMs;
         }
     }
 
@@ -1463,7 +1552,8 @@ public class ConcurrencyRunner {
     private static AssertionError timeoutError(long timeoutMs,
                                                @Nullable Throwable cause,
                                                Phase2Analysis phase2Analysis,
-                                               boolean detectDeadlocks) {
+                                               boolean detectDeadlocks,
+                                               RunProgress progress) {
         AsyncTestListenerRegistry.fireTimeout(timeoutMs);
         if (detectDeadlocks) {
             DeadlockDetector.printThreadDump();
@@ -1472,9 +1562,7 @@ public class ConcurrencyRunner {
         // Report-only: this is a failure/timeout path, so the failOn gate in
         // analyzeAndGate (success-path-only) is never reached for this run.
         printPhase2Reports(phase2Analysis);
-        AssertionError error = new RoundTimeoutError(
-            "Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue."
-            + findingSummary(phase2Analysis));
+        AssertionError error = new RoundTimeoutError(progress.headline(timeoutMs) + findingSummary(phase2Analysis));
         if (cause != null) {
             error.initCause(cause);
         }
