@@ -108,6 +108,7 @@ public class MemoryModelValidator {
         Object lock = new Object();
         int[] sharedValue = {0};
         CountDownLatch released = new CountDownLatch(1);
+        AtomicBoolean held = new AtomicBoolean();
         
         Thread t1 = new Thread(() -> {
             writerStartHook.run();
@@ -123,8 +124,7 @@ public class MemoryModelValidator {
             }
             synchronized (lock) {
                 if (sharedValue[0] == 42) {
-                    result.observations.add("✓ Synchronization happens-before is correct");
-                    result.testsPassed++;
+                    held.set(true);
                 } else {
                     result.observations.add("✗ Synchronization happens-before failed: expected 42, got " + sharedValue[0]);
                 }
@@ -137,6 +137,14 @@ public class MemoryModelValidator {
             t2.start();
             t1.join(5000);
             t2.join(5000);
+            // Counted here, on the calling thread after the join, as the other checks count: a
+            // reader that outlived its join must not write the result the caller is reading (#1367).
+            if (t2.isAlive()) {
+                result.observations.add("✗ Sync test timed out waiting for the reading thread");
+            } else if (held.get()) {
+                result.observations.add("✓ Synchronization happens-before is correct");
+                result.testsPassed++;
+            }
         } catch (InterruptedException e) {
             result.observations.add("✗ Sync test interrupted: " + e.getMessage());
         }

@@ -109,6 +109,36 @@ class VirtualThreadLockGraphTest {
                 "tryLock(timeout) on each other's lock parks the same way and gives up on its own: " + scan.get());
     }
 
+    /** #1365: a null value is absent, not the next string in the object. */
+    @Test
+    void aNullFieldReadsAsAbsent() {
+        VirtualThreadLockGraph.DumpedThread thread = onlyThread(
+                "{\"tid\": \"7\", \"name\": \"w\", \"state\": \"RUNNABLE\", \"blockedOn\": null, "
+                        + "\"waitingOn\": \"java.lang.Object@1\", \"stack\": []}");
+
+        assertEquals(null, thread.blockedOn(), "blockedOn is null in the dump: " + thread);
+    }
+
+    /** #1365: a key's name inside another field's value is not that key. */
+    @Test
+    void aKeyNameInsideAValueIsNotTheKey() {
+        VirtualThreadLockGraph.DumpedThread thread = onlyThread(
+                "{\"tid\": \"7\", \"name\": \"blockedOn\", \"state\": \"RUNNABLE\", \"stack\": []}");
+
+        assertEquals("blockedOn", thread.name());
+        assertEquals(null, thread.blockedOn(), "no blockedOn key in this object: " + thread);
+        assertEquals("RUNNABLE", thread.state());
+    }
+
+    private static VirtualThreadLockGraph.DumpedThread onlyThread(String threadObject) {
+        String dump = "{\"threadDump\": {\"threadContainers\": [{\"container\": \"<root>\", \"threads\": ["
+                + threadObject + "]}]}}";
+        List<VirtualThreadLockGraph.DumpedThread> threads = VirtualThreadLockGraph.scanDumpForThreads(dump)
+                .orElseThrow(() -> new AssertionError("the dump has a state, so it parses"));
+        assertEquals(1, threads.size(), "one thread: " + threads);
+        return threads.get(0);
+    }
+
     private static VirtualThreadLockGraph.Cycle cycleNaming(List<VirtualThreadLockGraph.Cycle> cycles, String name) {
         return cycles.stream().filter(c -> c.threadNames().contains(name)).findFirst()
                 .orElseThrow(() -> new AssertionError("no cycle names " + name + ": " + cycles));

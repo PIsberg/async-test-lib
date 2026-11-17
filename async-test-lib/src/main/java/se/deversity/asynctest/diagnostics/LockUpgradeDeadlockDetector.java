@@ -198,7 +198,7 @@ public final class LockUpgradeDeadlockDetector extends AbstractInstanceDetector<
                 msg,
                 List.of(),
                 Map.of(
-                    "lockName", s.lockName,
+                    "lockName", s.reportedName(),
                     "deadlockedThreads", List.copyOf(s.deadlockedThreads)
                 ),
                 Instant.now()

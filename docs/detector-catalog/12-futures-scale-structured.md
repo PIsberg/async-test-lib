@@ -211,7 +211,7 @@ against, so a detector for it would be a guess dressed as a measurement.
 ### 144. Scope Configuration Misuse
 * **Severity**: `CRITICAL` / `HIGH` / `MEDIUM` / `LOW` by finding
 * **Trust tier**: **prompt** — requested settings are compared against effective ones, and scope lifetimes are ordered by a sequence counter rather than the clock, but the unbounded fan-out finding is a threshold of 16 forks, so its evidence class is `HEURISTIC`.
-* **Description**: Detects misuse of the `UnaryOperator<Configuration>` lambda JEP 525 introduced in place of the scope constructors. `Configuration` is immutable and every `withX` returns a new instance, so a lambda that does not hand back the value it derived from its own parameter applies nothing — the scope silently has no deadline, and one hung subtask hangs the test forever. Also flags a non-positive timeout (the timeout path becomes the only path), a wide fan-out with no deadline at all, a scope whose every `join()` expired, one `ThreadFactory` configured on scopes that are alive at the same time, and duplicate `withName` values among live scopes.
+* **Description**: Detects misuse of the `UnaryOperator<Configuration>` lambda JEP 525 introduced in place of the scope constructors. `Configuration` is immutable and every `withX` returns a new instance, so a lambda that does not hand back the value it derived from its own parameter applies nothing — the scope silently has no deadline, and one hung subtask hangs the test forever. Also flags a non-positive timeout (the timeout path becomes the only path; record timeouts as a `Duration`, `null` for none, since the `long` forms use 0 for none and cannot record `Duration.ZERO`), a wide fan-out with no deadline at all, a scope whose every `join()` expired, one `ThreadFactory` configured on scopes that are alive at the same time, and duplicate `withName` values among live scopes.
 * **Buggy Code**:
   ```java
   var base = StructuredTaskScope.Configuration.defaults();
@@ -226,8 +226,8 @@ against, so a detector for it would be a guess dressed as a measurement.
 * **Detect**:
   ```java
   var d = AsyncTestContext.scopeConfigurationMisuseDetector();
-  d.recordScopeOpened(scopeId, "order-fetcher", 3000L, threadFactory, Thread.currentThread());
-  d.recordEffectiveConfiguration(scopeId, effectiveName, effectiveTimeoutMillis);
+  d.recordScopeOpened(scopeId, "order-fetcher", Duration.ofSeconds(3), threadFactory, Thread.currentThread());
+  d.recordEffectiveConfiguration(scopeId, effectiveName, effectiveTimeout);   // a Duration, null for none
   d.recordJoinOutcome(scopeId, timedOut);
   d.recordScopeClosed(scopeId);
   ```

@@ -362,22 +362,56 @@ final class VirtualThreadLockGraph {
         return locks;
     }
 
-    /** {@return the value of the first {@code "key": "value"} pair, or null} */
+    /**
+     * {@return the value of the first {@code "key": "value"} pair, or null when the key is absent
+     * or its value is not a string, such as {@code null}}
+     */
     private static @Nullable String stringField(String object, String key) {
-        int at = object.indexOf(QUOTE + key + QUOTE);
+        int at = keyIndex(object, key);
         if (at < 0) {
             return null;
         }
-        int colon = object.indexOf(':', at + key.length() + 2);
-        if (colon < 0) {
-            return null;
-        }
-        int open = object.indexOf('"', colon);
-        if (open < 0) {
+        int open = valueStart(object, at + key.length() + 2);
+        if (open < 0 || object.charAt(open) != '"') {
             return null;
         }
         int close = closingQuote(object, open + 1);
         return close < 0 ? null : unescape(object.substring(open + 1, close));
+    }
+
+    /**
+     * {@return the index of the opening quote of the first {@code key} that is a key, a quoted
+     * string followed by a colon, or -1}
+     *
+     * <p>Strings are skipped whole, so a value that happens to read {@code "blockedOn"} is never
+     * taken for the key of that name (#1365).
+     */
+    private static int keyIndex(String object, String key) {
+        for (int i = 0; i < object.length(); i++) {
+            if (object.charAt(i) != '"') {
+                continue;
+            }
+            int close = closingQuote(object, i + 1);
+            if (close < 0) {
+                return -1;
+            }
+            if (close - i - 1 == key.length() && object.startsWith(key, i + 1) && followedByColon(object, close + 1)) {
+                return i;
+            }
+            i = close;
+        }
+        return -1;
+    }
+
+    /** {@return whether the first character at or after {@code from} that is not blank is a colon} */
+    private static boolean followedByColon(String object, int from) {
+        for (int i = from; i < object.length(); i++) {
+            char c = object.charAt(i);
+            if (!Character.isWhitespace(c)) {
+                return c == ':';
+            }
+        }
+        return false;
     }
 
     /** {@return the {@code [ ... ]} that follows {@code key}, brackets included, or null} */
@@ -395,7 +429,7 @@ final class VirtualThreadLockGraph {
      * {@code closing}, or null when there is none}
      */
     private static @Nullable String enclosedAfter(String object, String key, char opening, char closing) {
-        int at = object.indexOf(QUOTE + key + QUOTE);
+        int at = keyIndex(object, key);
         if (at < 0) {
             return null;
         }

@@ -2,6 +2,7 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.concurrent.ThreadFactory;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -71,6 +72,86 @@ class ScopeConfigurationMisuseDetectorTest {
         assertTrue(report.violations.stream().anyMatch(v -> v.contains("timeout of -5 ms")));
         assertTrue(report.structuredViolations.stream()
                 .anyMatch(v -> v.severity() == IssueSeverity.CRITICAL));
+    }
+
+    /** #1363: a zero timeout expires at once, and the long form cannot say it apart from none. */
+    @Test
+    void aZeroDurationTimeoutIsReported() {
+        var d = new ScopeConfigurationMisuseDetector();
+        d.recordScopeOpened("scope-1", "orders", Duration.ZERO, null, Thread.currentThread());
+        d.recordScopeClosed("scope-1");
+
+        var report = d.analyze();
+        assertTrue(report.violations.stream().anyMatch(v -> v.contains("timeout of 0 ms")),
+                "Duration.ZERO is a deadline already reached, not the absence of one: " + report.violations);
+    }
+
+    @Test
+    void aNullDurationMeansNoTimeout() {
+        var d = new ScopeConfigurationMisuseDetector();
+        d.recordScopeOpened("scope-1", "fanout", (Duration) null, null, Thread.currentThread());
+        for (int i = 0; i < 20; i++) d.recordFork("scope-1");
+        d.recordScopeClosed("scope-1");
+
+        var report = d.analyze();
+        assertTrue(report.violations.stream().noneMatch(v -> v.contains("timeout of")),
+                "no timeout is not a non-positive one: " + report.violations);
+        assertTrue(report.violations.stream().anyMatch(v -> v.contains("with no timeout configured")),
+                "and a wide fan-out with none is still reported: " + report.violations);
+    }
+
+    @Test
+    void aDurationTheLambdaDroppedIsReported() {
+        var d = new ScopeConfigurationMisuseDetector();
+        d.recordScopeOpened("scope-1", "orders", Duration.ofSeconds(3), null, Thread.currentThread());
+        d.recordEffectiveConfiguration("scope-1", "orders", (Duration) null);
+        d.recordScopeClosed("scope-1");
+
+        assertTrue(d.analyze().violations.stream().anyMatch(v -> v.contains("timeout 3000 ms -> none")));
+    }
+
+    @Test
+    void aSubMillisecondTimeoutIsPositiveNotZero() {
+        var d = new ScopeConfigurationMisuseDetector();
+        d.recordScopeOpened("scope-1", "orders", Duration.ofNanos(500_000), null, Thread.currentThread());
+        d.recordScopeClosed("scope-1");
+
+        assertTrue(d.analyze().violations.stream().noneMatch(v -> v.contains("timeout of")),
+                "half a millisecond is short, but it is a deadline in the future");
+    }
+
+    /**
+     * #1363: the count is of the scopes that were alive together, not of every scope that ever
+     * carried the name. A third scope opened after the first two closed overlapped neither.
+     */
+    @Test
+    void aSharedNameCountsOnlyTheScopesAliveTogether() {
+        var d = new ScopeConfigurationMisuseDetector();
+        d.recordScopeOpened("scope-1", "orders", 1000L, null, Thread.currentThread());
+        d.recordScopeOpened("scope-2", "orders", 1000L, null, Thread.currentThread());
+        d.recordScopeClosed("scope-1");
+        d.recordScopeClosed("scope-2");
+        d.recordScopeOpened("scope-3", "orders", 1000L, null, Thread.currentThread());
+        d.recordScopeClosed("scope-3");
+
+        var report = d.analyze();
+        assertTrue(report.violations.stream().anyMatch(v -> v.contains("was on 2 scopes alive at the same time")),
+                "two of the three were alive together: " + report.violations);
+        assertTrue(report.structuredViolations.stream()
+                .filter(v -> "duplicateScopeName".equals(v.attributes().get("issue")))
+                .allMatch(v -> Integer.valueOf(2).equals(v.attributes().get("scopes"))));
+    }
+
+    @Test
+    void aSharedNameOnScopesThatNeverOverlapIsSilent() {
+        var d = new ScopeConfigurationMisuseDetector();
+        d.recordScopeOpened("scope-1", "orders", 1000L, null, Thread.currentThread());
+        d.recordScopeClosed("scope-1");
+        d.recordScopeOpened("scope-2", "orders", 1000L, null, Thread.currentThread());
+        d.recordScopeClosed("scope-2");
+
+        assertTrue(d.analyze().structuredViolations.stream()
+                .noneMatch(v -> "duplicateScopeName".equals(v.attributes().get("issue"))));
     }
 
     @Test
