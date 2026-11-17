@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -116,7 +117,7 @@ class VirtualThreadLockGraphTest {
                 "{\"tid\": \"7\", \"name\": \"w\", \"state\": \"RUNNABLE\", \"blockedOn\": null, "
                         + "\"waitingOn\": \"java.lang.Object@1\", \"stack\": []}");
 
-        assertEquals(null, thread.blockedOn(), "blockedOn is null in the dump: " + thread);
+        assertNull(thread.blockedOn(), "blockedOn is null in the dump: " + thread);
     }
 
     /** #1365: a key's name inside another field's value is not that key. */
@@ -126,7 +127,7 @@ class VirtualThreadLockGraphTest {
                 "{\"tid\": \"7\", \"name\": \"blockedOn\", \"state\": \"RUNNABLE\", \"stack\": []}");
 
         assertEquals("blockedOn", thread.name());
-        assertEquals(null, thread.blockedOn(), "no blockedOn key in this object: " + thread);
+        assertNull(thread.blockedOn(), "no blockedOn key in this object: " + thread);
         assertEquals("RUNNABLE", thread.state());
     }
 

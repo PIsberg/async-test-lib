@@ -145,6 +145,11 @@ public final class ScopeConfigurationMisuseDetector {
             return openSeq < other.closeSeq && other.openSeq < closeSeq;
         }
 
+        /** {@return the timeout the scope enforces: the effective one when recorded, else the requested} */
+        long enforcedTimeout() {
+            return effectiveRecorded ? effectiveTimeoutMillis : requestedTimeoutMillis;
+        }
+
         String label() {
             String name = requestedName != null ? requestedName : effectiveName;
             return name != null ? name + " (" + scopeId + ")" : scopeId;
@@ -187,7 +192,7 @@ public final class ScopeConfigurationMisuseDetector {
     public void recordScopeOpened(String scopeId, @Nullable String requestedName,
                                   long requestedTimeoutMillis, @Nullable Object threadFactory,
                                   Thread owner) {
-        opened(scopeId, requestedName, fromMillis(requestedTimeoutMillis), threadFactory, owner);
+        recordOpened(scopeId, requestedName, fromMillis(requestedTimeoutMillis), threadFactory, owner);
     }
 
     /**
@@ -206,11 +211,11 @@ public final class ScopeConfigurationMisuseDetector {
     public void recordScopeOpened(String scopeId, @Nullable String requestedName,
                                   @Nullable Duration requestedTimeout,
                                   @Nullable Object threadFactory, Thread owner) {
-        opened(scopeId, requestedName, fromDuration(requestedTimeout), threadFactory, owner);
+        recordOpened(scopeId, requestedName, fromDuration(requestedTimeout), threadFactory, owner);
     }
 
-    private void opened(String scopeId, @Nullable String requestedName, long requestedTimeoutMillis,
-                        @Nullable Object threadFactory, Thread owner) {
+    private void recordOpened(String scopeId, @Nullable String requestedName, long requestedTimeoutMillis,
+                              @Nullable Object threadFactory, Thread owner) {
         if (!enabled || scopeId == null || owner == null) return;
         IdentityKey factoryId = threadFactory != null ? new IdentityKey(threadFactory) : null;
         // A closed scope reopened under the same id is a new scope: its forks and joins are its
@@ -243,7 +248,7 @@ public final class ScopeConfigurationMisuseDetector {
      */
     public void recordEffectiveConfiguration(String scopeId, @Nullable String effectiveName,
                                              long effectiveTimeoutMillis) {
-        effective(scopeId, effectiveName, fromMillis(effectiveTimeoutMillis));
+        recordEffective(scopeId, effectiveName, fromMillis(effectiveTimeoutMillis));
     }
 
     /**
@@ -257,10 +262,10 @@ public final class ScopeConfigurationMisuseDetector {
      */
     public void recordEffectiveConfiguration(String scopeId, @Nullable String effectiveName,
                                              @Nullable Duration effectiveTimeout) {
-        effective(scopeId, effectiveName, fromDuration(effectiveTimeout));
+        recordEffective(scopeId, effectiveName, fromDuration(effectiveTimeout));
     }
 
-    private void effective(String scopeId, @Nullable String effectiveName, long effectiveTimeoutMillis) {
+    private void recordEffective(String scopeId, @Nullable String effectiveName, long effectiveTimeoutMillis) {
         ScopeState s = state(scopeId);
         if (s == null) return;
         s.effectiveName          = effectiveName;
@@ -362,7 +367,7 @@ public final class ScopeConfigurationMisuseDetector {
     }
 
     private static void nonPositiveTimeout(Report r, ScopeState s) {
-        long timeout = s.effectiveRecorded ? s.effectiveTimeoutMillis : s.requestedTimeoutMillis;
+        long timeout = s.enforcedTimeout();
         if (timeout == UNSET || timeout > 0) return;
         String msg = String.format(
                 "Scope %s was given a timeout of %d ms. A deadline that is already in the past expires before "
@@ -374,7 +379,7 @@ public final class ScopeConfigurationMisuseDetector {
     }
 
     private static void unboundedFanOut(Report r, ScopeState s, int threshold) {
-        long timeout = s.effectiveRecorded ? s.effectiveTimeoutMillis : s.requestedTimeoutMillis;
+        long timeout = s.enforcedTimeout();
         int forks = s.forks.get();
         if (timeout != UNSET || forks < threshold) return;
         String msg = String.format(
@@ -391,7 +396,7 @@ public final class ScopeConfigurationMisuseDetector {
         int joins = s.joins.get();
         int timeouts = s.joinTimeouts.get();
         if (joins < 2 || timeouts < joins) return;
-        long timeout = s.effectiveRecorded ? s.effectiveTimeoutMillis : s.requestedTimeoutMillis;
+        long timeout = s.enforcedTimeout();
         String msg = String.format(
                 "Scope %s timed out on all %d of its joins with a %s deadline. The timeout is not a safety net "
                 + "here, it is the path every run takes, so what the test asserts on is whatever the fallback "
