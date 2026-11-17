@@ -20,7 +20,7 @@ class RoundTimeoutMessageTest {
 
     @Test
     void aRoundWhoseWorkersWereInTheBodyDoesNotBlameTheBarrier() {
-        String message = ConcurrencyRunner.roundTimeoutMessage(2, 0, 2, 6, 0);
+        String message = ConcurrencyRunner.roundTimeoutMessage(2, 0, 2, 6);
 
         assertTrue(message.contains("0/2 threads completed within 6ms"), message);
         assertFalse(message.contains("barrier"), "both workers got past the barrier: " + message);
@@ -28,7 +28,7 @@ class RoundTimeoutMessageTest {
 
     @Test
     void aWorkerThatNeverPassedTheBarrierIsNamedAsSuch() {
-        String message = ConcurrencyRunner.roundTimeoutMessage(4, 1, 2, 500, 0);
+        String message = ConcurrencyRunner.roundTimeoutMessage(4, 1, 2, 500);
 
         assertTrue(message.contains("1/4 threads completed within 500ms"), message);
         assertTrue(message.contains("2 worker(s) never got past the start barrier"), message);
@@ -36,7 +36,7 @@ class RoundTimeoutMessageTest {
 
     @Test
     void aRoundThatFinishedJustAfterItsDeadlineSaysSo() {
-        String message = ConcurrencyRunner.roundTimeoutMessage(2, 2, 2, 34, 0);
+        String message = ConcurrencyRunner.roundTimeoutMessage(2, 2, 2, 34);
 
         assertTrue(message.contains("all 2 workers finished just after"), message);
         assertFalse(message.contains("2/2 threads completed"),
@@ -45,8 +45,9 @@ class RoundTimeoutMessageTest {
 
     @Test
     void attachedWorkerFailuresAreStillAnnounced() {
-        assertTrue(ConcurrencyRunner.roundTimeoutMessage(2, 1, 2, 100, 1)
+        assertTrue(ConcurrencyRunner.attachedFailures(1)
                 .contains("1 worker failure(s) from this round are attached as suppressed"));
+        assertTrue(ConcurrencyRunner.attachedFailures(0).isEmpty(), "nothing to announce without failures");
     }
 
     // ---- the run's headline ----
