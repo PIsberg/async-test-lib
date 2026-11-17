@@ -1,6 +1,5 @@
 package se.deversity.asynctest;
 
-import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 
@@ -37,7 +36,6 @@ class DeadlockAttributionTest {
      * if the deadlocking run stops reporting its own deadlock.
      */
     @Test
-    @DisplayName("a clean run overlapping a deadlocking one passes, and the deadlocking one still reports")
     void aCleanRunDoesNotInheritAParallelRunsDeadlock() throws Exception {
         // The deadlock has to form while the clean run is in progress: one that already exists
         // when a run starts is baselined away, which is a different case and already handled.
@@ -72,7 +70,6 @@ class DeadlockAttributionTest {
      */
     @Test
     @EnabledIf("dumpNamesLockOwners")
-    @DisplayName("a ReentrantLock deadlock between virtual workers is reported")
     void aLockDeadlockBetweenVirtualWorkersIsReported() {
         AssertionError timeout = assertInstanceOf(AssertionError.class,
                 runOnItsOwnThread(() -> AsyncTestRunner.run(
@@ -85,7 +82,6 @@ class DeadlockAttributionTest {
 
     /** The twin: the same locks taken in one order. Fails if consistent ordering is reported. */
     @Test
-    @DisplayName("the same locks taken in one order on virtual workers draw nothing")
     void consistentlyOrderedLocksOnVirtualWorkersAreSilent() {
         Lock a = new ReentrantLock();
         Lock b = new ReentrantLock();
