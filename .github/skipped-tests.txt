@@ -29,6 +29,10 @@ se.deversity.asynctest.diagnostics.GathererConcurrencyMisuseDetectorTest#onePara
 # Process.waitFor(Duration) arrived in JDK 25; on 21 the hook's test assumes it and skips.
 se.deversity.asynctest.AgentProcessHooksTest#durationWaitForIsReported tests/jdk21/*,gradle/jdk21/* # Process.waitFor(Duration) is JDK 25+
 
+# The JSON thread dump names a parked thread's lock owner (parkBlocker.owner) from JDK 25 (#1384);
+# on 21 it writes no parkBlocker, so a ReentrantLock deadlock between virtual threads is not visible.
+se.deversity.asynctest.DeadlockAttributionTest#aLockDeadlockBetweenVirtualWorkersIsReported tests/jdk21/*,gradle/jdk21/* # parkBlocker.owner is JDK 25+
+
 # The real-licence tests need the ATL_E2E_* secrets. license-e2e.yml runs them with
 # ATL_E2E_REQUIRED=true, and is checked here with no entry, so a skip there fails.
 se.deversity.asynctest.runner.RealKeygenLicenseE2eTest#theRealKeyValidatesAgainstTheLiveProvider tests/*,gradle/* # needs ATL_E2E_* secrets; license-e2e.yml runs it
