@@ -857,6 +857,28 @@ public final class AsyncTestContext {
     }
 
     /**
+     * Internal: tells this run's deadlock detector, when enabled, which threads are the run's, so
+     * a deadlock that forms in another run in progress at the same time is left to that run
+     * (#1385). A thread is the run's when it is in {@code workerThreadIds} or was started by one
+     * of the run's threads through a woven {@code Thread.start}.
+     *
+     * <p>Public only so the runner, in another package, can call it; not part of the stable public
+     * API.
+     *
+     * @param workerThreadIds     the ids of the run's workers, growing while the run goes on
+     * @param otherRunsOverlapped whether another run was in progress at some moment of this one
+     * @since 1.15.0
+     */
+    public void attributeDeadlocks(java.util.Set<Long> workerThreadIds,
+                                   java.util.function.BooleanSupplier otherRunsOverlapped) {
+        DeadlockDetector deadlocks = registry.deadlockDetector;
+        if (deadlocks != null) {
+            deadlocks.attributeTo(id -> workerThreadIds.contains(id) || spawnedThreadIds.contains(id),
+                    otherRunsOverlapped);
+        }
+    }
+
+    /**
      * Lends {@code context} to the calling pool thread for one handed task, unless it is a worker
      * with a context of its own. Pair with {@link #restoreLent} in a {@code finally} (#834).
      *

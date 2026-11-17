@@ -13,7 +13,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
+import java.util.function.LongPredicate;
 import java.util.stream.Collectors;
+
+import org.jspecify.annotations.Nullable;
 
 import se.deversity.asynctest.DetectorFailurePolicy;
 import se.deversity.asynctest.report.Violation;
@@ -41,7 +45,17 @@ import se.deversity.asynctest.report.Violation;
  * deadlock, which is what {@link #canSeeVirtualThreadDeadlocks()} exists to let callers say, and
  * what the runner announces once per JVM at INFO ({@code runner.detector.inert}). Setting
  * {@code @AsyncTest(useVirtualThreads = false)} gets the finding on any JDK. See issue #367 and
- * {@code examples/06-deadlock}, measured both ways.
+ * {@code examples/06-deadlock}, measured both ways. A {@code ReentrantLock} cycle among virtual
+ * threads is closed from the same dump on JDK 25 and later, which name a parked thread's lock
+ * owner (#1384).
+ *
+ * <p><strong>Whose deadlock.</strong> Runs overlap when test classes execute in parallel, and a
+ * cycle that forms during one run is visible to every run in the JVM. The runner therefore tells
+ * each detector which threads are its run's ({@link #attributeTo}): a new cycle is reported when
+ * one of its members is a worker of this run or a thread the run started, or when no other run was
+ * in progress, so its threads can only be this run's. Otherwise it is the other run's to report,
+ * and reporting it here failed a clean test under {@code failOn = CRITICAL} (#1385). Without the
+ * runner, as when the detector is created by hand, every new cycle is reported.
  */
 public class DeadlockDetector {
 
@@ -74,6 +88,42 @@ public class DeadlockDetector {
      * deliberately drops any cycle without a virtual member so one deadlock stays one finding.
      */
     private volatile boolean virtualScanEnabled;
+
+    /** Whether a thread id is one of the run's threads; null reports every new cycle (#1385). */
+    private volatile @Nullable LongPredicate runThreads;
+
+    /** Whether another run was in progress at some moment of this one (#1385). */
+    private volatile BooleanSupplier otherRunsOverlapped = () -> false;
+
+    /**
+     * Limits {@link #analyze()} to cycles this run can own (#1385).
+     *
+     * <p>A new cycle is reported when one of its members satisfies {@code runThreads}, or when
+     * {@code otherRunsOverlapped} answers {@code false}, so no other run could own it: a deadlock
+     * between threads the body started, which the runner can only attribute with the agent, stays
+     * reported whenever the run had the JVM to itself.
+     *
+     * @param runThreads          whether a thread id is a worker of the run or a thread it started
+     * @param otherRunsOverlapped whether another run was in progress at some moment of this one
+     */
+    public void attributeTo(LongPredicate runThreads, BooleanSupplier otherRunsOverlapped) {
+        this.runThreads = runThreads;
+        this.otherRunsOverlapped = otherRunsOverlapped;
+    }
+
+    /** {@return whether a new cycle with these members is this run's to report} */
+    private boolean isThisRuns(long[] members) {
+        LongPredicate owns = runThreads;
+        if (owns == null) {
+            return true;
+        }
+        for (long id : members) {
+            if (owns.test(id)) {
+                return true;
+            }
+        }
+        return !otherRunsOverlapped.getAsBoolean();
+    }
 
     /**
      * Whether a deadlock between virtual threads is visible on this JVM.
@@ -336,17 +386,19 @@ public class DeadlockDetector {
      * Queries the JVM via JMX and returns a report suitable for use in {@link se.deversity.asynctest.DetectorRegistry}.
      *
      * <p>Deadlocks that already existed when this detector was constructed are excluded,
-     * so a report with issues always means the monitored test introduced a new deadlock.
+     * so a report with issues always means the monitored test introduced a new deadlock. So are
+     * new ones another run owns ({@link #attributeTo}).
      *
      * @return the findings this detector collected during the run
      */
     public DeadlockReport analyze() {
         long[] current = ManagementFactory.getThreadMXBean().findDeadlockedThreads();
         if (current != null) {
-            for (long id : current) {
-                if (!preexistingDeadlockedThreads.contains(id)) {
-                    return DetectorFailurePolicy.checkedReport(this, new DeadlockReport(true));
-                }
+            long[] fresh = Arrays.stream(current)
+                    .filter(id -> !preexistingDeadlockedThreads.contains(id))
+                    .toArray();
+            if (fresh.length > 0 && isThisRuns(fresh)) {
+                return DetectorFailurePolicy.checkedReport(this, new DeadlockReport(true));
             }
         }
         return DetectorFailurePolicy.checkedReport(this, new DeadlockReport(false, freshVirtualCycles()));
@@ -369,14 +421,23 @@ public class DeadlockDetector {
         }
         List<String> lines = new ArrayList<>();
         for (VirtualThreadLockGraph.Cycle cycle : scan.get()) {
-            if (preexistingVirtualCycles.contains(Set.copyOf(cycle.threadNames()))) {
+            if (preexistingVirtualCycles.contains(Set.copyOf(cycle.threadNames()))
+                    || !isThisRuns(idsOf(cycle.threadIds()))) {
                 continue;
             }
-            lines.add(String.format("%s, each waiting for a monitor the next one holds (%s)",
+            lines.add(String.format("%s, each waiting for a monitor or lock the next one holds (%s)",
                     String.join(" -> ", cycle.threadNames()),
                     String.join(", ", cycle.monitors())));
         }
         return lines;
+    }
+
+    /** {@return the dump's tids as thread ids, any that is not a number left out} */
+    private static long[] idsOf(List<String> tids) {
+        return tids.stream()
+                .filter(tid -> !tid.isEmpty() && tid.chars().allMatch(Character::isDigit))
+                .mapToLong(Long::parseLong)
+                .toArray();
     }
 
     public static class DeadlockReport {

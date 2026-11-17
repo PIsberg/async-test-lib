@@ -51,7 +51,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </defs>
 <rect width="960" height="594" fill="#f9fafb"/>
 <rect width="960" height="594" fill="url(#dotGrid)"/>
-<rect class="group-rect" x="10.0" y="10.0" width="408.0" height="443.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
+<rect class="group-rect" x="10.0" y="10.0" width="408.0" height="488.0" rx="8" fill="#f3f4f6" fill-opacity="0.5" stroke="#9ca3af" stroke-dasharray="6,4" stroke-width="1.2"/>
 <text x="16.0" y="23.0" font-family="sans-serif" font-size="11" fill="#6b7280" font-style="italic">se.deversity.asynctest.runner</text>
 <g id="AgentAutoAttach">
   <title>AgentAutoAttach [CLASS]</title>
@@ -145,20 +145,38 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="32.0" y="408.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">deny(String, String, Throw…</text>
   <text x="32.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+2 more)</text>
 </g>
+<g id="RunOverlap">
+  <title>RunOverlap [CLASS]</title>
+  <rect class="node-rect" x="224.0" y="204.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="314.0" y="226.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">RunOverlap</text>
+  <line x1="224.0" y1="248.0" x2="404.0" y2="248.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="232.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">LOCK: Object</text>
+  <text x="232.0" y="276.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">inProgress: int</text>
+  <text x="232.0" y="291.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">entered: long</text>
+  <text x="232.0" y="306.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">othersInProgressAtEntry: b…</text>
+  <text x="232.0" y="321.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enteredAs: long</text>
+  <text x="232.0" y="336.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">exited: boolean</text>
+  <text x="232.0" y="351.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <line x1="224.0" y1="365.0" x2="404.0" y2="365.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="232.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enter(): RunOverlap</text>
+  <text x="232.0" y="393.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">overlapped(): boolean</text>
+  <text x="232.0" y="408.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">exit(): void</text>
+  <text x="232.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">left(): void</text>
+</g>
 <g id="SpinContentionBarrier">
   <title>SpinContentionBarrier [CLASS]</title>
-  <rect class="node-rect" x="224.0" y="204.0" width="180.0" height="190.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
-  <text class="node-label" x="314.0" y="226.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12.9" font-weight="bold" fill="#1f2937">SpinContentionBarrier</text>
-  <line x1="224.0" y1="248.0" x2="404.0" y2="248.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="232.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">PHASE_VH: VarHandle</text>
-  <text x="232.0" y="276.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">totalThreads: int</text>
-  <text x="232.0" y="291.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">arrivalCount: AtomicInteger</text>
-  <text x="232.0" y="306.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pad1: long</text>
-  <text x="232.0" y="321.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pad2: long</text>
-  <text x="232.0" y="336.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pad3: long</text>
-  <text x="232.0" y="351.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
-  <line x1="224.0" y1="365.0" x2="404.0" y2="365.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="232.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">await(): void</text>
+  <rect class="node-rect" x="24.0" y="294.0" width="180.0" height="190.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <text class="node-label" x="114.0" y="316.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12.9" font-weight="bold" fill="#1f2937">SpinContentionBarrier</text>
+  <line x1="24.0" y1="338.0" x2="204.0" y2="338.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="32.0" y="351.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">PHASE_VH: VarHandle</text>
+  <text x="32.0" y="366.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">totalThreads: int</text>
+  <text x="32.0" y="381.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">arrivalCount: AtomicInteger</text>
+  <text x="32.0" y="396.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pad1: long</text>
+  <text x="32.0" y="411.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pad2: long</text>
+  <text x="32.0" y="426.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">pad3: long</text>
+  <text x="32.0" y="441.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
+  <line x1="24.0" y1="455.0" x2="204.0" y2="455.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="32.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">await(): void</text>
 </g>
 <script type="text/javascript">
 <![CDATA[

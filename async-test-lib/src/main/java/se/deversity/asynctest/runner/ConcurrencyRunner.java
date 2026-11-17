@@ -332,7 +332,9 @@ public class ConcurrencyRunner {
                 virtualWorkers || TelemetryRegistry.isRunning()
                         ? phase2Context.sharedVirtualThreadPinningDetector()
                         : null;
-        @Nullable Set<Long> workerThreadIds = (telemetryRunning || pinningTarget != null)
+        // The deadlock detector reads the same set to tell this run's deadlock from one that forms
+        // in another run in progress at the same time (#1385).
+        @Nullable Set<Long> workerThreadIds = (telemetryRunning || pinningTarget != null || config.detectDeadlocks)
                 ? ConcurrentHashMap.newKeySet()
                 : null;
         TelemetryBridge telemetryBridge = null;
@@ -524,6 +526,13 @@ public class ConcurrencyRunner {
         // (#1253). Process-wide state, so counted and restored in the finally below; installed
         // immediately before that try for the reason the stream above is opened there.
         BodyThreadFailures.install();
+        // Whether another run overlapped this one decides whose a deadlock with no thread known to
+        // be this run's is (#1385). Process-wide and counted like the handler above, so entered
+        // right before the same try and exited in its finally.
+        RunOverlap overlap = RunOverlap.enter();
+        if (workerThreadIds != null) {
+            phase2Context.attributeDeadlocks(workerThreadIds, overlap::overlapped);
+        }
         try {
             for (int i = 0; i < config.invocations; i++) {
                 long remainingMs = remainingMillis(deadlineNanos);
@@ -689,6 +698,7 @@ public class ConcurrencyRunner {
             throw unwrap(t);
         } finally {
             BodyThreadFailures.uninstall();
+            overlap.exit();
             executor.shutdownNow();
             try {
                 executor.awaitTermination(1, TimeUnit.SECONDS);

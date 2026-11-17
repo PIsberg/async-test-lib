@@ -40,11 +40,15 @@ import java.util.Set;
  * answer" are different answers, and reporting the second as the first is the silent green this
  * library exists to stop.
  *
- * <p><strong>Monitors only.</strong> A deadlock on {@code ReentrantLock} parks rather than blocks;
- * the dump names the blocker through {@code parkBlocker} but not its owner, so those cycles cannot
- * be closed from here and are not reported. Cycles made only of platform threads are not reported
- * either, because {@code findDeadlockedThreads()} already reports them and one deadlock should be
- * one finding.
+ * <p><strong>Monitors and owned locks.</strong> A deadlock on {@code ReentrantLock} parks rather
+ * than blocks. On JDK 25 and later the dump names the lock a parked thread waits for and that
+ * lock's owner ({@code parkBlocker.object} and {@code parkBlocker.owner}), which is one more
+ * wait-for edge; JDK 21 writes no {@code parkBlocker} at all, measured (#1384). A parked thread
+ * adds an edge only in state {@code WAITING}: a timed wait, a {@code tryLock} with a timeout,
+ * gives up on its own, so a cycle through one is a back-off that resolves, not a deadlock, and
+ * reporting it would fail correct code. Cycles made only of platform threads are not reported,
+ * because {@code findDeadlockedThreads()} already reports them and one deadlock should be one
+ * finding.
  */
 final class VirtualThreadLockGraph {
 
@@ -70,14 +74,25 @@ final class VirtualThreadLockGraph {
      * {@code StaticInitDeadlockDetector}'s live sample needs the same three facts about a virtual
      * thread that {@code Thread.getAllStackTraces()} gives it about a platform one, and this is
      * the only place that can supply them. {@code state} is null on JDKs whose dump omits it. See
-     * issue #376.
+     * issue #376. {@code parkBlocker} and {@code parkBlockerOwner} are the lock a parked thread
+     * waits for and the tid of the thread that owns it, both null where the dump does not say
+     * (#1384).
      */
     record DumpedThread(String tid, String name, boolean virtual, @Nullable String blockedOn,
-                        List<String> monitorsOwned, @Nullable String state, List<String> stack) {
+                        List<String> monitorsOwned, @Nullable String state, List<String> stack,
+                        @Nullable String parkBlocker, @Nullable String parkBlockerOwner) {
     }
 
-    /** A closed wait-for cycle: each thread waits for a monitor the next one holds. */
-    record Cycle(List<String> threadNames, List<String> monitors) {
+    /**
+     * A closed wait-for cycle: each thread waits for a monitor or lock the next one holds.
+     * {@code threadIds} are the members' tids, in the order of {@code threadNames}, which is what
+     * a run attributes the cycle by (#1385).
+     */
+    record Cycle(List<String> threadNames, List<String> threadIds, List<String> monitors) {
+    }
+
+    /** One wait-for edge: the waiting thread wants {@code lock}, which {@code ownerTid} holds. */
+    private record WaitFor(String lock, String ownerTid) {
     }
 
     /**
@@ -171,7 +186,8 @@ final class VirtualThreadLockGraph {
     /**
      * Walks the wait-for graph and returns every cycle that contains at least one virtual thread.
      *
-     * <p>A thread waits for whoever owns the monitor it is blocked on. Following that edge from
+     * <p>A thread waits for whoever owns the monitor it is blocked on, or the lock it is parked on
+     * ({@link #waitFor}). Following that edge from
      * each thread and stopping when the walk revisits a thread already on the path finds the
      * cycle; the same cycle is reached from every member, so cycles are keyed on their member set
      * and reported once.
@@ -192,20 +208,17 @@ final class VirtualThreadLockGraph {
             List<String> path = new ArrayList<>();
             List<String> monitors = new ArrayList<>();
             DumpedThread current = start;
-            while (current != null && current.blockedOn() != null) {
-                if (path.contains(current.tid())) {
-                    break;
-                }
-                path.add(current.tid());
-                monitors.add(current.blockedOn());
-                String ownerTid = ownerOfMonitor.get(current.blockedOn());
-                if (ownerTid == null || ownerTid.equals(current.tid())) {
+            while (current != null && !path.contains(current.tid())) {
+                WaitFor edge = waitFor(current, ownerOfMonitor);
+                if (edge == null || edge.ownerTid().equals(current.tid())) {
                     current = null;
                     break;
                 }
-                current = byTid.get(ownerTid);
+                path.add(current.tid());
+                monitors.add(edge.lock());
+                current = byTid.get(edge.ownerTid());
             }
-            if (current == null || !path.contains(current.tid())) {
+            if (current == null) {
                 continue;                       // the walk ran out rather than closing
             }
             // Trim the tail that leads into the cycle but is not part of it.
@@ -226,10 +239,32 @@ final class VirtualThreadLockGraph {
                 reported.remove(key);
                 continue;                       // findDeadlockedThreads() already has this one
             }
-            found.add(new Cycle(List.copyOf(names),
+            found.add(new Cycle(List.copyOf(names), List.copyOf(members),
                     List.copyOf(monitors.subList(entry, monitors.size()))));
         }
         return found;
+    }
+
+    /**
+     * {@return what {@code thread} waits for and who holds it, or null when it waits for nobody
+     * this dump can name}
+     *
+     * <p>A monitor it is blocked on first, then a lock it is parked on without a timeout. A
+     * {@code TIMED_WAITING} park is left out on purpose: a {@code tryLock(timeout)} back-off parks
+     * exactly like a deadlocked {@code lock()}, and only the untimed one never returns.
+     */
+    private static @Nullable WaitFor waitFor(DumpedThread thread, Map<String, String> ownerOfMonitor) {
+        String monitor = thread.blockedOn();
+        if (monitor != null) {
+            String owner = ownerOfMonitor.get(monitor);
+            return owner == null ? null : new WaitFor(monitor, owner);
+        }
+        String lock = thread.parkBlocker();
+        String owner = thread.parkBlockerOwner();
+        if (lock == null || owner == null || !"WAITING".equals(thread.state())) {
+            return null;
+        }
+        return new WaitFor(lock, owner);
     }
 
     /**
@@ -293,6 +328,7 @@ final class VirtualThreadLockGraph {
             return null;
         }
         String name = stringField(withoutStack, "name");
+        String parkBlocker = objectOf(withoutStack, "parkBlocker");
         return new DumpedThread(
                 tid,
                 name == null ? tid : name,
@@ -300,7 +336,9 @@ final class VirtualThreadLockGraph {
                 stringField(withoutStack, "blockedOn"),
                 locksIn(withoutStack),
                 stringField(withoutStack, "state"),
-                stack == null ? List.of() : List.copyOf(quotedStringsIn(stack)));
+                stack == null ? List.of() : List.copyOf(quotedStringsIn(stack)),
+                parkBlocker == null ? null : stringField(parkBlocker, "object"),
+                parkBlocker == null ? null : stringField(parkBlocker, "owner"));
     }
 
     /**
@@ -344,13 +382,30 @@ final class VirtualThreadLockGraph {
 
     /** {@return the {@code [ ... ]} that follows {@code key}, brackets included, or null} */
     private static @Nullable String arrayOf(String object, String key) {
+        return enclosedAfter(object, key, '[', ']');
+    }
+
+    /** {@return the {@code { ... }} that follows {@code key}, braces included, or null} */
+    private static @Nullable String objectOf(String object, String key) {
+        return enclosedAfter(object, key, '{', '}');
+    }
+
+    /**
+     * {@return the bracketed value that follows {@code key}, from {@code opening} to its matching
+     * {@code closing}, or null when there is none}
+     */
+    private static @Nullable String enclosedAfter(String object, String key, char opening, char closing) {
         int at = object.indexOf(QUOTE + key + QUOTE);
         if (at < 0) {
             return null;
         }
-        int open = object.indexOf('[', at);
-        if (open < 0) {
-            return null;
+        int colon = object.indexOf(':', at + key.length() + 2);
+        int open = colon < 0 ? -1 : colon + 1;
+        while (open > 0 && open < object.length() && Character.isWhitespace(object.charAt(open))) {
+            open++;
+        }
+        if (open < 0 || open >= object.length() || object.charAt(open) != opening) {
+            return null;                        // absent, null, or not the shape asked for
         }
         int depth = 0;
         boolean inString = false;
@@ -369,9 +424,9 @@ final class VirtualThreadLockGraph {
             }
             if (c == '"') {
                 inString = true;
-            } else if (c == '[') {
+            } else if (c == opening) {
                 depth++;
-            } else if (c == ']') {
+            } else if (c == closing) {
                 depth--;
                 if (depth == 0) {
                     return object.substring(open, i + 1);
