@@ -392,17 +392,48 @@ public class DeadlockDetector {
      * @return the findings this detector collected during the run
      */
     public DeadlockReport analyze() {
-        long[] current = ManagementFactory.getThreadMXBean().findDeadlockedThreads();
-        if (current != null) {
-            long[] fresh = Arrays.stream(current)
-                    .filter(id -> !preexistingDeadlockedThreads.contains(id))
-                    .toArray();
-            if (fresh.length > 0 && belongsToThisRun(fresh)) {
-                return DetectorFailurePolicy.checkedReport(this, new DeadlockReport(true));
-            }
+        if (reportablePlatformDeadlock().length > 0) {
+            return DetectorFailurePolicy.checkedReport(this, new DeadlockReport(true));
         }
         return DetectorFailurePolicy.checkedReport(this, new DeadlockReport(false, freshVirtualCycles()));
     }
+
+    /**
+     * {@return the ids of the threads in every cycle {@link #analyze()} would report now}
+     *
+     * <p>For {@code LivelockDetector}, which at a round timeout leaves these threads to this
+     * detector rather than calling them starved: one deadlock is one finding (#1387).
+     */
+    Set<Long> threadsInReportedCycles() {
+        Set<Long> ids = new HashSet<>();
+        for (long id : reportablePlatformDeadlock()) {
+            ids.add(id);
+        }
+        for (VirtualThreadLockGraph.Cycle cycle : reportableVirtualCycles()) {
+            for (long id : idsOf(cycle.threadIds())) {
+                ids.add(id);
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * {@return the ids of the platform threads deadlocked since this detector was created, when
+     * the cycle is this run's to report, else an empty array}
+     */
+    private long[] reportablePlatformDeadlock() {
+        long[] current = ManagementFactory.getThreadMXBean().findDeadlockedThreads();
+        if (current == null) {
+            return NO_THREADS;
+        }
+        long[] fresh = Arrays.stream(current)
+                .filter(id -> !preexistingDeadlockedThreads.contains(id))
+                .toArray();
+        return fresh.length > 0 && belongsToThisRun(fresh) ? fresh : NO_THREADS;
+    }
+
+    /** No thread ids: no deadlock this detector reports. */
+    private static final long[] NO_THREADS = new long[0];
 
     /**
      * {@return the virtual-thread cycles this run introduced, as report lines}
@@ -412,6 +443,20 @@ public class DeadlockDetector {
      * the runner announces the second at INFO rather than letting it read as the third.
      */
     private List<String> freshVirtualCycles() {
+        List<String> lines = new ArrayList<>();
+        for (VirtualThreadLockGraph.Cycle cycle : reportableVirtualCycles()) {
+            lines.add(String.format("%s, each waiting for a monitor or lock the next one holds (%s)",
+                    String.join(" -> ", cycle.threadNames()),
+                    String.join(", ", cycle.monitors())));
+        }
+        return lines;
+    }
+
+    /**
+     * {@return the virtual-thread cycles this run introduced and owns, or none when the scan is
+     * off or this JVM cannot answer}
+     */
+    private List<VirtualThreadLockGraph.Cycle> reportableVirtualCycles() {
         if (!virtualScanEnabled) {
             return List.of();
         }
@@ -419,17 +464,14 @@ public class DeadlockDetector {
         if (scan.isEmpty()) {
             return List.of();
         }
-        List<String> lines = new ArrayList<>();
+        List<VirtualThreadLockGraph.Cycle> reportable = new ArrayList<>();
         for (VirtualThreadLockGraph.Cycle cycle : scan.get()) {
-            if (preexistingVirtualCycles.contains(Set.copyOf(cycle.threadNames()))
-                    || !belongsToThisRun(idsOf(cycle.threadIds()))) {
-                continue;
+            if (!preexistingVirtualCycles.contains(Set.copyOf(cycle.threadNames()))
+                    && belongsToThisRun(idsOf(cycle.threadIds()))) {
+                reportable.add(cycle);
             }
-            lines.add(String.format("%s, each waiting for a monitor or lock the next one holds (%s)",
-                    String.join(" -> ", cycle.threadNames()),
-                    String.join(", ", cycle.monitors())));
         }
-        return lines;
+        return reportable;
     }
 
     /** {@return the dump's tids as thread ids, any that is not a number left out} */
