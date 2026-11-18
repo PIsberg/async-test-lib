@@ -64,11 +64,14 @@ class WorkflowMavenCacheTest {
 
     /**
      * The Maven builds whose dependencies no other job resolves: the examples (the Kotlin compiler
-     * among them, 60 MB), the corpus (Guava, Jackson, HikariCP and more) and the language fixtures
-     * (four compilers).
+     * among them, 60 MB), the corpus (Guava, Jackson, HikariCP and more), the language fixtures
+     * (four compilers) and the consumer fixture, which the JUnit compatibility matrix builds
+     * against seven Jupiter versions; that job stayed on the shared entry and failed two runs in a
+     * row on a 429 from Central (#1405).
      */
     private static final List<String> OWN_DEPENDENCY_SETS = List.of(
-            "-f examples/pom.xml", "-f corpus-eval/pom.xml", "-f consumer-fixture-langs/pom.xml");
+            "-f examples/pom.xml", "-f corpus-eval/pom.xml", "-f consumer-fixture-langs/pom.xml",
+            "-f consumer-fixture/pom.xml");
 
     @Test
     @DisplayName("#890: a job with a dependency set of its own caches it under a key of its own")
