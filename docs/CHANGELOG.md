@@ -65,6 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A thread the test body starts can use the static detector accessors (#1388).** Recording by
+  hand from a child thread, the shape `docs/usage/other-ways-to-run.md` shows with
+  `HappensBefore.fork` and `join`, threw `IllegalStateException: AsyncTestContext is not active`
+  as soon as the child called `AsyncTestContext.raceConditionDetector()`, so the child died and its
+  write was never recorded. The accessors now also resolve the run a thread was constructed under
+  (the inheritable attribution #1253 added), or the run that started it through a woven
+  `Thread.start` or lent it a task, while that run's analysis has not started. A thread outliving
+  its run still gets the exception. `ChildThreadAccessorTest`.
+
 - **One deadlock is one finding (#1387).** At a round timeout `LivelockDetector` called every
   worker BLOCKED or WAITING in all its samples starved, so a lock-order deadlock between platform
   workers drew `DeadlockDetector`'s cycle and a second CRITICAL "Starved Threads" finding for the

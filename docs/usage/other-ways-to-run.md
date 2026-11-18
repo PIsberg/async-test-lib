@@ -111,6 +111,11 @@ detector.recordFieldRead(taken, "value");
 not have hides a real race, so declare an acquire only once the value it depends on was actually
 observed. `join` of a thread that is still alive is ignored.
 
+A thread the body starts can call the static accessors (`AsyncTestContext.raceConditionDetector()`
+and the rest) itself, with or without the agent, and gets the run's own detectors while the run is
+going; a thread still running after the run ended gets `IllegalStateException`, because anything it
+recorded would arrive after the analysis (#1388).
+
 `RaceConditionDetector` needs no declaration for a field the tracked object's class declares
 `volatile`: it treats a recorded write of it as a release of that field and a recorded read as an
 acquire of the same field only, so a read of one volatile field receives nothing a write of another

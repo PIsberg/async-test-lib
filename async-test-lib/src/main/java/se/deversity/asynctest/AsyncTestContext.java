@@ -3982,11 +3982,23 @@ public final class AsyncTestContext {
         return require(DetectorType.ATOMICITY_VIOLATIONS, c -> c.atomicityValidator);
     }
 
+    /**
+     * {@return the run the calling thread works for, or {@code null}} A worker's installed context
+     * first; else, as {@link #agentContext()} resolves it, a run that lent the thread a task or
+     * started it through a woven {@code Thread.start}; else the open run the thread was constructed
+     * under, which needs no agent (#1388). A thread whose run is over gets {@code null}.
+     */
+    private static @Nullable AsyncTestContext runOfCallingThread() {
+        AsyncTestContext context = agentContext();
+        return context != null ? context : BodyThreadFailures.openRunOfCallingThread();
+    }
+
     private static <T> T require(DetectorType type, Function<AsyncTestContext, T> fn) {
-        AsyncTestContext ctx = CURRENT.get();
+        AsyncTestContext ctx = runOfCallingThread();
         if (ctx == null) {
             throw new IllegalStateException(
-                "AsyncTestContext is not active — this accessor can only be called inside an @AsyncTest method.");
+                "AsyncTestContext is not active — this accessor can only be called inside an @AsyncTest method,"
+                + " or on a thread it started while the run is still going.");
         }
         T val = fn.apply(ctx);
         if (val == null) {
