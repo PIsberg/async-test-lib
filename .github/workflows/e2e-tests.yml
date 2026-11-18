@@ -209,7 +209,21 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: maven
+
+      # Its own key, as for consumer-fixture (#890): on the shared setup-java entry this job
+      # fetched its build plugins from Central on every run, and two runs in a row failed on
+      # "429 Too Many Requests" for maven-source-plugin (#1405). One key for all seven cells, since
+      # the plugins they need are the same; each cell's Jupiter jars are small, and seven entries
+      # would crowd the repository's cache quota. The library itself is never cached.
+      - name: Cache this job's Maven dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/se/deversity
+          key: maven-${{ runner.os }}-junit-compat-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-junit-compat-
 
       - name: Install library to local Maven repository
         run: mvn -DskipTests clean install
