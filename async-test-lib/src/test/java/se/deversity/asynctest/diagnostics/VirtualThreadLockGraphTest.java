@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -107,6 +108,36 @@ class VirtualThreadLockGraphTest {
         assertTrue(scan.isPresent());
         assertTrue(scan.get().isEmpty(),
                 "tryLock(timeout) on each other's lock parks the same way and gives up on its own: " + scan.get());
+    }
+
+    /** #1365: a null value is absent, not the next string in the object. */
+    @Test
+    void aNullFieldReadsAsAbsent() {
+        VirtualThreadLockGraph.DumpedThread thread = onlyThread(
+                "{\"tid\": \"7\", \"name\": \"w\", \"state\": \"RUNNABLE\", \"blockedOn\": null, "
+                        + "\"waitingOn\": \"java.lang.Object@1\", \"stack\": []}");
+
+        assertNull(thread.blockedOn(), "blockedOn is null in the dump: " + thread);
+    }
+
+    /** #1365: a key's name inside another field's value is not that key. */
+    @Test
+    void aKeyNameInsideAValueIsNotTheKey() {
+        VirtualThreadLockGraph.DumpedThread thread = onlyThread(
+                "{\"tid\": \"7\", \"name\": \"blockedOn\", \"state\": \"RUNNABLE\", \"stack\": []}");
+
+        assertEquals("blockedOn", thread.name());
+        assertNull(thread.blockedOn(), "no blockedOn key in this object: " + thread);
+        assertEquals("RUNNABLE", thread.state());
+    }
+
+    private static VirtualThreadLockGraph.DumpedThread onlyThread(String threadObject) {
+        String dump = "{\"threadDump\": {\"threadContainers\": [{\"container\": \"<root>\", \"threads\": ["
+                + threadObject + "]}]}}";
+        List<VirtualThreadLockGraph.DumpedThread> threads = VirtualThreadLockGraph.scanDumpForThreads(dump)
+                .orElseThrow(() -> new AssertionError("the dump has a state, so it parses"));
+        assertEquals(1, threads.size(), "one thread: " + threads);
+        return threads.get(0);
     }
 
     private static VirtualThreadLockGraph.Cycle cycleNaming(List<VirtualThreadLockGraph.Cycle> cycles, String name) {

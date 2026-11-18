@@ -74,6 +74,29 @@ class LockUpgradeDeadlockDetectorTest {
         assertTrue(report.violations.get(0).contains("ReentrantReadWriteLock@"));
     }
 
+    /** #1366: the structured finding names the lock as text, as the failing-tryLock one does. */
+    @Test
+    void theUpgradeFindingNamesItsLockAsText() {
+        var d = new LockUpgradeDeadlockDetector();
+        var lock = new ReentrantReadWriteLock();
+        d.recordReadLockAcquired(lock, "my-lock", Thread.currentThread());
+        d.recordWriteLockAcquisitionAttempt(lock, "my-lock", Thread.currentThread());
+
+        assertEquals("my-lock", d.analyze().structuredViolations.get(0).attributes().get("lockName"));
+    }
+
+    @Test
+    void anUnnamedUpgradeFindingNamesItsLockByLabel() {
+        var d = new LockUpgradeDeadlockDetector();
+        var lock = new ReentrantReadWriteLock();
+        d.recordReadLockAcquired(lock, null, Thread.currentThread());
+        d.recordWriteLockAcquisitionAttempt(lock, null, Thread.currentThread());
+
+        Object name = d.analyze().structuredViolations.get(0).attributes().get("lockName");
+        assertInstanceOf(String.class, name, "a JSON or SARIF consumer reads this attribute as the lock's name");
+        assertTrue(((String) name).startsWith("ReentrantReadWriteLock@"), "the label it falls back to: " + name);
+    }
+
     @Test
     void reportToStringReflectsState() {
         var clean = new LockUpgradeDeadlockDetector().analyze();

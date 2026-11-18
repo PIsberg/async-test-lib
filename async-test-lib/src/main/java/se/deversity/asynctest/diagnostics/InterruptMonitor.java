@@ -217,6 +217,7 @@ public class InterruptMonitor {
         }
         ignoredDescriptions.clear();
         blockingWithoutHandling.clear();
+        wovenLocations.clear();
     }
     /**
      * Disable.

@@ -9,6 +9,24 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class InterruptMonitorTest {
 
+    /**
+     * #1364: reset() exists so an instance can serve the next run. A handler location the agent
+     * handed over before the reset must be reported again when it runs again after it.
+     */
+    @Test
+    void aSwallowingHandlerIsReportedAgainAfterReset() {
+        InterruptMonitor monitor = new InterruptMonitor();
+        monitor.recordSwallowingHandlers("Worker.run:42");
+        assertTrue(monitor.analyze().hasIssues(), "precondition: the first run reports it");
+
+        monitor.reset();
+        assertFalse(monitor.analyze().hasIssues(), "reset clears the findings");
+        monitor.recordSwallowingHandlers("Worker.run:42");
+
+        assertTrue(monitor.analyze().ignoredInterrupts.stream().anyMatch(f -> f.contains("Worker.run:42")),
+                "the same handler ran again in the next run");
+    }
+
     @Test
     void noEventsReturnNoIssues() {
         InterruptMonitor monitor = new InterruptMonitor();

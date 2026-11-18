@@ -42,7 +42,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   test), and, without the agent, a pool kept in a static whose thread an earlier run built.
   Existing suites whose body-started threads have been failing assertions unnoticed will go red.
 
+### Added
+
+- **`ScopeConfigurationMisuseDetector` takes the timeout as a `Duration` too (#1363).**
+  `recordScopeOpened(String, String, Duration, Object, Thread)` and
+  `recordEffectiveConfiguration(String, String, Duration)`, `null` meaning no timeout. The `long`
+  forms use `NO_TIMEOUT = 0` for none, so they cannot record `withTimeout(Duration.ZERO)`, a
+  deadline that expires at once; the `Duration` forms report it as a non-positive timeout. A
+  positive timeout under a millisecond is kept positive rather than truncated to zero.
+
 ### Fixed
+
+- **Five detector defects from one review (#1363, #1364, #1365, #1366, #1367).**
+  `ScopeConfigurationMisuseDetector`'s duplicate-name finding counted every scope that ever had
+  the name ("was on 3 scopes alive at the same time" for two that were); it now counts the ones
+  alive together. `InterruptMonitor.reset()` kept the handler locations the agent had handed
+  over, so a reused monitor never reported them again. `VirtualThreadLockGraph` read
+  `"blockedOn": null` as the next string in the object, and took a key's name inside another
+  field's value for the key; a key is now a quoted string followed by a colon, and a value that is
+  not a string reads as absent. `LockUpgradeDeadlockDetector`'s blocking-upgrade finding put the
+  `AtomicReference` holding the lock name in its `lockName` attribute instead of the name, or the
+  lock's label when it had none, which is what the JSON and SARIF reports print.
+  `MemoryModelValidator`'s synchronization check counted a pass on its reading thread, which can
+  outlive the join that the caller then reads the result after; it now counts on the calling thread
+  like the other checks, and a reader still running is recorded as a timeout.
 
 - **A `ReentrantLock` deadlock between virtual threads is reported on JDK 25 and later (#1384).**
   Virtual workers are the default and `ReentrantLock` the common lock, yet two workers taking two

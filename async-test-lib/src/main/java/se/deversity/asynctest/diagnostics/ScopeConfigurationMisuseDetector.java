@@ -8,10 +8,13 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
 import org.jspecify.annotations.Nullable;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
@@ -89,8 +92,17 @@ import java.util.concurrent.atomic.AtomicLong;
 )
 public final class ScopeConfigurationMisuseDetector {
 
-    /** Pass as the timeout when the configuration lambda never called {@code withTimeout}. */
+    /**
+     * Pass as the timeout when the configuration lambda never called {@code withTimeout}.
+     *
+     * <p>In the {@code long} forms this is zero, so they cannot record a zero timeout, which
+     * expires at once. The {@link Duration} forms can: {@code null} is no timeout and
+     * {@code Duration.ZERO} is a zero one (#1363).
+     */
     public static final long NO_TIMEOUT = 0L;
+
+    /** How a scope's state marks "no timeout", which no {@code Duration} converts to. */
+    private static final long UNSET = Long.MIN_VALUE;
 
     /**
      * Number of subtasks in one deadline-less scope at which the fan-out counts as unbounded.
@@ -131,6 +143,11 @@ public final class ScopeConfigurationMisuseDetector {
 
         boolean overlaps(ScopeState other) {
             return openSeq < other.closeSeq && other.openSeq < closeSeq;
+        }
+
+        /** {@return the timeout the scope enforces: the effective one when recorded, else the requested} */
+        long enforcedTimeout() {
+            return effectiveRecorded ? effectiveTimeoutMillis : requestedTimeoutMillis;
         }
 
         String label() {
@@ -175,6 +192,30 @@ public final class ScopeConfigurationMisuseDetector {
     public void recordScopeOpened(String scopeId, @Nullable String requestedName,
                                   long requestedTimeoutMillis, @Nullable Object threadFactory,
                                   Thread owner) {
+        recordOpened(scopeId, requestedName, fromMillis(requestedTimeoutMillis), threadFactory, owner);
+    }
+
+    /**
+     * Record a scope opening, with what the configuration lambda asked for, the timeout as the
+     * {@code Duration} given to {@code withTimeout}. Unlike the {@code long} form this tells a
+     * zero timeout from none (#1363).
+     *
+     * @param scopeId          the scope's identifier, unique per open
+     * @param requestedName    the name passed to {@code withName}, or {@code null} for none
+     * @param requestedTimeout the timeout passed to {@code withTimeout}, or {@code null} when the
+     *                         lambda set none
+     * @param threadFactory    the factory passed to {@code withThreadFactory}, or {@code null}
+     * @param owner            the thread opening the scope
+     * @since 1.15.0
+     */
+    public void recordScopeOpened(String scopeId, @Nullable String requestedName,
+                                  @Nullable Duration requestedTimeout,
+                                  @Nullable Object threadFactory, Thread owner) {
+        recordOpened(scopeId, requestedName, fromDuration(requestedTimeout), threadFactory, owner);
+    }
+
+    private void recordOpened(String scopeId, @Nullable String requestedName, long requestedTimeoutMillis,
+                              @Nullable Object threadFactory, Thread owner) {
         if (!enabled || scopeId == null || owner == null) return;
         IdentityKey factoryId = threadFactory != null ? new IdentityKey(threadFactory) : null;
         // A closed scope reopened under the same id is a new scope: its forks and joins are its
@@ -207,6 +248,24 @@ public final class ScopeConfigurationMisuseDetector {
      */
     public void recordEffectiveConfiguration(String scopeId, @Nullable String effectiveName,
                                              long effectiveTimeoutMillis) {
+        recordEffective(scopeId, effectiveName, fromMillis(effectiveTimeoutMillis));
+    }
+
+    /**
+     * Record the configuration the scope actually ended up with, the timeout as the scope reports
+     * it. Unlike the {@code long} form this tells a zero timeout from none (#1363).
+     *
+     * @param scopeId          the scope's identifier
+     * @param effectiveName    the name the scope reports, or {@code null} for none
+     * @param effectiveTimeout the deadline the scope actually enforces, or {@code null} for none
+     * @since 1.15.0
+     */
+    public void recordEffectiveConfiguration(String scopeId, @Nullable String effectiveName,
+                                             @Nullable Duration effectiveTimeout) {
+        recordEffective(scopeId, effectiveName, fromDuration(effectiveTimeout));
+    }
+
+    private void recordEffective(String scopeId, @Nullable String effectiveName, long effectiveTimeoutMillis) {
         ScopeState s = state(scopeId);
         if (s == null) return;
         s.effectiveName          = effectiveName;
@@ -302,14 +361,14 @@ public final class ScopeConfigurationMisuseDetector {
                 s.label(), detail);
         r.add("ScopeConfigurationMisuse", IssueSeverity.HIGH, msg,
                 Map.of("scope", s.scopeId, "issue", "configurationDiscarded",
-                       "requestedTimeoutMillis", s.requestedTimeoutMillis,
-                       "effectiveTimeoutMillis", s.effectiveTimeoutMillis,
+                       "requestedTimeoutMillis", asRecorded(s.requestedTimeoutMillis),
+                       "effectiveTimeoutMillis", asRecorded(s.effectiveTimeoutMillis),
                        "dropped", detail));
     }
 
     private static void nonPositiveTimeout(Report r, ScopeState s) {
-        long timeout = s.effectiveRecorded ? s.effectiveTimeoutMillis : s.requestedTimeoutMillis;
-        if (timeout >= NO_TIMEOUT) return;
+        long timeout = s.enforcedTimeout();
+        if (timeout == UNSET || timeout > 0) return;
         String msg = String.format(
                 "Scope %s was given a timeout of %d ms. A deadline that is already in the past expires before "
                 + "any subtask can finish, so join() always takes the timeout path and the scope never returns "
@@ -320,9 +379,9 @@ public final class ScopeConfigurationMisuseDetector {
     }
 
     private static void unboundedFanOut(Report r, ScopeState s, int threshold) {
-        long timeout = s.effectiveRecorded ? s.effectiveTimeoutMillis : s.requestedTimeoutMillis;
+        long timeout = s.enforcedTimeout();
         int forks = s.forks.get();
-        if (timeout != NO_TIMEOUT || forks < threshold) return;
+        if (timeout != UNSET || forks < threshold) return;
         String msg = String.format(
                 "Scope %s forked %d subtasks with no timeout configured. A structured scope does not return "
                 + "until every subtask has, so the slowest of the %d decides when the test finishes and one "
@@ -337,7 +396,7 @@ public final class ScopeConfigurationMisuseDetector {
         int joins = s.joins.get();
         int timeouts = s.joinTimeouts.get();
         if (joins < 2 || timeouts < joins) return;
-        long timeout = s.effectiveRecorded ? s.effectiveTimeoutMillis : s.requestedTimeoutMillis;
+        long timeout = s.enforcedTimeout();
         String msg = String.format(
                 "Scope %s timed out on all %d of its joins with a %s deadline. The timeout is not a safety net "
                 + "here, it is the path every run takes, so what the test asserts on is whatever the fallback "
@@ -345,7 +404,7 @@ public final class ScopeConfigurationMisuseDetector {
                 s.label(), joins, describeTimeout(timeout));
         r.add("ScopeConfigurationMisuse", IssueSeverity.HIGH, msg,
                 Map.of("scope", s.scopeId, "issue", "timeoutIsTheNormalPath",
-                       "joins", joins, "joinTimeouts", timeouts, "timeoutMillis", timeout));
+                       "joins", joins, "joinTimeouts", timeouts, "timeoutMillis", asRecorded(timeout)));
     }
 
     private static void sharedThreadFactory(Report r, List<ScopeState> all) {
@@ -390,25 +449,59 @@ public final class ScopeConfigurationMisuseDetector {
         for (Map.Entry<String, List<ScopeState>> e : byName.entrySet()) {
             List<ScopeState> sharing = e.getValue();
             if (sharing.size() < 2) continue;
-            int overlaps = 0;
+            // The scopes that were alive together with another of the same name, not every scope
+            // that ever carried it: one opened after the others closed confused nothing (#1363).
+            Set<ScopeState> aliveTogether = new HashSet<>();
             for (int i = 0; i < sharing.size(); i++) {
                 for (int j = i + 1; j < sharing.size(); j++) {
-                    if (sharing.get(i).overlaps(sharing.get(j))) overlaps++;
+                    if (sharing.get(i).overlaps(sharing.get(j))) {
+                        aliveTogether.add(sharing.get(i));
+                        aliveTogether.add(sharing.get(j));
+                    }
                 }
             }
-            if (overlaps == 0) continue;
+            if (aliveTogether.isEmpty()) continue;
             String msg = String.format(
                     "The name '%s' was on %d scopes alive at the same time. Every diagnostic that quotes a "
                     + "scope name - a timeout message, a cancellation trace, this report - then points at more "
                     + "than one scope.",
-                    e.getKey(), sharing.size());
+                    e.getKey(), aliveTogether.size());
             r.add("ScopeConfigurationMisuse", IssueSeverity.LOW, msg,
-                    Map.of("issue", "duplicateScopeName", "name", e.getKey(), "scopes", sharing.size()));
+                    Map.of("issue", "duplicateScopeName", "name", e.getKey(), "scopes", aliveTogether.size()));
         }
     }
 
+    /** {@return a timeout given in the {@code long} forms, where {@link #NO_TIMEOUT} means none} */
+    private static long fromMillis(long millis) {
+        return millis == NO_TIMEOUT ? UNSET : millis;
+    }
+
+    /**
+     * {@return a timeout given as a {@code Duration}, {@code null} meaning none}
+     *
+     * <p>A positive timeout shorter than a millisecond is kept positive, one millisecond, rather
+     * than truncated to the zero timeout it is not; one too long for a {@code long} saturates.
+     */
+    private static long fromDuration(@Nullable Duration timeout) {
+        if (timeout == null) {
+            return UNSET;
+        }
+        long millis;
+        try {
+            millis = timeout.toMillis();
+        } catch (ArithmeticException beyondALong) {
+            return timeout.isNegative() ? -Long.MAX_VALUE : Long.MAX_VALUE;
+        }
+        return timeout.isPositive() && millis == 0 ? 1 : millis;
+    }
+
+    /** {@return a timeout as the {@code long} forms record it, for a finding's attributes} */
+    private static long asRecorded(long millis) {
+        return millis == UNSET ? NO_TIMEOUT : millis;
+    }
+
     private static String describeTimeout(long millis) {
-        return millis == NO_TIMEOUT ? "none" : millis + " ms";
+        return millis == UNSET ? "none" : millis + " ms";
     }
 
     /** Report produced by {@link #analyze()}. */
