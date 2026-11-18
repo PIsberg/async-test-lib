@@ -290,11 +290,27 @@ public final class AgentConcurrencyUtilHooks {
      * scheduling point in between. Bounded, so a task that gets itself costs a pause, not a hang.
      */
     private static void awaitDirectRun(Object task) {
-        if (!RUNNING_DIRECTLY.contains(task)) {
+        spinWhile(STILL_RUNNING_DIRECTLY, task);
+    }
+
+    /** Whether a direct run of a task is still inside {@link #futureTaskRun}; a constant, so no call allocates. */
+    private static final Predicate<Object> STILL_RUNNING_DIRECTLY = RUNNING_DIRECTLY::contains;
+
+    /** Whether a thread has not ended yet; a constant, so no call allocates. */
+    private static final Predicate<Thread> STILL_ALIVE = Thread::isAlive;
+
+    /**
+     * Spins while {@code going} holds for {@code subject}, for at most
+     * {@link #DIRECT_RUN_RETURN_NANOS}: the wait between a task completing and the run that
+     * completed it handing over (#1307, #1350). Bounded, so a task that gets itself costs a pause,
+     * not a hang.
+     */
+    private static <T> void spinWhile(Predicate<T> going, T subject) {
+        if (!going.test(subject)) {
             return;
         }
         long deadline = System.nanoTime() + DIRECT_RUN_RETURN_NANOS;
-        while (RUNNING_DIRECTLY.contains(task) && System.nanoTime() - deadline < 0) {
+        while (going.test(subject) && System.nanoTime() - deadline < 0) {
             Thread.onSpinWait();
         }
     }
@@ -313,10 +329,7 @@ public final class AgentConcurrencyUtilHooks {
         if (runner == null) {
             return;
         }
-        long deadline = System.nanoTime() + DIRECT_RUN_RETURN_NANOS;
-        while (runner.isAlive() && System.nanoTime() - deadline < 0) {
-            Thread.onSpinWait();
-        }
+        spinWhile(STILL_ALIVE, runner);
         HappensBefore.join(runner);
     }
 

@@ -780,6 +780,16 @@ class AgentHappensBeforeFeedTest {
         assertTrue(directRunReported(true, false), "an unwoven get acquired nothing");
     }
 
+    /** {@return a task whose callable writes a new box's value, recorded, and returns the box} */
+    private static FutureTask<Object> boxWritingTask(RaceConditionDetector detector) {
+        return new FutureTask<>(() -> {
+            Box box = new Box();
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            return box;
+        });
+    }
+
     /**
      * The test thread hands a {@code FutureTask} to {@code new Thread(task)}, starts it, gets the
      * result and reads what the callable wrote (#1350). {@code targetSeen} is whether the woven
@@ -787,12 +797,7 @@ class AgentHappensBeforeFeedTest {
      */
     private static boolean threadRunTaskReported(boolean targetSeen) throws Exception {
         RaceConditionDetector detector = new RaceConditionDetector();
-        FutureTask<Object> task = new FutureTask<>(() -> {
-            Box box = new Box();
-            box.value = 1;
-            detector.recordFieldWrite(box, "value");
-            return box;
-        });
+        FutureTask<Object> task = boxWritingTask(detector);
         if (targetSeen) {
             AgentThreadHooks.threadTarget(task);
         }
@@ -810,12 +815,7 @@ class AgentHappensBeforeFeedTest {
     void aFutureTaskRunByABuiltThreadPublishes() throws Exception {
         for (int how = 0; how < 3; how++) {
             RaceConditionDetector detector = new RaceConditionDetector();
-            FutureTask<Object> task = new FutureTask<>(() -> {
-                Box box = new Box();
-                box.value = 1;
-                detector.recordFieldWrite(box, "value");
-                return box;
-            });
+            FutureTask<Object> task = boxWritingTask(detector);
             Thread runner = switch (how) {
                 case 0 -> AgentThreadHooks.threadBuilderStart(Thread.ofPlatform(), task);
                 case 1 -> AgentThreadHooks.threadBuilderStart(Thread.ofVirtual(), task);

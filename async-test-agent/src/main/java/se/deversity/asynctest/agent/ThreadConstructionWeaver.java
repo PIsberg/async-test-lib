@@ -242,15 +242,16 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
         @Override
         public void visitMethodInsn(int opcode, String owner, String name, String descriptor,
                                     boolean isInterface) {
-            if (takesTargets && opcode == Opcodes.INVOKESPECIAL && CONSTRUCTOR.equals(name)
-                    && THREAD.equals(owner) && openThreads > 0) {
+            boolean initialisesANewThread = isConstructorCall(opcode, name)
+                    && THREAD.equals(owner) && openThreads > 0;
+            if (takesTargets && initialisesANewThread) {
                 handOverTarget(descriptor);
             }
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
-            if (opcode != Opcodes.INVOKESPECIAL || !CONSTRUCTOR.equals(name)) {
+            if (!isConstructorCall(opcode, name)) {
                 return;
             }
-            if (THREAD.equals(owner) && openThreads > 0) {
+            if (initialisesANewThread) {
                 openThreads--;
                 super.visitInsn(Opcodes.DUP);
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, hookOwner, HOOK, HOOK_DESCRIPTOR,
@@ -265,6 +266,10 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, hookOwner, HOOK, HOOK_DESCRIPTOR,
                         false);
             }
+        }
+
+        private static boolean isConstructorCall(int opcode, String name) {
+            return opcode == Opcodes.INVOKESPECIAL && CONSTRUCTOR.equals(name);
         }
 
         /**
