@@ -389,7 +389,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <path class="edge-line" data-source="BenchmarkRegressionException" data-target="BenchmarkComparisonResult" data-type="HAS" d="M1276.0 186.5 Q1273.9 223.9 1296.0 254.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="BenchmarkRegressionException" data-target="BenchmarkComparisonResult" data-type="HAS" x="1279.9" y="216.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">comparisonResult</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="DeadlockDetector" data-type="HAS" d="M338.0 304.0 Q2586.4 4150.9 4902.0 7957.7" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="DeadlockDetector" data-type="HAS" x="2603.2" y="4134.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">deadlockDetector</text>
+<text class="edge-label" data-source="DetectorRegistry" data-target="DeadlockDetector" data-type="HAS" x="2603.2" y="4134.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">deadlockDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="VisibilityMonitor" data-type="HAS" d="M338.0 304.0 Q2304.7 2805.3 4332.0 5257.7" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="VisibilityMonitor" data-type="HAS" x="2319.8" y="2787.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">visibilityMonitor</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="LivelockDetector" data-type="HAS" d="M338.0 304.0 Q2300.4 4148.9 4332.0 7957.7" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -768,8 +768,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="LambdaLostUpdateDetector" data-target="UnnamedLabels" data-type="HAS" x="5029.0" y="773.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">unnamedLabels</text>
 <path class="edge-line" data-source="LatchMisuseDetector" data-target="AbstractInstanceDetector" data-type="EXTENDS" d="M4332.0 5077.7 Q4639.3 4853.4 4902.0 4578.1" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-hollow-374151)"/>
 <text class="edge-label" data-source="LatchMisuseDetector" data-target="AbstractInstanceDetector" data-type="EXTENDS" x="4628.2" y="4834.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">extends</text>
-<path class="edge-line" data-source="LivelockDetector" data-target="DeadlockDetector" data-type="HAS" d="M4422.0 8097.7 Q4617.5 8121.3 4812.0 8090.2" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="LivelockDetector" data-target="DeadlockDetector" data-type="HAS" x="4617.3" y="8101.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">deadlocks</text>
+<path class="edge-line" data-source="LivelockDetector" data-target="DeadlockDetector" data-type="HAS" d="M4422.0 8097.7 Q4617.0 8125.0 4812.0 8097.7" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="LivelockDetector" data-target="DeadlockDetector" data-type="HAS" x="4617.0" y="8105.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">deadlocks</text>
 <path class="edge-line" data-source="LockContentionDetector" data-target="AbstractInstanceDetector" data-type="EXTENDS" d="M4332.0 4987.7 Q4636.5 4810.1 4902.0 4578.1" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-hollow-374151)"/>
 <text class="edge-label" data-source="LockContentionDetector" data-target="AbstractInstanceDetector" data-type="EXTENDS" x="4626.8" y="4790.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">extends</text>
 <path class="edge-line" data-source="LockDowngradeDetector" data-target="AbstractInstanceDetector" data-type="EXTENDS" d="M4082.0 2953.3 Q4461.0 3673.8 4902.0 4358.1" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-hollow-374151)"/>
@@ -1206,7 +1206,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3576.0" y="306.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">LENT: ThreadLocal&lt;AsyncTes…</text>
   <text x="3576.0" y="321.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registry: DetectorRegistry</text>
   <text x="3576.0" y="336.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharingScope: SelfGuard.Sc…</text>
-  <text x="3576.0" y="351.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+155 more)</text>
+  <text x="3576.0" y="351.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+156 more)</text>
   <line x1="3568.0" y1="365.0" x2="3748.0" y2="365.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="3576.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedVisibilityMonitor():…</text>
   <text x="3576.0" y="393.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedLivelockDetector(): …</text>
@@ -1214,7 +1214,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3576.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedThreadLocalMonitor()…</text>
   <text x="3576.0" y="438.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedBusyWaitDetector(): …</text>
   <text x="3576.0" y="453.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedAtomicityValidator()…</text>
-  <text x="3576.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+247 more)</text>
+  <text x="3576.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+250 more)</text>
 </g>
 <g id="DetectorRegistry">
   <title>DetectorRegistry [CLASS]</title>
@@ -3437,7 +3437,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="4250.0" y="4910.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">receiverStates: Map&lt;Intege…</text>
   <text x="4250.0" y="4925.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">generationTakers: Map&lt;Inte…</text>
   <text x="4250.0" y="4940.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">offers: Map&lt;Integer,Offer&gt;</text>
-  <text x="4250.0" y="4955.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+13 more)</text>
+  <text x="4250.0" y="4955.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+14 more)</text>
   <line x1="4242.0" y1="4968.7" x2="4422.0" y2="4968.7" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="4250.0" y="4982.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">guardKey(String, int): Str…</text>
   <text x="4250.0" y="4997.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">instanceOf(Object): int</text>
@@ -3445,7 +3445,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="4250.0" y="5027.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">ownershipTakes(): int</text>
   <text x="4250.0" y="5042.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">verdictCounts(String): Map…</text>
   <text x="4250.0" y="5057.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">takerOf(int, int): Long</text>
-  <text x="4250.0" y="5072.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+56 more)</text>
+  <text x="4250.0" y="5072.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+57 more)</text>
 </g>
 <g id="AsyncTestListenerRegistry">
   <title>AsyncTestListenerRegistry [CLASS]</title>
@@ -3608,8 +3608,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3176.0" y="483.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">userDefaultHandler(): Thre…</text>
   <text x="3176.0" y="498.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enter(AsyncTestContext): v…</text>
   <text x="3176.0" y="513.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">exit(): void</text>
-  <text x="3176.0" y="528.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">handedTaskThrew(AsyncTestC…</text>
-  <text x="3176.0" y="543.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+2 more)</text>
+  <text x="3176.0" y="528.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">openRunOfCallingThread(): …</text>
+  <text x="3176.0" y="543.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+4 more)</text>
 </g>
 <g id="DetectorFailurePolicy">
   <title>DetectorFailurePolicy [CLASS]</title>
@@ -3630,7 +3630,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="DeadlockDetector">
   <title>DeadlockDetector [CLASS]</title>
-  <rect class="node-rect" x="4812.0" y="7957.7" width="180.0" height="265.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="4812.0" y="7957.7" width="180.0" height="280.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="4902.0" y="7979.7" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">DeadlockDetector</text>
   <line x1="4812.0" y1="8001.7" x2="4992.0" y2="8001.7" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="4820.0" y="8015.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">VIRTUAL_SCAN_PROPERTY: Str…</text>
@@ -3639,14 +3639,15 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="4820.0" y="8060.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">virtualScanEnabled: boolean</text>
   <text x="4820.0" y="8075.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">runThreads: LongPredicate</text>
   <text x="4820.0" y="8090.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">otherRunsOverlapped: Boole…</text>
-  <line x1="4812.0" y1="8103.7" x2="4992.0" y2="8103.7" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="4820.0" y="8117.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">attributeTo(LongPredicate,…</text>
-  <text x="4820.0" y="8132.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">belongsToThisRun(long[]): …</text>
-  <text x="4820.0" y="8147.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">canSeeVirtualThreadDeadloc…</text>
-  <text x="4820.0" y="8162.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enableVirtualThreadScan():…</text>
-  <text x="4820.0" y="8177.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">cycleKeys(Optional&lt;List&lt;Vi…</text>
-  <text x="4820.0" y="8192.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">printThreadDump(): void</text>
-  <text x="4820.0" y="8207.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
+  <text x="4820.0" y="8105.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <line x1="4812.0" y1="8118.7" x2="4992.0" y2="8118.7" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="4820.0" y="8132.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">attributeTo(LongPredicate,…</text>
+  <text x="4820.0" y="8147.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">belongsToThisRun(long[]): …</text>
+  <text x="4820.0" y="8162.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">canSeeVirtualThreadDeadloc…</text>
+  <text x="4820.0" y="8177.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enableVirtualThreadScan():…</text>
+  <text x="4820.0" y="8192.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">cycleKeys(Optional&lt;List&lt;Vi…</text>
+  <text x="4820.0" y="8207.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">printThreadDump(): void</text>
+  <text x="4820.0" y="8222.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
 </g>
 <g id="VisibilityMonitor">
   <title>VisibilityMonitor [CLASS]</title>
@@ -3682,10 +3683,10 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="4250.0" y="8132.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">workerEnteredBody(Thread):…</text>
   <text x="4250.0" y="8147.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">workerLeftBody(Thread): vo…</text>
   <text x="4250.0" y="8162.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">deferDeadlockedThreadsTo(D…</text>
-  <text x="4250.0" y="8177.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">roundTimedOut(): void</text>
-  <text x="4250.0" y="8192.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">captureSnapshot(): void</text>
-  <text x="4250.0" y="8207.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeLivelocks(): Livelo…</text>
-  <text x="4250.0" y="8222.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+6 more)</text>
+  <text x="4250.0" y="8177.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadsInReportedDeadlocks…</text>
+  <text x="4250.0" y="8192.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">roundTimedOut(): void</text>
+  <text x="4250.0" y="8207.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">captureSnapshot(): void</text>
+  <text x="4250.0" y="8222.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+7 more)</text>
 </g>
 <g id="RaceConditionDetector">
   <title>RaceConditionDetector [CLASS]</title>

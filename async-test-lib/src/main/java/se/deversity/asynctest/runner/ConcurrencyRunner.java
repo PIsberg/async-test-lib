@@ -754,6 +754,20 @@ public class ConcurrencyRunner {
                 }
             }
 
+            // arrays=true records the first 256 elements of an array; an access past them is
+            // dropped, which can only hide a race (#1262). Said per test at INFO, like the
+            // telemetry line above, because it is about this body; the atomicity report carries
+            // the same count when it has findings to print.
+            long untrackedArrayAccesses = phase2Context.untrackedArrayAccesses();
+            if (untrackedArrayAccesses > 0) {
+                log.info("runner.telemetry.arrays-untracked test={} accesses={} "
+                        + "reason=\"arrays=true records the first 256 elements of an array, and "
+                        + "these accesses were past them, so no race on those elements is reported\" "
+                        + "hint=\"read a clean atomicity report as covering the first 256 elements "
+                        + "of each array only\"",
+                    testMethod.getName(), untrackedArrayAccesses);
+            }
+
             // Usually already closed by the analysis on a reporting path; close() is idempotent,
             // and this call is the one that guarantees the recording ends with the run.
             if (pinningStream != null) {

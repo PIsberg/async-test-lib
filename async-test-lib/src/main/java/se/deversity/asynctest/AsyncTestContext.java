@@ -258,6 +258,13 @@ public final class AsyncTestContext {
     private final java.util.Set<Long> spawnedThreadIds = ConcurrentHashMap.newKeySet();
 
     /**
+     * Array element accesses a thread working for this run made past the first 256 elements, which
+     * {@code arrays=true} does not record (#1262).
+     */
+    private final java.util.concurrent.atomic.LongAdder untrackedArrayAccesses =
+            new java.util.concurrent.atomic.LongAdder();
+
+    /**
      * Third-party detectors contributed through the public {@link se.deversity.asynctest.spi.Detector}
      * SPI, discovered once per context via {@code ServiceLoader}.
      *
@@ -854,6 +861,33 @@ public final class AsyncTestContext {
      */
     public java.util.Set<Long> spawnedThreadIds() {
         return java.util.Collections.unmodifiableSet(spawnedThreadIds);
+    }
+
+    /**
+     * Internal: counts an array element access {@code arrays=true} did not record because the
+     * element is past the first 256, against the run the calling thread works for, if any
+     * (#1262). Called by {@code TelemetryRegistry}; not part of the stable public API.
+     *
+     * @since 1.15.0
+     */
+    @API(status = Status.INTERNAL, since = "1.15.0")
+    public static void arrayAccessUntracked() {
+        AsyncTestContext run = agentContext();
+        if (run != null) {
+            run.untrackedArrayAccesses.increment();
+        }
+    }
+
+    /**
+     * Internal: {@return how many array element accesses this run's threads made that
+     * {@code arrays=true} did not record (#1262)} For the runner's report; not part of the stable
+     * public API.
+     *
+     * @since 1.15.0
+     */
+    @API(status = Status.INTERNAL, since = "1.15.0")
+    public long untrackedArrayAccesses() {
+        return untrackedArrayAccesses.sum();
     }
 
     /**
@@ -1560,6 +1594,10 @@ public final class AsyncTestContext {
      */
     public Map<String, String> analyzeAllNamed() {
         stopLending();
+        AtomicityValidator atomicity = registry.atomicityValidator;
+        if (atomicity != null) {
+            atomicity.noteUntrackedArrayAccesses(untrackedArrayAccesses.sum());
+        }
         Map<String, String> reports = registry.analyzeAllNamed();
         appendExternalFindings(reports);
         appendRunChecks(reports);

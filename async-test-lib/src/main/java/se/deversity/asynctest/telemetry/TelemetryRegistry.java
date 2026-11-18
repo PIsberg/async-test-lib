@@ -2,6 +2,7 @@ package se.deversity.asynctest.telemetry;
 
 import se.deversity.asynctest.AgentConcurrencyUtilHooks;
 import se.deversity.asynctest.AgentMonitorHooks;
+import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.HeldLocks;
@@ -577,8 +578,14 @@ public final class TelemetryRegistry {
     }
 
     private static void arrayAccess(@Nullable Object array, int index, int kind, boolean write) {
-        if (array == null || index < 0 || index >= MAX_TRACKED_ARRAY_INDEX || kind < 0
-                || kind >= ARRAY_KINDS.length - 1 || index >= java.lang.reflect.Array.getLength(array)) {
+        if (array == null || index < 0 || kind < 0 || kind >= ARRAY_KINDS.length - 1
+                || index >= java.lang.reflect.Array.getLength(array)) {
+            return;                             // the instruction throws, or it is not an element
+        }
+        if (index >= MAX_TRACKED_ARRAY_INDEX) {
+            // A real element, past the bound: not recorded, but counted, so the run's report can
+            // say it did not look (#1262).
+            AsyncTestContext.arrayAccessUntracked();
             return;
         }
         // BALOAD and BASTORE serve both byte[] and boolean[].

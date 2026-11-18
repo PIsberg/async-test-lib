@@ -65,6 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`arrays=true` says when it did not look (#1262).** The agent records the first 256 elements of
+  an array and drops an access past them, which can only hide a race. #1250 asked for the report to
+  say so and it did not. A run now counts those accesses per run, logs
+  `runner.telemetry.arrays-untracked test=... accesses=N` at INFO when there were any, and an
+  `AtomicityValidator` report with findings ends with "Not checked: N accesses to array elements
+  past the first 256 were not checked". `AtomicityValidatorTest`, `ArrayElementWeavingTest`.
+
 - **A thread the test body starts can use the static detector accessors (#1388).** Recording by
   hand from a child thread, the shape `docs/usage/other-ways-to-run.md` shows with
   `HappensBefore.fork` and `join`, threw `IllegalStateException: AsyncTestContext is not active`

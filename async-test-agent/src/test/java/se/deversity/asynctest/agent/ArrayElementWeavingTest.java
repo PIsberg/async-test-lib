@@ -7,6 +7,12 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.AsyncTestConfig;
+import se.deversity.asynctest.AsyncTestListener;
+import se.deversity.asynctest.AsyncTestListenerRegistry;
+import se.deversity.asynctest.AsyncTestRunner;
+import se.deversity.asynctest.DetectorType;
+import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.telemetry.TelemetryBridge;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
@@ -14,6 +20,7 @@ import se.deversity.asynctest.telemetry.TelemetryRegistry;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -165,5 +172,40 @@ class ArrayElementWeavingTest {
 
         assertEquals(7 + 'x' + 300 + 2 + 1, ArrayCounterBean.readEveryKind(new byte[1],
                 new char[1], new short[1], new float[1], new boolean[1]));
+    }
+
+    /**
+     * #1262: elements past index 255 are not recorded, which can only hide a race. The run counts
+     * the accesses it dropped and its atomicity report says so, so a clean or partial report over
+     * a large array does not read as covering all of it.
+     */
+    @Test
+    @DisplayName("accesses past element 255 are counted and named in the run's atomicity report")
+    void untrackedElementsAreCountedInTheReport() throws Throwable {
+        int[] slots = new int[400];
+        List<String> reports = new CopyOnWriteArrayList<>();
+        AsyncTestListener listener = new AsyncTestListener() {
+            @Override
+            public void onDetectorReport(String detectorName, String report) {
+                reports.add(report);
+            }
+        };
+        TelemetryRegistry.start();
+        AsyncTestListenerRegistry.register(listener);
+        try {
+            AsyncTestRunner.run(AsyncTestConfig.builder().licenseMockMode(true)
+                    .includes(new DetectorType[] {DetectorType.ATOMICITY_VIOLATIONS})
+                    .failOn(FailOn.NONE).threads(WORKERS).invocations(5).build(), () -> {
+                        ArrayCounterBean.bumpShared(slots);
+                        ArrayCounterBean.bumpOwnSlot(slots, 300);
+                    });
+        } finally {
+            AsyncTestListenerRegistry.unregister(listener);
+        }
+
+        assertTrue(reports.stream().anyMatch(r -> r.contains("int[0]")),
+                "precondition: slot 0, shared by every worker, is reported: " + reports);
+        assertTrue(reports.stream().anyMatch(r -> r.contains("accesses to array elements past the first 256 were not checked")),
+                "every bump of slot 300 is a read and a write past the tracked bound: " + reports);
     }
 }
