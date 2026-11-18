@@ -151,6 +151,25 @@ public final class BodyThreadFailures {
     }
 
     /**
+     * {@return the run the calling thread was constructed under, while that run's analysis has not
+     * started, or {@code null}} Reads only.
+     *
+     * <p>What lets a thread the body started reach the run's detectors through the static
+     * accessors (#1388). A thread that outlives its run gets {@code null}: anything it recorded
+     * would land after the analysis and be lost.
+     */
+    static @Nullable AsyncTestContext openRunOfCallingThread() {
+        AsyncTestContext run = constructedUnder();
+        return run == null || run.isAnalysed() ? null : run;
+    }
+
+    /** {@return the run the calling thread was constructed under, if it is still reachable} */
+    private static @Nullable AsyncTestContext constructedUnder() {
+        WeakReference<AsyncTestContext> run = RUN.get();
+        return run == null ? null : run.get();
+    }
+
+    /**
      * Called by the agent's hand-off wrapper when a task {@code run} handed over throws on the
      * calling pool thread, before the throwable leaves the task: if it kills the thread, the death
      * is {@code run}'s. A {@code null} run, a task handed over outside any run, clears the mark.
@@ -202,8 +221,7 @@ public final class BodyThreadFailures {
                 return handedBy;
             }
         }
-        WeakReference<AsyncTestContext> constructedUnder = RUN.get();
-        AsyncTestContext run = constructedUnder == null ? null : constructedUnder.get();
+        AsyncTestContext run = constructedUnder();
         if (run != null && !run.isAnalysed()) {
             return run;
         }

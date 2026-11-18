@@ -157,6 +157,11 @@ jobs:
 
       - name: Import Codecov GPG key
         if: env.UPLOADS_COVERAGE == 'true'
+        # A keyserver that never answers held this step with no limit but the job's six hours
+        # (#1372). Every command here already falls through to a warning, so a timeout is let
+        # through the same way: a timed-out step fails its job unless continue-on-error says not.
+        timeout-minutes: 3
+        continue-on-error: true
         shell: bash
         run: |
           gpg --keyserver hkps://keys.openpgp.org --recv-keys 27034E7FDB850E0BBC2C62FF806BB28AED779869 || \
@@ -165,6 +170,12 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: env.UPLOADS_COVERAGE == 'true'
+        # The action's wrapper hung twice in its signature check after downloading the CLI,
+        # holding the required Test Suite check pending for up to six hours (#1372).
+        # fail_ci_if_error: false covers a failed upload but not a timed-out step, which fails the
+        # job; continue-on-error lets that through too, as a failed upload already is.
+        timeout-minutes: 5
+        continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: ./async-test-lib/target/site/jacoco/jacoco.xml
