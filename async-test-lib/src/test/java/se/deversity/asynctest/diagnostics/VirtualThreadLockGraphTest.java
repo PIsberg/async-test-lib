@@ -54,6 +54,67 @@ class VirtualThreadLockGraphTest {
     }
 
     @Test
+    @DisplayName("a ReentrantLock deadlock is closed through parkBlocker.owner, alone and mixed with a monitor")
+    void closesParkedCyclesThroughTheBlockersOwner() {
+        // Captured on JDK 26.0.2 (#1384): two virtual threads each parked on the ReentrantLock the
+        // other holds, and a mixed pair, a virtual thread parked on a lock held by a platform
+        // thread that is blocked on a monitor the virtual one holds. Neither cycle has a
+        // blockedOn edge on both sides, so a graph of monitors alone closes neither.
+        Optional<List<VirtualThreadLockGraph.Cycle>> scan =
+                VirtualThreadLockGraph.scanDump(fixture("virtual-thread-reentrantlock-deadlock-jdk26.json"));
+
+        assertTrue(scan.isPresent(), "this dump names monitors and lock owners");
+        List<VirtualThreadLockGraph.Cycle> cycles = scan.get();
+        assertEquals(2, cycles.size(), "the lock pair and the mixed pair: " + cycles);
+
+        VirtualThreadLockGraph.Cycle locks = cycleNaming(cycles, "async-test-worker-0");
+        assertTrue(locks.threadNames().contains("async-test-worker-1"), "both members: " + locks);
+        assertTrue(locks.threadIds().containsAll(List.of("42", "44")),
+                "the ids the runner attributes a cycle by: " + locks);
+        assertTrue(locks.monitors().stream().allMatch(m -> m.contains("ReentrantLock")),
+                "the two locks are named as what each thread waits for: " + locks);
+
+        VirtualThreadLockGraph.Cycle mixed = cycleNaming(cycles, "mixed-virtual");
+        assertTrue(mixed.threadNames().contains("mixed-platform"), "both members: " + mixed);
+        assertTrue(mixed.monitors().stream().anyMatch(m -> m.contains("ReentrantLock"))
+                        && mixed.monitors().stream().anyMatch(m -> m.startsWith("java.lang.Object@")),
+                "one lock edge and one monitor edge: " + mixed);
+    }
+
+    @Test
+    @DisplayName("a parked thread whose blocker names no owner adds no edge")
+    void aParkBlockerWithoutAnOwnerClosesNothing() {
+        String withoutOwners = fixture("virtual-thread-reentrantlock-deadlock-jdk26.json")
+                .replaceAll(",\\s*\"owner\":\\s*\"\\d+\"", "");
+        assertFalse(withoutOwners.contains("\"owner\": \""), "precondition: every lock owner removed");
+
+        Optional<List<VirtualThreadLockGraph.Cycle>> scan = VirtualThreadLockGraph.scanDump(withoutOwners);
+
+        assertTrue(scan.isPresent());
+        assertTrue(scan.get().isEmpty(),
+                "a parked thread whose lock owner is unknown waits for nobody we can name: " + scan.get());
+    }
+
+    @Test
+    @DisplayName("a thread parked with a timeout adds no edge, so a tryLock back-off is not a deadlock")
+    void aTimedParkClosesNothing() {
+        String timed = fixture("virtual-thread-reentrantlock-deadlock-jdk26.json")
+                .replace("\"state\": \"WAITING\"", "\"state\": \"TIMED_WAITING\"");
+        assertTrue(timed.contains("TIMED_WAITING"), "precondition: the parked threads now wait with a timeout");
+
+        Optional<List<VirtualThreadLockGraph.Cycle>> scan = VirtualThreadLockGraph.scanDump(timed);
+
+        assertTrue(scan.isPresent());
+        assertTrue(scan.get().isEmpty(),
+                "tryLock(timeout) on each other's lock parks the same way and gives up on its own: " + scan.get());
+    }
+
+    private static VirtualThreadLockGraph.Cycle cycleNaming(List<VirtualThreadLockGraph.Cycle> cycles, String name) {
+        return cycles.stream().filter(c -> c.threadNames().contains(name)).findFirst()
+                .orElseThrow(() -> new AssertionError("no cycle names " + name + ": " + cycles));
+    }
+
+    @Test
     @DisplayName("the same deadlock on a JDK 21 dump reports 'cannot tell', not 'no deadlock'")
     void reportsUnknownWhenTheDumpDoesNotNameMonitors() {
         String jdk21 = fixture("virtual-thread-deadlock-jdk21.json");

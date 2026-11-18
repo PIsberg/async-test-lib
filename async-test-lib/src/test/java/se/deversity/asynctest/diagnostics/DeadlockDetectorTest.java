@@ -9,6 +9,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -118,12 +119,53 @@ public class DeadlockDetectorTest {
                 "Deadlocks that predate the detector must be excluded from analyze()");
     }
 
+    // ---- Run attribution (#1385): a cycle no thread of the run is in belongs to another run ----
+
+    @Test
+    @Order(12)
+    void aCycleWithNoThreadOfTheRunIsNotReportedWhileAnotherRunOverlapped() throws InterruptedException {
+        DeadlockDetector detector = new DeadlockDetector();
+        detector.attributeTo(id -> false, () -> true);
+
+        createLeakedDeadlock();
+
+        assertFalse(detector.analyze().hasIssues(),
+                "another run was in progress and none of this run's threads is in the cycle, so "
+                        + "the deadlock is that run's, and reporting it here fails a clean test");
+    }
+
+    @Test
+    @Order(13)
+    void aCycleWithAThreadOfTheRunIsReportedWhateverElseRan() throws InterruptedException {
+        DeadlockDetector detector = new DeadlockDetector();
+        AtomicLong runThread = new AtomicLong(-1);
+        detector.attributeTo(id -> id == runThread.get(), () -> true);
+
+        runThread.set(createLeakedDeadlock()[0]);
+
+        assertTrue(detector.analyze().hasIssues(),
+                "one member is this run's thread, so the deadlock is this run's");
+    }
+
+    @Test
+    @Order(14)
+    void aCycleWithNoKnownMemberIsReportedWhenNoOtherRunOverlapped() throws InterruptedException {
+        DeadlockDetector detector = new DeadlockDetector();
+        detector.attributeTo(id -> false, () -> false);
+
+        createLeakedDeadlock();
+
+        assertTrue(detector.analyze().hasIssues(),
+                "no other run was in progress, so the threads can only be this run's, for example "
+                        + "two threads the body started with the agent off");
+    }
+
     /**
      * Parks two daemon threads in a classic lock-ordering deadlock and returns once the
      * JVM's ThreadMXBean reports both as deadlocked. The threads are leaked for the JVM's
      * lifetime — exactly the contamination scenario the baseline logic exists for.
      */
-    private static void createLeakedDeadlock() throws InterruptedException {
+    private static long[] createLeakedDeadlock() throws InterruptedException {
         Object lockA = new Object();
         Object lockB = new Object();
         CountDownLatch bothHold = new CountDownLatch(2);
@@ -153,11 +195,11 @@ public class DeadlockDetectorTest {
         while (System.nanoTime() < deadlineNanos) {
             long[] ids = mx.findDeadlockedThreads();
             if (ids != null && contains(ids, t1.threadId()) && contains(ids, t2.threadId())) {
-                return;
+                return new long[] {t1.threadId(), t2.threadId()};
             }
             Thread.sleep(10);
         }
-        fail("Deadlock did not register with ThreadMXBean within 10 seconds");
+        return fail("Deadlock did not register with ThreadMXBean within 10 seconds");
     }
 
     private static void awaitQuietly(CountDownLatch latch) {

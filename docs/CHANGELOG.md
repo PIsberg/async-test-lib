@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (behaviour)
 
+- **`DeadlockDetector` no longer reports a deadlock that belongs to another run in progress at
+  the same time (#1385).** A cycle that forms during a run is visible JVM-wide, so with test
+  classes executing in parallel a clean test under `failOn = CRITICAL` failed on another test's
+  deadlock ("Circular lock dependency found between JVM threads", naming none of its threads). A
+  new cycle is now reported when one of its members is a worker of the run or a thread the run
+  started (with the agent, through a woven `Thread.start`), or when no other run was in progress
+  at any moment of this one, which keeps a deadlock between threads the body starts reported with
+  the agent off. Not reported: such a deadlock with the agent off while another run overlapped; the
+  deadlocking run cannot tell it from the other run's. A detector created by hand reports every
+  new cycle, as before. `DeadlockAttributionTest`, `DeadlockDetectorTest`.
+
 - **An `AssertionError` on a thread the test body started now fails the test (#1253).** A body
   that started a thread, had it assert and joined it passed, with only the JVM's stack trace on
   stderr: the most familiar way an asynchronous test lies, and no detector saw it. For the duration
@@ -32,6 +43,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Existing suites whose body-started threads have been failing assertions unnoticed will go red.
 
 ### Fixed
+
+- **A `ReentrantLock` deadlock between virtual threads is reported on JDK 25 and later (#1384).**
+  Virtual workers are the default and `ReentrantLock` the common lock, yet two workers taking two
+  locks in opposite orders drew no `DeadlockDetector` finding: the timeout said "No enabled detector
+  produced a finding", or `LivelockDetector` called it starvation. The JVM's JSON thread dump names
+  a parked thread's lock and that lock's owner (`parkBlocker.owner`) on JDK 25 and 26, measured
+  (JDK 21 writes no `parkBlocker`), and the virtual-thread scan now follows that edge next to the
+  monitor one, so a mixed cycle (one thread blocked on a monitor, the other parked on a lock) closes
+  too. Only an untimed park counts: a `tryLock(timeout)` back-off parks the same way and gives up
+  on its own. A deadlock among virtual threads the body starts is reported the same way.
+  `DeadlockAttributionTest`, `VirtualThreadLockGraphTest` (a captured JDK 26 dump).
 
 - **A reference `compareAndSet` that threw left its swap announced (#1356).** The seven woven
   reference compare-and-set hooks (`AtomicReference`, its field updater and array,
