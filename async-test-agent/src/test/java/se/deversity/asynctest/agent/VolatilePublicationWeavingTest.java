@@ -1,5 +1,6 @@
 package se.deversity.asynctest.agent;
 
+import com.example.agentfixture.InheritedStaticBean;
 import com.example.agentfixture.VolatilePublicationBean;
 import com.example.agentfixture.VolatileShapesBean;
 import net.bytebuddy.agent.ByteBuddyAgent;
@@ -435,5 +436,46 @@ class VolatilePublicationWeavingTest {
                 "The builder set value under the lock and published the object through the "
                         + "volatile field; the other thread read value without the lock, after the "
                         + "volatile read that returned that object. Findings were: " + findings);
+    }
+
+    @Test
+    @DisplayName("a static volatile written through its class and read through a subclass orders the reader (#1362)")
+    void inheritedStaticVolatilePublicationIsSilent() throws InterruptedException {
+        InheritedStaticBean bean = new InheritedStaticBean();
+        boolean[] seen = new boolean[1];
+        List<String> findings = findings(() -> bean.publish(5), writerRuns -> {
+            writerRuns.run();
+            seen[0] = bean.bumpDataAfterReady();
+        });
+
+        assertTrue(seen[0], "the reader read ready after the writer finished");
+        assertFalse(mentions(findings, ".data"),
+                "The writer wrote data, then set the static volatile ready through InheritedStaticBase; "
+                        + "the reader read ready through InheritedStaticSub and saw true. It is one "
+                        + "field, so the read acquires the write's release. A finding here means the "
+                        + "store and the load were keyed on different classes. Findings were: " + findings);
+    }
+
+    @Test
+    @DisplayName("a static field written through its class and updated through a subclass still races (#1362)")
+    void inheritedStaticFieldWithoutAGuardIsReported() throws InterruptedException {
+        InheritedStaticBean bean = new InheritedStaticBean();
+        List<String> findings = findings(() -> bean.writeUnguarded(5), writerRuns -> {
+            writerRuns.run();
+            bean.bumpUnguardedThroughSubclass();
+        });
+
+        assertTrue(mentions(findings, ".unguarded"),
+                "One static field, written through its declaring class and updated through a "
+                        + "subclass, with nothing ordering the two: the twin of the case above. "
+                        + "Findings were: " + findings);
+    }
+
+    @Test
+    @DisplayName("a static volatile declared on a class the caller cannot name still weaves and runs (#1362)")
+    void aStaticVolatileOnAnInvisibleBaseRuns() {
+        assertEquals(7, new InheritedStaticBean().touchHiddenVolatile(7),
+                "the woven access must not load the package-private declaring class as a constant, "
+                        + "which would throw IllegalAccessError");
     }
 }
