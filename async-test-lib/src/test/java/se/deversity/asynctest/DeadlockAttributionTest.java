@@ -11,6 +11,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -96,6 +97,24 @@ class DeadlockAttributionTest {
                         a.unlock();
                     }
                 }));
+    }
+
+    /**
+     * #1387. Fails if one deadlock between platform workers is reported twice, the second time by
+     * LivelockDetector as starvation with advice (a fair lock) that does not fix a lock-order bug.
+     */
+    @Test
+    void aDeadlockIsReportedOnceUnderTheDefaultPreset() {
+        AssertionError timeout = assertInstanceOf(AssertionError.class,
+                runOnItsOwnThread(() -> AsyncTestRunner.run(
+                        AsyncTestConfig.builder().licenseMockMode(true).preset(Preset.ESSENTIALS)
+                                .threads(2).invocations(1).useVirtualThreads(false).timeoutMs(3_000).build(),
+                        invertedMonitors(new CountDownLatch(0), new CountDownLatch(2)))).join());
+
+        String message = timeout.getMessage();
+        assertTrue(message.contains("DeadlockDetector"), "the deadlock is named: " + message);
+        assertFalse(message.contains("LivelockDetector"),
+                "and not a second time as starvation of the same two workers: " + message);
     }
 
     static boolean dumpNamesLockOwners() {

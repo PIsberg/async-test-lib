@@ -269,4 +269,104 @@ public class LivelockDetectorTest {
         assertEquals(viaAnalyzeLivelocks.hasIssues(), viaAnalyze.hasIssues());
         assertEquals(viaAnalyzeLivelocks.toString(), viaAnalyze.toString());
     }
+
+    // ---- A thread in a deadlock cycle is the deadlock's finding, not starvation (#1387) ----
+
+    @Test
+    void aThreadInADeadlockCycleIsLeftToTheDeadlockDetector() throws InterruptedException {
+        DeadlockDetector deadlocks = new DeadlockDetector();
+        Thread[] pair = deadlockedPair("livelock-1387-a");
+        LivelockDetector detector = new LivelockDetector();
+        detector.deferDeadlockedThreadsTo(deadlocks);
+        for (Thread worker : pair) {
+            detector.workerEnteredBody(worker);
+        }
+
+        detector.roundTimedOut();
+
+        assertTrue(detector.analyze().starvedThreads.isEmpty(),
+                "both workers are in a cycle the deadlock detector reports; calling them starved "
+                        + "counts one defect twice and advises a fair lock for a lock-order bug");
+        assertTrue(deadlocks.analyze().hasIssues(), "precondition: the deadlock detector reports the cycle");
+    }
+
+    @Test
+    void withoutADeadlockDetectorTheBlockedWorkersStayStarved() throws InterruptedException {
+        Thread[] pair = deadlockedPair("livelock-1387-b");
+        LivelockDetector detector = new LivelockDetector();
+        for (Thread worker : pair) {
+            detector.workerEnteredBody(worker);
+        }
+
+        detector.roundTimedOut();
+
+        assertEquals(2, detector.analyze().starvedThreads.size(),
+                "with deadlock detection off the starvation entry is the only signal, so it stays");
+    }
+
+    @Test
+    void aBlockedWorkerOutsideAnyCycleIsStillStarved() throws InterruptedException {
+        DeadlockDetector deadlocks = new DeadlockDetector();
+        CountDownLatch never = new CountDownLatch(1);
+        Thread waiter = new Thread(() -> {
+            try {
+                never.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "livelock-1387-waiter");
+        waiter.setDaemon(true);
+        waiter.start();
+        while (waiter.getState() != Thread.State.WAITING) {
+            Thread.sleep(5);
+        }
+        LivelockDetector detector = new LivelockDetector();
+        detector.deferDeadlockedThreadsTo(deadlocks);
+        detector.workerEnteredBody(waiter);
+
+        detector.roundTimedOut();
+
+        assertTrue(detector.analyze().starvedThreads.contains("livelock-1387-waiter"),
+                "a worker waiting on something no other thread will do is not in a lock cycle");
+        never.countDown();
+    }
+
+    /** Two daemon threads deadlocked on two monitors, returned once the JVM reports both. */
+    private static Thread[] deadlockedPair(String prefix) throws InterruptedException {
+        Object a = new Object();
+        Object b = new Object();
+        CountDownLatch bothHold = new CountDownLatch(2);
+        Thread first = new Thread(() -> lockBoth(a, b, bothHold), prefix + "-1");
+        Thread second = new Thread(() -> lockBoth(b, a, bothHold), prefix + "-2");
+        for (Thread t : new Thread[] {first, second}) {
+            t.setDaemon(true);
+            t.start();
+        }
+        java.lang.management.ThreadMXBean mx = java.lang.management.ManagementFactory.getThreadMXBean();
+        long deadline = System.nanoTime() + 10_000_000_000L;
+        while (System.nanoTime() < deadline) {
+            long[] ids = mx.findDeadlockedThreads();
+            if (ids != null && java.util.Arrays.stream(ids).filter(id -> id == first.threadId()
+                    || id == second.threadId()).count() == 2) {
+                return new Thread[] {first, second};
+            }
+            Thread.sleep(10);
+        }
+        return fail("the pair never deadlocked");
+    }
+
+    private static void lockBoth(Object x, Object y, CountDownLatch bothHold) {
+        synchronized (x) {
+            bothHold.countDown();
+            try {
+                bothHold.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            synchronized (y) {
+                bothHold.countDown();
+            }
+        }
+    }
 }

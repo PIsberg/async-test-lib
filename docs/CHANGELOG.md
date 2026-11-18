@@ -65,6 +65,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One deadlock is one finding (#1387).** At a round timeout `LivelockDetector` called every
+  worker BLOCKED or WAITING in all its samples starved, so a lock-order deadlock between platform
+  workers drew `DeadlockDetector`'s cycle and a second CRITICAL "Starved Threads" finding for the
+  same two threads, with advice (a fair lock, a randomised back-off) that does not fix it, and the
+  timeout counted "2 detector finding(s)". When deadlock detection is enabled too, a worker in a
+  cycle `DeadlockDetector` reports is now left to it; with deadlock detection off the starvation
+  entry stays, since it is then the only signal. `LivelockDetectorTest`, `DeadlockAttributionTest`.
+
 - **A `FutureTask` run by `new Thread(task)` orders its callable before a `get` (#1350).** The
   thread runs the task from `Thread.run`, inside the JDK, so neither an executor submission nor a
   woven `run()` (#1307) told the happens-before model about it, and `AtomicityValidator` reported

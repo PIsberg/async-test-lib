@@ -550,6 +550,11 @@ final class DetectorRegistry {
         // textbook circular wait came back clean. The JVM's own JSON thread dump does carry the
         // wait-for graph on JDKs whose dump names monitors, so the detector reads it - but only
         // when there is something to find there, because it costs a thread dump. See issue #367.
+        // One deadlock is one finding: a worker in a cycle the deadlock detector reports is not
+        // also starvation (#1387).
+        if (livelockDetector != null && deadlockDetector != null) {
+            livelockDetector.deferDeadlockedThreadsTo(deadlockDetector);
+        }
         if (deadlockDetector != null && cfg.useVirtualThreads) {
             deadlockDetector.enableVirtualThreadScan();
         }

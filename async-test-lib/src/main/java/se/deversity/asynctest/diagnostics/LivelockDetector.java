@@ -16,6 +16,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.jspecify.annotations.Nullable;
+
 /**
  * Says what a worker was doing when its round timed out, and reads snapshots a body takes itself.
  *
@@ -86,6 +88,9 @@ public class LivelockDetector {
     private final ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
     private volatile boolean enabled = true;
 
+    /** The run's deadlock detector, whose cycles' threads are its finding, not starvation (#1387). */
+    private volatile @Nullable DeadlockDetector deadlocks;
+
     /** The workers inside a test body right now, as the runner marks them. */
     private final Set<Thread> workersInBody = ConcurrentHashMap.newKeySet();
 
@@ -121,6 +126,22 @@ public class LivelockDetector {
     }
 
     /**
+     * Leaves the workers in a deadlock cycle {@code peer} reports to {@code peer} (#1387).
+     *
+     * <p>A deadlocked worker is BLOCKED or WAITING in every sample, which is what this detector
+     * calls starvation, so one lock-order deadlock was reported twice, the second time with advice
+     * (a fair lock, a randomised back-off) that does not fix it. The registry calls this when both
+     * detectors are enabled; with deadlock detection off the starvation entry stays, because it is
+     * then the only signal.
+     *
+     * @param peer the run's deadlock detector, or {@code null} for none
+     * @since 1.15.0
+     */
+    public void deferDeadlockedThreadsTo(@Nullable DeadlockDetector peer) {
+        deadlocks = peer;
+    }
+
+    /**
      * Classifies every worker still in its body. The runner calls this when a round has timed out,
      * before it interrupts them, so that what is sampled is what the body was doing.
      *
@@ -128,6 +149,8 @@ public class LivelockDetector {
      */
     public void roundTimedOut() {
         Map<Thread, Set<Thread.State>> seen = new HashMap<>();
+        // Asked once, and only when a worker looks starved: it costs a thread dump on virtual workers.
+        Set<Long> inReportedDeadlock = null;
         for (int sample = 0; sample < TIMEOUT_SAMPLES; sample++) {
             for (Thread worker : workersInBody) {
                 seen.computeIfAbsent(worker, k -> EnumSet.noneOf(Thread.State.class)).add(worker.getState());
@@ -149,7 +172,13 @@ public class LivelockDetector {
             if (states.contains(Thread.State.RUNNABLE)) {
                 timedOutRunning.add(name);
             } else if (BLOCKED_OR_WAITING.containsAll(states)) {
-                timedOutBlocked.add(name);
+                if (inReportedDeadlock == null) {
+                    DeadlockDetector peer = deadlocks;
+                    inReportedDeadlock = peer == null ? Set.of() : peer.threadsInReportedCycles();
+                }
+                if (!inReportedDeadlock.contains(entry.getKey().threadId())) {
+                    timedOutBlocked.add(name);
+                }
             } else {
                 timedOutElsewhere.add(name);
             }
