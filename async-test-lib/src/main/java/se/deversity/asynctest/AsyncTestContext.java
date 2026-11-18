@@ -164,6 +164,7 @@ import se.deversity.vibetags.annotations.AIPublicAPI;
 import se.deversity.vibetags.annotations.AIThreadSafe;
 import se.deversity.asynctest.report.Violation;
 import se.deversity.asynctest.telemetry.ControlledSchedule;
+import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import java.lang.ref.WeakReference;
 import java.time.Duration;
@@ -1596,7 +1597,8 @@ public final class AsyncTestContext {
         stopLending();
         AtomicityValidator atomicity = registry.atomicityValidator;
         if (atomicity != null) {
-            atomicity.noteUntrackedArrayAccesses(untrackedArrayAccesses.sum());
+            atomicity.noteUntrackedArrayAccesses(untrackedArrayAccesses.sum(),
+                    TelemetryRegistry.MAX_TRACKED_ARRAY_INDEX);
         }
         Map<String, String> reports = registry.analyzeAllNamed();
         appendExternalFindings(reports);

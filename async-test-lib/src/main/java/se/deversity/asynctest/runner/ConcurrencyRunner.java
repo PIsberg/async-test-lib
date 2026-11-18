@@ -760,12 +760,13 @@ public class ConcurrencyRunner {
             // the same count when it has findings to print.
             long untrackedArrayAccesses = phase2Context.untrackedArrayAccesses();
             if (untrackedArrayAccesses > 0) {
-                log.info("runner.telemetry.arrays-untracked test={} accesses={} "
-                        + "reason=\"arrays=true records the first 256 elements of an array, and "
+                log.info("runner.telemetry.arrays-untracked test={} accesses={} tracked={} "
+                        + "reason=\"arrays=true records the first {} elements of an array, and "
                         + "these accesses were past them, so no race on those elements is reported\" "
-                        + "hint=\"read a clean atomicity report as covering the first 256 elements "
+                        + "hint=\"read a clean atomicity report as covering the first {} elements "
                         + "of each array only\"",
-                    testMethod.getName(), untrackedArrayAccesses);
+                    testMethod.getName(), untrackedArrayAccesses, TelemetryRegistry.MAX_TRACKED_ARRAY_INDEX,
+                    TelemetryRegistry.MAX_TRACKED_ARRAY_INDEX, TelemetryRegistry.MAX_TRACKED_ARRAY_INDEX);
             }
 
             // Usually already closed by the analysis on a reporting path; close() is idempotent,

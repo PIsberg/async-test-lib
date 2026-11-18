@@ -530,7 +530,7 @@ public class AtomicityValidatorTest {
     void aReportWithFindingsSaysHowManyArrayAccessesWentUnchecked() {
         AtomicityValidator validator = new AtomicityValidator();
         validator.detectCheckThenActViolation("flag", "A", "B", true);
-        validator.noteUntrackedArrayAccesses(44);
+        validator.noteUntrackedArrayAccesses(44, 256);
 
         String text = validator.analyzeAtomicity().toString();
 

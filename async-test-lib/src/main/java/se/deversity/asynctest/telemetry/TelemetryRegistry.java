@@ -1,6 +1,8 @@
 package se.deversity.asynctest.telemetry;
 
 import se.deversity.asynctest.AgentConcurrencyUtilHooks;
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
 import se.deversity.asynctest.AgentMonitorHooks;
 import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
@@ -534,7 +536,8 @@ public final class TelemetryRegistry {
      * Array elements past this index are not recorded (#1250). A dropped access can only miss a
      * race, never invent one, and it keeps the name table and the per-element state bounded.
      */
-    static final int MAX_TRACKED_ARRAY_INDEX = 256;
+    @API(status = Status.INTERNAL, since = "1.15.0")
+    public static final int MAX_TRACKED_ARRAY_INDEX = 256;
 
     /** Element kind names, in the order of the array opcodes, then {@code boolean}. */
     private static final String[] ARRAY_KINDS =
