@@ -290,13 +290,47 @@ public final class AgentConcurrencyUtilHooks {
      * scheduling point in between. Bounded, so a task that gets itself costs a pause, not a hang.
      */
     private static void awaitDirectRun(Object task) {
-        if (!RUNNING_DIRECTLY.contains(task)) {
+        spinWhile(STILL_RUNNING_DIRECTLY, task);
+    }
+
+    /** Whether a direct run of a task is still inside {@link #futureTaskRun}; a constant, so no call allocates. */
+    private static final Predicate<Object> STILL_RUNNING_DIRECTLY = RUNNING_DIRECTLY::contains;
+
+    /** Whether a thread has not ended yet; a constant, so no call allocates. */
+    private static final Predicate<Thread> STILL_ALIVE = Thread::isAlive;
+
+    /**
+     * Spins while {@code going} holds for {@code subject}, for at most
+     * {@link #DIRECT_RUN_RETURN_NANOS}: the wait between a task completing and the run that
+     * completed it handing over (#1307, #1350). Bounded, so a task that gets itself costs a pause,
+     * not a hang.
+     */
+    private static <T> void spinWhile(Predicate<T> going, T subject) {
+        if (!going.test(subject)) {
             return;
         }
         long deadline = System.nanoTime() + DIRECT_RUN_RETURN_NANOS;
-        while (RUNNING_DIRECTLY.contains(task) && System.nanoTime() - deadline < 0) {
+        while (going.test(subject) && System.nanoTime() - deadline < 0) {
             Thread.onSpinWait();
         }
+    }
+
+    /**
+     * Joins the thread a woven class constructed around {@code task}, once it has ended (#1350).
+     *
+     * <p>A get that observed the task complete returns while that thread may still be leaving
+     * {@code FutureTask.run} and {@code Thread.run}, where nothing of the task's runs any more, so
+     * waiting for its end is waiting for nothing the task did. Bounded like
+     * {@link #awaitDirectRun}: a thread still alive after it is not joined, since
+     * {@link HappensBefore#join} orders nothing for a live thread.
+     */
+    private static void joinThreadThatRan(Object task) {
+        Thread runner = AgentThreadHooks.runnerOf(task);
+        if (runner == null) {
+            return;
+        }
+        spinWhile(STILL_ALIVE, runner);
+        HappensBefore.join(runner);
     }
 
     /**
@@ -8055,10 +8089,14 @@ public final class AgentConcurrencyUtilHooks {
     static void observed(Object future, @Nullable Handed handed) {
         if (future instanceof CompletableFuture) {
             HappensBefore.acquire(future);
-        } else if (futureTaskRunDirectly && future instanceof FutureTask) {
-            // A task its caller ran itself released at the end of that run (#1307).
-            awaitDirectRun(future);
-            HappensBefore.acquire(future);
+        } else if (future instanceof FutureTask) {
+            if (futureTaskRunDirectly) {
+                // A task its caller ran itself released at the end of that run (#1307).
+                awaitDirectRun(future);
+                HappensBefore.acquire(future);
+            }
+            // A task a woven new Thread(task) ran is ordered by that thread's end (#1350).
+            joinThreadThatRan(future);
         }
         if (handed instanceof HandedAll all) {
             all.observed();

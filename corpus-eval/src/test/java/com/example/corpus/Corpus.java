@@ -6580,6 +6580,22 @@ final class Corpus {
                             + "completed it, unordered with the other threads' reads",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_futureTask_runByAThreadOfItsOwn", JDK,
+                    "java.util.concurrent.FutureTask",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread starts new Thread(task) around a FutureTask and the others get "
+                            + "its result: get returns only after the callable finished on that "
+                            + "thread, so its writes precede every read (#1350)"),
+
+            new RecordingSubject("idiom_futureTask_readWithoutTheGet", JDK,
+                    "java.util.concurrent.FutureTask",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same task with the others reading what the callable writes without "
+                            + "the get, unordered with the started thread's write",
+                    IssueSeverity.HIGH),
+
             // --- A bug on a thread the body starts and joins (#1339): the detectors that judge one
             //     event on the thread it happens on heard nothing from such a thread.
 

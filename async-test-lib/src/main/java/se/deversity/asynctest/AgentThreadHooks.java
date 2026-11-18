@@ -1,10 +1,12 @@
 package se.deversity.asynctest;
 
+import java.lang.ref.WeakReference;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.WeakHashMap;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.ThreadFactory;
 
 import org.apiguardian.api.API;
@@ -71,7 +73,7 @@ import se.deversity.vibetags.annotations.AIContract;
  * @since 1.12.3
  */
 @API(status = Status.INTERNAL)
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures of the hooks CollectionAccessWeaver.THREAD_ENTRIES substitutes (threadStart, threadJoin, threadIsAlive, threadSetDaemon, threadStartVirtual and the builder's threadBuilderStart, threadBuilderDaemon, threadBuilderUnstarted and threadBuilderFactory, and threadFactoryNewThread) and of threadConstructed, which ThreadConstructionWeaver inserts after each thread a woven class constructs, and of interruptSwallowingMethodEntered, which InterruptHandlerWeaver inserts at the start of a method holding an InterruptedException handler that neither rethrows nor restores the flag, are matched at weave time, and threadWeavingInstalled is invoked by name from AsyncTestAgent after the transformer is installed; none of them can change independently of the agent. Every substituting hook must perform the original call on the receiver, or what the JDK does for it (a builder's start is unstarted then start), and propagate what it throws unchanged; threadFactoryNewThread returns what the factory returned, null included. threadConstructed replaces nothing and runs inside user constructors, so it performs no call and must not throw; interruptSwallowingMethodEntered replaces nothing either, runs on every entry of the method it was inserted into, and must cost one set lookup once a run has seen its locations. threadSetDaemon records the decision only after setDaemon returned, so a call that throws (an already started thread) records nothing.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures of the hooks CollectionAccessWeaver.THREAD_ENTRIES substitutes (threadStart, threadJoin, threadIsAlive, threadSetDaemon, threadStartVirtual and the builder's threadBuilderStart, threadBuilderDaemon, threadBuilderUnstarted and threadBuilderFactory, and threadFactoryNewThread) and of threadConstructed, which ThreadConstructionWeaver inserts after each thread a woven class constructs, and threadTarget, which it inserts before a new Thread(Runnable) or new Thread(Runnable, String) with the target (#1350), and of interruptSwallowingMethodEntered, which InterruptHandlerWeaver inserts at the start of a method holding an InterruptedException handler that neither rethrows nor restores the flag, are matched at weave time, and threadWeavingInstalled is invoked by name from AsyncTestAgent after the transformer is installed; none of them can change independently of the agent. Every substituting hook must perform the original call on the receiver, or what the JDK does for it (a builder's start is unstarted then start), and propagate what it throws unchanged; threadFactoryNewThread returns what the factory returned, null included. threadConstructed and threadTarget replace nothing and run inside user constructors, so they perform no call and must not throw; interruptSwallowingMethodEntered replaces nothing either, runs on every entry of the method it was inserted into, and must cost one set lookup once a run has seen its locations. threadSetDaemon records the decision only after setDaemon returned, so a call that throws (an already started thread) records nothing.")
 public final class AgentThreadHooks {
 
     /** Explicit {@code setDaemon} decisions seen by a woven call site, by thread identity. */
@@ -91,6 +93,23 @@ public final class AgentThreadHooks {
      */
     private static final Map<Thread, Boolean> CONSTRUCTED_IN_WOVEN_CODE =
             Collections.synchronizedMap(new WeakHashMap<>());
+
+    /**
+     * The {@code FutureTask} a woven {@code new Thread(task)} on this thread handed over, waiting
+     * for the constructor to finish and {@link #threadConstructed} to pair it with the thread
+     * (#1350).
+     */
+    private static final ThreadLocal<@Nullable Object> PENDING_TARGET = new ThreadLocal<>();
+
+    /**
+     * Each {@code FutureTask} a woven class constructed a thread around, and that thread (#1350).
+     * Weak both ways: the thread holds its task, so a strong value would keep the key alive.
+     */
+    private static final Map<Object, WeakReference<Thread>> TASK_RUNNERS =
+            Collections.synchronizedMap(new WeakHashMap<>());
+
+    /** Whether {@link #TASK_RUNNERS} was ever written, so a get looks nothing up until it was. */
+    private static volatile boolean taskRunnersSeen;
 
     /**
      * Factories a woven {@code factory()} call took from a platform builder, by identity, with the
@@ -174,6 +193,50 @@ public final class AgentThreadHooks {
      */
     public static void threadConstructed(Thread thread) {
         CONSTRUCTED_IN_WOVEN_CODE.put(thread, Thread.currentThread().isDaemon());
+        Object task = PENDING_TARGET.get();
+        if (task != null) {
+            PENDING_TARGET.remove();
+            willRun(task, thread);
+        }
+    }
+
+    /** Notes that {@code thread} will run {@code task} when that is a {@code FutureTask} (#1350). */
+    private static void willRun(@Nullable Object task, Thread thread) {
+        if (task instanceof FutureTask) {
+            TASK_RUNNERS.put(task, new WeakReference<>(thread));
+            taskRunnersSeen = true;
+        }
+    }
+
+    /**
+     * Called by a woven class just before the constructor of a {@code new Thread(task)} or
+     * {@code new Thread(task, name)} runs, with {@code task} (#1350). A {@code FutureTask} run
+     * this way is run by {@code Thread.run} inside the JDK, which nothing weaves, so this is the
+     * only place the library can learn which thread will run it. The pairing completes in
+     * {@link #threadConstructed}. Inserted, not substituted, so there is no call to perform; runs
+     * inside user code, so it must not throw.
+     *
+     * @param target the {@code Runnable} the thread is being constructed around
+     * @since 1.15.0
+     */
+    public static void threadTarget(Object target) {
+        if (target instanceof FutureTask) {
+            PENDING_TARGET.set(target);
+        }
+    }
+
+    /**
+     * {@return the thread a woven class constructed around {@code task}, or {@code null}}
+     *
+     * <p>A get that observed the task complete waits for this thread to end and joins it, since
+     * nothing runs on it after the task returns (#1350).
+     */
+    static @Nullable Thread runnerOf(Object task) {
+        if (!taskRunnersSeen) {
+            return null;
+        }
+        WeakReference<Thread> runner = TASK_RUNNERS.get(task);
+        return runner == null ? null : runner.get();
     }
 
     /**
@@ -238,6 +301,7 @@ public final class AgentThreadHooks {
      */
     public static Thread threadBuilderUnstarted(Thread.Builder receiver, Runnable task) {
         Thread thread = receiver.unstarted(task);
+        willRun(task, thread);
         if (!thread.isVirtual()) {
             constructedWithDecision(thread, BUILDER_DAEMON.get(receiver));
         }
@@ -339,6 +403,7 @@ public final class AgentThreadHooks {
      */
     public static Thread threadStartVirtual(Runnable task) {
         Thread thread = Thread.ofVirtual().unstarted(task);
+        willRun(task, thread);
         forkAndAttribute(thread);
         thread.start();
         return thread;

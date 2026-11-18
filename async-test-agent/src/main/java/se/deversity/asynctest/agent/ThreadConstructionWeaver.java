@@ -40,8 +40,16 @@ import org.jspecify.annotations.Nullable;
  *       that has stored to local 0 is left alone, since local 0 may no longer be {@code this}.</li>
  * </ul>
  *
- * <p>Both insert one value and a static call that consumes it, after an instruction and before
- * whatever follows: no branch, no new frame, only {@code maxStack} grows, which
+ * <p>And one more, before the constructor rather than after (#1350): the {@code INVOKESPECIAL} of a
+ * {@code new Thread(task)} or {@code new Thread(task, name)} gets a copy of {@code task} handed to
+ * the hook's {@code threadTarget(Object)} first, a {@code DUP} for the first shape and
+ * {@code DUP2, POP} for the second. A {@code FutureTask} run that way is run by {@code Thread.run}
+ * inside the JDK, so the target is the only way the library learns which thread ran it. The other
+ * {@code Thread} constructors, with a {@code ThreadGroup} or a stack size, are left alone, and a
+ * library without {@code threadTarget} gets none of these calls.
+ *
+ * <p>All of them insert values and a static call that consumes them, around one instruction and
+ * before whatever follows: no branch, no new frame, only {@code maxStack} grows, which
  * {@code COMPUTE_MAXS} covers. No member is added, so this is safe under retransformation with
  * {@code disableClassFormatChanges()}. The counting relies on a {@code new} expression's
  * {@code NEW ... <init>} being emitted in order in one method, which every Java compiler does; a
@@ -66,11 +74,26 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
 
     private static final String HOOK_DESCRIPTOR = "(Ljava/lang/Thread;)V";
 
+    /** The name of the hook handed a new thread's target before its constructor (#1350). */
+    static final String TARGET_HOOK = "threadTarget";
+
+    private static final String TARGET_HOOK_DESCRIPTOR = "(Ljava/lang/Object;)V";
+
+    /** The constructor {@code new Thread(task)} calls. */
+    private static final String RUNNABLE_CONSTRUCTOR = "(Ljava/lang/Runnable;)V";
+
+    /** The constructor {@code new Thread(task, name)} calls. */
+    private static final String NAMED_RUNNABLE_CONSTRUCTOR = "(Ljava/lang/Runnable;Ljava/lang/String;)V";
+
     /** The internal name of the class holding {@link #HOOK}. */
     private final String hookOwner;
 
-    private ThreadConstructionWeaver(String hookOwner) {
+    /** Whether that class has {@link #TARGET_HOOK}; a library from before #1350 does not. */
+    private final boolean takesTargets;
+
+    private ThreadConstructionWeaver(String hookOwner, boolean takesTargets) {
         this.hookOwner = hookOwner;
+        this.takesTargets = takesTargets;
     }
 
     /**
@@ -79,7 +102,8 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
      * @param threadHooks the class holding the hook, resolved in the weaving class loader; one
      *                    without a public static {@code threadConstructed(Thread)} is a version
      *                    skew between agent and library, refused here rather than woven into a
-     *                    call that would fail inside user code
+     *                    call that would fail inside user code; one without
+     *                    {@code threadTarget(Object)} is an older library, and gets the marker only
      */
     static ThreadConstructionWeaver of(Class<?> threadHooks) {
         try {
@@ -88,7 +112,16 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
             throw new IllegalStateException("no hook " + HOOK + "(Thread) on "
                     + threadHooks.getName() + "; agent and library versions disagree", e);
         }
-        return new ThreadConstructionWeaver(Type.getInternalName(threadHooks));
+        return new ThreadConstructionWeaver(Type.getInternalName(threadHooks), hasTargetHook(threadHooks));
+    }
+
+    private static boolean hasTargetHook(Class<?> threadHooks) {
+        try {
+            threadHooks.getMethod(TARGET_HOOK, Object.class);
+            return true;
+        } catch (NoSuchMethodException olderLibrary) {
+            return false;
+        }
     }
 
     @Override
@@ -129,7 +162,7 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
                                              String signature, String[] exceptions) {
                 MethodVisitor delegate =
                         super.visitMethod(access, name, descriptor, signature, exceptions);
-                return new MarkingVisitor(delegate, hookOwner,
+                return new MarkingVisitor(delegate, hookOwner, takesTargets,
                         CONSTRUCTOR.equals(name) ? threadSuperclass : null);
             }
         };
@@ -162,6 +195,9 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
 
         private final String hookOwner;
 
+        /** Whether to hand a new thread's target to the hook before its constructor (#1350). */
+        private final boolean takesTargets;
+
         /** The superclass whose constructor call marks {@code this}, or null for none. */
         private final @Nullable String markThisAfter;
 
@@ -174,9 +210,11 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
         /** Whether this constructor still has its superclass call, and {@code this}, to mark. */
         private boolean thisUnmarked;
 
-        MarkingVisitor(MethodVisitor delegate, String hookOwner, @Nullable String markThisAfter) {
+        MarkingVisitor(MethodVisitor delegate, String hookOwner, boolean takesTargets,
+                       @Nullable String markThisAfter) {
             super(Opcodes.ASM9, delegate);
             this.hookOwner = hookOwner;
+            this.takesTargets = takesTargets;
             this.markThisAfter = markThisAfter;
             this.thisUnmarked = markThisAfter != null;
         }
@@ -204,11 +242,16 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
         @Override
         public void visitMethodInsn(int opcode, String owner, String name, String descriptor,
                                     boolean isInterface) {
+            boolean initialisesANewThread = isConstructorCall(opcode, name)
+                    && THREAD.equals(owner) && openThreads > 0;
+            if (takesTargets && initialisesANewThread) {
+                handOverTarget(descriptor);
+            }
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
-            if (opcode != Opcodes.INVOKESPECIAL || !CONSTRUCTOR.equals(name)) {
+            if (!isConstructorCall(opcode, name)) {
                 return;
             }
-            if (THREAD.equals(owner) && openThreads > 0) {
+            if (initialisesANewThread) {
                 openThreads--;
                 super.visitInsn(Opcodes.DUP);
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, hookOwner, HOOK, HOOK_DESCRIPTOR,
@@ -223,6 +266,27 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
                 super.visitMethodInsn(Opcodes.INVOKESTATIC, hookOwner, HOOK, HOOK_DESCRIPTOR,
                         false);
             }
+        }
+
+        private static boolean isConstructorCall(int opcode, String name) {
+            return opcode == Opcodes.INVOKESPECIAL && CONSTRUCTOR.equals(name);
+        }
+
+        /**
+         * Hands a copy of the target of a {@code new Thread(task)} or {@code new Thread(task,
+         * name)} to the hook, leaving the constructor's arguments as they were (#1350).
+         */
+        private void handOverTarget(String descriptor) {
+            if (RUNNABLE_CONSTRUCTOR.equals(descriptor)) {
+                super.visitInsn(Opcodes.DUP);                 // task -> task, task
+            } else if (NAMED_RUNNABLE_CONSTRUCTOR.equals(descriptor)) {
+                super.visitInsn(Opcodes.DUP2);                // task, name -> task, name, task, name
+                super.visitInsn(Opcodes.POP);                 //            -> task, name, task
+            } else {
+                return;
+            }
+            super.visitMethodInsn(Opcodes.INVOKESTATIC, hookOwner, TARGET_HOOK, TARGET_HOOK_DESCRIPTOR,
+                    false);
         }
     }
 }

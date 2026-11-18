@@ -27,8 +27,29 @@ class ThreadConstructionWeaverTest {
     /** The threads the woven code reported constructing, in order. */
     public static final List<Thread> CONSTRUCTED = new CopyOnWriteArrayList<>();
 
+    /** The targets the woven code handed over before constructing a thread, in order (#1350). */
+    public static final List<Object> TARGETS = new CopyOnWriteArrayList<>();
+
     /** Stands in for the library hook, recording instead of marking. */
     public static class Recorder {
+
+        /**
+         * @param thread the thread the woven code just constructed
+         */
+        public static void threadConstructed(Thread thread) {
+            CONSTRUCTED.add(thread);
+        }
+
+        /**
+         * @param target the Runnable the woven code is about to construct a thread around
+         */
+        public static void threadTarget(Object target) {
+            TARGETS.add(target);
+        }
+    }
+
+    /** A library from before #1350: it marks constructions and takes no targets. */
+    public static class MarkerOnly {
 
         /**
          * @param thread the thread the woven code just constructed
@@ -41,12 +62,17 @@ class ThreadConstructionWeaverTest {
     @BeforeEach
     void clear() {
         CONSTRUCTED.clear();
+        TARGETS.clear();
     }
 
     private static Class<?> woven(Class<?> type) {
+        return wovenWith(type, Recorder.class);
+    }
+
+    private static Class<?> wovenWith(Class<?> type, Class<?> hooks) {
         return new ByteBuddy()
                 .redefine(type)
-                .visit(ThreadConstructionWeaver.of(Recorder.class))
+                .visit(ThreadConstructionWeaver.of(hooks))
                 .make()
                 .load(ThreadConstructionWeaverTest.class.getClassLoader(),
                         ClassLoadingStrategy.Default.CHILD_FIRST)
@@ -111,6 +137,48 @@ class ThreadConstructionWeaverTest {
         assertEquals(List.of(thread), CONSTRUCTED,
                 "only the subclass instance: the superclass instance built for its argument is "
                         + "marked by the superclass's own constructor, which is not woven here");
+    }
+
+    /**
+     * #1350: a FutureTask run by {@code new Thread(task)} is run inside the JDK, so a get on it can
+     * only be ordered if the library learns which thread took it, and the target is only on the
+     * stack before the constructor call.
+     */
+    @Test
+    @DisplayName("the Runnable of a new Thread(task) or new Thread(task, name) is handed over before the constructor")
+    void theTargetOfANewThreadIsHandedOver() throws Exception {
+        Class<?> sample = woven(ThreadConstructionSample.class);
+        Runnable task = () -> { };
+
+        sample.getMethod("plain", Runnable.class).invoke(null, task);
+        assertEquals(List.of(task), TARGETS, "new Thread(task)");
+
+        TARGETS.clear();
+        sample.getMethod("asAnArgument", Runnable.class).invoke(null, task);
+        assertEquals(List.of(task), TARGETS, "new Thread(task, name)");
+
+        TARGETS.clear();
+        CONSTRUCTED.clear();
+        sample.getMethod("nested", Runnable.class).invoke(null, task);
+        assertEquals(2, TARGETS.size(), "both nested constructions: " + TARGETS);
+        assertSame(task, TARGETS.get(0), "the inner thread's task first");
+        assertSame(CONSTRUCTED.get(0), TARGETS.get(1), "then the inner thread, the outer one's target");
+
+        TARGETS.clear();
+        sample.getMethod("withABranchInItsArguments", Runnable.class, boolean.class).invoke(null, task, true);
+        assertEquals(List.of(task), TARGETS, "a branch inside the arguments");
+    }
+
+    @Test
+    @DisplayName("a library without threadTarget still has its constructions marked")
+    void aLibraryWithoutThreadTargetStillMarks() throws Exception {
+        Class<?> sample = wovenWith(ThreadConstructionSample.class, MarkerOnly.class);
+        Runnable task = () -> { };
+
+        Thread plain = (Thread) sample.getMethod("plain", Runnable.class).invoke(null, task);
+
+        assertEquals(List.of(plain), CONSTRUCTED, "the marker is unchanged");
+        assertEquals(List.of(), TARGETS, "and no call is woven to a hook that is not there");
     }
 
     @Test

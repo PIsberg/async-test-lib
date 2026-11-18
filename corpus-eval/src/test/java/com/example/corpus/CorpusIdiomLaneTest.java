@@ -3363,6 +3363,46 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 40. A FutureTask run by new Thread(task), its result read through get (#1350) ------
+
+    /** A task whose callable fills {@code direct} and returns it. */
+    private static final class Started {
+        final Limits direct = new Limits();
+        final FutureTask<Limits> task = new FutureTask<>(() -> {
+            direct.limit = 10;
+            return direct;
+        });
+    }
+
+    private static final Rounds<Started> STARTED = new Rounds<>(Started::new);
+    private static final Rounds<Started> STARTED_UNAWAITED = new Rounds<>(Started::new);
+
+    /** One thread starts a thread around the task; the others get its result and read it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_futureTask_runByAThreadOfItsOwn() {
+        correct(() -> {
+            Turn<Started> turn = STARTED.next();
+            if (turn.opensTheRound()) {
+                new Thread(turn.shared().task).start();
+            } else {
+                use(getUnchecked(turn.shared().task).limit);
+            }
+        });
+    }
+
+    /** The same task, with the others reading what the callable writes without the get. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_futureTask_readWithoutTheGet() {
+        broken(() -> {
+            Turn<Started> turn = STARTED_UNAWAITED.next();
+            if (turn.opensTheRound()) {
+                new Thread(turn.shared().task).start();
+            } else {
+                use(turn.shared().direct.limit);
+            }
+        });
+    }
+
     // --- 34. Values read through a navigation read and through entrySet() (#1294) -------------
 
     private static final Rounds<ConcurrentSkipListMap<String, Limits>> ORDERED =
