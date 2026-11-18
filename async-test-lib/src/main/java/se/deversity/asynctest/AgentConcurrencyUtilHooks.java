@@ -300,6 +300,27 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * Joins the thread a woven class constructed around {@code task}, once it has ended (#1350).
+     *
+     * <p>A get that observed the task complete returns while that thread may still be leaving
+     * {@code FutureTask.run} and {@code Thread.run}, where nothing of the task's runs any more, so
+     * waiting for its end is waiting for nothing the task did. Bounded like
+     * {@link #awaitDirectRun}: a thread still alive after it is not joined, since
+     * {@link HappensBefore#join} orders nothing for a live thread.
+     */
+    private static void joinThreadThatRan(Object task) {
+        Thread runner = AgentThreadHooks.runnerOf(task);
+        if (runner == null) {
+            return;
+        }
+        long deadline = System.nanoTime() + DIRECT_RUN_RETURN_NANOS;
+        while (runner.isAlive() && System.nanoTime() - deadline < 0) {
+            Thread.onSpinWait();
+        }
+        HappensBefore.join(runner);
+    }
+
+    /**
      * Weaves {@code Semaphore.release()}.
      *
      * @param receiver the semaphore
@@ -8055,10 +8076,14 @@ public final class AgentConcurrencyUtilHooks {
     static void observed(Object future, @Nullable Handed handed) {
         if (future instanceof CompletableFuture) {
             HappensBefore.acquire(future);
-        } else if (futureTaskRunDirectly && future instanceof FutureTask) {
-            // A task its caller ran itself released at the end of that run (#1307).
-            awaitDirectRun(future);
-            HappensBefore.acquire(future);
+        } else if (future instanceof FutureTask) {
+            if (futureTaskRunDirectly) {
+                // A task its caller ran itself released at the end of that run (#1307).
+                awaitDirectRun(future);
+                HappensBefore.acquire(future);
+            }
+            // A task a woven new Thread(task) ran is ordered by that thread's end (#1350).
+            joinThreadThatRan(future);
         }
         if (handed instanceof HandedAll all) {
             all.observed();

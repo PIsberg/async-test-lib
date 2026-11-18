@@ -65,6 +65,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `FutureTask` run by `new Thread(task)` orders its callable before a `get` (#1350).** The
+  thread runs the task from `Thread.run`, inside the JDK, so neither an executor submission nor a
+  woven `run()` (#1307) told the happens-before model about it, and `AtomicityValidator` reported
+  the caller's read of the result as an unordered publication. With the agent, a woven class now
+  hands the `Runnable` of a `new Thread(task)` or `new Thread(task, name)` to the library before
+  the constructor runs, a woven `Thread.Builder` `start`/`unstarted` or `startVirtualThread` notes
+  the task it was given, and a woven `get` that observed such a task complete waits briefly for its
+  thread to end and joins it. Not covered: the `Thread` constructors with a `ThreadGroup` or a
+  stack size, and a `Thread` subclass constructed around the task.
+  `AgentHappensBeforeFeedTest`, `ThreadConstructionWeaverTest`, corpus idiom pair
+  `idiom_futureTask_runByAThreadOfItsOwn` / `idiom_futureTask_readWithoutTheGet`.
+
 - **A static field reached through a subclass is one field to the agent (#1362).** javac names a
   static field instruction by its qualifying type, so a static volatile declared on `Base`,
   written as `Base.f` and read as `Sub.f`, gave the volatile store one class and the load

@@ -781,6 +781,65 @@ class AgentHappensBeforeFeedTest {
     }
 
     /**
+     * The test thread hands a {@code FutureTask} to {@code new Thread(task)}, starts it, gets the
+     * result and reads what the callable wrote (#1350). {@code targetSeen} is whether the woven
+     * constructor handed the task over, as the weaver does from a woven class.
+     */
+    private static boolean threadRunTaskReported(boolean targetSeen) throws Exception {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        FutureTask<Object> task = new FutureTask<>(() -> {
+            Box box = new Box();
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            return box;
+        });
+        if (targetSeen) {
+            AgentThreadHooks.threadTarget(task);
+        }
+        Thread runner = new Thread(task);
+        AgentThreadHooks.threadConstructed(runner);
+        AgentThreadHooks.threadStart(runner);
+        Box got = (Box) AgentConcurrencyUtilHooks.get(task);
+        detector.recordFieldRead(got, "value");
+        runner.join();
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    @Test
+    @DisplayName("a FutureTask run by a woven Thread.Builder start or startVirtualThread orders its callable before a get (#1350)")
+    void aFutureTaskRunByABuiltThreadPublishes() throws Exception {
+        for (int how = 0; how < 3; how++) {
+            RaceConditionDetector detector = new RaceConditionDetector();
+            FutureTask<Object> task = new FutureTask<>(() -> {
+                Box box = new Box();
+                box.value = 1;
+                detector.recordFieldWrite(box, "value");
+                return box;
+            });
+            Thread runner = switch (how) {
+                case 0 -> AgentThreadHooks.threadBuilderStart(Thread.ofPlatform(), task);
+                case 1 -> AgentThreadHooks.threadBuilderStart(Thread.ofVirtual(), task);
+                default -> AgentThreadHooks.threadStartVirtual(task);
+            };
+            Box got = (Box) AgentConcurrencyUtilHooks.get(task);
+            detector.recordFieldRead(got, "value");
+            runner.join();
+            assertFalse(detector.analyzeRaceConditions().hasIssues(),
+                    "start " + how + ": the woven start was handed the task, so its thread is known");
+        }
+    }
+
+    @Test
+    @DisplayName("a FutureTask run by new Thread(task) orders its callable before a get (#1350)")
+    void aFutureTaskRunByItsOwnThreadPublishes() throws Exception {
+        assertFalse(threadRunTaskReported(true),
+                "get returned after the task completed on the thread constructed around it, so "
+                        + "everything the callable did happens before the read");
+        assertTrue(threadRunTaskReported(false),
+                "without the constructor handing the task over, nothing knows which thread ran it");
+    }
+
+    /**
      * One thread writes a field and then stores into a primitive atomic, another reads the atomic
      * and then the field (#1315). {@code store} and {@code load} are the woven or the unwoven call.
      */
