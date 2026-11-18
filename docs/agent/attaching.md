@@ -213,7 +213,9 @@ instrumented type is recorded as an access of the array named for its kind and i
 and judged per element by the same lockset and happens-before rules as a field: each thread on its
 own slot is not a race, one slot every thread bumps is, and a slot bumped under one lock is not.
 Only the first 256 indices of an array are observed; an access past that is not recorded, which can
-miss a race but never invents one. The type initializer is not woven. Array instructions are more
+miss a race but never invents one. The run counts those accesses: when there were any it logs
+`runner.telemetry.arrays-untracked` at INFO with the count, and an atomicity report with findings
+ends with a "Not checked" line giving it (#1262). The type initializer is not woven. Array instructions are more
 frequent than field instructions in most code, which is why this is a separate opt-in.
 
 **`collections=true`: reaching state a class does not own.**

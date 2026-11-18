@@ -1,7 +1,10 @@
 package se.deversity.asynctest.telemetry;
 
 import se.deversity.asynctest.AgentConcurrencyUtilHooks;
+import org.apiguardian.api.API;
+import org.apiguardian.api.API.Status;
 import se.deversity.asynctest.AgentMonitorHooks;
+import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
 import se.deversity.asynctest.diagnostics.HappensBefore;
 import se.deversity.asynctest.diagnostics.HeldLocks;
@@ -533,7 +536,8 @@ public final class TelemetryRegistry {
      * Array elements past this index are not recorded (#1250). A dropped access can only miss a
      * race, never invent one, and it keeps the name table and the per-element state bounded.
      */
-    static final int MAX_TRACKED_ARRAY_INDEX = 256;
+    @API(status = Status.INTERNAL, since = "1.15.0")
+    public static final int MAX_TRACKED_ARRAY_INDEX = 256;
 
     /** Element kind names, in the order of the array opcodes, then {@code boolean}. */
     private static final String[] ARRAY_KINDS =
@@ -577,8 +581,14 @@ public final class TelemetryRegistry {
     }
 
     private static void arrayAccess(@Nullable Object array, int index, int kind, boolean write) {
-        if (array == null || index < 0 || index >= MAX_TRACKED_ARRAY_INDEX || kind < 0
-                || kind >= ARRAY_KINDS.length - 1 || index >= java.lang.reflect.Array.getLength(array)) {
+        if (array == null || index < 0 || kind < 0 || kind >= ARRAY_KINDS.length - 1
+                || index >= java.lang.reflect.Array.getLength(array)) {
+            return;                             // the instruction throws, or it is not an element
+        }
+        if (index >= MAX_TRACKED_ARRAY_INDEX) {
+            // A real element, past the bound: not recorded, but counted, so the run's report can
+            // say it did not look (#1262).
+            AsyncTestContext.arrayAccessUntracked();
             return;
         }
         // BALOAD and BASTORE serve both byte[] and boolean[].

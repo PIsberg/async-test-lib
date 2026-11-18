@@ -523,4 +523,27 @@ public class AtomicityValidatorTest {
         assertFalse(report.hasIssues(), "one thread touched every object, so nothing is raced");
         assertEquals(receivers, boxes.length);
     }
+
+    // ---- arrays=true drops elements past index 255; the report says how many (#1262) ----
+
+    @Test
+    void aReportWithFindingsSaysHowManyArrayAccessesWentUnchecked() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.detectCheckThenActViolation("flag", "A", "B", true);
+        validator.noteUntrackedArrayAccesses(44, 256);
+
+        String text = validator.analyzeAtomicity().toString();
+
+        assertTrue(text.contains("44 accesses to array elements past the first 256 were not checked"),
+                "a reader of a report about array elements must know some were never looked at: " + text);
+    }
+
+    @Test
+    void noUntrackedArrayAccessesAddsNoLine() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.detectCheckThenActViolation("flag", "A", "B", true);
+
+        assertFalse(validator.analyzeAtomicity().toString().contains("array elements past"),
+                "with nothing dropped there is nothing to say");
+    }
 }

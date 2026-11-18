@@ -577,6 +577,12 @@ public class AtomicityValidator {
      */
     private final Queue<String> atomicityViolations = new ConcurrentLinkedQueue<>();
 
+    /** Set by the run before analysis: array accesses it could not record (#1262). */
+    private volatile long untrackedArrayAccesses;
+
+    /** Set with {@link #untrackedArrayAccesses}: the elements of an array that were recorded. */
+    private volatile int trackedArrayElements;
+
     /**
      * Current invocation round, bumped by {@link #markInvocationStart()}. Accesses from
      * different rounds are ordered by the runner's own happens-before edges (the round's
@@ -1389,12 +1395,28 @@ public class AtomicityValidator {
     }
 
     /**
+     * Tells the next {@link #analyzeAtomicity()} how many array element accesses went unrecorded
+     * because the element was past the first 256, which {@code arrays=true} records (#1262). A dropped access can only hide a race, so the report says how many there were
+     * rather than reading as covering every element.
+     *
+     * @param count           the run's untracked array accesses; zero or less says nothing
+     * @param trackedElements how many leading elements of an array {@code arrays=true} records
+     * @since 1.15.0
+     */
+    public void noteUntrackedArrayAccesses(long count, int trackedElements) {
+        untrackedArrayAccesses = count;
+        this.trackedArrayElements = trackedElements;
+    }
+
+    /**
      * Analyses what has been recorded about atomicity and builds the report for it.
      *
      * @return the findings this detector collected during the run
      */
     public AtomicityReport analyzeAtomicity() {
         AtomicityReport report = new AtomicityReport();
+        report.untrackedArrayAccesses = untrackedArrayAccesses;
+        report.trackedArrayElements = trackedArrayElements;
         for (String violation : atomicityViolations) {
             report.add(report.checkThenActViolations, "checkThenAct", violation);
         }
@@ -2294,6 +2316,12 @@ public class AtomicityValidator {
          */
         public final List<Violation> structuredViolations = new ArrayList<>();
 
+        /** Array element accesses the run did not record, past the tracked bound (#1262). */
+        long untrackedArrayAccesses;
+
+        /** The tracked bound itself: how many leading elements of an array were recorded. */
+        int trackedArrayElements;
+
         /** Adds a finding to its text set and, when it is new there, as a structured finding. */
         void add(Set<String> section, String kind, String message) {
             if (section.add(message)) {
@@ -2342,6 +2370,12 @@ public class AtomicityValidator {
                 for (String publication : unorderedPublications) {
                     sb.append("  - ").append(publication).append('\n');
                 }
+            }
+            if (untrackedArrayAccesses > 0) {
+                sb.append("\nNot checked: ").append(untrackedArrayAccesses)
+                        .append(" accesses to array elements past the first ").append(trackedArrayElements)
+                        .append(" were not checked; a race on them would not appear above (arrays=true tracks "
+                                + "the first ").append(trackedArrayElements).append(" elements, #1262).\n");
             }
             sb.append("\nFix: synchronize the full compound operation or use CAS-based primitives");
             return sb.toString();
