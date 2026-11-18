@@ -159,9 +159,14 @@ public final class BodyThreadFailures {
      * would land after the analysis and be lost.
      */
     static @Nullable AsyncTestContext openRunOfCallingThread() {
-        WeakReference<AsyncTestContext> constructedUnder = RUN.get();
-        AsyncTestContext run = constructedUnder == null ? null : constructedUnder.get();
+        AsyncTestContext run = constructedUnder();
         return run == null || run.isAnalysed() ? null : run;
+    }
+
+    /** {@return the run the calling thread was constructed under, if it is still reachable} */
+    private static @Nullable AsyncTestContext constructedUnder() {
+        WeakReference<AsyncTestContext> run = RUN.get();
+        return run == null ? null : run.get();
     }
 
     /**
@@ -216,8 +221,7 @@ public final class BodyThreadFailures {
                 return handedBy;
             }
         }
-        WeakReference<AsyncTestContext> constructedUnder = RUN.get();
-        AsyncTestContext run = constructedUnder == null ? null : constructedUnder.get();
+        AsyncTestContext run = constructedUnder();
         if (run != null && !run.isAnalysed()) {
             return run;
         }
