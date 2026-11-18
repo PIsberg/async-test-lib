@@ -436,6 +436,18 @@ final class CollectionAccessWeaver {
             Entry.call(BitSet.class, "nextClearBit", "bitSetNextClearBit", int.class),
             Entry.call(BitSet.class, "length", "bitSetLength"),
             Entry.call(BitSet.class, "isEmpty", "bitSetIsEmpty"),
+            // The reads #1305 left out (#1306); and/or/xor/andNot and intersects also record
+            // their argument as read, in the hook.
+            Entry.call(BitSet.class, "previousSetBit", "bitSetPreviousSetBit", int.class),
+            Entry.call(BitSet.class, "previousClearBit", "bitSetPreviousClearBit", int.class),
+            Entry.call(BitSet.class, "intersects", "bitSetIntersects", BitSet.class),
+            Entry.call(BitSet.class, "size", "bitSetSize"),
+            Entry.call(BitSet.class, "stream", "bitSetStream"),
+            Entry.call(BitSet.class, "toLongArray", "bitSetToLongArray"),
+            Entry.call(BitSet.class, "toByteArray", "bitSetToByteArray"),
+            Entry.call(BitSet.class, "equals", "bitSetEquals", Object.class),
+            Entry.call(BitSet.class, "hashCode", "bitSetHashCode"),
+            Entry.call(BitSet.class, "clone", "bitSetClone"),
             // Iteration, and where a synchronized map's views come from: a wrapper from
             // Collections.synchronized* must be iterated under the monitor it synchronizes on,
             // which for a map's view is the map's.

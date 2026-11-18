@@ -65,6 +65,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The rest of `BitSet`'s reads are woven (#1306).** With `collections=true`, a `BitSet` one
+  thread wrote while the others read it only through `previousSetBit`, `previousClearBit`,
+  `intersects`, `size`, `stream`, `toLongArray`, `toByteArray`, `equals`, `hashCode` or `clone`
+  drew nothing from `SHARED_COLLECTIONS`, and neither did one that was only the argument of `and`,
+  `or`, `xor` or `andNot`. All of those now record a read. `AgentCollectionHooksTest`, corpus idiom
+  pair `idiom_bitSet_scannedWhileSet` (silent with the new weaver row removed, fires with it) /
+  `idiom_bitSet_scannedUnderItsOwnMonitor`.
+
 - **A one-shot `schedule` whose future is dropped and whose task threw is reported (#1281).** With
   the agent, `pool.submit(failingTask)` with the future dropped drew `FUTURE_IGNORED`, but the same
   task given to `ScheduledExecutorService.schedule(Runnable|Callable, long, TimeUnit)` drew nothing,

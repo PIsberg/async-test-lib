@@ -309,4 +309,66 @@ class AgentCollectionHooksTest {
         thread.start();
         thread.join();
     }
+
+    @Test
+    @DisplayName("the BitSet reads #1305 left unwoven perform the call they replace (#1306)")
+    void moreBitSetReadsDelegate() {
+        BitSet bits = BitSet.valueOf(new long[] {0b101100L});
+        assertEquals(5, AgentCollectionHooks.bitSetPreviousSetBit(bits, 6), "previousSetBit");
+        assertEquals(4, AgentCollectionHooks.bitSetPreviousClearBit(bits, 4), "previousClearBit");
+        assertTrue(AgentCollectionHooks.bitSetIntersects(bits, BitSet.valueOf(new long[] {0b100L})), "intersects");
+        assertEquals(bits.size(), AgentCollectionHooks.bitSetSize(bits), "size");
+        assertEquals(3, AgentCollectionHooks.bitSetStream(bits).count(), "stream");
+        assertEquals(0b101100L, AgentCollectionHooks.bitSetToLongArray(bits)[0], "toLongArray");
+        assertEquals((byte) 0b101100, AgentCollectionHooks.bitSetToByteArray(bits)[0], "toByteArray");
+        assertTrue(AgentCollectionHooks.bitSetEquals(bits, BitSet.valueOf(new long[] {0b101100L})), "equals");
+        assertEquals(bits.hashCode(), AgentCollectionHooks.bitSetHashCode(bits), "hashCode");
+        assertEquals(bits, AgentCollectionHooks.bitSetClone(bits), "clone");
+    }
+
+    /**
+     * #1306: a BitSet one thread writes while the others only read it through a call #1305 did
+     * not weave, or only pass it as the argument of a combining call, was not reported.
+     */
+    @Test
+    @DisplayName("a BitSet read only through the newly woven calls, or only as an argument, is reported")
+    void bitSetReadOnlyThroughTheNewCallsIsReported() throws InterruptedException {
+        java.util.Map<String, java.util.function.Consumer<BitSet>> reads = new java.util.LinkedHashMap<>();
+        reads.put("previousSetBit", b -> AgentCollectionHooks.bitSetPreviousSetBit(b, 10));
+        reads.put("previousClearBit", b -> AgentCollectionHooks.bitSetPreviousClearBit(b, 10));
+        reads.put("intersects", b -> AgentCollectionHooks.bitSetIntersects(b, new BitSet()));
+        reads.put("size", AgentCollectionHooks::bitSetSize);
+        reads.put("stream", b -> AgentCollectionHooks.bitSetStream(b).count());
+        reads.put("toLongArray", AgentCollectionHooks::bitSetToLongArray);
+        reads.put("toByteArray", AgentCollectionHooks::bitSetToByteArray);
+        reads.put("equals", b -> AgentCollectionHooks.bitSetEquals(b, new BitSet()));
+        reads.put("hashCode", AgentCollectionHooks::bitSetHashCode);
+        reads.put("clone", AgentCollectionHooks::bitSetClone);
+        reads.put("argument of and", b -> AgentCollectionHooks.bitSetAnd(new BitSet(), b));
+        reads.put("argument of or", b -> AgentCollectionHooks.bitSetOr(new BitSet(), b));
+        reads.put("argument of xor", b -> AgentCollectionHooks.bitSetXor(new BitSet(), b));
+        reads.put("argument of andNot", b -> AgentCollectionHooks.bitSetAndNot(new BitSet(), b));
+        reads.put("argument of intersects", b -> AgentCollectionHooks.bitSetIntersects(new BitSet(), b));
+        java.util.List<String> silent = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, java.util.function.Consumer<BitSet>> read : reads.entrySet()) {
+            if (!bitSetReadersReport(read.getValue())) {
+                silent.add(read.getKey());
+            }
+        }
+        assertEquals(java.util.List.of(), silent,
+                "one thread sets bits and two others read the same BitSet only this way; each must "
+                        + "reach the detector as a read, as get and cardinality do");
+    }
+
+    /** One thread sets a bit, then two others read the same BitSet through {@code read}. */
+    private static boolean bitSetReadersReport(java.util.function.Consumer<BitSet> read) throws InterruptedException {
+        AsyncTestConfig cfg = AsyncTestConfig.builder().detectSharedCollections(true).build();
+        AsyncTestContext ctx = new AsyncTestContext(cfg);
+        BitSet shared = new BitSet();
+        onItsOwnThread(ctx, () -> AgentCollectionHooks.bitSetSet(shared, 3));
+        for (int i = 0; i < 2; i++) {
+            onItsOwnThread(ctx, () -> read.accept(shared));
+        }
+        return ctx.sharedCollectionDetector.analyze().hasIssues();
+    }
 }
