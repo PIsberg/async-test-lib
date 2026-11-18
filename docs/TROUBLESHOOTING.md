@@ -32,6 +32,17 @@ Because `async-test-lib` forces thread scheduling decisions to trigger race cond
 Default timeouts (5,000ms) that work locally can easily trigger timeouts in resource-constrained CI/CD containers (e.g., GitHub Actions hosted runners, shared Jenkins agents) due to noisy neighbors or slower CPU allocation.
 
 ### Symptom: `Invocation round timed out` or `Test timed out after 5000ms`
+
+`timeoutMs` is the budget for the whole run, every round, not for one round. The message says
+which way it ran out (#1386):
+
+* `the budget ran out while the run was making progress, R of N rounds completed in E ms`: the
+  rounds were finishing and there were too many of them for the budget. Raise `timeoutMs` or
+  lower `invocations`.
+* `Possible deadlock, starvation, or visibility issue. R of N rounds completed.`: a round had well
+  over the time earlier rounds took and did not finish. The cause line says how many workers
+  finished and, only when it is so, that some never got past the start barrier.
+
 * **Solution 1**: Scale timeouts for test runs in CI/CD using JUnit configuration properties or the `timeoutMs` attribute:
   ```java
   @AsyncTest(timeoutMs = 15000) // Increase total execution ceiling to 15 seconds

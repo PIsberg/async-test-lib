@@ -3314,20 +3314,20 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text class="node-label" x="8082.0" y="136.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="8.5" font-weight="bold" fill="#1f2937">ScopeConfigurationMisuseDetect…</text>
   <line x1="7992.0" y1="158.0" x2="8172.0" y2="158.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="8000.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NO_TIMEOUT: long</text>
-  <text x="8000.0" y="186.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DEFAULT_UNBOUNDED_FORK_THR…</text>
-  <text x="8000.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">scopes: Map&lt;String,ScopeSt…</text>
-  <text x="8000.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">retired: List&lt;ScopeState&gt;</text>
-  <text x="8000.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sequence: AtomicLong</text>
-  <text x="8000.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">unboundedForkThreshold: int</text>
-  <text x="8000.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <text x="8000.0" y="186.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UNSET: long</text>
+  <text x="8000.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DEFAULT_UNBOUNDED_FORK_THR…</text>
+  <text x="8000.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">scopes: Map&lt;String,ScopeSt…</text>
+  <text x="8000.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">retired: List&lt;ScopeState&gt;</text>
+  <text x="8000.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sequence: AtomicLong</text>
+  <text x="8000.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+2 more)</text>
   <line x1="7992.0" y1="275.0" x2="8172.0" y2="275.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="8000.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordScopeOpened(String, …</text>
-  <text x="8000.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordEffectiveConfigurati…</text>
-  <text x="8000.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordFork(String): void</text>
-  <text x="8000.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordJoinOutcome(String, …</text>
-  <text x="8000.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordScopeClosed(String):…</text>
-  <text x="8000.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">state(String): ScopeState</text>
-  <text x="8000.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
+  <text x="8000.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordScopeOpened(String, …</text>
+  <text x="8000.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordOpened(String, Strin…</text>
+  <text x="8000.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordEffectiveConfigurati…</text>
+  <text x="8000.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordEffectiveConfigurati…</text>
+  <text x="8000.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordEffective(String, St…</text>
+  <text x="8000.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+17 more)</text>
 </g>
 <g id="ScopeResultEscapeDetector">
   <title>ScopeResultEscapeDetector [CLASS]</title>
@@ -3637,7 +3637,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="8800.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">otherRunsOverlapped: Boole…</text>
   <line x1="8792.0" y1="260.0" x2="8972.0" y2="260.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="8800.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">attributeTo(LongPredicate,…</text>
-  <text x="8800.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isThisRuns(long[]): boolean</text>
+  <text x="8800.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">belongsToThisRun(long[]): …</text>
   <text x="8800.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">canSeeVirtualThreadDeadloc…</text>
   <text x="8800.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enableVirtualThreadScan():…</text>
   <text x="8800.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">cycleKeys(Optional&lt;List&lt;Vi…</text>
@@ -4210,7 +4210,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="7400.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">scan(): Optional&lt;List&lt;Cycl…</text>
   <text x="7400.0" y="393.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">scanDump(String): Optional…</text>
   <text x="7400.0" y="408.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">carriesLockInformation(Str…</text>
-  <text x="7400.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+14 more)</text>
+  <text x="7400.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+16 more)</text>
 </g>
 <g id="VirtualThreadStressConfig">
   <title>VirtualThreadStressConfig [CLASS]</title>
@@ -4542,7 +4542,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="1928.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">resolveTimeoutMultiplier()…</text>
   <text x="1928.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeAndGate(AsyncTestCo…</text>
   <text x="1928.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">reportAndGate(AsyncTestCon…</text>
-  <text x="1928.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+28 more)</text>
+  <text x="1928.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+30 more)</text>
 </g>
 <g id="LicenseGuard">
   <title>LicenseGuard [CLASS]</title>
@@ -4601,7 +4601,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="RunOverlap">
   <title>RunOverlap [CLASS]</title>
-  <rect class="node-rect" x="1920.0" y="204.0" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="1920.0" y="204.0" width="180.0" height="250.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="2010.0" y="226.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">RunOverlap</text>
   <line x1="1920.0" y1="248.0" x2="2100.0" y2="248.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="1928.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">LOCK: Object</text>
@@ -4615,7 +4615,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="1928.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enter(): RunOverlap</text>
   <text x="1928.0" y="393.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">overlapped(): boolean</text>
   <text x="1928.0" y="408.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">exit(): void</text>
-  <text x="1928.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">left(): void</text>
+  <text x="1928.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">overlappedSoFar(): boolean</text>
+  <text x="1928.0" y="438.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">left(): void</text>
 </g>
 <g id="SpinContentionBarrier">
   <title>SpinContentionBarrier [CLASS]</title>

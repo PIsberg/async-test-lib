@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (behaviour)
 
+- **A timeout says whether the budget ran out or a round hung (#1386).** `timeoutMs` covers the
+  whole run, and a correct body that kept completing rounds until the budget ran out failed with
+  "Possible deadlock, starvation, or visibility issue" and a cause saying a thread "may be stuck
+  before the test body (e.g. broken barrier)". The message now says "the budget ran out while the
+  run was making progress, R of N rounds completed in E ms ... raise it or lower invocations" when
+  the last round had less than four average rounds' worth of budget left, and keeps "Possible
+  deadlock" (with "R of N rounds completed") for a round that had more and still did not finish.
+  The round's cause reads its completed count before the workers are cancelled (read after, a
+  hung round reported "2/2 threads completed", since a cancelled worker counts down too), says so
+  when every worker finished just after the deadline, and gives the broken-barrier hint only when
+  a worker never got past the start barrier. `RoundTimeoutMessageTest`, `RoundTimeoutProgressTest`.
+
 - **`DeadlockDetector` no longer reports a deadlock that belongs to another run in progress at
   the same time (#1385).** A cycle that forms during a run is visible JVM-wide, so with test
   classes executing in parallel a clean test under `failOn = CRITICAL` failed on another test's
