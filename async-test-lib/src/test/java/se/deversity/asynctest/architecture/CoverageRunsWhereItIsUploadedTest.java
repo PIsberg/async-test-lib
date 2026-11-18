@@ -69,6 +69,21 @@ class CoverageRunsWhereItIsUploadedTest {
                 + "', or a leg without JaCoCo fails looking for the report; guarded: " + guarded);
     }
 
+    @Test
+    @DisplayName("a hung coverage step cannot hold the required check for six hours")
+    void theCoverageNetworkStepsAreBounded() {
+        for (String step : List.of("Import Codecov GPG key", "Upload coverage to Codecov")) {
+            String body = stepBody(step);
+            assertTrue(body.contains("timeout-minutes:"),
+                    "'" + step + "' needs a timeout-minutes: the codecov wrapper hung twice in its "
+                            + "signature check, and without one a step waits out the job's 360 minutes "
+                            + "with the Test Suite check pending (#1372): " + body);
+            assertTrue(body.contains("continue-on-error: true"),
+                    "'" + step + "' needs continue-on-error: true: a timed-out step fails its job, "
+                            + "and coverage is not what the check is for (#1372): " + body);
+        }
+    }
+
     /** {@return the lines of the step named {@code name}, up to the next step} */
     private static String stepBody(String name) {
         String workflow = read();
