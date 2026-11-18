@@ -141,6 +141,12 @@ public class LivelockDetector {
         deadlocks = peer;
     }
 
+    /** {@return the threads in a cycle the run's deadlock detector reports, or none without one} */
+    private Set<Long> threadsInReportedDeadlocks() {
+        DeadlockDetector peer = deadlocks;
+        return peer == null ? Set.of() : peer.threadsInReportedCycles();
+    }
+
     /**
      * Classifies every worker still in its body. The runner calls this when a round has timed out,
      * before it interrupts them, so that what is sampled is what the body was doing.
@@ -173,8 +179,7 @@ public class LivelockDetector {
                 timedOutRunning.add(name);
             } else if (BLOCKED_OR_WAITING.containsAll(states)) {
                 if (inReportedDeadlock == null) {
-                    DeadlockDetector peer = deadlocks;
-                    inReportedDeadlock = peer == null ? Set.of() : peer.threadsInReportedCycles();
+                    inReportedDeadlock = threadsInReportedDeadlocks();
                 }
                 if (!inReportedDeadlock.contains(entry.getKey().threadId())) {
                     timedOutBlocked.add(name);

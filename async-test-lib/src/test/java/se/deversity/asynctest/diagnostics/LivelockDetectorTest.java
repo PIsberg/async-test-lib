@@ -2,6 +2,9 @@ package se.deversity.asynctest.diagnostics;
 
 import org.junit.jupiter.api.Test;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
+import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.locks.LockSupport;
@@ -342,11 +345,11 @@ public class LivelockDetectorTest {
             t.setDaemon(true);
             t.start();
         }
-        java.lang.management.ThreadMXBean mx = java.lang.management.ManagementFactory.getThreadMXBean();
+        ThreadMXBean mx = ManagementFactory.getThreadMXBean();
         long deadline = System.nanoTime() + 10_000_000_000L;
         while (System.nanoTime() < deadline) {
             long[] ids = mx.findDeadlockedThreads();
-            if (ids != null && java.util.Arrays.stream(ids).filter(id -> id == first.threadId()
+            if (ids != null && Arrays.stream(ids).filter(id -> id == first.threadId()
                     || id == second.threadId()).count() == 2) {
                 return new Thread[] {first, second};
             }

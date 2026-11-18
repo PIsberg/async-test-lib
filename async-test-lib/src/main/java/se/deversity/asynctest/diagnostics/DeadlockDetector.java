@@ -424,13 +424,16 @@ public class DeadlockDetector {
     private long[] reportablePlatformDeadlock() {
         long[] current = ManagementFactory.getThreadMXBean().findDeadlockedThreads();
         if (current == null) {
-            return new long[0];
+            return NO_THREADS;
         }
         long[] fresh = Arrays.stream(current)
                 .filter(id -> !preexistingDeadlockedThreads.contains(id))
                 .toArray();
-        return fresh.length > 0 && belongsToThisRun(fresh) ? fresh : new long[0];
+        return fresh.length > 0 && belongsToThisRun(fresh) ? fresh : NO_THREADS;
     }
+
+    /** No thread ids: no deadlock this detector reports. */
+    private static final long[] NO_THREADS = new long[0];
 
     /**
      * {@return the virtual-thread cycles this run introduced, as report lines}
