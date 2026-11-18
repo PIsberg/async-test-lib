@@ -1369,6 +1369,22 @@ final class Corpus {
                     "the same failing submit with the future kept and its exception read "
                             + "through get, so the failure reached the caller"),
 
+            new RecordingSubject("agent_future_failingScheduleDiscarded", JDK,
+                    "java.util.concurrent.ScheduledExecutorService",
+                    DetectorType.FUTURE_IGNORED, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every worker schedules a one-shot task that throws and drops the future: the "
+                            + "weaver turns the POP after schedule into the discard hook, as for "
+                            + "submit (#1281)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("agent_future_failingScheduleInspected", JDK,
+                    "java.util.concurrent.ScheduledExecutorService",
+                    DetectorType.FUTURE_IGNORED, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same failing scheduled task with the future kept and its exception read "
+                            + "through get"),
+
             new RecordingSubject("agent_future_periodicTaskThrows", JDK,
                     "java.util.concurrent.ScheduledExecutorService",
                     DetectorType.FUTURE_IGNORED, Contract.THREAD_SAFE,

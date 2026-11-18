@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A one-shot `schedule` whose future is dropped and whose task threw is reported (#1281).** With
+  the agent, `pool.submit(failingTask)` with the future dropped drew `FUTURE_IGNORED`, but the same
+  task given to `ScheduledExecutorService.schedule(Runnable|Callable, long, TimeUnit)` drew nothing,
+  because neither call was woven. Both now are, with `collections=true`: the task is scheduled
+  unchanged and the `POP` of its future becomes `scheduleResultDiscarded`, reported as "Future
+  returned by ScheduledExecutorService.schedule was discarded" when the task failed. A task still
+  pending at analysis draws nothing, as for `submit`. `AgentExecutorHooksTest`,
+  `ExecutorFeedWeavingTest`, corpus agent pair `agent_future_failingScheduleDiscarded` /
+  `agent_future_failingScheduleInspected`.
+
 - **`arrays=true` says when it did not look (#1262).** The agent records the first 256 elements of
   an array and drops an access past them, which can only hide a race. #1250 asked for the report to
   say so and it did not. A run now counts those accesses per run, logs

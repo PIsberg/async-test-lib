@@ -579,6 +579,66 @@ class AgentExecutorHooksTest {
         }
     }
 
+    // --- FUTURE_IGNORED: a one-shot scheduled task whose future was dropped (#1281) ------------
+
+    @Test
+    @DisplayName("a discarded schedule(Runnable) whose task threw is reported, as a discarded submit is")
+    void discardedFailingScheduleIsReported() throws Exception {
+        ScheduledExecutorService scheduler = kept(Executors.newSingleThreadScheduledExecutor());
+        installed();
+        try {
+            ScheduledFuture<?> future = AgentConcurrencyUtilHooks.schedule(scheduler, (Runnable) () -> {
+                throw new IllegalStateException("the reminder never went out");
+            }, 1, TimeUnit.MILLISECONDS);
+            AgentConcurrencyUtilHooks.scheduleResultDiscarded(future);
+            awaitDone(future);
+
+            String report = AsyncTestContext.futureIgnoredDetector().analyze().toString();
+            assertTrue(report.contains("Future returned by ScheduledExecutorService.schedule was discarded"),
+                    "the caller popped the future of a one-shot task that threw: " + report);
+            assertTrue(report.contains("the reminder never went out"), report);
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("a discarded schedule(Callable) whose task threw is reported too")
+    void discardedFailingCallableScheduleIsReported() throws Exception {
+        ScheduledExecutorService scheduler = kept(Executors.newSingleThreadScheduledExecutor());
+        installed();
+        try {
+            ScheduledFuture<Object> future = AgentConcurrencyUtilHooks.schedule(scheduler, () -> {
+                throw new IllegalStateException("the callable never answered");
+            }, 1, TimeUnit.MILLISECONDS);
+            AgentConcurrencyUtilHooks.scheduleResultDiscarded(future);
+            awaitDone(future);
+
+            assertTrue(AsyncTestContext.futureIgnoredDetector().analyze().toString()
+                    .contains("the callable never answered"));
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("a scheduled task whose future the caller kept draws nothing from the schedule hook")
+    void keptScheduleIsSilent() throws Exception {
+        ScheduledExecutorService scheduler = kept(Executors.newSingleThreadScheduledExecutor());
+        installed();
+        try {
+            ScheduledFuture<?> future = AgentConcurrencyUtilHooks.schedule(scheduler, (Runnable) () -> {
+                throw new IllegalStateException("read through get");
+            }, 1, TimeUnit.MILLISECONDS);
+            awaitDone(future);
+
+            assertFalse(AsyncTestContext.futureIgnoredDetector().analyze().hasIssues(),
+                    "only a popped future is a discarded one; a kept one is the caller's to read");
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
     // --- FUTURE_IGNORED: a periodic task that threw (#1254) -------------------------------------
 
     @Test
