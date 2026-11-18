@@ -1154,6 +1154,22 @@ class CorpusAgentPairLaneTest {
     }
 
     /**
+     * Every worker schedules a failing one-shot task on the shared scheduler and drops the future,
+     * the submit shape through schedule (#1281).
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_future_failingScheduleDiscarded() {
+        SHARED_SCHEDULER.schedule(CorpusAgentPairLaneTest::failingTask, 1, TimeUnit.MILLISECONDS);
+    }
+
+    /** The same failing scheduled task, with the future kept and its exception read through get. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void agent_future_failingScheduleInspected() {
+        Future<?> future = SHARED_SCHEDULER.schedule(CorpusAgentPairLaneTest::failingTask, 1, TimeUnit.MILLISECONDS);
+        counted(() -> readTheFailure(future));
+    }
+
+    /**
      * The same failing submit, with the future kept and its exception read through get.
      */
     @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)

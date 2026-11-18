@@ -63,6 +63,16 @@ public class ExecutorUsingBean {
     }
 
     /**
+     * Schedules a one-shot task that throws and discards its future, as {@link #dropFailingSubmit}
+     * does for a submit (#1281).
+     *
+     * @param scheduler the scheduler to run it on
+     */
+    public void dropFailingSchedule(ScheduledExecutorService scheduler) {
+        scheduler.schedule(ExecutorUsingBean::fail, 1, TimeUnit.MILLISECONDS);
+    }
+
+    /**
      * Submits a failing task, keeps its future and reads the failure.
      *
      * @param pool the executor to submit to

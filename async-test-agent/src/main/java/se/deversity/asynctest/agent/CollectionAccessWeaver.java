@@ -1254,6 +1254,14 @@ final class CollectionAccessWeaver {
                     .whenResultDiscarded("submitResultDiscarded"),
             Entry.call(ExecutorService.class, "submit", "submit", Runnable.class, Object.class)
                     .whenResultDiscarded("submitResultDiscarded"),
+            // A one-shot scheduled task is the submit shape: a popped future can never be read, so
+            // the POP becomes scheduleResultDiscarded (#1281).
+            Entry.call(ScheduledExecutorService.class, "schedule", "schedule",
+                    Runnable.class, long.class, TimeUnit.class)
+                    .whenResultDiscarded("scheduleResultDiscarded"),
+            Entry.call(ScheduledExecutorService.class, "schedule", "schedule",
+                    Callable.class, long.class, TimeUnit.class)
+                    .whenResultDiscarded("scheduleResultDiscarded"),
             // A periodic task that throws is cancelled for good and its exception lands in a
             // future nobody reads; the hooks schedule it unchanged and hand that future to the
             // ignored-future detector (#1254).

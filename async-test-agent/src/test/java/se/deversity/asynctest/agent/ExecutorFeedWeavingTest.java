@@ -62,6 +62,11 @@ class ExecutorFeedWeavingTest {
     }
 
     @AsyncTest(threads = 2, invocations = 5, includes = DetectorType.FUTURE_IGNORED)
+    void failingScheduleDiscarded() {
+        BEAN.dropFailingSchedule(scheduler);
+    }
+
+    @AsyncTest(threads = 2, invocations = 5, includes = DetectorType.FUTURE_IGNORED)
     void periodicTaskThatThrows() throws InterruptedException {
         BEAN.scheduleFailingHeartbeat(scheduler);
     }
@@ -89,6 +94,13 @@ class ExecutorFeedWeavingTest {
                             + "schedule. Nothing was reported, so the woven scheduleAtFixedRate "
                             + "never reached FutureIgnoredDetector.recordPeriodic (#1254). "
                             + "Findings were: " + findings.violations());
+            assertTrue(findings.violationsFrom("FutureIgnored").stream()
+                            .anyMatch(v -> String.valueOf(v.attributes().get("report"))
+                                    .contains("Future returned by ScheduledExecutorService.schedule was discarded")),
+                    "dropFailingSchedule discards the future of a one-shot task that throws. Nothing "
+                            + "was reported, so the POP after schedule did not reach "
+                            + "scheduleResultDiscarded: check the schedule rows' whenResultDiscarded "
+                            + "(#1281). Findings were: " + findings.violations());
         } finally {
             findings.close();
             ExecutorUsingBean.LEFT_RUNNING.forEach(ExecutorService::shutdownNow);

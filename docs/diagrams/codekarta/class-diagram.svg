@@ -994,7 +994,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquire(Semaphore): void</text>
   <text x="3376.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">tryAcquire(Semaphore): boo…</text>
   <text x="3376.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">futureTaskRun(FutureTask&lt;O…</text>
-  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+427 more)</text>
+  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+430 more)</text>
 </g>
 <g id="AgentConstructionHooks">
   <title>AgentConstructionHooks [CLASS]</title>
@@ -3437,7 +3437,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="4250.0" y="4910.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">receiverStates: Map&lt;Intege…</text>
   <text x="4250.0" y="4925.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">generationTakers: Map&lt;Inte…</text>
   <text x="4250.0" y="4940.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">offers: Map&lt;Integer,Offer&gt;</text>
-  <text x="4250.0" y="4955.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+14 more)</text>
+  <text x="4250.0" y="4955.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+15 more)</text>
   <line x1="4242.0" y1="4968.7" x2="4422.0" y2="4968.7" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="4250.0" y="4982.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">guardKey(String, int): Str…</text>
   <text x="4250.0" y="4997.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">instanceOf(Object): int</text>

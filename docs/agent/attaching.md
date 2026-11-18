@@ -371,9 +371,10 @@ Executors are watched the same way. The fourteen `Executors` factories are woven
 run thread creates through one of them is declared to `ExecutorShutdownDetector` as the run's own,
 which is the detector's whole rule: an executor handed in from outside the run, or built in a
 static initializer, is never declared, so leaving it running is not reported (#387). A
-`submit` whose future the caller never kept is seen as the `POP` after the call, and
-`FutureIgnoredDetector` reports that future when its task failed, because nothing can ever read
-the exception it holds. A woven `scheduleAtFixedRate` or `scheduleWithFixedDelay` hands its
+`submit`, or a one-shot `schedule` (#1281), whose future the caller never kept is seen as the
+`POP` after the call, and `FutureIgnoredDetector` reports that future when its task failed, because
+nothing can ever read the exception it holds; a scheduled task still pending at analysis draws
+nothing. A woven `scheduleAtFixedRate` or `scheduleWithFixedDelay` hands its
 future to the same detector whether the caller keeps it or not, since dropping a periodic task's
 future is normal: it is reported when the task threw, which ends the schedule for good, unless a
 woven `get` threw that failure into the body (#1254). A `supplyAsync` or `runAsync` whose future the caller drops is handed to

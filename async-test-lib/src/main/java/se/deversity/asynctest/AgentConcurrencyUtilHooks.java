@@ -4204,6 +4204,58 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * Weaves the one-shot {@code ScheduledExecutorService.schedule(Runnable, long, TimeUnit)}: the
+     * task is scheduled unchanged. Like a submit, its future is judged only when the caller pops
+     * it, which the weaver turns into {@link #scheduleResultDiscarded} (#1281).
+     *
+     * @param receiver the scheduler
+     * @param task     the task, scheduled unchanged
+     * @param delay    the delay before it runs
+     * @param unit     the unit of the delay
+     * @return the task's future
+     * @since 1.15.0
+     */
+    public static ScheduledFuture<?> schedule(ScheduledExecutorService receiver, Runnable task,
+            long delay, TimeUnit unit) {
+        ControlledSchedule.point();
+        return receiver.schedule(task, delay, unit);
+    }
+
+    /**
+     * Weaves the one-shot {@code ScheduledExecutorService.schedule(Callable, long, TimeUnit)}, as
+     * {@link #schedule(ScheduledExecutorService, Runnable, long, TimeUnit)} (#1281).
+     *
+     * @param receiver the scheduler
+     * @param task     the task, scheduled unchanged
+     * @param delay    the delay before it runs
+     * @param unit     the unit of the delay
+     * @return the task's future
+     * @since 1.15.0
+     */
+    public static ScheduledFuture<Object> schedule(ScheduledExecutorService receiver,
+            Callable<Object> task, long delay, TimeUnit unit) {
+        ControlledSchedule.point();
+        return receiver.schedule(task, delay, unit);
+    }
+
+    /**
+     * Stands in for the {@code POP} after a woven one-shot {@code schedule}: the caller discarded
+     * the future, so nothing can ever read the task's exception, and the ignored-future detector
+     * reports it at analysis if the task threw, as for {@link #submitResultDiscarded} (#1281). A
+     * task still pending at analysis, such as one delayed past the run's end, draws nothing.
+     *
+     * @param future the future the caller discarded
+     * @since 1.15.0
+     */
+    public static void scheduleResultDiscarded(ScheduledFuture<?> future) {
+        ControlledSchedule.point();
+        FutureIgnoredDetector detector = AsyncTestContext.currentFutureIgnoredDetector();
+        if (detector != null) {
+            detector.recordDiscarded(future, Thread.currentThread(), "ScheduledExecutorService.schedule");
+        }
+    }
+
+    /**
      * Weaves {@code ScheduledExecutorService.scheduleAtFixedRate}: the task is scheduled as it
      * was, and its future is handed to the ignored-future detector, which reports it at analysis
      * if the task threw, since the executor then cancels every later run and nobody reads a

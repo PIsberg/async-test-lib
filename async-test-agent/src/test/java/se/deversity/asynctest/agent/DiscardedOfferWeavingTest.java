@@ -1492,6 +1492,21 @@ class DiscardedOfferWeavingTest {
             return x.scheduleWithFixedDelay(t, d, p, u);
         }
 
+        public static java.util.concurrent.ScheduledFuture<?> schedule(
+                java.util.concurrent.ScheduledExecutorService x, Runnable t, long d, TimeUnit u) {
+            return x.schedule(t, d, u);
+        }
+
+        public static java.util.concurrent.ScheduledFuture<Object> schedule(
+                java.util.concurrent.ScheduledExecutorService x,
+                java.util.concurrent.Callable<Object> t, long d, TimeUnit u) {
+            return x.schedule(t, d, u);
+        }
+
+        public static void scheduleResultDiscarded(java.util.concurrent.ScheduledFuture<?> f) {
+            // the discard rows this test never reaches but the table resolves
+        }
+
         public static void asyncResultDiscarded(java.util.concurrent.CompletableFuture<?> f) {
             DISCARDED_ROOTS.add(f);
         }
