@@ -4196,10 +4196,15 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.13.2
      */
     public static void submitResultDiscarded(Future<?> future) {
+        discarded(future, "ExecutorService.submit");
+    }
+
+    /** Hands a future the caller popped after {@code call} to the run's ignored-future detector. */
+    private static void discarded(Future<?> future, String call) {
         ControlledSchedule.point();
         FutureIgnoredDetector detector = AsyncTestContext.currentFutureIgnoredDetector();
         if (detector != null) {
-            detector.recordDiscarded(future, Thread.currentThread(), "ExecutorService.submit");
+            detector.recordDiscarded(future, Thread.currentThread(), call);
         }
     }
 
@@ -4248,11 +4253,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.15.0
      */
     public static void scheduleResultDiscarded(ScheduledFuture<?> future) {
-        ControlledSchedule.point();
-        FutureIgnoredDetector detector = AsyncTestContext.currentFutureIgnoredDetector();
-        if (detector != null) {
-            detector.recordDiscarded(future, Thread.currentThread(), "ScheduledExecutorService.schedule");
-        }
+        discarded(future, "ScheduledExecutorService.schedule");
     }
 
     /**
