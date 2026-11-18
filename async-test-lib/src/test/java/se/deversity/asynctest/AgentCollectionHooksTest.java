@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -19,6 +20,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.telemetry.TelemetryEventBuffer;
 import se.deversity.asynctest.telemetry.TelemetryRegistry;
@@ -333,7 +335,7 @@ class AgentCollectionHooksTest {
     @Test
     @DisplayName("a BitSet read only through the newly woven calls, or only as an argument, is reported")
     void bitSetReadOnlyThroughTheNewCallsIsReported() throws InterruptedException {
-        java.util.Map<String, java.util.function.Consumer<BitSet>> reads = new java.util.LinkedHashMap<>();
+        Map<String, Consumer<BitSet>> reads = new LinkedHashMap<>();
         reads.put("previousSetBit", b -> AgentCollectionHooks.bitSetPreviousSetBit(b, 10));
         reads.put("previousClearBit", b -> AgentCollectionHooks.bitSetPreviousClearBit(b, 10));
         reads.put("intersects", b -> AgentCollectionHooks.bitSetIntersects(b, new BitSet()));
@@ -349,19 +351,19 @@ class AgentCollectionHooksTest {
         reads.put("argument of xor", b -> AgentCollectionHooks.bitSetXor(new BitSet(), b));
         reads.put("argument of andNot", b -> AgentCollectionHooks.bitSetAndNot(new BitSet(), b));
         reads.put("argument of intersects", b -> AgentCollectionHooks.bitSetIntersects(new BitSet(), b));
-        java.util.List<String> silent = new java.util.ArrayList<>();
-        for (java.util.Map.Entry<String, java.util.function.Consumer<BitSet>> read : reads.entrySet()) {
+        List<String> silent = new ArrayList<>();
+        for (Map.Entry<String, Consumer<BitSet>> read : reads.entrySet()) {
             if (!bitSetReadersReport(read.getValue())) {
                 silent.add(read.getKey());
             }
         }
-        assertEquals(java.util.List.of(), silent,
+        assertEquals(List.of(), silent,
                 "one thread sets bits and two others read the same BitSet only this way; each must "
                         + "reach the detector as a read, as get and cardinality do");
     }
 
     /** One thread sets a bit, then two others read the same BitSet through {@code read}. */
-    private static boolean bitSetReadersReport(java.util.function.Consumer<BitSet> read) throws InterruptedException {
+    private static boolean bitSetReadersReport(Consumer<BitSet> read) throws InterruptedException {
         AsyncTestConfig cfg = AsyncTestConfig.builder().detectSharedCollections(true).build();
         AsyncTestContext ctx = new AsyncTestContext(cfg);
         BitSet shared = new BitSet();
