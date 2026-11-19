@@ -4764,6 +4764,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static void streamForEach(Stream<Object> receiver, Consumer<Object> action) {
+        Objects.requireNonNull(action);
         parallelTerminal(receiver, operation -> {
             receiver.forEach(operation == null ? action
                     : value -> operation.element(() -> action.accept(value)));
@@ -4935,6 +4936,7 @@ public final class AgentConcurrencyUtilHooks {
     public static void concurrentMapForEach(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
                                             long parallelismThreshold,
                                             BiConsumer<Object, Object> action) {
+        Objects.requireNonNull(action);
         parallelBulk(operation -> receiver.forEach(parallelismThreshold, operation == null ? action
                 : (key, value) -> operation.element(() -> action.accept(key, value))));
     }
@@ -4949,6 +4951,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static void concurrentMapForEachKey(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
                                                long parallelismThreshold, Consumer<Object> action) {
+        Objects.requireNonNull(action);
         parallelBulk(operation -> receiver.forEachKey(parallelismThreshold, operation == null ? action
                 : key -> operation.element(() -> action.accept(key))));
     }
@@ -4964,6 +4967,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static void concurrentMapForEachValue(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
                                                  long parallelismThreshold, Consumer<Object> action) {
+        Objects.requireNonNull(action);
         parallelBulk(operation -> receiver.forEachValue(parallelismThreshold, operation == null ? action
                 : value -> operation.element(() -> action.accept(value))));
     }
@@ -4980,6 +4984,7 @@ public final class AgentConcurrencyUtilHooks {
     public static void concurrentMapForEachEntry(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
                                                  long parallelismThreshold,
                                                  Consumer<Map.Entry<Object, Object>> action) {
+        Objects.requireNonNull(action);
         parallelBulk(operation -> receiver.forEachEntry(parallelismThreshold, operation == null ? action
                 : entry -> operation.element(() -> action.accept(entry))));
     }
@@ -5020,6 +5025,8 @@ public final class AgentConcurrencyUtilHooks {
                                             long parallelismThreshold,
                                             BiFunction<Object, Object, Object> transformer,
                                             Consumer<Object> action) {
+        Objects.requireNonNull(transformer);
+        Objects.requireNonNull(action);
         parallelBulk(operation -> receiver.forEach(parallelismThreshold, operation == null ? transformer
                         : (key, value) -> {
                             List<Object> result = new ArrayList<>(1);
@@ -5043,6 +5050,8 @@ public final class AgentConcurrencyUtilHooks {
                                                long parallelismThreshold,
                                                Function<Object, Object> transformer,
                                                Consumer<Object> action) {
+        Objects.requireNonNull(transformer);
+        Objects.requireNonNull(action);
         parallelBulk(operation -> receiver.forEachKey(parallelismThreshold,
                 transformerElement(operation, transformer), actionElement(operation, action)));
     }
@@ -5061,6 +5070,8 @@ public final class AgentConcurrencyUtilHooks {
                                                  long parallelismThreshold,
                                                  Function<Object, Object> transformer,
                                                  Consumer<Object> action) {
+        Objects.requireNonNull(transformer);
+        Objects.requireNonNull(action);
         parallelBulk(operation -> receiver.forEachValue(parallelismThreshold,
                 transformerElement(operation, transformer), actionElement(operation, action)));
     }
@@ -5079,6 +5090,8 @@ public final class AgentConcurrencyUtilHooks {
                                                  long parallelismThreshold,
                                                  Function<Map.Entry<Object, Object>, Object> transformer,
                                                  Consumer<Object> action) {
+        Objects.requireNonNull(transformer);
+        Objects.requireNonNull(action);
         parallelBulk(operation -> receiver.forEachEntry(parallelismThreshold,
                 transformerElement(operation, transformer), actionElement(operation, action)));
     }
@@ -5093,6 +5106,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static void arraysParallelSetAll(Object[] array, IntFunction<Object> generator) {
+        Objects.requireNonNull(generator);
         parallelBulk(operation -> Arrays.parallelSetAll(array, operation == null ? generator : index -> {
             Object[] value = new Object[1];
             operation.element(() -> value[0] = generator.apply(index));
@@ -5108,6 +5122,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static void arraysParallelSetAll(int[] array, IntUnaryOperator generator) {
+        Objects.requireNonNull(generator);
         parallelBulk(operation -> Arrays.parallelSetAll(array, operation == null ? generator : index -> {
             int[] value = new int[1];
             operation.element(() -> value[0] = generator.applyAsInt(index));
@@ -5123,6 +5138,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static void arraysParallelSetAll(long[] array, IntToLongFunction generator) {
+        Objects.requireNonNull(generator);
         parallelBulk(operation -> Arrays.parallelSetAll(array, operation == null ? generator : index -> {
             long[] value = new long[1];
             operation.element(() -> value[0] = generator.applyAsLong(index));
@@ -5139,6 +5155,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static void arraysParallelSetAll(double[] array, IntToDoubleFunction generator) {
+        Objects.requireNonNull(generator);
         parallelBulk(operation -> Arrays.parallelSetAll(array, operation == null ? generator : index -> {
             double[] value = new double[1];
             operation.element(() -> value[0] = generator.applyAsDouble(index));
@@ -5155,6 +5172,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Stream<Object> streamMap(Stream<Object> receiver, Function<Object, Object> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.map(mapper);
@@ -5172,6 +5190,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Stream<Object> streamFilter(Stream<Object> receiver, Predicate<Object> predicate) {
+        Objects.requireNonNull(predicate);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.filter(predicate);
@@ -5190,6 +5209,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Stream<Object> streamPeek(Stream<Object> receiver, Consumer<Object> action) {
+        Objects.requireNonNull(action);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.peek(action);
@@ -5210,6 +5230,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static void streamForEachOrdered(Stream<Object> receiver, Consumer<Object> action) {
+        Objects.requireNonNull(action);
         parallelTerminal(receiver, operation -> {
             receiver.forEachOrdered(operation == null ? action
                     : value -> operation.ordered(() -> action.accept(value)));
@@ -5227,6 +5248,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Object streamCollect(Stream<Object> receiver, Collector<? super Object, ?, ?> collector) {
+        Objects.requireNonNull(collector);
         return parallelTerminal(receiver, operation -> operation == null
                 ? receiver.collect(collector) : receiver.collect(lent(operation, collector)));
     }
@@ -5289,6 +5311,9 @@ public final class AgentConcurrencyUtilHooks {
     public static Object streamCollect(Stream<Object> receiver, Supplier<Object> supplier,
                                        BiConsumer<Object, Object> accumulator,
                                        BiConsumer<Object, Object> combiner) {
+        Objects.requireNonNull(supplier);
+        Objects.requireNonNull(accumulator);
+        Objects.requireNonNull(combiner);
         return parallelTerminal(receiver, operation -> operation == null
                 ? receiver.collect(supplier, accumulator, combiner)
                 : receiver.collect(() -> inElement(operation, supplier),
@@ -5312,6 +5337,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Optional<Object> streamReduce(Stream<Object> receiver, BinaryOperator<Object> accumulator) {
+        Objects.requireNonNull(accumulator);
         return parallelTerminal(receiver, operation -> receiver.reduce(operation == null ? accumulator
                 : (left, right) -> inCombine(operation, () -> accumulator.apply(left, right))));
     }
@@ -5327,6 +5353,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static Object streamReduce(Stream<Object> receiver, Object identity,
                                       BinaryOperator<Object> accumulator) {
+        Objects.requireNonNull(accumulator);
         return parallelTerminal(receiver, operation -> receiver.reduce(identity, operation == null
                 ? accumulator
                 : (left, right) -> inCombine(operation, () -> accumulator.apply(left, right))));
@@ -5346,6 +5373,8 @@ public final class AgentConcurrencyUtilHooks {
     public static Object streamReduce(Stream<Object> receiver, Object identity,
                                       BiFunction<Object, Object, Object> accumulator,
                                       BinaryOperator<Object> combiner) {
+        Objects.requireNonNull(accumulator);
+        Objects.requireNonNull(combiner);
         return parallelTerminal(receiver, operation -> operation == null
                 ? receiver.reduce(identity, accumulator, combiner)
                 : receiver.reduce(identity,
@@ -5363,6 +5392,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Optional<Object> streamMin(Stream<Object> receiver, Comparator<Object> comparator) {
+        Objects.requireNonNull(comparator);
         return parallelTerminal(receiver, operation -> receiver.min(compared(operation, comparator)));
     }
 
@@ -5375,6 +5405,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Optional<Object> streamMax(Stream<Object> receiver, Comparator<Object> comparator) {
+        Objects.requireNonNull(comparator);
         return parallelTerminal(receiver, operation -> receiver.max(compared(operation, comparator)));
     }
 
@@ -5393,6 +5424,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static boolean streamAnyMatch(Stream<Object> receiver, Predicate<Object> predicate) {
+        Objects.requireNonNull(predicate);
         return parallelTerminal(receiver, operation -> receiver.anyMatch(tested(operation, predicate)));
     }
 
@@ -5405,6 +5437,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static boolean streamAllMatch(Stream<Object> receiver, Predicate<Object> predicate) {
+        Objects.requireNonNull(predicate);
         return parallelTerminal(receiver, operation -> receiver.allMatch(tested(operation, predicate)));
     }
 
@@ -5417,6 +5450,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static boolean streamNoneMatch(Stream<Object> receiver, Predicate<Object> predicate) {
+        Objects.requireNonNull(predicate);
         return parallelTerminal(receiver, operation -> receiver.noneMatch(tested(operation, predicate)));
     }
 
@@ -5457,6 +5491,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Object[] streamToArray(Stream<Object> receiver, IntFunction<Object[]> generator) {
+        Objects.requireNonNull(generator);
         return parallelTerminal(receiver, operation -> receiver.toArray(generator));
     }
 
@@ -5501,6 +5536,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static void intStreamForEach(IntStream receiver, IntConsumer action) {
+        Objects.requireNonNull(action);
         parallelTerminal(receiver, operation -> {
             receiver.forEach(operation == null ? action
                     : value -> operation.element(() -> action.accept(value)));
@@ -5516,6 +5552,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static void longStreamForEach(LongStream receiver, LongConsumer action) {
+        Objects.requireNonNull(action);
         parallelTerminal(receiver, operation -> {
             receiver.forEach(operation == null ? action
                     : value -> operation.element(() -> action.accept(value)));
@@ -5531,6 +5568,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.1
      */
     public static void doubleStreamForEach(DoubleStream receiver, DoubleConsumer action) {
+        Objects.requireNonNull(action);
         parallelTerminal(receiver, operation -> {
             receiver.forEach(operation == null ? action
                     : value -> operation.element(() -> action.accept(value)));
@@ -5649,6 +5687,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Stream<Object> streamSorted(Stream<Object> receiver, Comparator<Object> comparator) {
+        Objects.requireNonNull(comparator);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.sorted(comparator);
@@ -5666,6 +5705,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Stream<Object> streamFlatMap(Stream<Object> receiver, Function<Object, Stream<Object>> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.flatMap(mapper);
@@ -5684,6 +5724,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static Stream<Object> streamMapMulti(Stream<Object> receiver, BiConsumer<Object, Consumer<Object>> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapMulti(mapper);
@@ -5704,6 +5745,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static IntStream streamMapMultiToInt(Stream<Object> receiver, BiConsumer<Object, IntConsumer> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapMultiToInt(mapper);
@@ -5724,6 +5766,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static LongStream streamMapMultiToLong(Stream<Object> receiver, BiConsumer<Object, LongConsumer> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapMultiToLong(mapper);
@@ -5745,6 +5788,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static DoubleStream streamMapMultiToDouble(Stream<Object> receiver,
                                                       BiConsumer<Object, DoubleConsumer> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapMultiToDouble(mapper);
@@ -5765,6 +5809,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static IntStream intStreamMapMulti(IntStream receiver, IntStream.IntMapMultiConsumer mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapMulti(mapper);
@@ -5785,6 +5830,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static LongStream longStreamMapMulti(LongStream receiver, LongStream.LongMapMultiConsumer mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapMulti(mapper);
@@ -5805,6 +5851,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static DoubleStream doubleStreamMapMulti(DoubleStream receiver, DoubleStream.DoubleMapMultiConsumer mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapMulti(mapper);
@@ -5866,6 +5913,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static BaseStream<?, ?> streamOnClose(Stream<Object> receiver, Runnable closeHandler) {
+        Objects.requireNonNull(closeHandler);
         ControlledSchedule.point();
         Stream<Object> result = receiver.onClose(closeHandler);
         return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
@@ -5880,6 +5928,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static BaseStream<?, ?> intStreamOnClose(IntStream receiver, Runnable closeHandler) {
+        Objects.requireNonNull(closeHandler);
         ControlledSchedule.point();
         IntStream result = receiver.onClose(closeHandler);
         return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
@@ -5894,6 +5943,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static BaseStream<?, ?> longStreamOnClose(LongStream receiver, Runnable closeHandler) {
+        Objects.requireNonNull(closeHandler);
         ControlledSchedule.point();
         LongStream result = receiver.onClose(closeHandler);
         return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
@@ -5908,6 +5958,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.3
      */
     public static BaseStream<?, ?> doubleStreamOnClose(DoubleStream receiver, Runnable closeHandler) {
+        Objects.requireNonNull(closeHandler);
         ControlledSchedule.point();
         DoubleStream result = receiver.onClose(closeHandler);
         return AsyncTestContext.agentContext() == null ? result : staged(receiver, result, null);
@@ -6070,6 +6121,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Stream<Object> streamTakeWhile(Stream<Object> receiver, Predicate<Object> predicate) {
+        Objects.requireNonNull(predicate);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.takeWhile(predicate);
@@ -6087,6 +6139,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Stream<Object> streamDropWhile(Stream<Object> receiver, Predicate<Object> predicate) {
+        Objects.requireNonNull(predicate);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.dropWhile(predicate);
@@ -6190,6 +6243,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static IntStream intStreamFlatMap(IntStream receiver, IntFunction<IntStream> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.flatMap(mapper);
@@ -6207,6 +6261,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static IntStream intStreamTakeWhile(IntStream receiver, IntPredicate predicate) {
+        Objects.requireNonNull(predicate);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.takeWhile(predicate);
@@ -6224,6 +6279,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static IntStream intStreamDropWhile(IntStream receiver, IntPredicate predicate) {
+        Objects.requireNonNull(predicate);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.dropWhile(predicate);
@@ -6241,6 +6297,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static LongStream intStreamMapToLong(IntStream receiver, IntToLongFunction mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapToLong(mapper);
@@ -6258,6 +6315,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static DoubleStream intStreamMapToDouble(IntStream receiver, IntToDoubleFunction mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapToDouble(mapper);
@@ -6389,6 +6447,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static LongStream longStreamFlatMap(LongStream receiver, LongFunction<LongStream> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.flatMap(mapper);
@@ -6406,6 +6465,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static LongStream longStreamTakeWhile(LongStream receiver, LongPredicate predicate) {
+        Objects.requireNonNull(predicate);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.takeWhile(predicate);
@@ -6423,6 +6483,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static LongStream longStreamDropWhile(LongStream receiver, LongPredicate predicate) {
+        Objects.requireNonNull(predicate);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.dropWhile(predicate);
@@ -6440,6 +6501,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static IntStream longStreamMapToInt(LongStream receiver, LongToIntFunction mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapToInt(mapper);
@@ -6457,6 +6519,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static DoubleStream longStreamMapToDouble(LongStream receiver, LongToDoubleFunction mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapToDouble(mapper);
@@ -6574,6 +6637,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static DoubleStream doubleStreamFlatMap(DoubleStream receiver, DoubleFunction<DoubleStream> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.flatMap(mapper);
@@ -6591,6 +6655,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static DoubleStream doubleStreamTakeWhile(DoubleStream receiver, DoublePredicate predicate) {
+        Objects.requireNonNull(predicate);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.takeWhile(predicate);
@@ -6608,6 +6673,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static DoubleStream doubleStreamDropWhile(DoubleStream receiver, DoublePredicate predicate) {
+        Objects.requireNonNull(predicate);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.dropWhile(predicate);
@@ -6625,6 +6691,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static IntStream doubleStreamMapToInt(DoubleStream receiver, DoubleToIntFunction mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapToInt(mapper);
@@ -6642,6 +6709,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static LongStream doubleStreamMapToLong(DoubleStream receiver, DoubleToLongFunction mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapToLong(mapper);
@@ -6662,6 +6730,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static IntStream streamMapToInt(Stream<Object> receiver, ToIntFunction<Object> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapToInt(mapper);
@@ -6680,6 +6749,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static LongStream streamMapToLong(Stream<Object> receiver, ToLongFunction<Object> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapToLong(mapper);
@@ -6698,6 +6768,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static DoubleStream streamMapToDouble(Stream<Object> receiver, ToDoubleFunction<Object> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapToDouble(mapper);
@@ -6716,6 +6787,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static IntStream intStreamMap(IntStream receiver, IntUnaryOperator mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.map(mapper);
@@ -6733,6 +6805,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static IntStream intStreamFilter(IntStream receiver, IntPredicate predicate) {
+        Objects.requireNonNull(predicate);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.filter(predicate);
@@ -6750,6 +6823,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static IntStream intStreamPeek(IntStream receiver, IntConsumer action) {
+        Objects.requireNonNull(action);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.peek(action);
@@ -6771,6 +6845,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Stream<Object> intStreamMapToObj(IntStream receiver, IntFunction<Object> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapToObj(mapper);
@@ -6803,6 +6878,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static void intStreamForEachOrdered(IntStream receiver, IntConsumer action) {
+        Objects.requireNonNull(action);
         parallelTerminal(receiver, operation -> {
             receiver.forEachOrdered(operation == null ? action
                     : value -> operation.ordered(() -> action.accept(value)));
@@ -6821,6 +6897,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static int intStreamReduce(IntStream receiver, int identity, IntBinaryOperator operator) {
+        Objects.requireNonNull(operator);
         return parallelTerminal(receiver, operation -> receiver.reduce(identity, intStreamCombined(operation, operator)));
     }
 
@@ -6833,6 +6910,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static OptionalInt intStreamReduce(IntStream receiver, IntBinaryOperator operator) {
+        Objects.requireNonNull(operator);
         return parallelTerminal(receiver, operation -> receiver.reduce(intStreamCombined(operation, operator)));
     }
 
@@ -6855,6 +6933,9 @@ public final class AgentConcurrencyUtilHooks {
     public static Object intStreamCollect(IntStream receiver, Supplier<Object> supplier,
                                        ObjIntConsumer<Object> accumulator,
                                        BiConsumer<Object, Object> combiner) {
+        Objects.requireNonNull(supplier);
+        Objects.requireNonNull(accumulator);
+        Objects.requireNonNull(combiner);
         return parallelTerminal(receiver, operation -> operation == null
                 ? receiver.collect(supplier, accumulator, combiner)
                 : receiver.collect(() -> inElement(operation, supplier),
@@ -6877,6 +6958,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static boolean intStreamAnyMatch(IntStream receiver, IntPredicate predicate) {
+        Objects.requireNonNull(predicate);
         return parallelTerminal(receiver, operation -> receiver.anyMatch(operation == null ? predicate
                 : value -> inElement(operation, () -> predicate.test(value))));
     }
@@ -6890,6 +6972,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static boolean intStreamAllMatch(IntStream receiver, IntPredicate predicate) {
+        Objects.requireNonNull(predicate);
         return parallelTerminal(receiver, operation -> receiver.allMatch(operation == null ? predicate
                 : value -> inElement(operation, () -> predicate.test(value))));
     }
@@ -6903,6 +6986,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static boolean intStreamNoneMatch(IntStream receiver, IntPredicate predicate) {
+        Objects.requireNonNull(predicate);
         return parallelTerminal(receiver, operation -> receiver.noneMatch(operation == null ? predicate
                 : value -> inElement(operation, () -> predicate.test(value))));
     }
@@ -7016,6 +7100,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static LongStream longStreamMap(LongStream receiver, LongUnaryOperator mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.map(mapper);
@@ -7033,6 +7118,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static LongStream longStreamFilter(LongStream receiver, LongPredicate predicate) {
+        Objects.requireNonNull(predicate);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.filter(predicate);
@@ -7050,6 +7136,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static LongStream longStreamPeek(LongStream receiver, LongConsumer action) {
+        Objects.requireNonNull(action);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.peek(action);
@@ -7071,6 +7158,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Stream<Object> longStreamMapToObj(LongStream receiver, LongFunction<Object> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapToObj(mapper);
@@ -7103,6 +7191,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static void longStreamForEachOrdered(LongStream receiver, LongConsumer action) {
+        Objects.requireNonNull(action);
         parallelTerminal(receiver, operation -> {
             receiver.forEachOrdered(operation == null ? action
                     : value -> operation.ordered(() -> action.accept(value)));
@@ -7121,6 +7210,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static long longStreamReduce(LongStream receiver, long identity, LongBinaryOperator operator) {
+        Objects.requireNonNull(operator);
         return parallelTerminal(receiver, operation -> receiver.reduce(identity, longStreamCombined(operation, operator)));
     }
 
@@ -7133,6 +7223,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static OptionalLong longStreamReduce(LongStream receiver, LongBinaryOperator operator) {
+        Objects.requireNonNull(operator);
         return parallelTerminal(receiver, operation -> receiver.reduce(longStreamCombined(operation, operator)));
     }
 
@@ -7155,6 +7246,9 @@ public final class AgentConcurrencyUtilHooks {
     public static Object longStreamCollect(LongStream receiver, Supplier<Object> supplier,
                                        ObjLongConsumer<Object> accumulator,
                                        BiConsumer<Object, Object> combiner) {
+        Objects.requireNonNull(supplier);
+        Objects.requireNonNull(accumulator);
+        Objects.requireNonNull(combiner);
         return parallelTerminal(receiver, operation -> operation == null
                 ? receiver.collect(supplier, accumulator, combiner)
                 : receiver.collect(() -> inElement(operation, supplier),
@@ -7177,6 +7271,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static boolean longStreamAnyMatch(LongStream receiver, LongPredicate predicate) {
+        Objects.requireNonNull(predicate);
         return parallelTerminal(receiver, operation -> receiver.anyMatch(operation == null ? predicate
                 : value -> inElement(operation, () -> predicate.test(value))));
     }
@@ -7190,6 +7285,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static boolean longStreamAllMatch(LongStream receiver, LongPredicate predicate) {
+        Objects.requireNonNull(predicate);
         return parallelTerminal(receiver, operation -> receiver.allMatch(operation == null ? predicate
                 : value -> inElement(operation, () -> predicate.test(value))));
     }
@@ -7203,6 +7299,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static boolean longStreamNoneMatch(LongStream receiver, LongPredicate predicate) {
+        Objects.requireNonNull(predicate);
         return parallelTerminal(receiver, operation -> receiver.noneMatch(operation == null ? predicate
                 : value -> inElement(operation, () -> predicate.test(value))));
     }
@@ -7316,6 +7413,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static DoubleStream doubleStreamMap(DoubleStream receiver, DoubleUnaryOperator mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.map(mapper);
@@ -7333,6 +7431,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static DoubleStream doubleStreamFilter(DoubleStream receiver, DoublePredicate predicate) {
+        Objects.requireNonNull(predicate);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.filter(predicate);
@@ -7350,6 +7449,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static DoubleStream doubleStreamPeek(DoubleStream receiver, DoubleConsumer action) {
+        Objects.requireNonNull(action);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.peek(action);
@@ -7371,6 +7471,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static Stream<Object> doubleStreamMapToObj(DoubleStream receiver, DoubleFunction<Object> mapper) {
+        Objects.requireNonNull(mapper);
         ControlledSchedule.point();
         if (AsyncTestContext.agentContext() == null) {
             return receiver.mapToObj(mapper);
@@ -7403,6 +7504,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static void doubleStreamForEachOrdered(DoubleStream receiver, DoubleConsumer action) {
+        Objects.requireNonNull(action);
         parallelTerminal(receiver, operation -> {
             receiver.forEachOrdered(operation == null ? action
                     : value -> operation.ordered(() -> action.accept(value)));
@@ -7421,6 +7523,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static double doubleStreamReduce(DoubleStream receiver, double identity, DoubleBinaryOperator operator) {
+        Objects.requireNonNull(operator);
         return parallelTerminal(receiver, operation -> receiver.reduce(identity, doubleStreamCombined(operation, operator)));
     }
 
@@ -7433,6 +7536,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static OptionalDouble doubleStreamReduce(DoubleStream receiver, DoubleBinaryOperator operator) {
+        Objects.requireNonNull(operator);
         return parallelTerminal(receiver, operation -> receiver.reduce(doubleStreamCombined(operation, operator)));
     }
 
@@ -7455,6 +7559,9 @@ public final class AgentConcurrencyUtilHooks {
     public static Object doubleStreamCollect(DoubleStream receiver, Supplier<Object> supplier,
                                        ObjDoubleConsumer<Object> accumulator,
                                        BiConsumer<Object, Object> combiner) {
+        Objects.requireNonNull(supplier);
+        Objects.requireNonNull(accumulator);
+        Objects.requireNonNull(combiner);
         return parallelTerminal(receiver, operation -> operation == null
                 ? receiver.collect(supplier, accumulator, combiner)
                 : receiver.collect(() -> inElement(operation, supplier),
@@ -7477,6 +7584,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static boolean doubleStreamAnyMatch(DoubleStream receiver, DoublePredicate predicate) {
+        Objects.requireNonNull(predicate);
         return parallelTerminal(receiver, operation -> receiver.anyMatch(operation == null ? predicate
                 : value -> inElement(operation, () -> predicate.test(value))));
     }
@@ -7490,6 +7598,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static boolean doubleStreamAllMatch(DoubleStream receiver, DoublePredicate predicate) {
+        Objects.requireNonNull(predicate);
         return parallelTerminal(receiver, operation -> receiver.allMatch(operation == null ? predicate
                 : value -> inElement(operation, () -> predicate.test(value))));
     }
@@ -7503,6 +7612,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.14.2
      */
     public static boolean doubleStreamNoneMatch(DoubleStream receiver, DoublePredicate predicate) {
+        Objects.requireNonNull(predicate);
         return parallelTerminal(receiver, operation -> receiver.noneMatch(operation == null ? predicate
                 : value -> inElement(operation, () -> predicate.test(value))));
     }
@@ -7834,6 +7944,14 @@ public final class AgentConcurrencyUtilHooks {
         return null;
     }
 
+    /**
+     * {@return how many tasks {@code tasks} holds, or 0 for {@code null}}, which is the pool's to
+     * refuse with its own exception once the call is handed on (#1415).
+     */
+    private static int taskCount(@Nullable Collection<?> tasks) {
+        return tasks == null ? 0 : tasks.size();
+    }
+
     /** {@return the executor of the task this thread runs, when it is {@code pool}, else {@code null}} */
     @SuppressWarnings("ReferenceEquality") // the same pool, by identity
     private static @Nullable Object runningOn(ExecutorService pool) {
@@ -7855,7 +7973,7 @@ public final class AgentConcurrencyUtilHooks {
                                                  Collection<? extends Callable<Object>> tasks)
             throws InterruptedException {
         ControlledSchedule.point();
-        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, tasks.size());
+        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, taskCount(tasks));
         try {
             return receiver.invokeAll(tasks);
         } finally {
@@ -7878,7 +7996,7 @@ public final class AgentConcurrencyUtilHooks {
                                              Collection<? extends Callable<Object>> tasks)
             throws InterruptedException, ExecutionException {
         ControlledSchedule.point();
-        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, tasks.size());
+        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, taskCount(tasks));
         try {
             return receiver.invokeAny(tasks);
         } finally {
@@ -7905,7 +8023,7 @@ public final class AgentConcurrencyUtilHooks {
                                              long timeout, TimeUnit unit)
             throws InterruptedException, ExecutionException, TimeoutException {
         ControlledSchedule.point();
-        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, tasks.size());
+        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, taskCount(tasks));
         try {
             return receiver.invokeAny(tasks, timeout, unit);
         } finally {
@@ -7930,7 +8048,7 @@ public final class AgentConcurrencyUtilHooks {
                                                  long timeout, TimeUnit unit)
             throws InterruptedException {
         ControlledSchedule.point();
-        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, tasks.size());
+        Object pool = runningOn(receiver) == null ? null : recordSiblingWait(receiver, taskCount(tasks));
         try {
             return receiver.invokeAll(tasks, timeout, unit);
         } finally {
