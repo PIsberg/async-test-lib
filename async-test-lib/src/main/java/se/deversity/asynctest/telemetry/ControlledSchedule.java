@@ -490,6 +490,26 @@ public final class ControlledSchedule {
     }
 
     /**
+     * Gives back the hold the schedule recorded for {@code lock} at {@link #acquiring} when the
+     * acquire after it threw instead, as an interrupted {@code lockInterruptibly} does. Not a
+     * point. A worker that point freed, interrupted while it waited for its turn, was never
+     * granted and so holds nothing to give back; releasing for it took away a hold it still had
+     * (#1418).
+     *
+     * @param lock the lock the abandoned acquire was for
+     */
+    public static void acquireAbandoned(Object lock) {
+        if (OPEN.get() == 0) {
+            return;
+        }
+        Worker worker = CURRENT.get();
+        if (worker == null || worker.inside || worker.free) {
+            return;
+        }
+        worker.schedule.release(worker, lock);
+    }
+
+    /**
      * Records that the calling worker is about to wait on {@code monitor}, which {@code wait()}
      * releases however many times it is held, and returns that count for
      * {@link #reacquiredAfterWait}. Not a point: the worker goes on into the wait (#1048).

@@ -1362,12 +1362,21 @@ public final class AgentCollectionHooks {
         record(receiver, "put", true);
         actHalf(receiver, key, value, false);
         // A concurrent map publishes the value to whoever later reads it (HappensBefore): the
-        // release comes before the put, so every get that can return the value finds it.
-        if (value != null && HappensBefore.publishesElements(receiver)) {
-            HappensBefore.release(value);
-        }
+        // release comes before the put, so every get that can return the value finds it. The key
+        // first, as in putIfAbsent: retract withdraws only this thread's last release, which must
+        // be the value's when the put throws and stores nothing (#1418).
         publishingKey(receiver, key);
-        return receiver.put(key, value);
+        boolean published = publishing(receiver, value);
+        boolean stored = false;
+        try {
+            Object previous = receiver.put(key, value);
+            stored = true;
+            return previous;
+        } finally {
+            if (published && !stored) {
+                HappensBefore.retract(value);
+            }
+        }
     }
 
     /**
@@ -1686,9 +1695,16 @@ public final class AgentCollectionHooks {
             // release followed it. The key goes first, so the value's stays the last to withdraw.
             publishingKey(receiver, key);
             boolean published = publishing(receiver, value);
-            Object merged = receiver.merge(key, value, publishing(receiver, remapping));
-            if (published && merged != value) { // NOPMD CompareObjectsWithEquals - the same object went in, or it did not
-                HappensBefore.retract(value);
+            boolean completed = false;
+            Object merged = null;
+            try {
+                merged = receiver.merge(key, value, publishing(receiver, remapping));
+                completed = true;
+            } finally {
+                // A merge that threw, from the map or the function, stored nothing (#1418).
+                if (published && (!completed || merged != value)) { // NOPMD CompareObjectsWithEquals - the same object went in, or it did not
+                    HappensBefore.retract(value);
+                }
             }
             return received(receiver, merged);
         } finally {
@@ -1949,9 +1965,13 @@ public final class AgentCollectionHooks {
         record(receiver, "offer", true);
         // Before the offer, so the take that removes the element drains after it (#630).
         TelemetryRegistry.ownershipOffered(element, receiver, monitor);
-        boolean accepted = receiver.offer(element);
-        if (!accepted) {
-            TelemetryRegistry.ownershipRefused(element, receiver);
+        boolean accepted = false;
+        try {
+            accepted = receiver.offer(element);
+        } finally {
+            if (!accepted) { // refused, or the call threw: nothing was handed over (#742, #1418)
+                TelemetryRegistry.ownershipRefused(element, receiver);
+            }
         }
         return accepted;
     }
@@ -2049,9 +2069,13 @@ public final class AgentCollectionHooks {
         ControlledSchedule.point();
         record(receiver, "offerFirst", true);
         TelemetryRegistry.ownershipOffered(element, receiver, monitor);
-        boolean accepted = receiver.offerFirst(element);
-        if (!accepted) {
-            TelemetryRegistry.ownershipRefused(element, receiver);
+        boolean accepted = false;
+        try {
+            accepted = receiver.offerFirst(element);
+        } finally {
+            if (!accepted) { // refused, or the call threw: nothing was handed over (#742, #1418)
+                TelemetryRegistry.ownershipRefused(element, receiver);
+            }
         }
         return accepted;
     }
@@ -2067,9 +2091,13 @@ public final class AgentCollectionHooks {
         ControlledSchedule.point();
         record(receiver, "offerLast", true);
         TelemetryRegistry.ownershipOffered(element, receiver, monitor);
-        boolean accepted = receiver.offerLast(element);
-        if (!accepted) {
-            TelemetryRegistry.ownershipRefused(element, receiver);
+        boolean accepted = false;
+        try {
+            accepted = receiver.offerLast(element);
+        } finally {
+            if (!accepted) { // refused, or the call threw: nothing was handed over (#742, #1418)
+                TelemetryRegistry.ownershipRefused(element, receiver);
+            }
         }
         return accepted;
     }

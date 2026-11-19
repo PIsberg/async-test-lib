@@ -65,6 +65,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A woven call that throws leaves the bookkeeping as the call left the object (#1418).** With
+  the agent, a `Map.put` or `Map.merge` that threw (`ConcurrentHashMap.put(null, v)`, a remapping
+  function that throws) and an untimed `offer`, `offerFirst` or `offerLast` that threw
+  (`ClassCastException` from a priority queue) kept the value published, so a later hand-off of
+  that object read as ordered and could hide a race; each now withdraws it. A `FutureTask` handed
+  to a `new Thread(task, ...)` whose constructor threw was paired with the next thread built
+  there; a construction around another target now clears it. An `unlock` of a
+  `ReentrantLock`, a read-write view or a `StampedLock` stamp this thread does not hold stripped a
+  hold it did have (the read hold, when the write view was unlocked by mistake); it now records no
+  release, and still reaches the try-lock detector. And an interrupted `lockInterruptibly` under a
+  controlled schedule gave back a hold the schedule never granted, leaving its table saying a lock
+  the worker held was free. A failed multi-element `addAll` still withdraws only its last
+  element's release (#1425). `AgentHookExceptionPathsTest`, `ControlledScheduleAbandonedAcquireTest`.
+
 - **A handler that restores the interrupt flag inside an outer `catch` is no longer reported as
   swallowing it (#1417).** With `collections=true`, the interrupt-handler walk followed an edge to
   every enclosing handler from every instruction its range covered, so in

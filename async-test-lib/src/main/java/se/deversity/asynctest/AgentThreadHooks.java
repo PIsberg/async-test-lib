@@ -220,8 +220,12 @@ public final class AgentThreadHooks {
      * @since 1.15.0
      */
     public static void threadTarget(Object target) {
+        // Set or cleared on every call: a construction that threw never reached threadConstructed,
+        // and its task must not be paired with the next thread built here (#1418).
         if (target instanceof FutureTask) {
             PENDING_TARGET.set(target);
+        } else {
+            PENDING_TARGET.remove();
         }
     }
 

@@ -8,6 +8,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.StampedLock;
 
@@ -29,7 +30,7 @@ import se.deversity.vibetags.annotations.AIContract;
  * <h2>Why locks needed their own hooks</h2>
  *
  * <p>A {@code synchronized} block compiles to {@code MONITORENTER}, which the agent weaves, so the
- * detectors can tell guarded code from racing code. A {@link java.util.concurrent.locks.ReentrantLock}
+ * detectors can tell guarded code from racing code. A {@link ReentrantLock}
  * compiles to an ordinary method call and looks like nothing at all, so code guarded by one was
  * reported as unguarded. That is not a corner case: it is how most modern concurrent code guards
  * itself, and Guava's own cache is an example the corpus eval caught.
@@ -157,7 +158,7 @@ public final class AgentLockHooks {
      * the rest get a plain scheduling point.
      */
     private static boolean exclusive(Lock lock) {
-        return lock instanceof java.util.concurrent.locks.ReentrantLock
+        return lock instanceof ReentrantLock
                 || lock instanceof ReentrantReadWriteLock.WriteLock;
     }
 
@@ -332,7 +333,9 @@ public final class AgentLockHooks {
             receiver.lockInterruptibly();
         } catch (InterruptedException e) {
             if (exclusive(receiver)) {
-                ControlledSchedule.released(receiver); // the schedule recorded a hold never taken
+                // The hold the schedule's grant recorded, if it made one: a worker interrupted
+                // while it waited for its turn was never granted (#1418).
+                ControlledSchedule.acquireAbandoned(receiver);
             }
             throw e;
         }
@@ -377,12 +380,37 @@ public final class AgentLockHooks {
         return acquired;
     }
 
+    /**
+     * {@return whether this thread does not hold {@code lock}, which the lock itself can say for
+     * the JDK's reentrant kinds}: their {@code unlock} then throws, and recording a release first
+     * stripped a hold the thread still has, the read hold of a read-write lock whose write view it
+     * unlocked by mistake among them (#1418). Any other lock is taken to hold.
+     */
+    private static boolean notHeldByThisThread(Lock lock) {
+        if (lock instanceof ReentrantLock reentrant) {
+            return !reentrant.isHeldByCurrentThread();
+        }
+        if (lock instanceof ReentrantReadWriteLock.WriteLock write) {
+            return !write.isHeldByCurrentThread();
+        }
+        if (lock instanceof ReentrantReadWriteLock.ReadLock) {
+            View view = viewOf(lock);
+            return view != null && view.owner() instanceof ReentrantReadWriteLock owner
+                    && owner.getReadHoldCount() == 0;
+        }
+        return false;
+    }
+
     /** Weaves {@code Lock.unlock()}. @param receiver the lock */
     public static void unlock(Lock receiver) {
-        if (exclusive(receiver)) {
-            ControlledSchedule.released(receiver);
+        // Released only what this thread holds; the unlock of a lock it does not hold still reaches
+        // the try-lock detector, whose finding it is (#1418).
+        if (!notHeldByThisThread(receiver)) {
+            if (exclusive(receiver)) {
+                ControlledSchedule.released(receiver);
+            }
+            noteReleased(receiver);
         }
-        noteReleased(receiver);
         TryLockMisuseDetector tryLocks = AsyncTestContext.currentTryLockMisuseDetector();
         if (tryLocks != null) {
             tryLocks.recordUnlock(receiver, receiver.getClass().getName(), Thread.currentThread());
@@ -518,13 +546,18 @@ public final class AgentLockHooks {
 
     /** Weaves {@code StampedLock.unlockWrite(long)}. @param receiver the lock @param stamp the write stamp being released, as the acquire returned it */
     public static void unlockWrite(StampedLock receiver, long stamp) {
-        HeldLocks.released(receiver, false);
+        // A stamp of another mode, or one no longer valid, makes the call throw (#1418).
+        if (StampedLock.isWriteLockStamp(stamp) && receiver.validate(stamp)) {
+            HeldLocks.released(receiver, false);
+        }
         receiver.unlockWrite(stamp);
     }
 
     /** Weaves {@code StampedLock.unlockRead(long)}. @param receiver the lock @param stamp the read stamp being released, as the acquire returned it */
     public static void unlockRead(StampedLock receiver, long stamp) {
-        HeldLocks.released(receiver, true);
+        if (StampedLock.isReadLockStamp(stamp) && receiver.validate(stamp)) { // as unlockWrite (#1418)
+            HeldLocks.released(receiver, true);
+        }
         receiver.unlockRead(stamp);
     }
 
@@ -537,7 +570,9 @@ public final class AgentLockHooks {
      * @param stamp    the stamp being released, whichever mode acquired it
      */
     public static void unlock(StampedLock receiver, long stamp) {
-        HeldLocks.released(receiver, false);
+        if (StampedLock.isLockStamp(stamp) && receiver.validate(stamp)) { // as unlockWrite (#1418)
+            HeldLocks.released(receiver, false);
+        }
         receiver.unlock(stamp);
     }
 
