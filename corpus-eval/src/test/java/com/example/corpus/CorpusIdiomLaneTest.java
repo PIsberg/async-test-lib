@@ -3322,6 +3322,41 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- 41. A BitSet read only through a call #1305 left unwoven (#1306) ---------------------
+
+    private static final Rounds<BitSet> GUARDED_SCAN = new Rounds<>(BitSet::new);
+    private static final Rounds<BitSet> RACED_SCAN = new Rounds<>(BitSet::new);
+
+    /** One thread sets bits; the others scan backwards with previousSetBit, all under its monitor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_bitSet_scannedUnderItsOwnMonitor() {
+        correct(() -> {
+            Turn<BitSet> turn = GUARDED_SCAN.next();
+            BitSet flags = turn.shared();
+            synchronized (flags) {
+                if (turn.opensTheRound()) {
+                    flags.set(turn.ticket() % 60);
+                } else {
+                    use(flags.previousSetBit(63));
+                }
+            }
+        });
+    }
+
+    /** The same scan with no lock: the readers see the words the setter is rewriting. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_bitSet_scannedWhileSet() {
+        broken(() -> {
+            Turn<BitSet> turn = RACED_SCAN.next();
+            BitSet flags = turn.shared();
+            if (turn.opensTheRound()) {
+                flags.set(turn.ticket() % 60);
+            } else {
+                use(flags.previousSetBit(63));
+            }
+        });
+    }
+
     // --- 33. A FutureTask the caller runs itself, the Memoizer idiom (#1307) ------------------
 
     private static FutureTask<Limits> limitsTask() {

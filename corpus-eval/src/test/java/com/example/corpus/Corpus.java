@@ -6580,6 +6580,21 @@ final class Corpus {
                             + "so two threads setting bits of the same word lose one",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_bitSet_scannedUnderItsOwnMonitor", JDK,
+                    "java.util.BitSet",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread sets a bit and the others scan with previousSetBit, all inside "
+                            + "synchronized on the BitSet (#1306)"),
+
+            new RecordingSubject("idiom_bitSet_scannedWhileSet", JDK,
+                    "java.util.BitSet",
+                    DetectorType.SHARED_COLLECTIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same scan with no lock: previousSetBit reads the words set rewrites, and "
+                            + "it was the readers' only call, so before #1306 nothing saw them",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_futureTask_runByOneThreadAndGotByTheRest", JDK,
                     "java.util.concurrent.FutureTask",
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,

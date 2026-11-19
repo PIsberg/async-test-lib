@@ -973,7 +973,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3176.0" y="168.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">keylessCheck(Map&lt;Object,Ob…</text>
   <text x="3176.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">actHalf(Map&lt;Object,Object&gt;…</text>
   <text x="3176.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">synchronizedWrapper(Object…</text>
-  <text x="3176.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+147 more)</text>
+  <text x="3176.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+157 more)</text>
 </g>
 <g id="AgentConcurrencyUtilHooks">
   <title>AgentConcurrencyUtilHooks [CLASS]</title>
@@ -994,7 +994,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquire(Semaphore): void</text>
   <text x="3376.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">tryAcquire(Semaphore): boo…</text>
   <text x="3376.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">futureTaskRun(FutureTask&lt;O…</text>
-  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+430 more)</text>
+  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+431 more)</text>
 </g>
 <g id="AgentConstructionHooks">
   <title>AgentConstructionHooks [CLASS]</title>

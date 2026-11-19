@@ -186,6 +186,46 @@ class CollectionAccessWeaverTest {
             return receiver.length();
         }
 
+        public static int bitSetPreviousSetBit(java.util.BitSet receiver, int fromIndex) {
+            return receiver.previousSetBit(fromIndex);
+        }
+
+        public static int bitSetPreviousClearBit(java.util.BitSet receiver, int fromIndex) {
+            return receiver.previousClearBit(fromIndex);
+        }
+
+        public static boolean bitSetIntersects(java.util.BitSet receiver, java.util.BitSet other) {
+            return receiver.intersects(other);
+        }
+
+        public static int bitSetSize(java.util.BitSet receiver) {
+            return receiver.size();
+        }
+
+        public static java.util.stream.IntStream bitSetStream(java.util.BitSet receiver) {
+            return receiver.stream();
+        }
+
+        public static long[] bitSetToLongArray(java.util.BitSet receiver) {
+            return receiver.toLongArray();
+        }
+
+        public static byte[] bitSetToByteArray(java.util.BitSet receiver) {
+            return receiver.toByteArray();
+        }
+
+        public static boolean bitSetEquals(java.util.BitSet receiver, Object other) {
+            return receiver.equals(other);
+        }
+
+        public static int bitSetHashCode(java.util.BitSet receiver) {
+            return receiver.hashCode();
+        }
+
+        public static Object bitSetClone(java.util.BitSet receiver) {
+            return receiver.clone();
+        }
+
         public static boolean bitSetIsEmpty(java.util.BitSet receiver) {
             return receiver.isEmpty();
         }
