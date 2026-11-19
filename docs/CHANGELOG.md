@@ -65,6 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A constructor that builds an object before its superclass call loads again with
+  `fields=true` (#1412).** The field weaver took the first `INVOKESPECIAL <init>` in a
+  constructor for the superclass call, so a helper's `new Object()` in the arguments of
+  `super(...)` or in a prologue before it (JEP 513, Kotlin, generated code) ended the
+  uninitialised-`this` window early, and a volatile write of a field of `this` after it was
+  woven with a hook that received `uninitializedThis`: the class failed to load with
+  `VerifyError: Bad type on operand stack`. Only an `<init>` call with no `NEW` of its own
+  still open now counts. `FieldWeavingBeforeSuperCallTest`.
+
 - **The rest of `BitSet`'s reads are woven (#1306).** With `collections=true`, a `BitSet` one
   thread wrote while the others read it only through `previousSetBit`, `previousClearBit`,
   `intersects`, `size`, `stream`, `toLongArray`, `toByteArray`, `equals`, `hashCode` or `clone`
