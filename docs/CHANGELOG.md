@@ -65,6 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A handler that restores the interrupt flag inside an outer `catch` is no longer reported as
+  swallowing it (#1417).** With `collections=true`, the interrupt-handler walk followed an edge to
+  every enclosing handler from every instruction its range covered, so in
+  `try { try { sleep(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); } }
+  catch (RuntimeException ex) { ... }` the handler's first instruction, before `interrupt()`, led
+  to the outer catch and its return. Only a call, other than `Thread.currentThread()`, now
+  reaches an enclosing handler; an empty handler inside an outer catch is still reported.
+  `InterruptHandlerWeaverTest`.
+
 - **The field weaver's memory of earlier instructions follows the path an access runs on (#1416).**
   A constant pushed for something else tagged the next field write as an idempotent constant
   write (`array = new Object[1]` tagged with the length 1; `a = 1; b = c;` tagged `b` with 1),

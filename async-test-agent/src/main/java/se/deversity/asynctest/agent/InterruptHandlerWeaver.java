@@ -657,6 +657,24 @@ final class InterruptHandlerWeaver implements AsmVisitorWrapper {
                     && !"interrupted".equals(name) && !"isInterrupted".equals(name);
         }
 
+        /**
+         * {@return whether {@code insn} can throw, for the walk, into an enclosing handler}: a call,
+         * other than {@code Thread.currentThread()}. A load, a store or a constant cannot, and an
+         * edge from each of them let a handler that restores the flag reach an outer catch of
+         * anything else, and its return, before its {@code interrupt()} (#1417). A field, array or
+         * arithmetic instruction that throws a runtime exception is left out too: a handler that
+         * restores the flag does not swallow it because a bug elsewhere might, which errs toward
+         * not reporting, as {@link #restoresTheFlag} does.
+         */
+        private static boolean mayThrowIntoAHandler(Insn insn) {
+            int opcode = insn.opcode();
+            if (opcode < Opcodes.INVOKEVIRTUAL || opcode > Opcodes.INVOKEDYNAMIC) {
+                return false;
+            }
+            return !(opcode == Opcodes.INVOKESTATIC && "java/lang/Thread".equals(insn.owner())
+                    && "currentThread".equals(insn.name()));
+        }
+
         /** {@return the indexes control can pass to after the instruction at {@code at}} */
         private List<Integer> successors(int at) {
             List<Integer> next = new ArrayList<>(2);
@@ -673,6 +691,9 @@ final class InterruptHandlerWeaver implements AsmVisitorWrapper {
                     || (opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN);
             if (!ends) {
                 next.add(at + 1);
+            }
+            if (!mayThrowIntoAHandler(insn)) {
+                return next;
             }
             for (Block block : blocks) {
                 if (INTERRUPTED_EXCEPTION.equals(block.type())) {

@@ -95,6 +95,20 @@ class InterruptHandlerWeaverTest {
     }
 
     @Test
+    @DisplayName("a handler that restores the flag inside an outer catch is not named, an empty one is")
+    void anOuterCatchDoesNotMakeARestoringHandlerSwallow() throws Exception {
+        // The walk added an edge to the outer handler from every instruction its range covers, so
+        // the inner handler's ASTORE, before interrupt() is reached, led to a return (#1417).
+        Object sample = woven(InterruptHandlingShapes.class).getConstructor().newInstance();
+
+        assertEquals("", entered(sample, "restoreInsideAnOuterCatch"),
+                "the handler restores the flag; only a call can throw into the outer catch first");
+        assertTrue(entered(sample, "swallowInsideAnOuterCatch")
+                        .startsWith(InterruptHandlingShapes.class.getName() + ".swallowInsideAnOuterCatch:"),
+                "an empty handler still swallows with an outer catch around it");
+    }
+
+    @Test
     @DisplayName("a run() that returns on interrupt is a thread's own policy and is not named")
     void threadRunExitIsNotNamed() throws Exception {
         Runnable worker = (Runnable) woven(InterruptHandlingShapes.Worker.class)
