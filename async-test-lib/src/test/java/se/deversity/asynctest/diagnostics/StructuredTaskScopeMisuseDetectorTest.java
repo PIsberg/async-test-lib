@@ -369,4 +369,27 @@ class StructuredTaskScopeMisuseDetectorTest {
         });
         assertFalse(detector.analyze().hasIssues());
     }
+
+    @org.junit.jupiter.api.Test
+    void aClosedScopeOfAnEarlierRoundIsNotTheOneAnotherThreadForksOn() {
+        // A thread that opened no scope of this name acts on someone else's; the first one found
+        // could be an earlier round's, joined and closed, and the fork read as fork-after-join
+        // (#1419). An open one is the one it can reach.
+        StructuredTaskScopeMisuseDetector detector = new StructuredTaskScopeMisuseDetector();
+        Thread earlierOwner = new Thread(() -> { }, "earlier-owner");
+        Thread laterOwner = new Thread(() -> { }, "later-owner");
+        Thread other = new Thread(() -> { }, "other");
+        detector.recordScopeOpened("fanout", earlierOwner);
+        detector.recordFork("fanout", "a", earlierOwner);
+        detector.recordJoin("fanout", earlierOwner);
+        detector.recordScopeClosed("fanout", earlierOwner);
+        detector.recordScopeOpened("fanout", laterOwner);
+
+        detector.recordFork("fanout", "b", other);
+
+        StructuredTaskScopeMisuseDetector.StructuredTaskScopeMisuseReport report = detector.analyze();
+        assertTrue(report.getForkAfterJoinIssues().isEmpty(), "the open scope was never joined: "
+                + report.getForkAfterJoinIssues());
+        assertFalse(report.getConfinementIssues().isEmpty(), "the fork is still off its owner's thread");
+    }
 }

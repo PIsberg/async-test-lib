@@ -98,6 +98,7 @@ public class StructuredTaskScopeMisuseDetector {
         final String ownerThreadName;
         volatile boolean joined = false;
         volatile boolean timedOut = false;
+        volatile boolean closed = false;
         final AtomicInteger forkCount = new AtomicInteger(0);
 
         ScopeState(long ownerThreadId, String ownerThreadName) {
@@ -149,7 +150,10 @@ public class StructuredTaskScopeMisuseDetector {
         if (owners == null) return null;
         ScopeState own = owners.get(thread.threadId());
         if (own != null) return own;
-        return owners.values().stream().findFirst().orElse(null);
+        // An open scope is the one another thread can reach; an earlier round's, joined and
+        // closed, made its fork read as fork-after-join (#1419).
+        return owners.values().stream().filter(s -> !s.closed).findFirst()
+                .orElseGet(() -> owners.values().stream().findFirst().orElse(null));
     }
 
     /**
@@ -309,6 +313,7 @@ public class StructuredTaskScopeMisuseDetector {
         if (scopeId == null || thread == null) return;
         ScopeState s = scope(scopeId, thread);
         if (s == null) return;
+        s.closed = true;
 
         if (s.forkCount.get() > 0 && !s.joined) {
             missingJoinReports.add(

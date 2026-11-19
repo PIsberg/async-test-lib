@@ -115,7 +115,9 @@ public class NestedMonitorLockoutDetector {
         Deque<IdentityKey> held = heldMonitors.get(t.threadId());
         if (held == null || held.isEmpty()) return;
         if (operation != null && OBJECT_WAIT.matcher(operation).find()) {
-            recordWait(t, operation, held.size() - 1);
+            // Monitors, not entries: a reentrant entry is the same monitor, and wait() releases
+            // every hold of it (#1419).
+            recordWait(t, operation, new java.util.HashSet<>(held).size() - 1);
             return;
         }
 

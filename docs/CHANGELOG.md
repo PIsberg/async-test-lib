@@ -65,6 +65,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Five detectors keep their state where it belongs, and a teardown finding gates at its worst
+  severity (#1419).** `ConstructorSafetyValidator` took a superclass constructor's frame for an
+  object whose start was recorded there, so the first helper the subclass then built closed the
+  construction and a later unsafe publication went unreported. `NestedMonitorLockoutDetector`
+  counted a monitor entered twice as two, and reported a CRITICAL lockout for a plain `wait()`.
+  `ThreadStarvationDetector` reported `executionTimeMs` as the negated `nanoTime` origin; it is 0,
+  since the event is recorded as the task starts. `StructuredTaskScopeMisuseDetector` could hand a
+  thread with no scope of its own an earlier round's closed, joined scope, and report its fork as
+  fork-after-join. `ScopedValueMisuseDetector` carried a binding a round left open into the next
+  round on a pooled platform worker and reported its own binding there as a rebind; it now resets
+  each round (`markInvocationStart`). And `ConcurrencyRunner.afterTeardown` takes the most severe
+  `ExecutorShutdown` finding rather than the first. `ConstructorSafetyValidatorTest`,
+  `NestedMonitorLockoutDetectorTest`, `ThreadStarvationDetectorTest`,
+  `StructuredTaskScopeMisuseDetectorTest`, `ScopedValueMisuseDetectorTest`.
+
 - **A woven call that throws leaves the bookkeeping as the call left the object (#1418).** With
   the agent, a `Map.put` or `Map.merge` that threw (`ConcurrentHashMap.put(null, v)`, a remapping
   function that throws) and an untimed `offer`, `offerFirst` or `offerLast` that threw

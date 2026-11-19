@@ -228,4 +228,18 @@ public class NestedMonitorLockoutDetectorTest {
         assertFalse(report.incidents.stream().anyMatch(i -> i.contains("t2-blocking")),
                 "t2 had no monitor held so should not be flagged");
     }
+
+    @org.junit.jupiter.api.Test
+    void aWaitOnAMonitorEnteredTwiceHoldsNothingElse() {
+        // wait() releases every hold of its own monitor, so a reentrant entry is still one
+        // monitor; counting entries instead of monitors reported a lockout (#1419).
+        NestedMonitorLockoutDetector detector = new NestedMonitorLockoutDetector();
+        Object monitor = new Object();
+        detector.recordMonitorAcquired(monitor);
+        detector.recordMonitorAcquired(monitor);
+
+        detector.recordBlockingOperationAttempted("monitor.wait()");
+
+        assertFalse(detector.analyze().hasIssues(), "one monitor, entered twice, is all that is held");
+    }
 }

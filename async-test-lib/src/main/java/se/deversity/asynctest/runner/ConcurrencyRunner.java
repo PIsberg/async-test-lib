@@ -1113,9 +1113,10 @@ public class ConcurrencyRunner {
             return;
         }
         String name = ExecutorShutdownDetector.class.getSimpleName();
+        // The most severe finding, as DetectorRegistry.ifIssue gates a run's (#1419).
         IssueSeverity severity = report.structuredViolations.stream()
                 .map(se.deversity.asynctest.report.Violation::severity)
-                .findFirst()
+                .min(java.util.Comparator.naturalOrder())
                 .orElse(IssueSeverity.MEDIUM);
         List<String> messages = report.structuredViolations.stream()
                 .map(se.deversity.asynctest.report.Violation::message).toList();

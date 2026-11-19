@@ -1304,6 +1304,9 @@ public final class AsyncTestContext {
         if (nestedMonitorLockoutDetector != null) {
             nestedMonitorLockoutDetector.markInvocationStart();
         }
+        if (scopedValueMisuseDetector != null) {
+            scopedValueMisuseDetector.markInvocationStart();
+        }
         if (varHandleNonAtomicUpdateDetector != null) {
             varHandleNonAtomicUpdateDetector.markInvocationStart();
         }
