@@ -65,6 +65,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The field weaver's memory of earlier instructions follows the path an access runs on (#1416).**
+  A constant pushed for something else tagged the next field write as an idempotent constant
+  write (`array = new Object[1]` tagged with the length 1; `a = 1; b = c;` tagged `b` with 1),
+  which could excuse a racing write. A plain write on a path that returned before a volatile
+  write was still reported published by it, and a plain read was reported ordered by a volatile
+  read made only on a path that had already returned, both of which excused a real race. Labels
+  now meet the paths that reach them (writes by union, volatile reads by intersection), and any
+  instruction that is not a constant push ends the constant. A `synchronized` instance method
+  whose bytecode stores into local 0, and a `Thread` subclass constructor that stores a
+  primitive there, failed to load once woven (`VerifyError`) or handed the wrong monitor on; the
+  first is now woven without its method-monitor hooks, the second without the construction
+  mark. `FieldWeavingFlowTest`.
+
 - **A woven stream, `ConcurrentHashMap.forEach*` or `Arrays.parallelSetAll` call throws for a null
   callback again, as the JDK call does (#1415).** Inside a run the hooks wrapped the callback in a
   lambda of their own before calling the JDK, which then saw a non-null argument: `stream.map(null)`

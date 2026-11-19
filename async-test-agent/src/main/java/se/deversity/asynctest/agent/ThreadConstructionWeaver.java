@@ -233,7 +233,8 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
 
         @Override
         public void visitVarInsn(int opcode, int varIndex) {
-            if (varIndex == 0 && opcode == Opcodes.ASTORE) {
+            // Any store there, not only a reference: an int in local 0 is not this either (#1416).
+            if (varIndex == 0 && opcode >= Opcodes.ISTORE && opcode <= Opcodes.ASTORE) {
                 thisUnmarked = false;
             }
             super.visitVarInsn(opcode, varIndex);
