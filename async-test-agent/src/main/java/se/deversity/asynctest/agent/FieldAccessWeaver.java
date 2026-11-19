@@ -560,8 +560,16 @@ final class FieldAccessWeaver {
          * will not load. Guava's {@code Joiner$3} constructor is one of many that writes a field in
          * that window. Those writes record identity 0, the same "not known" every non-agent caller
          * uses, and everything after the super call records normally.
+         *
+         * <p>The super call is the first {@code INVOKESPECIAL <init>} with no {@code NEW} of its own
+         * still open: a helper built in its arguments, or in a prologue before it (JEP 513, Kotlin,
+         * generated code), closes its own {@code NEW} first, and taking that call for the super
+         * call wove a hook that handed {@code uninitializedThis} on (#1412).
          */
         private boolean thisIsUninitialised;
+
+        /** {@code NEW}s visited in a constructor before its super call and not yet initialised. */
+        private int openNewsBeforeSuperCall;
 
         /**
          * Whether this method is a constructor, in which case its writes to {@code this} are
@@ -955,7 +963,11 @@ final class FieldAccessWeaver {
             }
             recentConstants.clear();
             if (thisIsUninitialised && opcode == Opcodes.INVOKESPECIAL && "<init>".equals(name)) {
-                thisIsUninitialised = false;
+                if (openNewsBeforeSuperCall > 0) {
+                    openNewsBeforeSuperCall--;
+                } else {
+                    thisIsUninitialised = false;
+                }
             }
         }
 
@@ -1294,6 +1306,9 @@ final class FieldAccessWeaver {
         @Override
         public void visitTypeInsn(int opcode, String type) {
             monitorFieldStep = 0;
+            if (thisIsUninitialised && opcode == Opcodes.NEW) {
+                openNewsBeforeSuperCall++;
+            }
             super.visitTypeInsn(opcode, type);
         }
 
