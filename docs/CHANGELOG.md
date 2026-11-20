@@ -65,6 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `StringJoiner` shared by several threads is reported (#1309, part).** With the agent
+  (`collections=true`), one `StringJoiner` every thread added to drew nothing, while a shared
+  `StringBuilder` doing the same is reported: a joiner appends to an internal array with no lock.
+  Its `add`, `merge`, `setEmptyValue`, `toString` and `length` are woven and recorded on the
+  `STRING_BUILDER` detector, which gains `recordJoinerAppend` and `recordJoinerRead` for
+  recording by hand. A shared `Iterator` advanced by several threads is still silent.
+  `AgentSharedInstanceHooksTest`; corpus idiom pair `idiom_stringJoiner_onePerThread` /
+  `idiom_stringJoiner_sharedByEveryThread`.
+
 - **The rest of `ConcurrentHashMap`'s bulk reads order what they read after the put that published
   it (#1375).** With `collections=true`, an object built by one thread, put into a
   `ConcurrentHashMap` and read back by another through `searchValues`, `searchKeys`,

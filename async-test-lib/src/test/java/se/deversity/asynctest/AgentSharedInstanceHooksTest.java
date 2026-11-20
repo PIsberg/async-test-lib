@@ -307,6 +307,36 @@ class AgentSharedInstanceHooksTest {
                 "one StringBuilder per thread, through the same hooks, is correct code");
     }
 
+    @Test
+    @DisplayName("a StringJoiner two threads add to through the hooks is reported; one each is not (#1309)")
+    void stringJoiner() {
+        AsyncTestContext shared = newContext();
+        java.util.StringJoiner one = new java.util.StringJoiner(",");
+        onTwoThreads(shared, true, () -> joinEverything(one));
+        assertTrue(with(shared, () -> AsyncTestContext.stringBuilderDetector().analyze().hasIssues()),
+                "one StringJoiner added to by two threads through the hooks must be reported, as a "
+                        + "StringBuilder is: add appends to an internal array with no lock");
+
+        AsyncTestContext confined = newContext();
+        onTwoThreads(confined, false, () -> {
+            java.util.StringJoiner mine = new java.util.StringJoiner(",");
+            assertEquals("a,b,c", joinEverything(mine), "every hook delegated");
+        });
+        assertFalse(with(confined, () -> AsyncTestContext.stringBuilderDetector().analyze().hasIssues()),
+                "one StringJoiner per thread, through the same hooks, is correct code");
+    }
+
+    /** Every StringJoiner hook once, on {@code joiner}; returns what toString returned. */
+    private static String joinEverything(java.util.StringJoiner joiner) {
+        java.util.StringJoiner other = new java.util.StringJoiner(",").add("c");
+        assertSame(joiner, AgentSharedInstanceHooks.joinerSetEmptyValue(joiner, "none"), "returns the receiver");
+        assertSame(joiner, AgentSharedInstanceHooks.joinerAdd(joiner, "a"), "returns the receiver");
+        AgentSharedInstanceHooks.joinerAdd(joiner, "b");
+        assertSame(joiner, AgentSharedInstanceHooks.joinerMerge(joiner, other), "returns the receiver");
+        assertTrue(AgentSharedInstanceHooks.joinerLength(joiner) > 0, "length delegated");
+        return AgentSharedInstanceHooks.joinerToString(joiner);
+    }
+
     /** Every append hook once, on {@code sb}; returns the last hook's result. */
     private static StringBuilder appendEverything(StringBuilder sb) {
         AgentSharedInstanceHooks.append(sb, "s");
@@ -502,7 +532,7 @@ class AgentSharedInstanceHooksTest {
                 .filter(m -> Modifier.isStatic(m.getModifiers()))
                 .filter(m -> m.getDeclaringClass() == AgentSharedInstanceHooks.class)
                 .count();
-        assertEquals(145, hooks,
+        assertEquals(150, hooks,
                 "the shared-instance hooks and the calls in this class are one list, written by "
                         + "hand because each family needs its own receiver and arguments. If this "
                         + "count moved, the new hook belongs in the family test above, or it is "

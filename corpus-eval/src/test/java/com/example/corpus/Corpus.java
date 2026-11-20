@@ -5560,6 +5560,20 @@ final class Corpus {
                             + "not thread-safe: the thread-safety Random has is what is missing",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_stringJoiner_onePerThread", JDK,
+                    "java.util.StringJoiner",
+                    DetectorType.STRING_BUILDER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread joins into a StringJoiner of its own, so nothing is shared"),
+
+            new RecordingSubject("idiom_stringJoiner_sharedByEveryThread", JDK,
+                    "java.util.StringJoiner",
+                    DetectorType.STRING_BUILDER, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread adds to one StringJoiner, which appends to an internal array "
+                            + "with no lock, like a shared StringBuilder (#1309)",
+                    IssueSeverity.HIGH),
+
             // --- Hand-offs the happens-before model learned in #741: a completion, an executor
             //     submission and its get, an exchange, an AtomicReference set and get. Each correct
             //     row was a known gap until then, and each twin reaches the value another way.

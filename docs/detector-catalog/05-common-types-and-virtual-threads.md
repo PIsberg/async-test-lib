@@ -92,7 +92,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 57. Shared StringBuilder Detector
 * **Severity**: `HIGH`
-* **Description**: `StringBuilder` is explicitly not thread-safe; concurrent `append()`/`insert()`/`delete()`/`replace()` on a shared instance can garble output, throw `StringIndexOutOfBoundsException`, or silently drop characters. The detector tracks registered builders and flags concurrent mutating access.
+* **Description**: `StringBuilder` is explicitly not thread-safe; concurrent `append()`/`insert()`/`delete()`/`replace()` on a shared instance can garble output, throw `StringIndexOutOfBoundsException`, or silently drop characters. The detector tracks registered builders and flags concurrent mutating access. A `java.util.StringJoiner` appends to an internal array the same way and is reported here too: with the agent (`collections=true`) its `add`, `merge` and `setEmptyValue` are writes and `toString` and `length` reads, and by hand `recordJoinerAppend` / `recordJoinerRead` record them (#1309, since 1.15.0).
 * **Buggy Code**:
   ```java
   private static final StringBuilder LOG = new StringBuilder();

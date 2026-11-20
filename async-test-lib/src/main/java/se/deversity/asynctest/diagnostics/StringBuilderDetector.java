@@ -168,6 +168,35 @@ public class StringBuilderDetector extends AbstractInstanceDetector<StringBuilde
      * @param name    the label (should match registration)
      */
     public void recordRead(StringBuilder builder, String name) {
+        recordReadOf(builder, name);
+    }
+
+    /**
+     * Record a {@code StringJoiner} {@code add}, {@code merge} or {@code setEmptyValue}: a joiner
+     * appends to an internal array with no lock, as a builder does, so the same finding applies
+     * (#1309).
+     *
+     * @param joiner the StringJoiner instance
+     * @param name   the label
+     * @since 1.15.0
+     */
+    public void recordJoinerAppend(java.util.StringJoiner joiner, String name) {
+        recordMutation(joiner, name, "append");
+    }
+
+    /**
+     * Record a {@code StringJoiner} {@code toString} or {@code length}, as {@link #recordRead}
+     * (#1309).
+     *
+     * @param joiner the StringJoiner instance
+     * @param name   the label
+     * @since 1.15.0
+     */
+    public void recordJoinerRead(java.util.StringJoiner joiner, String name) {
+        recordReadOf(joiner, name);
+    }
+
+    private void recordReadOf(@Nullable Object builder, String name) {
         if (builder == null) return;
         BuilderState state = resolve(builder, name);
         RoundGuard guard = noteAccess(state, builder, false);
@@ -235,7 +264,7 @@ public class StringBuilderDetector extends AbstractInstanceDetector<StringBuilde
      * round starts afresh. Skipped, returning {@code null}, once a round has produced the finding:
      * nothing later can change it.
      */
-    private static @Nullable RoundGuard noteAccess(BuilderState state, StringBuilder builder,
+    private static @Nullable RoundGuard noteAccess(BuilderState state, Object builder,
                                                    boolean forWrite) {
         if (state.sharedRound.get() != null) {
             return null;
@@ -266,7 +295,7 @@ public class StringBuilderDetector extends AbstractInstanceDetector<StringBuilde
         }
     }
 
-    private void recordMutation(StringBuilder builder, String name, String type) {
+    private void recordMutation(@Nullable Object builder, String name, String type) {
         if (builder == null) return;
         BuilderState state = resolve(builder, name);
         RoundGuard guard = noteAccess(state, builder, true);
@@ -285,8 +314,9 @@ public class StringBuilderDetector extends AbstractInstanceDetector<StringBuilde
         }
     }
 
-    private BuilderState resolve(StringBuilder builder, String name) {
-        return stateFor(builder, name, "StringBuilder");
+    private BuilderState resolve(Object builder, String name) {
+        return stateFor(builder, name,
+                builder instanceof java.util.StringJoiner ? "StringJoiner" : "StringBuilder");
     }
 
     /**

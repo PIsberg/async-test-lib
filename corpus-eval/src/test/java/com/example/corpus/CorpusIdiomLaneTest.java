@@ -685,6 +685,31 @@ class CorpusIdiomLaneTest {
             use(SHARED_SPLITTABLE.nextInt(100));
         });
     }
+    // --- A shared java.util.StringJoiner (#1309) ---------------------------------------------
+
+    private static final Rounds<java.util.StringJoiner> SHARED_JOINERS =
+            new Rounds<>(() -> new java.util.StringJoiner(","));
+
+    /** Every thread joins into a StringJoiner of its own. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_stringJoiner_onePerThread() {
+        correct(() -> {
+            java.util.StringJoiner mine = new java.util.StringJoiner(",");
+            mine.add("a").add("b");
+            use(mine.toString().length());
+        });
+    }
+
+    /** Every thread adds to one StringJoiner, which has no lock (#1309). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_stringJoiner_sharedByEveryThread() {
+        broken(() -> {
+            java.util.StringJoiner shared = SHARED_JOINERS.next().shared();
+            shared.add("a").add("b");
+            use(shared.length());
+        });
+    }
+
     // --- Hand-offs the happens-before model learned in #741: completion, submission, exchange --
 
     private static final class Promise {

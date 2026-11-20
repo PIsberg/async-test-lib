@@ -679,6 +679,14 @@ final class CollectionAccessWeaver {
             Entry.call(Appendable.class, "append", "append", char.class),
             Entry.call(Appendable.class, "append", "append", CharSequence.class, int.class,
                     int.class),
+            // A StringJoiner appends to an internal array with no lock, as a builder does, and is
+            // final, so no thread-safe subclass can reach these hooks (#1309).
+            Entry.call(java.util.StringJoiner.class, "add", "joinerAdd", CharSequence.class),
+            Entry.call(java.util.StringJoiner.class, "merge", "joinerMerge", java.util.StringJoiner.class),
+            Entry.call(java.util.StringJoiner.class, "setEmptyValue", "joinerSetEmptyValue",
+                    CharSequence.class),
+            Entry.call(java.util.StringJoiner.class, "toString", "joinerToString"),
+            Entry.call(java.util.StringJoiner.class, "length", "joinerLength"),
             // NumberFormat rather than DecimalFormat: the abstract parent is what a field is
             // usually typed as, and neither it nor any JDK subclass is thread safe.
             Entry.call(NumberFormat.class, "format", "format", double.class),
