@@ -42,6 +42,9 @@ which way it ran out (#1386):
 * `Possible deadlock, starvation, or visibility issue. R of N rounds completed.`: a round had well
   over the time earlier rounds took and did not finish. The cause line says how many workers
   finished and, only when it is so, that some never got past the start barrier.
+* `... rounds completed; every worker still in the body was blocked or waiting with no timeout.`:
+  the round would not have finished with more budget, whatever was left of it. A lock or monitor
+  cycle, or a wait nothing will signal, is the usual cause (#1393).
 
 * **Solution 1**: Scale timeouts for test runs in CI/CD using JUnit configuration properties or the `timeoutMs` attribute:
   ```java
