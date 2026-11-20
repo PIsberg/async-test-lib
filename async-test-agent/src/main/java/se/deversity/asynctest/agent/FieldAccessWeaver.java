@@ -20,6 +20,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Weaves an observation call in front of every field instruction in a method body, so a field
@@ -363,8 +364,12 @@ final class FieldAccessWeaver {
                                  MethodList<?> methods,
                                  int writerFlags,
                                  int readerFlags) {
-            if (!analyseStores) {
-                return weaving(instrumentedType, classVisitor, typePool, Map.of());
+            // Only a synchronized instance method loads its monitor from local 0, so only a class
+            // with one needs reading for a store there before it is woven (#1416).
+            boolean scanLocalZero = methods.stream()
+                    .anyMatch(method -> method.isSynchronized() && !method.isStatic());
+            if (!analyseStores && !scanLocalZero) {
+                return weaving(instrumentedType, classVisitor, typePool, Map.of(), Set.of());
             }
             // Buffer the class as handed to us, analyse exactly those bytes, then replay them into
             // the weaving visitor with the reader flags the rest of the chain expects (#1191).
@@ -375,7 +380,9 @@ final class FieldAccessWeaver {
                     super.visitEnd();
                     byte[] bytes = buffer.toByteArray();
                     new ClassReader(bytes).accept(
-                            weaving(instrumentedType, classVisitor, typePool, storeVerdicts(bytes)),
+                            weaving(instrumentedType, classVisitor, typePool,
+                                    analyseStores ? storeVerdicts(bytes) : Map.of(),
+                                    scanLocalZero ? synchronizedMethodsOverwritingThis(bytes) : Set.of()),
                             readerFlags);
                 }
             };
@@ -393,8 +400,43 @@ final class FieldAccessWeaver {
             }
         }
 
+        /**
+         * {@return name plus descriptor of each synchronized instance method that stores into
+         * local 0, where {@code this} arrives}
+         */
+        private static Set<String> synchronizedMethodsOverwritingThis(byte[] bytes) {
+            Set<String> overwriting = new java.util.HashSet<>();
+            new ClassReader(bytes).accept(new ClassVisitor(Opcodes.ASM9) {
+                @Override
+                public @Nullable MethodVisitor visitMethod(int access, String name, String descriptor,
+                                                           @Nullable String signature,
+                                                           String @Nullable [] exceptions) {
+                    if ((access & Opcodes.ACC_SYNCHRONIZED) == 0 || (access & Opcodes.ACC_STATIC) != 0) {
+                        return null;
+                    }
+                    return new MethodVisitor(Opcodes.ASM9) {
+                        @Override
+                        public void visitVarInsn(int opcode, int varIndex) {
+                            if (varIndex == 0 && opcode >= Opcodes.ISTORE && opcode <= Opcodes.ASTORE) {
+                                overwriting.add(name + descriptor);
+                            }
+                        }
+
+                        @Override
+                        public void visitIincInsn(int varIndex, int increment) {
+                            if (varIndex == 0) {
+                                overwriting.add(name + descriptor);
+                            }
+                        }
+                    };
+                }
+            }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+            return overwriting;
+        }
+
         private ClassVisitor weaving(TypeDescription instrumentedType, ClassVisitor classVisitor,
-                                     TypePool typePool, Map<String, List<Boolean>> storeVerdicts) {
+                                     TypePool typePool, Map<String, List<Boolean>> storeVerdicts,
+                                     Set<String> overwriteThis) {
             return new ClassVisitor(Opcodes.ASM9, classVisitor) {
 
                 /** The class being woven, and whether its version supports {@code ldc} of a class. */
@@ -418,13 +460,19 @@ final class FieldAccessWeaver {
                     MethodVisitor delegate =
                             super.visitMethod(access, name, descriptor, signature, exceptions);
                     boolean typeInitializer = "<clinit>".equals(name);
+                    boolean synchronizedMethod = (access & Opcodes.ACC_SYNCHRONIZED) != 0;
+                    boolean staticMethod = (access & Opcodes.ACC_STATIC) != 0;
+                    List<Boolean> verdicts = storeVerdicts.getOrDefault(name + descriptor, List.of());
+                    // A synchronized instance method's monitor is loaded from local 0 at entry and
+                    // before each return. Generated code may store something else there, which that
+                    // load would hand on as the monitor or fail to verify on, so such a method is
+                    // woven without its monitor (#1416).
+                    boolean monitorLoadsFromThis = synchronizedMethod
+                            && !(!staticMethod && overwriteThis.contains(name + descriptor));
                     return new FieldAccessMethodVisitor(delegate,
                             weaveFieldInstructions && !typeInitializer, typePool,
-                            "<init>".equals(name),
-                            (access & Opcodes.ACC_SYNCHRONIZED) != 0,
-                            (access & Opcodes.ACC_STATIC) != 0,
-                            internalName, classConstantsUsable,
-                            storeVerdicts.getOrDefault(name + descriptor, List.of()));
+                            "<init>".equals(name), monitorLoadsFromThis, staticMethod,
+                            internalName, classConstantsUsable, verdicts);
                 }
             };
         }
@@ -520,7 +568,7 @@ final class FieldAccessWeaver {
          * disqualifies the write. The visitor is per method and instructions arrive in order,
          * which is what makes the read-before-write question answerable while streaming.
          */
-        private final java.util.Set<String> fieldsReadInThisMethod = new java.util.HashSet<>();
+        private final Set<String> fieldsReadInThisMethod = new java.util.HashSet<>();
 
         /** The int-valued constant the previous instruction pushed, or {@code null}. */
         private @Nullable Integer pendingConstant;
@@ -529,8 +577,23 @@ final class FieldAccessWeaver {
         private final List<String> plainWritesInThisMethod = new java.util.ArrayList<>();
 
         /** Whether this method has already read a volatile field of the same owner. */
-        private final java.util.Set<String> ownersWithVolatileReadInThisMethod =
+        private final Set<String> ownersWithVolatileReadInThisMethod =
                 new java.util.HashSet<>();
+
+        /**
+         * The two publication facts above as they stood at each jump to a label not yet visited, by
+         * label, so that a label meets the paths that reach it rather than the instruction listed
+         * before it (#1416). Writes meet by union: a volatile write after the join publishes a write
+         * any path made. Volatile reads meet by intersection: a plain read after the join is ordered
+         * only when every path read the volatile.
+         */
+        private final Map<Label, FlowFacts> factsAtTarget = new java.util.HashMap<>();
+
+        /** Labels already visited: a jump back to one carries nothing forward. */
+        private final Set<Label> visitedLabels = new java.util.HashSet<>();
+
+        /** Whether the instruction just visited can run on into the next one. */
+        private boolean fallsThrough = true;
 
         /** Recent class and string constants, for reading atomic-updater bindings off the stack. */
         private final java.util.Deque<Object> recentConstants = new java.util.ArrayDeque<>();
@@ -778,6 +841,9 @@ final class FieldAccessWeaver {
                         "(Ljava/lang/Object;)V", false);
             }
             super.visitInsn(opcode);
+            if (opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN || opcode == Opcodes.ATHROW) {
+                fallsThrough = false;
+            }
         }
 
         /**
@@ -1294,18 +1360,26 @@ final class FieldAccessWeaver {
         @Override
         public void visitLabel(Label label) {
             monitorFieldStep = 0;
+            noteConstant(null);
+            meetFactsAt(label);
             super.visitLabel(label);
         }
 
         @Override
         public void visitJumpInsn(int opcode, Label label) {
             monitorFieldStep = 0;
+            noteConstant(null);
+            carryFactsTo(label);
+            if (opcode == Opcodes.GOTO) {
+                fallsThrough = false;
+            }
             super.visitJumpInsn(opcode, label);
         }
 
         @Override
         public void visitTypeInsn(int opcode, String type) {
             monitorFieldStep = 0;
+            noteConstant(null);
             if (thisIsUninitialised && opcode == Opcodes.NEW) {
                 openNewsBeforeSuperCall++;
             }
@@ -1315,6 +1389,7 @@ final class FieldAccessWeaver {
         @Override
         public void visitIincInsn(int varIndex, int increment) {
             monitorFieldStep = 0;
+            noteConstant(null);
             super.visitIincInsn(varIndex, increment);
         }
 
@@ -1322,6 +1397,12 @@ final class FieldAccessWeaver {
         public void visitTableSwitchInsn(int min, int max, Label dflt,
                                          Label... labels) {
             monitorFieldStep = 0;
+            noteConstant(null);
+            carryFactsTo(dflt);
+            for (Label target : labels) {
+                carryFactsTo(target);
+            }
+            fallsThrough = false;
             super.visitTableSwitchInsn(min, max, dflt, labels);
         }
 
@@ -1329,12 +1410,19 @@ final class FieldAccessWeaver {
         public void visitLookupSwitchInsn(Label dflt, int[] keys,
                                           Label[] labels) {
             monitorFieldStep = 0;
+            noteConstant(null);
+            carryFactsTo(dflt);
+            for (Label target : labels) {
+                carryFactsTo(target);
+            }
+            fallsThrough = false;
             super.visitLookupSwitchInsn(dflt, keys, labels);
         }
 
         @Override
         public void visitMultiANewArrayInsn(String descriptor, int numDimensions) {
             monitorFieldStep = 0;
+            noteConstant(null);
             super.visitMultiANewArrayInsn(descriptor, numDimensions);
         }
 
@@ -1343,6 +1431,7 @@ final class FieldAccessWeaver {
                                            Handle bootstrapMethodHandle,
                                            Object... bootstrapMethodArguments) {
             monitorFieldStep = 0;
+            noteConstant(null);
             super.visitInvokeDynamicInsn(name, descriptor, bootstrapMethodHandle,
                     bootstrapMethodArguments);
         }
@@ -1471,9 +1560,11 @@ final class FieldAccessWeaver {
          * ordering, and reporting it means telling the author of correct code to fix it.
          *
          * <p>Both halves are visible here, in program order, which is what makes the rule checkable
-         * rather than assumed: a volatile write publishes the plain writes this method already made
-         * to the same owner, and a plain read only counts as ordered when this method has already
-         * read a volatile field of that owner. A class that writes the plain field and never
+         * rather than assumed: a volatile write publishes the plain writes this method made before
+         * it on a path that reaches it, to any object, since the write orders all of them (a node's
+         * fields published by a volatile tail is the same idiom), and a plain read only counts as
+         * ordered when this method has already read a volatile field of that owner on every path
+         * to it (#1416). A class that writes the plain field and never
          * publishes it, or reads it without reading the volatile guard first, is untouched by this
          * and keeps its finding.
          */
@@ -1497,6 +1588,55 @@ final class FieldAccessWeaver {
 
         private void noteConstant(@Nullable Integer constant) {
             pendingConstant = constant;
+        }
+
+        /** The publication facts as a jump leaves them for its target. */
+        private record FlowFacts(List<String> plainWrites, Set<String> volatileReadOwners) {
+        }
+
+        /** Records the facts the current path carries to {@code target}, met with any already there. */
+        private void carryFactsTo(Label target) {
+            if (!fallsThrough || visitedLabels.contains(target)) {
+                return;
+            }
+            FlowFacts here = new FlowFacts(new java.util.ArrayList<>(plainWritesInThisMethod),
+                    new java.util.HashSet<>(ownersWithVolatileReadInThisMethod));
+            factsAtTarget.merge(target, here, (a, b) -> {
+                for (String write : b.plainWrites()) {
+                    if (!a.plainWrites().contains(write)) {
+                        a.plainWrites().add(write);
+                    }
+                }
+                a.volatileReadOwners().retainAll(b.volatileReadOwners());
+                return a;
+            });
+        }
+
+        /**
+         * Sets the facts at {@code label} to the meet of the paths reaching it: the fall-through,
+         * when the instruction before can run on, and every forward jump seen. A label no path
+         * reaches yet, an exception handler or a loop head entered only by a jump back, starts
+         * with nothing known.
+         */
+        private void meetFactsAt(Label label) {
+            visitedLabels.add(label);
+            FlowFacts jumpedIn = factsAtTarget.remove(label);
+            if (!fallsThrough) {
+                plainWritesInThisMethod.clear();
+                ownersWithVolatileReadInThisMethod.clear();
+                if (jumpedIn != null) {
+                    plainWritesInThisMethod.addAll(jumpedIn.plainWrites());
+                    ownersWithVolatileReadInThisMethod.addAll(jumpedIn.volatileReadOwners());
+                }
+            } else if (jumpedIn != null) {
+                for (String write : jumpedIn.plainWrites()) {
+                    if (!plainWritesInThisMethod.contains(write)) {
+                        plainWritesInThisMethod.add(write);
+                    }
+                }
+                ownersWithVolatileReadInThisMethod.retainAll(jumpedIn.volatileReadOwners());
+            }
+            fallsThrough = true;
         }
 
         /**
@@ -1583,6 +1723,9 @@ final class FieldAccessWeaver {
                 emitVolatileStore(owner, false, descriptor, identifier);
             }
             super.visitFieldInsn(opcode, owner, name, descriptor);
+            // The constant belonged to this instruction if to any: what follows stores something
+            // else (#1416).
+            noteConstant(null);
             if (volatileLoad) {
                 emitVolatileLoad(hookOwner, isStaticAccess, descriptor, identifier);
             }
