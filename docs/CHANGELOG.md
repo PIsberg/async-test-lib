@@ -65,6 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `FutureTask` handed to a `ThreadFactory` is ordered before a `get` on it (#1401, part).**
+  With the agent, `factory.newThread(task).start()` then `task.get()` left the read unordered,
+  so a field the task set and the caller then read drew an `AtomicityValidator` finding on
+  correct code; `new Thread(task)` was already handled (#1350). The `Thread` constructors that
+  also take a `ThreadGroup` or a stack size, and a `Thread` subclass built around the task, are
+  still unordered. `AgentThreadHooksTest`.
+
 - **Virtual-thread deadlocks and the static-initializer sample work on JDK 27 again (#1410).**
   JDK 27's thread dump (format version 2) writes `"tid"` and a park blocker's `"owner"` as JSON
   numbers where JDK 21 to 26 wrote strings, and the dump reader accepted only strings, so on JDK 27 it

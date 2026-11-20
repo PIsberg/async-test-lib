@@ -343,7 +343,9 @@ public final class AgentThreadHooks {
      * Weaves {@link ThreadFactory#newThread(Runnable)} (#856): a thread from a factory a woven
      * {@code factory()} call took from a platform builder counts as constructed in the woven class
      * that called this, and takes the builder's daemon decision, as a builder's {@code unstarted}
-     * does. Any other factory is only called.
+     * does. Any other factory is only called. A {@code FutureTask} handed to the factory is
+     * recorded as run by the thread it returned, as a {@code new Thread(task)} is, so a woven
+     * {@code get} on it orders the task before the read (#1401).
      *
      * @param receiver the factory the call site invoked
      * @param task     what the thread will run
@@ -351,6 +353,9 @@ public final class AgentThreadHooks {
      */
     public static @Nullable Thread threadFactoryNewThread(ThreadFactory receiver, Runnable task) {
         Thread thread = receiver.newThread(task);
+        if (thread != null) {
+            willRun(task, thread); // the thread a get on the task can join once it is done (#1401)
+        }
         if (thread != null && !thread.isVirtual()) {
             Optional<Boolean> decision = BUILDER_FACTORIES.get(receiver);
             if (decision != null) {

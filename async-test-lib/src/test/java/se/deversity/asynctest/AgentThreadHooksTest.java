@@ -186,4 +186,16 @@ class AgentThreadHooksTest {
             return thread;
         }), "a non-daemon thread holds the JVM open whoever made it");
     }
+
+    @org.junit.jupiter.api.Test
+    void aFutureTaskHandedToAFactoryIsRunByTheThreadItReturns() {
+        // A woven get orders the task's callable before the read once it knows the thread that
+        // runs the task (#1350); a factory the code under test calls with the task is one more way
+        // to build that thread (#1401).
+        java.util.concurrent.FutureTask<Object> task = new java.util.concurrent.FutureTask<>(() -> null);
+        Thread built = AgentThreadHooks.threadFactoryNewThread(Thread::new, task);
+
+        org.junit.jupiter.api.Assertions.assertSame(built, AgentThreadHooks.runnerOf(task),
+                "the factory's thread runs the task");
+    }
 }
