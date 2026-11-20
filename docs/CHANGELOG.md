@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`LivelockDetector` no longer reports an idle pooled worker as starved, and its starvation
+  rule reads the window it documents (#1414).** With platform workers, a worker that had finished
+  its body parked in its pool, WAITING with flat CPU time, and a peer's `captureSnapshot()` in a
+  later body recorded it there, which could read as CRITICAL starvation; a worker the runner has
+  marked in a body is now sampled only while it is in one. The rule compared CPU time with the
+  thread's first snapshot rather than the first of the latest five, so work done before a wait hid
+  a wait that lasted every recent sample, and fewer than five snapshots could qualify; it now needs
+  five, BLOCKED or WAITING, with CPU flat across exactly those. Analysis reads a copy of each
+  history taken under its lock. `LivelockDetectorTest`.
+
 - **The controlled schedule no longer hangs a round, takes away a turn, or counts a false escape
   around an executor task (#1413).** Three transitions: an adopted task that escaped and then ended
   while its submitter waited in `get` left nobody holding the round, and the submitter waited until

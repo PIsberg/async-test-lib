@@ -7,6 +7,7 @@ import java.lang.management.ThreadMXBean;
 import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -370,6 +371,107 @@ public class LivelockDetectorTest {
             synchronized (y) {
                 bothHold.countDown();
             }
+        }
+    }
+
+    // What a body's captureSnapshot() calls count as starvation (#1414): the latest five snapshots
+    // of a worker still in its body, all BLOCKED or WAITING, with CPU time flat across those five.
+    // A worker that has left its body is not sampled at all.
+
+    private static final int SAMPLES = 6;
+
+    @Test
+    void aWorkerThatRanAndThenWaitedThroughTheLastFiveSamplesIsStarved() throws Exception {
+        // CPU time was compared with the thread's first snapshot, not the first of the five, so
+        // the work it did before it started waiting hid a wait that lasted every recent sample.
+        LivelockDetector detector = new LivelockDetector();
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch parked = new CountDownLatch(1);
+        Thread waiter = new Thread(() -> {
+            detector.captureSnapshot();
+            burnCpu(TimeUnit.MILLISECONDS.toNanos(200));
+            parked.countDown();
+            awaitQuietly(release);
+        }, "livelock-1414-waiter");
+        detector.workerEnteredBody(waiter);
+        waiter.start();
+        try {
+            assertTrue(parked.await(10, TimeUnit.SECONDS));
+            awaitWaiting(waiter);
+            sampleFromAPeerInItsBody(detector);
+
+            assertTrue(detector.analyze().starvedThreads.contains("livelock-1414-waiter"),
+                    "WAITING with flat CPU time in each of the latest five snapshots is starvation");
+        } finally {
+            release.countDown();
+            waiter.join(TimeUnit.SECONDS.toMillis(10));
+        }
+    }
+
+    @Test
+    void aWorkerThatLeftItsBodyAndIdlesInThePoolIsNotSampled() throws Exception {
+        // A platform worker that finished its body parks in its pool until the next round. A peer
+        // still in its body sampled it there, WAITING with flat CPU, and reported it starved.
+        LivelockDetector detector = new LivelockDetector();
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(1);
+        Thread finished = new Thread(() -> {
+            detector.workerEnteredBody(Thread.currentThread());
+            detector.captureSnapshot();
+            detector.workerLeftBody(Thread.currentThread());
+            done.countDown();
+            awaitQuietly(release);
+        }, "livelock-1414-idle");
+        finished.start();
+        try {
+            assertTrue(done.await(10, TimeUnit.SECONDS));
+            awaitWaiting(finished);
+            sampleFromAPeerInItsBody(detector);
+
+            assertFalse(detector.analyze().starvedThreads.contains("livelock-1414-idle"),
+                    "a worker idle in its pool between bodies is not starved by the code under test");
+        } finally {
+            release.countDown();
+            finished.join(TimeUnit.SECONDS.toMillis(10));
+        }
+    }
+
+    /** A worker in its body taking {@value #SAMPLES} snapshots, as a body that samples its peers does. */
+    private static void sampleFromAPeerInItsBody(LivelockDetector detector) throws InterruptedException {
+        Thread peer = new Thread(() -> {
+            for (int i = 0; i < SAMPLES; i++) {
+                detector.captureSnapshot();
+            }
+        }, "livelock-1414-peer");
+        detector.workerEnteredBody(peer);
+        peer.start();
+        peer.join(TimeUnit.SECONDS.toMillis(10));
+        detector.workerLeftBody(peer);
+    }
+
+    private static void burnCpu(long nanos) {
+        long end = System.nanoTime() + nanos;
+        long sink = 0;
+        while (System.nanoTime() < end) {
+            sink += System.identityHashCode(new Object());
+        }
+        if (sink == 42) {
+            Thread.yield();
+        }
+    }
+
+    private static void awaitWaiting(Thread thread) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (thread.getState() != Thread.State.WAITING && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+    }
+
+    private static void awaitQuietly(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 }

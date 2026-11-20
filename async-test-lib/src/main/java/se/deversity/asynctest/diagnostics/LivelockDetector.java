@@ -46,7 +46,8 @@ import org.jspecify.annotations.Nullable;
  * tells the two apart, and a livelock that matters does not finish, which the timed-out round above
  * reports without a threshold. It takes
  * {@code ThreadMXBean.dumpAllThreads} and keeps only the threads that have called it, and a virtual
- * thread is not in that dump. {@code madeProgress} returns true for any RUNNABLE thread, deliberately,
+ * thread is not in that dump. A worker the runner has marked in a body is sampled only while it is in
+ * one: between bodies it idles in its pool, which reads as starvation (#1414). {@code madeProgress} returns true for any RUNNABLE thread, deliberately,
  * because a busy worker's measured CPU time can look flat when several snapshots land inside one clock
  * tick, so a snapshot cannot report a spin; {@code LivelockDetectorTest} pins that.
  */
@@ -94,6 +95,12 @@ public class LivelockDetector {
     /** The workers inside a test body right now, as the runner marks them. */
     private final Set<Thread> workersInBody = ConcurrentHashMap.newKeySet();
 
+    /**
+     * Ids of every worker the runner has marked inside a body during the run. One of these that is
+     * not in a body now is idle in its pool between bodies, and is not sampled (#1414).
+     */
+    private final Set<Long> workersEverInBody = ConcurrentHashMap.newKeySet();
+
     /** Workers found running when a round timed out, by name. */
     private final Set<String> timedOutRunning = ConcurrentHashMap.newKeySet();
 
@@ -111,6 +118,7 @@ public class LivelockDetector {
      */
     public void workerEnteredBody(Thread worker) {
         if (enabled) {
+            workersEverInBody.add(worker.threadId());
             workersInBody.add(worker);
         }
     }
@@ -201,6 +209,11 @@ public class LivelockDetector {
         observedThreads.add(Thread.currentThread().threadId());
 
         ThreadInfo[] allThreads = threadMXBean.dumpAllThreads(false, false);
+        Set<Long> inBodyNow = new HashSet<>();
+        for (Thread worker : workersInBody) {
+            inBodyNow.add(worker.threadId());
+        }
+        long caller = Thread.currentThread().threadId();
 
         for (ThreadInfo ti : allThreads) {
             long threadId = ti.getThreadId();
@@ -211,6 +224,12 @@ public class LivelockDetector {
             // looks for — so recording them reported starvation against a perfectly healthy JVM
             // on essentially every run.
             if (!observedThreads.contains(threadId)) continue;
+            // A worker that finished its body parks in its pool, WAITING with flat CPU time, until
+            // the next round: idle, not starved by the code under test (#1414).
+            if (threadId != caller && workersEverInBody.contains(threadId)
+                    && !inBodyNow.contains(threadId)) {
+                continue;
+            }
 
             long cpuTime = threadMXBean.getThreadCpuTime(threadId);
 
@@ -235,7 +254,12 @@ public class LivelockDetector {
         LivelockReport report = new LivelockReport();
         
         for (Map.Entry<Long, List<ThreadSnapshot>> entry : threadHistory.entrySet()) {
-            List<ThreadSnapshot> snapshots = entry.getValue();
+            List<ThreadSnapshot> recorded = entry.getValue();
+            List<ThreadSnapshot> snapshots;
+            // A body-started thread may still be sampling: read a copy taken under the list's lock.
+            synchronized (recorded) {
+                snapshots = new ArrayList<>(recorded);
+            }
             if (snapshots.size() < 2) continue;
             
             String threadName = snapshots.get(0).threadName;
@@ -269,19 +293,19 @@ public class LivelockDetector {
     }
 
     private boolean isStarved(List<ThreadSnapshot> snapshots) {
-        if (snapshots.size() < 3) return false;
-        
-        // If all recent snapshots show BLOCKED or WAITING
-        int recent = Math.min(STARVATION_SNAPSHOT_THRESHOLD, snapshots.size());
-        for (int i = snapshots.size() - recent; i < snapshots.size(); i++) {
+        if (snapshots.size() < STARVATION_SNAPSHOT_THRESHOLD) return false;
+
+        // All of the latest snapshots show BLOCKED or WAITING
+        int from = snapshots.size() - STARVATION_SNAPSHOT_THRESHOLD;
+        for (int i = from; i < snapshots.size(); i++) {
             Thread.State state = snapshots.get(i).state;
             if (state != Thread.State.BLOCKED && state != Thread.State.WAITING) {
                 return false;
             }
         }
         
-        // And CPU time didn't increase
-        ThreadSnapshot first = snapshots.get(0);
+        // And CPU time did not increase across them: work done before the window is not the wait
+        ThreadSnapshot first = snapshots.get(from);
         ThreadSnapshot last = snapshots.get(snapshots.size() - 1);
         return last.cpuTime == first.cpuTime;
     }
@@ -308,6 +332,7 @@ public class LivelockDetector {
         threadHistory.clear();
         observedThreads.clear();
         workersInBody.clear();
+        workersEverInBody.clear();
         timedOutRunning.clear();
         timedOutBlocked.clear();
         timedOutElsewhere.clear();
