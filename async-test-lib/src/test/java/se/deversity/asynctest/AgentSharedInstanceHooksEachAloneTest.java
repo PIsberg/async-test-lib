@@ -126,6 +126,14 @@ class AgentSharedInstanceHooksEachAloneTest {
         if (type == java.util.StringJoiner.class) {
             return new java.util.StringJoiner(",");
         }
+        if (type == java.util.StringTokenizer.class) {
+            return new java.util.StringTokenizer("a b c d e f g h i j k l m n o p");
+        }
+        if (type == java.text.BreakIterator.class) {
+            java.text.BreakIterator words = java.text.BreakIterator.getWordInstance(Locale.ROOT);
+            words.setText("one two three four");
+            return words;
+        }
         if (type == java.text.MessageFormat.class) {
             return new java.text.MessageFormat("{0}", Locale.ROOT);
         }
@@ -238,6 +246,9 @@ class AgentSharedInstanceHooksEachAloneTest {
         if (type == java.util.StringJoiner.class) {
             return new java.util.StringJoiner(",").add("m");
         }
+        if (type == java.text.CharacterIterator.class) {
+            return new java.text.StringCharacterIterator("one two");
+        }
         if (type == CharBuffer.class) {
             return CharBuffer.allocate(64);
         }
@@ -268,6 +279,9 @@ class AgentSharedInstanceHooksEachAloneTest {
             }
             if (receiver instanceof Calendar) {
                 return AsyncTestContext.calendarDetector().analyze().hasIssues();
+            }
+            if (receiver instanceof java.util.StringTokenizer || receiver instanceof java.text.BreakIterator) {
+                return AsyncTestContext.sharedIteratorDetector().analyze().hasIssues();
             }
             if (receiver instanceof StringBuilder || receiver instanceof java.util.StringJoiner) {
                 return AsyncTestContext.stringBuilderDetector().analyze().hasIssues();

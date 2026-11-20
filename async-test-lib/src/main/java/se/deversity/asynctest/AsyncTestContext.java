@@ -2583,6 +2583,12 @@ public final class AsyncTestContext {
         return context == null ? null : context.sharedDeflaterDetector;
     }
 
+    /** {@return the {@link SharedIteratorDetector} for the calling thread's test, or {@code null}} */
+    static @Nullable SharedIteratorDetector currentSharedIteratorDetector() {
+        AsyncTestContext context = agentContext();
+        return context == null ? null : context.sharedIteratorDetector;
+    }
+
     /** {@return the {@link SharedSplittableRandomDetector} for the calling thread's test, or {@code null}} */
     static @Nullable SharedSplittableRandomDetector currentSharedSplittableRandomDetector() {
         AsyncTestContext context = agentContext();

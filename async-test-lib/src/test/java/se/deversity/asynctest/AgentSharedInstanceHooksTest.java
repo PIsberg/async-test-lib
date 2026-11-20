@@ -326,6 +326,73 @@ class AgentSharedInstanceHooksTest {
                 "one StringJoiner per thread, through the same hooks, is correct code");
     }
 
+    @Test
+    @DisplayName("a StringTokenizer or BreakIterator two threads drive through the hooks is reported; one each is not (#1322)")
+    void tokenizersAndBreakIterators() {
+        AsyncTestContext shared = newContext();
+        java.util.StringTokenizer tokens = new java.util.StringTokenizer("a b c d e f g h");
+        java.text.BreakIterator words = java.text.BreakIterator.getWordInstance(java.util.Locale.ROOT);
+        onTwoThreads(shared, true, () -> {
+            tokenizeEverything(tokens);
+            breakEverything(words);
+        });
+        assertTrue(with(shared, () -> AsyncTestContext.sharedIteratorDetector().analyze().hasIssues()),
+                "one tokenizer and one break iterator driven by two threads hold one cursor between them");
+
+        AsyncTestContext confined = newContext();
+        onTwoThreads(confined, false, () -> {
+            assertEquals(3, tokenizeEverything(new java.util.StringTokenizer("a b c d e f g h")),
+                    "every tokenizer hook delegated");
+            assertEquals("one two", breakEverything(java.text.BreakIterator.getWordInstance(java.util.Locale.ROOT)),
+                    "every break iterator hook delegated");
+        });
+        assertFalse(with(confined, () -> AsyncTestContext.sharedIteratorDetector().analyze().hasIssues()),
+                "one tokenizer and one break iterator per thread, through the same hooks, is correct code");
+    }
+
+    /** Every StringTokenizer hook once, on {@code tokens}; returns how many tokens were left. */
+    private static int tokenizeEverything(java.util.StringTokenizer tokens) {
+        if (AgentSharedInstanceHooks.tokenizerHasMoreTokens(tokens)) {
+            AgentSharedInstanceHooks.tokenizerNextToken(tokens);
+        }
+        if (AgentSharedInstanceHooks.tokenizerHasMoreElements(tokens)) {
+            AgentSharedInstanceHooks.tokenizerNextElement(tokens);
+        }
+        if (AgentSharedInstanceHooks.tokenizerHasMoreTokens(tokens)) {
+            AgentSharedInstanceHooks.tokenizerNextToken(tokens, " ");
+        }
+        quietly(() -> {
+            if (AgentSharedInstanceHooks.tokenizerCountTokens(tokens) > 4) {
+                AgentSharedInstanceHooks.tokenizerNextToken(tokens);
+                AgentSharedInstanceHooks.tokenizerNextToken(tokens);
+            }
+        });
+        return AgentSharedInstanceHooks.tokenizerCountTokens(tokens);
+    }
+
+    /** Every BreakIterator hook once, on {@code words}; returns the text it was set to. */
+    private static String breakEverything(java.text.BreakIterator words) {
+        AgentSharedInstanceHooks.breakSetText(words, new java.text.StringCharacterIterator("x y"));
+        AgentSharedInstanceHooks.breakSetText(words, "one two");
+        quietly(() -> {
+            AgentSharedInstanceHooks.breakFirst(words);
+            AgentSharedInstanceHooks.breakNext(words);
+            AgentSharedInstanceHooks.breakNext(words, 1);
+            AgentSharedInstanceHooks.breakPrevious(words);
+            AgentSharedInstanceHooks.breakLast(words);
+            AgentSharedInstanceHooks.breakFollowing(words, 1);
+            AgentSharedInstanceHooks.breakPreceding(words, 2);
+            AgentSharedInstanceHooks.breakCurrent(words);
+            AgentSharedInstanceHooks.breakIsBoundary(words, 3);
+        });
+        java.text.CharacterIterator text = AgentSharedInstanceHooks.breakGetText(words);
+        StringBuilder read = new StringBuilder();
+        for (char c = text.first(); c != java.text.CharacterIterator.DONE; c = text.next()) {
+            read.append(c);
+        }
+        return read.toString();
+    }
+
     /** Every StringJoiner hook once, on {@code joiner}; returns what toString returned. */
     private static String joinEverything(java.util.StringJoiner joiner) {
         java.util.StringJoiner other = new java.util.StringJoiner(",").add("c");
@@ -532,7 +599,7 @@ class AgentSharedInstanceHooksTest {
                 .filter(m -> Modifier.isStatic(m.getModifiers()))
                 .filter(m -> m.getDeclaringClass() == AgentSharedInstanceHooks.class)
                 .count();
-        assertEquals(150, hooks,
+        assertEquals(168, hooks,
                 "the shared-instance hooks and the calls in this class are one list, written by "
                         + "hand because each family needs its own receiver and arguments. If this "
                         + "count moved, the new hook belongs in the family test above, or it is "

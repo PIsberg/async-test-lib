@@ -53,6 +53,7 @@ import se.deversity.asynctest.diagnostics.SharedMessageDigestDetector;
 import se.deversity.asynctest.diagnostics.SharedSplittableRandomDetector;
 import se.deversity.asynctest.diagnostics.SharedStatefulCryptoDetector;
 import se.deversity.asynctest.diagnostics.SimpleDateFormatDetector;
+import se.deversity.asynctest.diagnostics.SharedIteratorDetector;
 import se.deversity.asynctest.diagnostics.StringBuilderDetector;
 import se.deversity.vibetags.annotations.AIContract;
 
@@ -834,6 +835,270 @@ public final class AgentSharedInstanceHooks {
             } else {
                 detector.recordJoinerRead(receiver, receiver.getClass().getName());
             }
+        }
+    }
+
+    /**
+     * Weaves {@code StringTokenizer.hasMoreTokens()}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the tokenizer
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static boolean tokenizerHasMoreTokens(java.util.StringTokenizer receiver) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "hasMoreTokens");
+        return receiver.hasMoreTokens();
+    }
+
+    /**
+     * Weaves {@code StringTokenizer.nextToken()}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the tokenizer
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static String tokenizerNextToken(java.util.StringTokenizer receiver) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "nextToken");
+        return receiver.nextToken();
+    }
+
+    /**
+     * Weaves {@code StringTokenizer.nextToken(String)}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the tokenizer
+     * @param delimiters as the original call takes it
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static String tokenizerNextToken(java.util.StringTokenizer receiver, String delimiters) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "nextToken");
+        return receiver.nextToken(delimiters);
+    }
+
+    /**
+     * Weaves {@code StringTokenizer.hasMoreElements()}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the tokenizer
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static boolean tokenizerHasMoreElements(java.util.StringTokenizer receiver) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "hasMoreElements");
+        return receiver.hasMoreElements();
+    }
+
+    /**
+     * Weaves {@code StringTokenizer.nextElement()}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the tokenizer
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static Object tokenizerNextElement(java.util.StringTokenizer receiver) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "nextElement");
+        return receiver.nextElement();
+    }
+
+    /**
+     * Weaves {@code StringTokenizer.countTokens()}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the tokenizer
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static int tokenizerCountTokens(java.util.StringTokenizer receiver) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "countTokens");
+        return receiver.countTokens();
+    }
+
+    /**
+     * Weaves {@code BreakIterator.setText(String)}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the break iterator
+     * @param text as the original call takes it
+     * @since 1.15.0
+     */
+    public static void breakSetText(java.text.BreakIterator receiver, String text) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "setText");
+        receiver.setText(text);
+    }
+
+    /**
+     * Weaves {@code BreakIterator.setText(CharacterIterator)}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the break iterator
+     * @param text as the original call takes it
+     * @since 1.15.0
+     */
+    public static void breakSetText(java.text.BreakIterator receiver, java.text.CharacterIterator text) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "setText");
+        receiver.setText(text);
+    }
+
+    /**
+     * Weaves {@code BreakIterator.first()}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the break iterator
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static int breakFirst(java.text.BreakIterator receiver) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "first");
+        return receiver.first();
+    }
+
+    /**
+     * Weaves {@code BreakIterator.last()}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the break iterator
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static int breakLast(java.text.BreakIterator receiver) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "last");
+        return receiver.last();
+    }
+
+    /**
+     * Weaves {@code BreakIterator.next()}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the break iterator
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static int breakNext(java.text.BreakIterator receiver) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "next");
+        return receiver.next();
+    }
+
+    /**
+     * Weaves {@code BreakIterator.next(int)}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the break iterator
+     * @param n as the original call takes it
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static int breakNext(java.text.BreakIterator receiver, int n) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "next");
+        return receiver.next(n);
+    }
+
+    /**
+     * Weaves {@code BreakIterator.previous()}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the break iterator
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static int breakPrevious(java.text.BreakIterator receiver) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "previous");
+        return receiver.previous();
+    }
+
+    /**
+     * Weaves {@code BreakIterator.following(int)}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the break iterator
+     * @param offset as the original call takes it
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static int breakFollowing(java.text.BreakIterator receiver, int offset) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "following");
+        return receiver.following(offset);
+    }
+
+    /**
+     * Weaves {@code BreakIterator.preceding(int)}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the break iterator
+     * @param offset as the original call takes it
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static int breakPreceding(java.text.BreakIterator receiver, int offset) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "preceding");
+        return receiver.preceding(offset);
+    }
+
+    /**
+     * Weaves {@code BreakIterator.current()}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the break iterator
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static int breakCurrent(java.text.BreakIterator receiver) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "current");
+        return receiver.current();
+    }
+
+    /**
+     * Weaves {@code BreakIterator.isBoundary(int)}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the break iterator
+     * @param offset as the original call takes it
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static boolean breakIsBoundary(java.text.BreakIterator receiver, int offset) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "isBoundary");
+        return receiver.isBoundary(offset);
+    }
+
+    /**
+     * Weaves {@code BreakIterator.getText()}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1322).
+     *
+     * @param receiver the break iterator
+     * @return what the original call returns
+     * @since 1.15.0
+     */
+    public static java.text.CharacterIterator breakGetText(java.text.BreakIterator receiver) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "getText");
+        return receiver.getText();
+    }
+
+    private static void recordCursor(Object receiver, String operation) {
+        SharedIteratorDetector detector = AsyncTestContext.currentSharedIteratorDetector();
+        if (detector != null && receiver != null) {
+            detector.recordAccess(receiver, operation);
         }
     }
 

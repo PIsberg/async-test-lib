@@ -710,6 +710,37 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- A shared java.util.StringTokenizer (#1322) ------------------------------------------
+
+    private static final Rounds<java.util.StringTokenizer> SHARED_TOKENIZERS =
+            new Rounds<>(() -> new java.util.StringTokenizer("a b c d e f g h i j k l m n o p"));
+
+    /** Every thread tokenizes with a StringTokenizer of its own. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_stringTokenizer_onePerThread() {
+        correct(() -> {
+            java.util.StringTokenizer mine = new java.util.StringTokenizer("a b c");
+            while (mine.hasMoreTokens()) {
+                use(mine.nextToken().length());
+            }
+        });
+    }
+
+    /** Every thread takes tokens from one StringTokenizer, which has one cursor (#1322). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_stringTokenizer_sharedByEveryThread() {
+        broken(() -> {
+            java.util.StringTokenizer shared = SHARED_TOKENIZERS.next().shared();
+            try {
+                if (shared.hasMoreTokens()) {
+                    use(shared.nextToken().length());
+                }
+            } catch (java.util.NoSuchElementException overtaken) {
+                use(0); // the check-then-act this row is about, when another thread took the last token
+            }
+        });
+    }
+
     // --- Hand-offs the happens-before model learned in #741: completion, submission, exchange --
 
     private static final class Promise {
