@@ -579,6 +579,18 @@ class TelemetryRegistryHooksMatchTheJdkTest {
                 b -> (Object) REF.getVolatile(b), state);
         add("getAcquireReferenceHandle", bean, b -> TelemetryRegistry.getAcquireReferenceHandle(REF, b),
                 b -> (Object) REF.getAcquire(b), state);
+        // The volatile exchange and weak swap (#1336).
+        for (Object expected : new Object[] {A, B}) {
+            add("compareAndExchangeReferenceHandle(" + expected + ", c)", bean,
+                    b -> TelemetryRegistry.compareAndExchangeReferenceHandle(REF, b, expected, C),
+                    b -> (Object) REF.compareAndExchange(b, expected, C), state);
+            add("weakCompareAndSetReferenceHandle(" + expected + ", c)", bean,
+                    b -> expected == A
+                            ? untilWon(() -> TelemetryRegistry.weakCompareAndSetReferenceHandle(REF, b, expected, C))
+                            : TelemetryRegistry.weakCompareAndSetReferenceHandle(REF, b, expected, C),
+                    b -> expected == A ? untilWon(() -> (boolean) REF.weakCompareAndSet(b, expected, C))
+                            : (boolean) REF.weakCompareAndSet(b, expected, C), state);
+        }
     }
 
     private void staticReferenceHandleCases() {
@@ -613,6 +625,18 @@ class TelemetryRegistryHooksMatchTheJdkTest {
         add("getAcquireStaticReferenceHandle", field,
                 h -> TelemetryRegistry.getAcquireStaticReferenceHandle(STATIC_REF),
                 h -> (Object) STATIC_REF.getAcquire(), state);
+        // The volatile exchange and weak swap (#1336).
+        for (Object expected : new Object[] {A, B}) {
+            add("compareAndExchangeStaticReferenceHandle(" + expected + ", c)", field,
+                    h -> TelemetryRegistry.compareAndExchangeStaticReferenceHandle(STATIC_REF, expected, C),
+                    h -> (Object) STATIC_REF.compareAndExchange(expected, C), state);
+            add("weakCompareAndSetStaticReferenceHandle(" + expected + ", c)", field,
+                    h -> expected == A
+                            ? untilWon(() -> TelemetryRegistry.weakCompareAndSetStaticReferenceHandle(STATIC_REF, expected, C))
+                            : TelemetryRegistry.weakCompareAndSetStaticReferenceHandle(STATIC_REF, expected, C),
+                    h -> expected == A ? untilWon(() -> (boolean) STATIC_REF.weakCompareAndSet(expected, C))
+                            : (boolean) STATIC_REF.weakCompareAndSet(expected, C), state);
+        }
     }
 
     private void arrayReferenceHandleCases() {
@@ -643,6 +667,18 @@ class TelemetryRegistryHooksMatchTheJdkTest {
         add("getAcquireArrayReferenceHandle", array,
                 a -> TelemetryRegistry.getAcquireArrayReferenceHandle(ARRAY, a, 1),
                 a -> (Object) ARRAY.getAcquire(a, 1), state);
+        // The volatile exchange and weak swap (#1336).
+        for (Object expected : new Object[] {A, B}) {
+            add("compareAndExchangeArrayReferenceHandle(1, " + expected + ", c)", array,
+                    a -> TelemetryRegistry.compareAndExchangeArrayReferenceHandle(ARRAY, a, 1, expected, C),
+                    a -> (Object) ARRAY.compareAndExchange(a, 1, expected, C), state);
+            add("weakCompareAndSetArrayReferenceHandle(1, " + expected + ", c)", array,
+                    a -> expected == A
+                            ? untilWon(() -> TelemetryRegistry.weakCompareAndSetArrayReferenceHandle(ARRAY, a, 1, expected, C))
+                            : TelemetryRegistry.weakCompareAndSetArrayReferenceHandle(ARRAY, a, 1, expected, C),
+                    a -> expected == A ? untilWon(() -> (boolean) ARRAY.weakCompareAndSet(a, 1, expected, C))
+                            : (boolean) ARRAY.weakCompareAndSet(a, 1, expected, C), state);
+        }
     }
 
     // ---- AtomicStampedReference ----------------------------------------------------------------

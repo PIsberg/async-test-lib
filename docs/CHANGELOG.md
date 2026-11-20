@@ -73,8 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reported by `AtomicityValidator` at PROMPT when another thread read the successor's state
   through the slot: these forms stored with a volatile write that released nothing. Both new
   must-stay-silent corpus idiom rows were reported before. Each form now runs as the woven `get`
-  and the woven `compareAndSet`, as `AtomicReference`'s have since #1334. The reference
-  `VarHandle` forms and the one-sided acquire and release flavours stay open on #1336.
+  and the woven `compareAndSet`, as `AtomicReference`'s have since #1334. So do a reference
+  `VarHandle`'s `compareAndExchange` and `weakCompareAndSet` (volatile on a handle), on an
+  instance field, a static field or an array element, which a third idiom row measured as
+  reported before. The one-sided acquire and release flavours stay open on #1336.
   `TelemetryRegistryHooksMatchTheJdkTest`, `SpinLockHookTableTest`.
 
 - **A lost attempt of an atomic increment, add or update withdraws the release it made (#1316,

@@ -1231,6 +1231,9 @@ final class FieldAccessWeaver {
                     case "getAndSet" -> arguments.length == 3 && isReference(result);
                     // The acquiring reads (#741); a plain or opaque get orders nothing.
                     case "getVolatile", "getAcquire" -> arguments.length == 2 && isReference(result);
+                    // The volatile exchange and weak swap (#1336); the one-sided flavours stay unwoven.
+                    case "compareAndExchange" -> arguments.length == 4 && isReference(result);
+                    case "weakCompareAndSet" -> arguments.length == 4 && result.getSort() == Type.BOOLEAN;
                     default -> false;
                 };
                 return matches ? name + "ArrayReferenceHandle" : null;
@@ -1247,6 +1250,8 @@ final class FieldAccessWeaver {
                 case "compareAndSet" -> arguments.length == 3 && result.getSort() == Type.BOOLEAN;
                 case "getAndSet" -> arguments.length == 2 && isReference(result);
                 case "getVolatile", "getAcquire" -> arguments.length == 1 && isReference(result);
+                case "compareAndExchange" -> arguments.length == 3 && isReference(result);
+                case "weakCompareAndSet" -> arguments.length == 3 && result.getSort() == Type.BOOLEAN;
                 default -> false;
             };
             if (instanceMatches) {
@@ -1258,6 +1263,8 @@ final class FieldAccessWeaver {
                 case "compareAndSet" -> arguments.length == 2 && result.getSort() == Type.BOOLEAN;
                 case "getAndSet" -> arguments.length == 1 && isReference(result);
                 case "getVolatile", "getAcquire" -> arguments.length == 0 && isReference(result);
+                case "compareAndExchange" -> arguments.length == 2 && isReference(result);
+                case "weakCompareAndSet" -> arguments.length == 2 && result.getSort() == Type.BOOLEAN;
                 default -> false;
             };
             return staticMatches ? name + "StaticReferenceHandle" : null;
@@ -1273,15 +1280,17 @@ final class FieldAccessWeaver {
          * <p>An atomic's hook takes the atomic and then the call's own erased parameters. A
          * {@code VarHandle} hook takes the handle and one {@code Object} per operand (plus the
          * {@code int} index for an array element), and returns {@code Object} for a
-         * {@code getAndSet} or an acquiring read, which {@link #castToCallSiteResult} narrows back.
+         * {@code getAndSet}, an acquiring read or a {@code compareAndExchange} (#1336), which
+         * {@link #castToCallSiteResult} narrows back.
          */
         private static String referenceSlotHookDescriptor(String owner, String hook,
                                                           String descriptor) {
             if (!VAR_HANDLE.equals(owner)) {
                 return "(L" + owner + ";" + descriptor.substring(1);
             }
-            String result = hook.startsWith("get") ? "Ljava/lang/Object;"
-                    : hook.startsWith("compareAndSet") ? "Z" : "V";
+            String result = hook.startsWith("get") || hook.startsWith("compareAndExchange")
+                    ? "Ljava/lang/Object;"
+                    : hook.startsWith("compareAndSet") || hook.startsWith("weakCompareAndSet") ? "Z" : "V";
             if (hook.endsWith("ArrayReferenceHandle")) {
                 return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I"
                         + "Ljava/lang/Object;".repeat(Type.getArgumentTypes(descriptor).length - 2)

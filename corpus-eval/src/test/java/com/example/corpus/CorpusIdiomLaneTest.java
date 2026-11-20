@@ -7,6 +7,8 @@ import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -1190,6 +1192,61 @@ class CorpusIdiomLaneTest {
         broken(() -> {
             PlainReference reference = REPLACED_HOLDERS.next().shared();
             reference.value = successorOf(reference.value);
+            use(reference.value.getPort());
+        });
+    }
+
+    private static final Rounds<HandledHolder> EXCHANGED_HOLDERS = new Rounds<>(HandledHolder::new);
+    private static final Rounds<PlainReference> COMPARED_HOLDERS = new Rounds<>(PlainReference::new);
+
+    /** A config slot reached through a {@code VarHandle} on a volatile field. */
+    private static final class HandledHolder {
+        static final VarHandle VALUE;
+
+        static {
+            try {
+                VALUE = MethodHandles.lookup().findVarHandle(HandledHolder.class, "value", Config.class);
+            } catch (ReflectiveOperationException e) {
+                throw new ExceptionInInitializerError(e);
+            }
+        }
+
+        volatile Config value;
+    }
+
+    /** The compareAndExchange loop through a VarHandle, carrying on from the witness. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_varHandleCompareAndExchange_retriesFromTheWitness() {
+        correct(() -> {
+            HandledHolder holder = EXCHANGED_HOLDERS.next().shared();
+            Config seen = (Config) HandledHolder.VALUE.getVolatile(holder);
+            for (;;) {
+                Config fresh = successorOf(seen);
+                Config witness = (Config) HandledHolder.VALUE.compareAndExchange(holder, seen, fresh);
+                if (witness == seen) {
+                    break;
+                }
+                seen = witness;
+            }
+            use(((Config) HandledHolder.VALUE.getVolatile(holder)).getPort());
+        });
+    }
+
+    /** The same loop through a plain field: compare what is there, then assign. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_varHandleCompareAndExchange_plainFieldCompareThenAssign() {
+        broken(() -> {
+            PlainReference reference = COMPARED_HOLDERS.next().shared();
+            Config seen = reference.value;
+            for (;;) {
+                Config fresh = successorOf(seen);
+                Config witness = reference.value;
+                if (witness == seen) {
+                    reference.value = fresh;
+                    break;
+                }
+                seen = witness;
+            }
             use(reference.value.getPort());
         });
     }

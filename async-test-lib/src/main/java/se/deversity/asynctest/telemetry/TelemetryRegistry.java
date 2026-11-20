@@ -3413,6 +3413,134 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * Weaves a reference {@code VarHandle.compareAndExchange} on an instance field as
+     * {@link #compareAndExchangeAtomicReference} does the atomic's (#1336): a won exchange is the
+     * woven compareAndSet; a lost one returns what the field held, read with the woven
+     * {@code getVolatile}.
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param expected the reference the field must hold
+     * @param update   the reference to store
+     * @return {@code expected} when the exchange happened, otherwise what the field held
+     * @since 1.15.0
+     */
+    @SuppressWarnings("ReferenceEquality") // the field compares by identity
+    public static @Nullable Object compareAndExchangeReferenceHandle(VarHandle handle, Object receiver,
+                                                                     @Nullable Object expected,
+                                                                     @Nullable Object update) {
+        for (;;) {
+            if (compareAndSetReferenceHandle(handle, receiver, expected, update)) {
+                return expected;
+            }
+            Object witness = getVolatileReferenceHandle(handle, receiver);
+            if (witness != expected) { // NOPMD CompareObjectsWithEquals - the field compares by identity
+                return witness;
+            }
+        }
+    }
+
+    /**
+     * Weaves a reference {@code VarHandle.weakCompareAndSet} on an instance field, which has
+     * volatile semantics on a handle, as the strong swap a weak one may always be (#1336).
+     * {@code weakCompareAndSetPlain} and the acquire and release flavours stay unwoven.
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param expected the reference the field must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetReferenceHandle(VarHandle handle, Object receiver,
+                                                           @Nullable Object expected,
+                                                           @Nullable Object update) {
+        return compareAndSetReferenceHandle(handle, receiver, expected, update);
+    }
+
+    /**
+     * {@link #compareAndExchangeReferenceHandle} for a static field (#1336).
+     *
+     * @param handle   the handle the call site invoked
+     * @param expected the reference the field must hold
+     * @param update   the reference to store
+     * @return {@code expected} when the exchange happened, otherwise what the field held
+     * @since 1.15.0
+     */
+    @SuppressWarnings("ReferenceEquality") // the field compares by identity
+    public static @Nullable Object compareAndExchangeStaticReferenceHandle(VarHandle handle,
+                                                                           @Nullable Object expected,
+                                                                           @Nullable Object update) {
+        for (;;) {
+            if (compareAndSetStaticReferenceHandle(handle, expected, update)) {
+                return expected;
+            }
+            Object witness = getVolatileStaticReferenceHandle(handle);
+            if (witness != expected) { // NOPMD CompareObjectsWithEquals - the field compares by identity
+                return witness;
+            }
+        }
+    }
+
+    /**
+     * {@link #weakCompareAndSetReferenceHandle} for a static field (#1336).
+     *
+     * @param handle   the handle the call site invoked
+     * @param expected the reference the field must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetStaticReferenceHandle(VarHandle handle,
+                                                                 @Nullable Object expected,
+                                                                 @Nullable Object update) {
+        return compareAndSetStaticReferenceHandle(handle, expected, update);
+    }
+
+    /**
+     * {@link #compareAndExchangeReferenceHandle} for an array element (#1336).
+     *
+     * @param handle   the handle the call site invoked
+     * @param array    the array whose element at {@code index} is the slot
+     * @param index    the element
+     * @param expected the reference the element must hold
+     * @param update   the reference to store
+     * @return {@code expected} when the exchange happened, otherwise what the element held
+     * @since 1.15.0
+     */
+    @SuppressWarnings("ReferenceEquality") // the element compares by identity
+    public static @Nullable Object compareAndExchangeArrayReferenceHandle(VarHandle handle, Object array,
+                                                                          int index, @Nullable Object expected,
+                                                                          @Nullable Object update) {
+        for (;;) {
+            if (compareAndSetArrayReferenceHandle(handle, array, index, expected, update)) {
+                return expected;
+            }
+            Object witness = getVolatileArrayReferenceHandle(handle, array, index);
+            if (witness != expected) { // NOPMD CompareObjectsWithEquals - the element compares by identity
+                return witness;
+            }
+        }
+    }
+
+    /**
+     * {@link #weakCompareAndSetReferenceHandle} for an array element (#1336).
+     *
+     * @param handle   the handle the call site invoked
+     * @param array    the array whose element at {@code index} is the slot
+     * @param index    the element
+     * @param expected the reference the element must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetArrayReferenceHandle(VarHandle handle, Object array, int index,
+                                                                @Nullable Object expected,
+                                                                @Nullable Object update) {
+        return compareAndSetArrayReferenceHandle(handle, array, index, expected, update);
+    }
+
+    /**
      * Weaves {@code AtomicReferenceFieldUpdater.set}: an offer of {@code value} to the receiver's
      * slot (#664).
      *
