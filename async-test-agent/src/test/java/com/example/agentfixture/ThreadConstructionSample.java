@@ -8,6 +8,16 @@ import java.util.List;
  */
 public class ThreadConstructionSample {
 
+    /** {@code new Thread(group, task)} (#1401). */
+    public static Thread inAGroup(Runnable task) {
+        return new Thread(Thread.currentThread().getThreadGroup(), task);
+    }
+
+    /** {@code new Thread(group, task, name)} (#1401). */
+    public static Thread inAGroupNamed(Runnable task) {
+        return new Thread(Thread.currentThread().getThreadGroup(), task, "grouped");
+    }
+
     /**
      * {@return a plain {@code new Thread}}
      *

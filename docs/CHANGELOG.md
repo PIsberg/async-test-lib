@@ -65,6 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `FutureTask` run by `new Thread(group, task)` or `new Thread(group, task, name)` is ordered
+  before its `get` (#1401, part).** Since #1350 the agent handed over the target of
+  `new Thread(task)` and `new Thread(task, name)` only, so the same task run through a
+  `ThreadGroup` constructor left the read with an `AtomicityValidator` finding on correct code. The
+  stack-size constructors and `Thread` subclasses are still not followed (#1401).
+  `ThreadConstructionWeaverTest`.
+
 - **A shared `Mac`, `Signature` or `Cipher` that threads only re-key, reset, wrap or unwrap with is
   reported (#1324).** With the agent, `SharedStatefulCryptoDetector` saw only `update`, `doFinal`,
   `sign`, `verify` and `updateAAD`, so a `Cipher` used only to wrap keys, or a primitive

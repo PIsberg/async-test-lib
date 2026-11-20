@@ -170,6 +170,22 @@ class ThreadConstructionWeaverTest {
     }
 
     @Test
+    @DisplayName("the Runnable of a new Thread(group, task) or new Thread(group, task, name) is handed over too (#1401)")
+    void theTargetOfAThreadInAGroupIsHandedOver() throws Exception {
+        Class<?> sample = woven(ThreadConstructionSample.class);
+        Runnable task = () -> { };
+
+        Thread grouped = (Thread) sample.getMethod("inAGroup", Runnable.class).invoke(null, task);
+        assertEquals(List.of(task), TARGETS, "new Thread(group, task)");
+        assertEquals(List.of(grouped), CONSTRUCTED, "and the thread is marked as before");
+
+        TARGETS.clear();
+        Thread named = (Thread) sample.getMethod("inAGroupNamed", Runnable.class).invoke(null, task);
+        assertEquals(List.of(task), TARGETS, "new Thread(group, task, name)");
+        assertEquals("grouped", named.getName(), "the constructor still got its name");
+    }
+
+    @Test
     @DisplayName("a library without threadTarget still has its constructions marked")
     void aLibraryWithoutThreadTargetStillMarks() throws Exception {
         Class<?> sample = wovenWith(ThreadConstructionSample.class, MarkerOnly.class);
