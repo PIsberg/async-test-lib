@@ -89,7 +89,7 @@
         <guava.version>33.8.0-jre</guava.version>
         <jackson.version>2.23.0</jackson.version>
         <caffeine.version>3.3.1</caffeine.version>
-        <netty.version>4.2.20.Final</netty.version>
+        <netty.version>4.2.21.Final</netty.version>
         <spring.version>7.0.10</spring.version>
         <hikaricp.version>7.1.0</hikaricp.version>
     </properties>
