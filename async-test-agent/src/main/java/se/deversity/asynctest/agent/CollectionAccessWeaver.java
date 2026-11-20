@@ -763,6 +763,25 @@ final class CollectionAccessWeaver {
             Entry.call(javax.crypto.Cipher.class, "updateAAD", "updateAAD", byte[].class),
             Entry.call(javax.crypto.Cipher.class, "updateAAD", "updateAAD", byte[].class, int.class, int.class),
             Entry.call(javax.crypto.Cipher.class, "updateAAD", "updateAAD", ByteBuffer.class),
+            // Their init, reset, wrap and unwrap calls (#1324): re-keying a shared primitive uses its
+            // one state as much as feeding it, and a key-wrapping Cipher is used through nothing else.
+            Entry.call(javax.crypto.Mac.class, "init", "init", java.security.Key.class),
+            Entry.call(javax.crypto.Mac.class, "init", "init", java.security.Key.class, java.security.spec.AlgorithmParameterSpec.class),
+            Entry.call(javax.crypto.Mac.class, "reset", "reset"),
+            Entry.call(java.security.Signature.class, "initSign", "initSign", java.security.PrivateKey.class),
+            Entry.call(java.security.Signature.class, "initSign", "initSign", java.security.PrivateKey.class, java.security.SecureRandom.class),
+            Entry.call(java.security.Signature.class, "initVerify", "initVerify", java.security.PublicKey.class),
+            Entry.call(java.security.Signature.class, "initVerify", "initVerify", java.security.cert.Certificate.class),
+            Entry.call(javax.crypto.Cipher.class, "init", "init", int.class, java.security.Key.class),
+            Entry.call(javax.crypto.Cipher.class, "init", "init", int.class, java.security.Key.class, java.security.SecureRandom.class),
+            Entry.call(javax.crypto.Cipher.class, "init", "init", int.class, java.security.Key.class, java.security.spec.AlgorithmParameterSpec.class),
+            Entry.call(javax.crypto.Cipher.class, "init", "init", int.class, java.security.Key.class, java.security.spec.AlgorithmParameterSpec.class, java.security.SecureRandom.class),
+            Entry.call(javax.crypto.Cipher.class, "init", "init", int.class, java.security.Key.class, java.security.AlgorithmParameters.class),
+            Entry.call(javax.crypto.Cipher.class, "init", "init", int.class, java.security.Key.class, java.security.AlgorithmParameters.class, java.security.SecureRandom.class),
+            Entry.call(javax.crypto.Cipher.class, "init", "init", int.class, java.security.cert.Certificate.class),
+            Entry.call(javax.crypto.Cipher.class, "init", "init", int.class, java.security.cert.Certificate.class, java.security.SecureRandom.class),
+            Entry.call(javax.crypto.Cipher.class, "wrap", "wrap", java.security.Key.class),
+            Entry.call(javax.crypto.Cipher.class, "unwrap", "unwrap", byte[].class, String.class, int.class),
             Entry.call(Formatter.class, "format", "format", String.class, Object[].class),
             // The locale-taking overload is what an internationalised codebase calls, and it was
             // invisible while its sibling was woven (#434).

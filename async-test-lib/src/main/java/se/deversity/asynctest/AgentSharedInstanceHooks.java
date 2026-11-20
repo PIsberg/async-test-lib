@@ -2284,6 +2284,277 @@ public final class AgentSharedInstanceHooks {
         receiver.updateAAD(a0);
     }
 
+    // --- Their init, reset, wrap and unwrap calls (#1324) ----------------------------------------
+    //
+    // Re-keying a shared primitive is as much a use of its one state as feeding it, and a Cipher
+    // that only wraps or unwraps keys is used through nothing else. Like the hooks above, these
+    // pass their arguments straight through and keep none: keys, certificates, parameters.
+
+    /**
+     * Weaves {@code Mac.init(Key)}.
+     *
+     * @param receiver the mac
+     * @param key the call's {@code Key} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @since 1.15.0
+     */
+    public static void init(Mac receiver, java.security.Key key) throws java.security.InvalidKeyException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.init(key);
+    }
+
+    /**
+     * Weaves {@code Mac.init(Key, AlgorithmParameterSpec)}.
+     *
+     * @param receiver the mac
+     * @param key the call's {@code Key} argument, passed through
+     * @param params the call's {@code AlgorithmParameterSpec} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @throws java.security.InvalidAlgorithmParameterException as the original call does
+     * @since 1.15.0
+     */
+    public static void init(Mac receiver, java.security.Key key, java.security.spec.AlgorithmParameterSpec params) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.init(key, params);
+    }
+
+    /**
+     * Weaves {@code Mac.reset()}.
+     *
+     * @param receiver the mac
+     * @since 1.15.0
+     */
+    public static void reset(Mac receiver) {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.reset();
+    }
+
+    /**
+     * Weaves {@code Signature.initSign(PrivateKey)}.
+     *
+     * @param receiver the signature
+     * @param privateKey the call's {@code PrivateKey} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @since 1.15.0
+     */
+    public static void initSign(Signature receiver, java.security.PrivateKey privateKey) throws java.security.InvalidKeyException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.initSign(privateKey);
+    }
+
+    /**
+     * Weaves {@code Signature.initSign(PrivateKey, SecureRandom)}.
+     *
+     * @param receiver the signature
+     * @param privateKey the call's {@code PrivateKey} argument, passed through
+     * @param random the call's {@code SecureRandom} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @since 1.15.0
+     */
+    public static void initSign(Signature receiver, java.security.PrivateKey privateKey, java.security.SecureRandom random) throws java.security.InvalidKeyException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.initSign(privateKey, random);
+    }
+
+    /**
+     * Weaves {@code Signature.initVerify(PublicKey)}.
+     *
+     * @param receiver the signature
+     * @param publicKey the call's {@code PublicKey} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @since 1.15.0
+     */
+    public static void initVerify(Signature receiver, java.security.PublicKey publicKey) throws java.security.InvalidKeyException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.initVerify(publicKey);
+    }
+
+    /**
+     * Weaves {@code Signature.initVerify(Certificate)}.
+     *
+     * @param receiver the signature
+     * @param certificate the call's {@code Certificate} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @since 1.15.0
+     */
+    public static void initVerify(Signature receiver, java.security.cert.Certificate certificate) throws java.security.InvalidKeyException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.initVerify(certificate);
+    }
+
+    /**
+     * Weaves {@code Cipher.init(int, Key)}.
+     *
+     * @param receiver the cipher
+     * @param opmode the call's {@code int} argument, passed through
+     * @param key the call's {@code Key} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @since 1.15.0
+     */
+    public static void init(Cipher receiver, int opmode, java.security.Key key) throws java.security.InvalidKeyException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.init(opmode, key);
+    }
+
+    /**
+     * Weaves {@code Cipher.init(int, Key, SecureRandom)}.
+     *
+     * @param receiver the cipher
+     * @param opmode the call's {@code int} argument, passed through
+     * @param key the call's {@code Key} argument, passed through
+     * @param random the call's {@code SecureRandom} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @since 1.15.0
+     */
+    public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.SecureRandom random) throws java.security.InvalidKeyException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.init(opmode, key, random);
+    }
+
+    /**
+     * Weaves {@code Cipher.init(int, Key, AlgorithmParameterSpec)}.
+     *
+     * @param receiver the cipher
+     * @param opmode the call's {@code int} argument, passed through
+     * @param key the call's {@code Key} argument, passed through
+     * @param params the call's {@code AlgorithmParameterSpec} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @throws java.security.InvalidAlgorithmParameterException as the original call does
+     * @since 1.15.0
+     */
+    public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.spec.AlgorithmParameterSpec params) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.init(opmode, key, params);
+    }
+
+    /**
+     * Weaves {@code Cipher.init(int, Key, AlgorithmParameterSpec, SecureRandom)}.
+     *
+     * @param receiver the cipher
+     * @param opmode the call's {@code int} argument, passed through
+     * @param key the call's {@code Key} argument, passed through
+     * @param params the call's {@code AlgorithmParameterSpec} argument, passed through
+     * @param random the call's {@code SecureRandom} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @throws java.security.InvalidAlgorithmParameterException as the original call does
+     * @since 1.15.0
+     */
+    public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.spec.AlgorithmParameterSpec params, java.security.SecureRandom random) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.init(opmode, key, params, random);
+    }
+
+    /**
+     * Weaves {@code Cipher.init(int, Key, AlgorithmParameters)}.
+     *
+     * @param receiver the cipher
+     * @param opmode the call's {@code int} argument, passed through
+     * @param key the call's {@code Key} argument, passed through
+     * @param params the call's {@code AlgorithmParameters} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @throws java.security.InvalidAlgorithmParameterException as the original call does
+     * @since 1.15.0
+     */
+    public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.AlgorithmParameters params) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.init(opmode, key, params);
+    }
+
+    /**
+     * Weaves {@code Cipher.init(int, Key, AlgorithmParameters, SecureRandom)}.
+     *
+     * @param receiver the cipher
+     * @param opmode the call's {@code int} argument, passed through
+     * @param key the call's {@code Key} argument, passed through
+     * @param params the call's {@code AlgorithmParameters} argument, passed through
+     * @param random the call's {@code SecureRandom} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @throws java.security.InvalidAlgorithmParameterException as the original call does
+     * @since 1.15.0
+     */
+    public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.AlgorithmParameters params, java.security.SecureRandom random) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.init(opmode, key, params, random);
+    }
+
+    /**
+     * Weaves {@code Cipher.init(int, Certificate)}.
+     *
+     * @param receiver the cipher
+     * @param opmode the call's {@code int} argument, passed through
+     * @param certificate the call's {@code Certificate} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @since 1.15.0
+     */
+    public static void init(Cipher receiver, int opmode, java.security.cert.Certificate certificate) throws java.security.InvalidKeyException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.init(opmode, certificate);
+    }
+
+    /**
+     * Weaves {@code Cipher.init(int, Certificate, SecureRandom)}.
+     *
+     * @param receiver the cipher
+     * @param opmode the call's {@code int} argument, passed through
+     * @param certificate the call's {@code Certificate} argument, passed through
+     * @param random the call's {@code SecureRandom} argument, passed through
+     * @throws java.security.InvalidKeyException as the original call does
+     * @since 1.15.0
+     */
+    public static void init(Cipher receiver, int opmode, java.security.cert.Certificate certificate, java.security.SecureRandom random) throws java.security.InvalidKeyException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        receiver.init(opmode, certificate, random);
+    }
+
+    /**
+     * Weaves {@code Cipher.wrap(Key)}.
+     *
+     * @param receiver the cipher
+     * @param key the call's {@code Key} argument, passed through
+     * @return what the original call returns
+     * @throws IllegalBlockSizeException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
+     * @since 1.15.0
+     */
+    public static byte[] wrap(Cipher receiver, java.security.Key key) throws IllegalBlockSizeException, java.security.InvalidKeyException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.wrap(key);
+    }
+
+    /**
+     * Weaves {@code Cipher.unwrap(byte[], String, int)}.
+     *
+     * @param receiver the cipher
+     * @param wrappedKey the call's {@code byte[]} argument, passed through
+     * @param wrappedKeyAlgorithm the call's {@code String} argument, passed through
+     * @param wrappedKeyType the call's {@code int} argument, passed through
+     * @return what the original call returns
+     * @throws java.security.InvalidKeyException as the original call does
+     * @throws java.security.NoSuchAlgorithmException as the original call does
+     * @since 1.15.0
+     */
+    public static java.security.Key unwrap(Cipher receiver, byte[] wrappedKey, String wrappedKeyAlgorithm, int wrappedKeyType) throws java.security.InvalidKeyException, java.security.NoSuchAlgorithmException {
+        ControlledSchedule.point();
+        recordCrypto(receiver);
+        return receiver.unwrap(wrappedKey, wrappedKeyAlgorithm, wrappedKeyType);
+    }
+
     private static void recordCrypto(Object receiver) {
         SharedStatefulCryptoDetector detector = AsyncTestContext.currentSharedStatefulCryptoDetector();
         if (detector == null) {

@@ -246,6 +246,26 @@ class AgentSharedInstanceHooksEachAloneTest {
         if (type == java.util.StringJoiner.class) {
             return new java.util.StringJoiner(",").add("m");
         }
+        // The crypto init, wrap and unwrap hooks (#1324): a key, a key pair's halves, parameters
+        // and a random source; a wrong one makes the call throw, after the hook has recorded.
+        if (type == java.security.Key.class) {
+            return AgentCryptoHooksTest.MAC_KEY;
+        }
+        if (type == java.security.PrivateKey.class) {
+            return AgentCryptoHooksTest.PAIR.getPrivate();
+        }
+        if (type == java.security.PublicKey.class) {
+            return AgentCryptoHooksTest.PAIR.getPublic();
+        }
+        if (type == java.security.SecureRandom.class) {
+            return new java.security.SecureRandom();
+        }
+        if (type == java.security.spec.AlgorithmParameterSpec.class) {
+            return new javax.crypto.spec.GCMParameterSpec(128, new byte[12]);
+        }
+        if (type == java.security.AlgorithmParameters.class || type == java.security.cert.Certificate.class) {
+            return null;
+        }
         if (type == java.text.CharacterIterator.class) {
             return new java.text.StringCharacterIterator("one two");
         }

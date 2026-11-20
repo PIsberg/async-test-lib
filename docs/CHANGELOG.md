@@ -65,6 +65,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A shared `Mac`, `Signature` or `Cipher` that threads only re-key, reset, wrap or unwrap with is
+  reported (#1324).** With the agent, `SharedStatefulCryptoDetector` saw only `update`, `doFinal`,
+  `sign`, `verify` and `updateAAD`, so a `Cipher` used only to wrap keys, or a primitive
+  several threads re-initialised, was silent. Every `init` overload, `initSign`, `initVerify`,
+  `Mac.reset`, `Cipher.wrap` and `Cipher.unwrap` is woven now; the hooks pass keys,
+  certificates and parameters through and keep none. A primitive handed between threads through
+  a pool stays silent. `AgentCryptoHooksTest`, `SharedCryptoWeavingTest`.
+
 - **A `StringTokenizer` or `BreakIterator` shared by several threads is reported (#1322).** Both
   hold a cursor every call moves or reads, and a shared one drew nothing. With the agent
   (`collections=true`) every `StringTokenizer` call (`hasMoreTokens`, `nextToken`, `countTokens`,

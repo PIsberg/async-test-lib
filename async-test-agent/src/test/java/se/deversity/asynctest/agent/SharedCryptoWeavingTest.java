@@ -94,6 +94,16 @@ class SharedCryptoWeavingTest {
         shared.cipherDoFinal();
     }
 
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
+    void macInit() {
+        shared.macInit();
+    }
+
+    @AsyncTest(threads = 4, invocations = 25, detectAll = true)
+    void cipherWrap() {
+        shared.cipherWrap();
+    }
+
     @AfterAll
     static void eachCallSiteIsReported() {
         try {
@@ -105,7 +115,9 @@ class SharedCryptoWeavingTest {
                     List.of("signatureSign", "Signature"),
                     List.of("signatureVerify", "Signature"),
                     List.of("cipherUpdate", "Cipher"),
-                    List.of("cipherDoFinal", "Cipher"))) {
+                    List.of("cipherDoFinal", "Cipher"),
+                    List.of("macInit", "Mac"),
+                    List.of("cipherWrap", "Cipher"))) {
                 boolean reported = BY_TEST.getOrDefault(expected.get(0), List.of()).stream()
                         .anyMatch(v -> v.detector().contains("SharedStatefulCrypto")
                                 && (v.message() + v.attributes())
