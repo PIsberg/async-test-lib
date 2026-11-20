@@ -323,7 +323,7 @@ final class VirtualThreadLockGraph {
     private static @Nullable DumpedThread readThread(String object) {
         String stack = arrayOf(object, "stack");
         String withoutStack = withoutArray(object, "stack");
-        String tid = stringField(withoutStack, "tid");
+        String tid = idField(withoutStack, "tid");
         if (tid == null) {
             return null;
         }
@@ -338,7 +338,7 @@ final class VirtualThreadLockGraph {
                 stringField(withoutStack, "state"),
                 stack == null ? List.of() : List.copyOf(quotedStringsIn(stack)),
                 parkBlocker == null ? null : stringField(parkBlocker, "object"),
-                parkBlocker == null ? null : stringField(parkBlocker, "owner"));
+                parkBlocker == null ? null : idField(parkBlocker, "owner"));
     }
 
     /**
@@ -373,6 +373,25 @@ final class VirtualThreadLockGraph {
         }
         int close = closingQuote(object, open + 1);
         return close < 0 ? null : unescape(object.substring(open + 1, close));
+    }
+
+    /**
+     * {@return the value of the first {@code key}, a string or a whole number, as text, or null}
+     *
+     * <p>A thread id: JDK 21 to 26 write {@code "tid": "42"} and a park blocker's
+     * {@code "owner": "42"}, and JDK 27's format version 2 writes both as numbers. Reading only
+     * strings found no thread at all in a JDK 27 dump (#1410).
+     */
+    private static @Nullable String idField(String object, String key) {
+        int open = valueOf(object, key);
+        if (open < 0 || object.charAt(open) == '"') {
+            return stringField(object, key);
+        }
+        int end = open;
+        while (end < object.length() && Character.isDigit(object.charAt(end))) {
+            end++;
+        }
+        return end == open ? null : object.substring(open, end);
     }
 
     /**

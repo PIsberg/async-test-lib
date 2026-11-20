@@ -65,6 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Virtual-thread deadlocks and the static-initializer sample work on JDK 27 again (#1410).**
+  JDK 27's thread dump (format version 2) writes `"tid"` and a park blocker's `"owner"` as JSON
+  numbers where JDK 21 to 26 wrote strings, and the dump reader accepted only strings, so on JDK 27 it
+  found no thread at all: a `ReentrantLock` or monitor deadlock between virtual workers timed out
+  with "No enabled detector produced a finding", and `StaticInitDeadlockDetector`'s live sample was
+  empty. Both forms are read now. `VirtualThreadLockGraphTest` pins a captured JDK 27 dump.
+
 - **Five detectors keep their state where it belongs, and a teardown finding gates at its worst
   severity (#1419).** `ConstructorSafetyValidator` took a superclass constructor's frame for an
   object whose start was recorded there, so the first helper the subclass then built closed the
