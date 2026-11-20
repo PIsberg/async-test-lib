@@ -65,6 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A thread the body started and left running fails the run when it fails just after the last
+  round (#1379).** With the agent, an `AssertionError` on such a thread that came after the run's
+  last check was handed to the default handler and never failed the test. The runner now joins
+  the run's still-running started threads before that check, for at most 100 ms in all; a body
+  that leaves a thread running on purpose pays that once per run. Without the agent the runner
+  has no list of the threads to wait for, and the window stays. `LateBodyThreadDeathWeavingTest`.
+
 - **A round that hangs late in a long run is called a possible deadlock (#1393).** Since #1386 a
   timeout whose last round had less than four average rounds' worth of budget left said the budget
   ran out, so a deadlock in round 21 of 40 read as a slow body. The runner now samples the workers

@@ -663,6 +663,9 @@ public class ConcurrencyRunner {
                 }
             }
             // A thread the body started without joining it can fail after its round was checked.
+            // Give the ones the agent saw started a moment to end first, so one that fails just
+            // after the last round is not missed (#1379).
+            joinBriefly(phase2Context.spawnedThreadsAlive());
             List<Throwable> late = new ArrayList<>(phase2Context.takeBodyThreadAssertions());
             if (!late.isEmpty()) {
                 throw buildMultiFailureError(late);
@@ -1339,6 +1342,34 @@ public class ConcurrencyRunner {
 
         if (!failures.isEmpty()) {
             throw buildMultiFailureError(failures);
+        }
+    }
+
+    /**
+     * The longest a run waits, in total, for the threads its body started and left running before
+     * its last check (#1379). A body that leaves a thread running on purpose pays this once per
+     * run; one that joins its threads, or starts none, pays nothing.
+     */
+    static final long STARTED_THREAD_GRACE_MS = 100;
+
+    /**
+     * Joins {@code started} until each has ended or {@link #STARTED_THREAD_GRACE_MS} has passed
+     * across all of them. A thread's uncaught-exception handler runs before it ends, so a death
+     * inside the window has been recorded when this returns.
+     */
+    static void joinBriefly(List<Thread> started) {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(STARTED_THREAD_GRACE_MS);
+        for (Thread thread : started) {
+            long leftMs = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime());
+            if (leftMs <= 0) {
+                return;
+            }
+            try {
+                thread.join(leftMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
         }
     }
 
