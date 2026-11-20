@@ -981,9 +981,13 @@ public final class AgentConcurrencyUtilHooks {
         }
         // Before the offer, so the take that removes the element drains after it (#630).
         TelemetryRegistry.ownershipOffered(element, receiver);
-        boolean added = receiver.offer(element);
-        if (!added) {
-            TelemetryRegistry.ownershipRefused(element, receiver);
+        boolean added = false;
+        try {
+            added = receiver.offer(element);
+        } finally {
+            if (!added) { // refused, or the call threw: nothing was handed over (#742, #1418)
+                TelemetryRegistry.ownershipRefused(element, receiver);
+            }
         }
         if (detector != null) {
             detector.recordOffer(receiver, receiver.getClass().getName(), added);

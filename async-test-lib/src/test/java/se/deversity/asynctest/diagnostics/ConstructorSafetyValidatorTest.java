@@ -378,4 +378,42 @@ class ConstructorSafetyValidatorTest {
                     "and the tracked one was closed by its return: " + tracked.name);
         }
     }
+
+    /** Records its start from the superclass constructor, as a base class that tracks itself would. */
+    static class TrackedBase {
+        TrackedBase(ConstructorSafetyValidator validator) {
+            validator.recordConstructionStart(this);
+        }
+    }
+
+    /** A helper the subclass builds in its own constructor, which tracks itself too. */
+    static final class TrackedHelper {
+        TrackedHelper(ConstructorSafetyValidator validator) {
+            validator.recordConstructionStart(this);
+        }
+    }
+
+    /** Builds a helper after its superclass constructor returned, then leaks itself. */
+    static final class LeakingAfterHelper extends TrackedBase {
+        String name = "built";
+
+        LeakingAfterHelper(ConstructorSafetyValidator validator) {
+            super(validator);
+            new TrackedHelper(validator);
+            onAnotherThread(() -> validator.recordFieldAccess(this, "name", System.nanoTime()));
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    void aHelperBuiltAfterTheSuperclassConstructorDoesNotEndTheConstruction() {
+        // The start was recorded from TrackedBase.<init>, one frame above the subclass's own
+        // constructor, and that innermost frame was taken for the construction's depth. The
+        // helper's constructor runs at the same height once super(...) has returned, so its start
+        // read as a later construction in the same frame and closed the subclass's (#1419).
+        ConstructorSafetyValidator validator = new ConstructorSafetyValidator();
+        new LeakingAfterHelper(validator);
+
+        assertTrue(validator.validateConstructorSafety().hasIssues(),
+                "another thread read the object while its subclass constructor was still running");
+    }
 }

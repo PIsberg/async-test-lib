@@ -233,4 +233,30 @@ class ScopedValueMisuseDetectorTest {
                 + "of one name, so the inner exit removed the outer: " + report.getUnboundGetIssues());
         assertEquals(1, report.getRebindIssues().size(), "the rebinding itself is still noted");
     }
+
+    @org.junit.jupiter.api.Test
+    void aBindingAThrowingRoundLeftOpenIsNotRecordedAgainstTheNextRound() throws Throwable {
+        // A pooled platform worker carries its thread id into the next round; a binding the
+        // earlier round never exited read as still active, and the next round's own binding as a
+        // nested rebind (#1419).
+        java.util.concurrent.atomic.AtomicReference<ScopedValueMisuseDetector> seen =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.Set<Long> workers = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        try {
+            se.deversity.asynctest.AsyncTestRunner.run(se.deversity.asynctest.AsyncTestConfig.builder()
+                    .threads(1).invocations(2).useVirtualThreads(false)
+                    .detectScopedValueMisuse(true).licenseMockMode(true).build(), () -> {
+                        ScopedValueMisuseDetector detector =
+                                se.deversity.asynctest.AsyncTestContext.scopedValueMisuseDetector();
+                        seen.set(detector);
+                        workers.add(Thread.currentThread().threadId());
+                        detector.recordBindingEntered("REQUEST", Thread.currentThread());
+                    });
+        } catch (AssertionError reported) {
+            // A finding fails the run; what it was is checked below.
+        }
+        assertEquals(1, workers.size(), "both rounds ran on one pooled worker, the case at issue");
+        assertTrue(seen.get().analyze().getRebindIssues().isEmpty(),
+                "each round bound once: " + seen.get().analyze().getRebindIssues());
+    }
 }

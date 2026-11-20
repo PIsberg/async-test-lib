@@ -70,23 +70,43 @@ public class ConstructorSafetyValidator {
             StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
 
     /**
-     * The depth, counted from the bottom of the recording thread's stack, of the innermost
-     * constructor frame of the object's class, or {@code -1} when no such frame is running.
+     * The depth, counted from the bottom of the recording thread's stack, of the object's own
+     * constructor frame, or {@code -1} when no such frame is running.
+     *
+     * <p>The innermost constructor frame of the object's class is where the start was recorded,
+     * which may be a superclass's constructor called by the subclass's. That chain is followed
+     * down, each frame below a constructor of a strict subclass of the one above, to the frame
+     * that runs on once {@code super(...)} returns: taking the superclass's frame let the first
+     * helper the subclass then built, whose constructor sits at the same height, close the
+     * construction while the subclass's body still ran (#1419). A frame of the same class below
+     * is a nested construction of another instance, not part of this one, and ends the chain.
      */
     private static int constructorDepthOf(Object object) {
         Class<?> type = object.getClass();
         return WALKER.walk(frames -> {
             List<StackWalker.StackFrame> stack = frames.toList();
             for (int i = 0; i < stack.size(); i++) {
-                StackWalker.StackFrame frame = stack.get(i);
-                if ("<init>".equals(frame.getMethodName())
-                        && frame.getDeclaringClass() != Object.class
-                        && frame.getDeclaringClass().isAssignableFrom(type)) {
+                if (isConstructorFor(stack.get(i), type)) {
+                    while (i + 1 < stack.size() && isConstructorFor(stack.get(i + 1), type)
+                            && isStrictSubclass(stack.get(i + 1).getDeclaringClass(),
+                                    stack.get(i).getDeclaringClass())) {
+                        i++;
+                    }
                     return stack.size() - i;
                 }
             }
             return -1;
         });
+    }
+
+    private static boolean isConstructorFor(StackWalker.StackFrame frame, Class<?> type) {
+        return "<init>".equals(frame.getMethodName())
+                && frame.getDeclaringClass() != Object.class
+                && frame.getDeclaringClass().isAssignableFrom(type);
+    }
+
+    private static boolean isStrictSubclass(Class<?> lower, Class<?> upper) {
+        return lower != upper && upper.isAssignableFrom(lower);
     }
 
     /** Names of the object's class and its superclasses below {@code Object}. */

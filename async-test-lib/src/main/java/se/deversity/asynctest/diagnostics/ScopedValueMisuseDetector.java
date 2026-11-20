@@ -69,6 +69,18 @@ public class ScopedValueMisuseDetector {
     private final AtomicInteger unboundGetCount = new AtomicInteger(0);
 
     /**
+     * Ends the round's bindings. A binding whose round threw before it was exited stays recorded,
+     * and a pooled platform worker reused in the next round carried it there, where its own
+     * binding read as a nested rebind (#1419). The runner calls this once the previous round's
+     * workers have finished.
+     *
+     * @since 1.15.0
+     */
+    public void markInvocationStart() {
+        activeBindings.clear();
+    }
+
+    /**
      * Record that a {@code ScopedValue.where(sv, val).run()} binding has been entered
      * on the current thread.
      *

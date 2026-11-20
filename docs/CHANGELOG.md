@@ -65,6 +65,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Virtual-thread deadlocks and the static-initializer sample work on JDK 27 again (#1410).**
+  JDK 27's thread dump (format version 2) writes `"tid"` and a park blocker's `"owner"` as JSON
+  numbers where JDK 21 to 26 wrote strings, and the dump reader accepted only strings, so on JDK 27 it
+  found no thread at all: a `ReentrantLock` or monitor deadlock between virtual workers timed out
+  with "No enabled detector produced a finding", and `StaticInitDeadlockDetector`'s live sample was
+  empty. Both forms are read now. `VirtualThreadLockGraphTest` pins a captured JDK 27 dump.
+
+- **Five detectors keep their state where it belongs, and a teardown finding gates at its worst
+  severity (#1419).** `ConstructorSafetyValidator` took a superclass constructor's frame for an
+  object whose start was recorded there, so the first helper the subclass then built closed the
+  construction and a later unsafe publication went unreported. `NestedMonitorLockoutDetector`
+  counted a monitor entered twice as two, and reported a CRITICAL lockout for a plain `wait()`.
+  `ThreadStarvationDetector` reported `executionTimeMs` as the negated `nanoTime` origin; it is 0,
+  since the event is recorded as the task starts. `StructuredTaskScopeMisuseDetector` could hand a
+  thread with no scope of its own an earlier round's closed, joined scope, and report its fork as
+  fork-after-join. `ScopedValueMisuseDetector` carried a binding a round left open into the next
+  round on a pooled platform worker and reported its own binding there as a rebind; it now resets
+  each round (`markInvocationStart`). And `ConcurrencyRunner.afterTeardown` takes the most severe
+  `ExecutorShutdown` finding rather than the first. `ConstructorSafetyValidatorTest`,
+  `NestedMonitorLockoutDetectorTest`, `ThreadStarvationDetectorTest`,
+  `StructuredTaskScopeMisuseDetectorTest`, `ScopedValueMisuseDetectorTest`.
+
+- **A woven call that throws leaves the bookkeeping as the call left the object (#1418).** With
+  the agent, a `Map.put` or `Map.merge` that threw (`ConcurrentHashMap.put(null, v)`, a remapping
+  function that throws) and an untimed `offer`, `offerFirst` or `offerLast` that threw
+  (`ClassCastException` from a priority queue) kept the value published, so a later hand-off of
+  that object read as ordered and could hide a race; each now withdraws it. A `FutureTask` handed
+  to a `new Thread(task, ...)` whose constructor threw was paired with the next thread built
+  there; a construction around another target now clears it. An `unlock` of a
+  `ReentrantLock`, a read-write view or a `StampedLock` stamp this thread does not hold stripped a
+  hold it did have (the read hold, when the write view was unlocked by mistake); it now records no
+  release, and still reaches the try-lock detector. And an interrupted `lockInterruptibly` under a
+  controlled schedule gave back a hold the schedule never granted, leaving its table saying a lock
+  the worker held was free. A failed multi-element `addAll` still withdraws only its last
+  element's release (#1425). `AgentHookExceptionPathsTest`, `ControlledScheduleAbandonedAcquireTest`.
+
 - **A handler that restores the interrupt flag inside an outer `catch` is no longer reported as
   swallowing it (#1417).** With `collections=true`, the interrupt-handler walk followed an edge to
   every enclosing handler from every instruction its range covered, so in

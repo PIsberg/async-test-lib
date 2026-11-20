@@ -131,4 +131,26 @@ class ThreadStarvationDetectorTest {
             named.shutdownNow();
         }
     }
+
+    @org.junit.jupiter.api.Test
+    void aStarvedTaskReportsNoNegativeExecutionTime() throws Exception {
+        // The event is recorded as the task starts, when its run time is not known; it was
+        // computed as 0 - start, the negated nanoTime origin (#1419).
+        ThreadStarvationDetector detector = new ThreadStarvationDetector();
+        detector.setStarvationThresholdMs(0);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            detector.registerExecutor(pool, "pool", 1);
+            long submitted = detector.recordTaskSubmission(pool);
+            detector.recordTaskStart("pool", submitted);
+
+            java.util.List<ThreadStarvationDetector.StarvationEventSnapshot> events = detector.analyze().getEvents();
+            assertFalse(events.isEmpty(), "a threshold of 0 reports every task");
+            for (ThreadStarvationDetector.StarvationEventSnapshot event : events) {
+                assertTrue(event.executionTimeMs >= 0, "execution time " + event.executionTimeMs);
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
 }

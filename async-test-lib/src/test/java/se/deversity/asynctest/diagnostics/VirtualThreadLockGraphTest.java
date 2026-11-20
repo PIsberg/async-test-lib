@@ -55,6 +55,31 @@ class VirtualThreadLockGraphTest {
     }
 
     @Test
+    @DisplayName("a JDK 27 dump, whose thread ids are numbers, still yields both its cycles and its threads")
+    void readsTheNumericIdsOfAJdk27Dump() {
+        // Captured on JDK 27.0.1.1 (#1410): two virtual threads parked on each other's
+        // ReentrantLock, and two blocked on each other's monitor. Format version 2 writes "tid"
+        // and parkBlocker's "owner" as JSON numbers where JDK 21 to 26 wrote strings, and a parser
+        // that read only strings found no thread at all: no cycle, and an empty sample for
+        // StaticInitDeadlockDetector.
+        String dump = fixture("virtual-thread-deadlock-jdk27.json");
+
+        Optional<List<VirtualThreadLockGraph.Cycle>> scan = VirtualThreadLockGraph.scanDump(dump);
+        assertTrue(scan.isPresent(), "this dump names monitors and lock owners");
+        VirtualThreadLockGraph.Cycle locks = cycleNaming(scan.get(), "lock-one");
+        assertTrue(locks.threadNames().contains("lock-two"), "both members: " + locks);
+        assertTrue(locks.threadIds().containsAll(List.of("44", "46")),
+                "the ids, read from numbers, the runner attributes a cycle by: " + locks);
+        VirtualThreadLockGraph.Cycle monitors = cycleNaming(scan.get(), "monitor-one");
+        assertTrue(monitors.threadNames().contains("monitor-two"), "both members: " + monitors);
+
+        List<VirtualThreadLockGraph.DumpedThread> threads =
+                VirtualThreadLockGraph.scanDumpForThreads(dump).orElseThrow();
+        assertTrue(threads.stream().anyMatch(t -> "lock-one".equals(t.name()) && t.virtual()),
+                "the threads themselves, for the static-initializer sample: " + threads.size());
+    }
+
+    @Test
     @DisplayName("a ReentrantLock deadlock is closed through parkBlocker.owner, alone and mixed with a monitor")
     void closesParkedCyclesThroughTheBlockersOwner() {
         // Captured on JDK 26.0.2 (#1384): two virtual threads each parked on the ReentrantLock the

@@ -72,7 +72,9 @@ public class ThreadStarvationDetector extends AbstractInstanceDetector<ThreadSta
         TaskEvent(String executorName, long submitTime, long startTime, long endTime) {
             this.executorName = executorName;
             this.waitTime = startTime - submitTime;
-            this.executionTime = endTime - startTime;
+            // Recorded as the task starts, when its run time is not known yet: 0, not 0 - start,
+            // which is the negated nanoTime origin (#1419).
+            this.executionTime = endTime == 0 ? 0 : endTime - startTime;
             this.threadName = Thread.currentThread().getName();
         }
     }
@@ -259,7 +261,10 @@ public class ThreadStarvationDetector extends AbstractInstanceDetector<ThreadSta
         public final String executorName;
         /** The wait time in milliseconds. */
         public final long waitTimeMs;
-        /** The execution time in milliseconds. */
+        /**
+         * The execution time in milliseconds; 0, since the event is recorded when the task starts
+         * and its run time is not measured.
+         */
         public final long executionTimeMs;
         /** Label identifying the sleeping thread in the report. */
         public final String threadName;
