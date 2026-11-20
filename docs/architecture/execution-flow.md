@@ -105,7 +105,10 @@ the last run out restores the handler the first one found, unless something repl
 The handler hands a death to the dying thread's run and then to the default it found, or prints it
 as `ThreadGroup` would, so it never swallows one. An `AssertionError` is queued on the context and
 taken after each round's latch, failing that round, and once more after the last round, before
-analysis; anything else feeds `UncaughtExceptionHandlerDetector`. A run whose analysis has started
+analysis; anything else feeds `UncaughtExceptionHandlerDetector`. With the agent, that last take
+first joins the threads the run started through a woven `Thread.start` and left running, for at
+most 100 ms in all, so one that fails just after the last round still fails the run (#1379); a run
+whose body joins its threads, or starts none, waits for nothing. A run whose analysis has started
 takes nothing. With the agent, a thread a worker starts through a woven `Thread.start` belongs to
 its run through `agentContext()`, including one constructed under a run whose analysis has
 started, and a pool thread killed by a task handed over through a woven

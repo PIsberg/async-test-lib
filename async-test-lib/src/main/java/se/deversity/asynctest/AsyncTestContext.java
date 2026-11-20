@@ -259,6 +259,13 @@ public final class AsyncTestContext {
     private final java.util.Set<Long> spawnedThreadIds = ConcurrentHashMap.newKeySet();
 
     /**
+     * The threads behind {@link #spawnedThreadIds}, held weakly so a run keeps none alive, for the
+     * runner's short join before its last check (#1379).
+     */
+    private final java.util.Queue<WeakReference<Thread>> spawnedThreads =
+            new java.util.concurrent.ConcurrentLinkedQueue<>();
+
+    /**
      * Array element accesses a thread working for this run made past the first 256 elements, which
      * {@code arrays=true} does not record (#1262).
      */
@@ -846,7 +853,30 @@ public final class AsyncTestContext {
         }
         SPAWNED.put(child.threadId(), new WeakReference<>(context));
         context.spawnedThreadIds.add(child.threadId());
+        context.spawnedThreads.add(new WeakReference<>(child));
         SelfGuard.Scope.spawned(child, context.sharingScope);
+    }
+
+    /**
+     * Internal: the threads this run's threads started through a woven {@code Thread.start} that
+     * are still alive, empty without the agent. The runner joins them briefly before its last
+     * check, so an assertion one fails just after the last round still fails the run (#1379).
+     *
+     * <p>Public only so the runner, in another package, can call it; not part of the stable public
+     * API.
+     *
+     * @return the started threads still alive, other than the calling one
+     * @since 1.15.0
+     */
+    public List<Thread> spawnedThreadsAlive() {
+        List<Thread> alive = new ArrayList<>();
+        for (WeakReference<Thread> reference : spawnedThreads) {
+            Thread thread = reference.get();
+            if (thread != null && thread.isAlive() && thread != Thread.currentThread()) { // NOPMD CompareObjectsWithEquals - identity
+                alive.add(thread);
+            }
+        }
+        return alive;
     }
 
     /**
