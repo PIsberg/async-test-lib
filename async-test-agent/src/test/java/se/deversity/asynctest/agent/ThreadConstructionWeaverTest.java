@@ -186,6 +186,44 @@ class ThreadConstructionWeaverTest {
     }
 
     @Test
+    @DisplayName("the Runnable of a new Thread(group, task, name, stackSize) is handed over from under the long (#1401)")
+    void theTargetOfAThreadWithAStackSizeIsHandedOver() throws Exception {
+        Class<?> sample = woven(ThreadConstructionSample.class);
+        Runnable task = () -> { };
+
+        Thread sized = (Thread) sample.getMethod("inAGroupWithAStackSize", Runnable.class).invoke(null, task);
+
+        assertEquals(List.of(task), TARGETS, "the task, copied out from under the two-slot stack size");
+        assertEquals(List.of(sized), CONSTRUCTED, "and the thread is marked as before");
+        assertEquals("sized", sized.getName(), "the constructor got its arguments in order");
+    }
+
+    @Test
+    @DisplayName("a Thread subclass handing its task to super(...) hands it over too (#1401)")
+    void aSubclassHandsItsSuperclassTargetOver() throws Exception {
+        Class<?> taskThread = woven(ThreadConstructionSample.TaskThread.class);
+        Runnable task = () -> { };
+
+        Thread plain = (Thread) taskThread.getConstructor(Runnable.class).newInstance(task);
+        assertEquals(List.of(task), TARGETS, "super(task)");
+        assertEquals(List.of(plain), CONSTRUCTED, "and this is marked after the call");
+
+        TARGETS.clear();
+        Thread named = (Thread) taskThread.getConstructor(Runnable.class, String.class).newInstance(task, "named");
+        assertEquals(List.of(task), TARGETS, "super(task, name)");
+        assertEquals("named", named.getName(), "the superclass still got its name");
+
+        TARGETS.clear();
+        Thread sized = (Thread) taskThread.getConstructor(Runnable.class, long.class).newInstance(task, 256 * 1024L);
+        assertEquals(List.of(task), TARGETS, "super(group, task, name, stackSize)");
+        assertEquals("sized", sized.getName(), "the stack-size constructor got its arguments in order");
+
+        TARGETS.clear();
+        taskThread.getConstructor().newInstance();
+        assertEquals(List.of(), TARGETS, "super() has no target to hand over");
+    }
+
+    @Test
     @DisplayName("a library without threadTarget still has its constructions marked")
     void aLibraryWithoutThreadTargetStillMarks() throws Exception {
         Class<?> sample = wovenWith(ThreadConstructionSample.class, MarkerOnly.class);

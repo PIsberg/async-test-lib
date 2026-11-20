@@ -65,11 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **A `FutureTask` run by `new Thread(group, task)` or `new Thread(group, task, name)` is ordered
-  before its `get` (#1401, part).** Since #1350 the agent handed over the target of
-  `new Thread(task)` and `new Thread(task, name)` only, so the same task run through a
-  `ThreadGroup` constructor left the read with an `AtomicityValidator` finding on correct code. The
-  stack-size constructors and `Thread` subclasses are still not followed (#1401).
+- **A `FutureTask` run by a `ThreadGroup` or stack-size `Thread` constructor, or by a `Thread`
+  subclass's `super(task)`, is ordered before its `get` (#1401).** Since #1350 the agent handed
+  over the target of `new Thread(task)` and `new Thread(task, name)` only, so the same task run
+  through `new Thread(group, task[, name[, stackSize]])` or a subclass constructor left the read
+  with an `AtomicityValidator` finding on correct code. Not followed yet: the constructor that
+  also takes `inheritThreadLocals`, and a subclass whose `Thread` ancestor is not woven.
   `ThreadConstructionWeaverTest`.
 
 - **A shared `Mac`, `Signature` or `Cipher` that threads only re-key, reset, wrap or unwrap with is

@@ -45,10 +45,16 @@ import org.jspecify.annotations.Nullable;
  * the hook's {@code threadTarget(Object)} first, a {@code DUP} for the first shape and
  * {@code DUP2, POP} for the second. {@code new Thread(group, task)} and
  * {@code new Thread(group, task, name)} keep the task in the same place, so they get the same
- * copies (#1401). A {@code FutureTask} run that way is run by {@code Thread.run} inside the JDK, so
- * the target is the only way the library learns which thread ran it. The constructors with a stack
- * size, whose two-slot {@code long} sits above the task, are left alone, and a library without
- * {@code threadTarget} gets none of these calls.
+ * copies, and {@code new Thread(group, task, name, stackSize)} gets {@code DUP2_X2, POP2, DUP2_X2,
+ * POP}, which lifts the task out from under the two-slot {@code long} and leaves the arguments as
+ * they were (#1401). The superclass call of a direct {@code Thread} subclass, {@code super(task)}
+ * and the rest, runs the same constructors on {@code this} and gets the same copies (#1401); a
+ * deeper subclass is handed over by its {@code Thread} ancestor's constructor, when that is woven.
+ * A {@code FutureTask} run that way is run by {@code Thread.run} inside the JDK, so the target is
+ * the only way the library learns which thread ran it. The constructor that also takes
+ * {@code inheritThreadLocals} is left alone: its task sits five slots deep, below what a stack
+ * instruction reaches, and copying it would need a local. A library without {@code threadTarget}
+ * gets none of these calls.
  *
  * <p>All of them insert values and a static call that consumes them, around one instruction and
  * before whatever follows: no branch, no new frame, only {@code maxStack} grows, which
@@ -90,6 +96,10 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
     /** The constructor {@code new Thread(group, task)} calls (#1401). */
     private static final String GROUP_RUNNABLE_CONSTRUCTOR =
             "(Ljava/lang/ThreadGroup;Ljava/lang/Runnable;)V";
+
+    /** The constructor {@code new Thread(group, task, name, stackSize)} calls (#1401). */
+    private static final String SIZED_RUNNABLE_CONSTRUCTOR =
+            "(Ljava/lang/ThreadGroup;Ljava/lang/Runnable;Ljava/lang/String;J)V";
 
     /** The constructor {@code new Thread(group, task, name)} calls (#1401). */
     private static final String GROUP_NAMED_RUNNABLE_CONSTRUCTOR =
@@ -255,7 +265,11 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
                                     boolean isInterface) {
             boolean initialisesANewThread = isConstructorCall(opcode, name)
                     && THREAD.equals(owner) && openThreads > 0;
-            if (takesTargets && initialisesANewThread) {
+            // A direct subclass's super(task, ...) runs the same constructor on this (#1401).
+            boolean initialisesThisAsAThread = isConstructorCall(opcode, name)
+                    && THREAD.equals(owner) && !initialisesANewThread
+                    && thisUnmarked && THREAD.equals(markThisAfter);
+            if (takesTargets && (initialisesANewThread || initialisesThisAsAThread)) {
                 handOverTarget(descriptor);
             }
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
@@ -295,6 +309,13 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
                     || GROUP_NAMED_RUNNABLE_CONSTRUCTOR.equals(descriptor)) {
                 super.visitInsn(Opcodes.DUP2);                // task, name -> task, name, task, name
                 super.visitInsn(Opcodes.POP);                 //            -> task, name, task
+            } else if (SIZED_RUNNABLE_CONSTRUCTOR.equals(descriptor)) {
+                // task, name, size(2) -> size, task, name, size -> size, task, name
+                super.visitInsn(Opcodes.DUP2_X2);
+                super.visitInsn(Opcodes.POP2);
+                // size, task, name -> task, name, size, task, name -> task, name, size, task
+                super.visitInsn(Opcodes.DUP2_X2);
+                super.visitInsn(Opcodes.POP);
             } else {
                 return;
             }
