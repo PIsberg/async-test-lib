@@ -65,6 +65,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An `addAll` into a concurrent set or other non-queue collection publishes only what went in
+  (#1425).** The woven `addAll` released every element before the call and, outside queues,
+  withdrew nothing, so an element a set refused (an equal one was already there) or that a call
+  throwing part way never added stayed published, and a thread that reached it some other way was
+  ordered after the producer by a hand-off that never happened, which could hide a race. The
+  single-slot `HappensBefore.retract` could not have helped: it keeps only the last release and
+  forgets it at the next stamped access, which an element's own `equals` makes inside the call.
+  Each element's release is now handed back (`HappensBefore.releaseWithdrawable`) and withdrawn
+  for every element when the call returns `false`, and for every element the collection does not
+  hold by identity when it throws. `AgentHappensBeforeFeedTest`.
+
 - **The rest of the store forms of an `AtomicBoolean`, `AtomicInteger` or `AtomicLong` publish (#1317, part).**
   Since #1315 `set`, `getAndSet`, `compareAndSet` and the arithmetic forms released and `get`
   acquired. A field published through `lazySet`, `setRelease`, `updateAndGet` and the other
@@ -184,8 +195,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hold it did have (the read hold, when the write view was unlocked by mistake); it now records no
   release, and still reaches the try-lock detector. And an interrupted `lockInterruptibly` under a
   controlled schedule gave back a hold the schedule never granted, leaving its table saying a lock
-  the worker held was free. A failed multi-element `addAll` still withdraws only its last
-  element's release (#1425). `AgentHookExceptionPathsTest`, `ControlledScheduleAbandonedAcquireTest`.
+  the worker held was free. `AgentHookExceptionPathsTest`, `ControlledScheduleAbandonedAcquireTest`.
 
 - **A handler that restores the interrupt flag inside an outer `catch` is no longer reported as
   swallowing it (#1417).** With `collections=true`, the interrupt-handler walk followed an edge to

@@ -1933,7 +1933,10 @@ public final class AgentCollectionHooks {
      * ones after it are never offered (#806). A queue with an {@code addAll} of its own keeps it,
      * since it may link the batch in a way no loop here reproduces; when that call throws part way,
      * as {@code LinkedBlockingDeque}'s does past its capacity, every offered element the queue
-     * does not hold afterwards withdraws its release ({@link #withdrawWhatDidNotGoIn}).
+     * does not hold afterwards withdraws its release ({@link #withdrawWhatDidNotGoIn}). Any other
+     * collection that publishes its elements withdraws every release when its {@code addAll}
+     * returns {@code false}, and the release of every element it does not hold when the call
+     * throws part way (#1425).
      *
      * @param receiver the collection
      * @param elements the elements to add
@@ -1984,16 +1987,56 @@ public final class AgentCollectionHooks {
                 }
             }
         }
-        if (elements != null && HappensBefore.publishesElements(receiver)) {
-            try {
-                for (Object element : elements) {
-                    HappensBefore.release(element);
-                }
-            } catch (RuntimeException ignored) { // NOPMD - recording never fails the caller
-                // addAll below reads the same source and reports what is wrong with it.
+        if (elements == null || !HappensBefore.publishesElements(receiver)) {
+            return receiver.addAll(elements);
+        }
+        Object[] released = null;
+        HappensBefore.@Nullable Withdrawable[] releases = null;
+        try {
+            released = elements.toArray();
+            releases = new HappensBefore.Withdrawable[released.length];
+            for (int i = 0; i < released.length; i++) {
+                releases[i] = HappensBefore.releaseWithdrawable(released[i]);
+            }
+        } catch (RuntimeException ignored) { // NOPMD - recording never fails the caller
+            // addAll below reads the same source and reports what is wrong with it.
+        }
+        boolean changed = false;
+        boolean completed = false;
+        try {
+            changed = receiver.addAll(elements);
+            completed = true;
+            return changed;
+        } finally {
+            if (!changed && released != null && releases != null) {
+                withdrawFromBatch(receiver, released, releases, completed);
             }
         }
-        return receiver.addAll(elements);
+    }
+
+    /**
+     * Withdraws the releases of a non-queue {@code addAll} for the elements that did not go in
+     * (#1425): every one when the call returned {@code false}, since the collection did not
+     * change, and every one {@code receiver} does not hold by identity when the call threw part
+     * way. Runs only on those paths; what the walk throws is dropped, and the caller sees the
+     * original result or exception.
+     */
+    private static void withdrawFromBatch(Collection<Object> receiver, Object[] elements,
+                                          HappensBefore.@Nullable Withdrawable[] releases,
+                                          boolean completed) {
+        try {
+            java.util.Set<Object> held = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+            if (!completed) {
+                held.addAll(receiver);
+            }
+            for (int i = 0; i < releases.length; i++) {
+                if (!held.contains(elements[i])) {
+                    HappensBefore.withdraw(releases[i]);
+                }
+            }
+        } catch (RuntimeException ignored) { // NOPMD - recording never fails the caller
+            // A collection that cannot be walked keeps every release, as it did before #1425.
+        }
     }
 
     /**

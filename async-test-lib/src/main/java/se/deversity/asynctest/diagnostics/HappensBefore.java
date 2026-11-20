@@ -633,6 +633,73 @@ public final class HappensBefore {
     }
 
     /**
+     * {@link #release} for one object of a batch, such as an {@code addAll}, that learns only
+     * after the whole call which objects went in (#1425): the release is handed back, so
+     * {@link #withdraw} can take back this one whatever the thread did since. {@link #retract}
+     * cannot: it keeps only the thread's last release, and forgets that once the thread stamps an
+     * access, which an element's own {@code equals} or {@code hashCode} does inside the call.
+     *
+     * @param sync the object the hand-off goes through, compared by identity; {@code null} is
+     *             ignored
+     * @return the release, or {@code null} when it changed nothing and there is nothing to take
+     *         back
+     * @since 1.15.0
+     */
+    @API(status = Status.INTERNAL)
+    @SuppressWarnings("ReferenceEquality") // the same clock object, not an equal one
+    public static @Nullable Withdrawable releaseWithdrawable(@Nullable Object sync) {
+        if (sync == null) {
+            return null;
+        }
+        ThreadClock me = CLOCKS.get();
+        Clock clock = syncClock(sync);
+        releaseInto(me, clock);
+        if (me.lastRelease != clock) { // NOPMD CompareObjectsWithEquals - the same clock, not an equal one
+            return null;
+        }
+        Stamp released = me.lastReleased;
+        return released == null ? null : new Withdrawable(clock, me.beforeLastRelease, released);
+    }
+
+    /**
+     * Takes back a release {@link #releaseWithdrawable} made, for an object the batch did not
+     * hand over after all (#1425).
+     *
+     * <p>Exact or nothing, as {@link #retract} is: the object's clock goes back to what it held
+     * before the release only while it still holds what the release installed. A release another
+     * thread made since has folded this one in, and it stays.
+     *
+     * @param release what {@link #releaseWithdrawable} returned; {@code null} is ignored
+     * @since 1.15.0
+     */
+    @API(status = Status.INTERNAL)
+    public static void withdraw(@Nullable Withdrawable release) {
+        if (release != null) {
+            release.clock.compareAndSet(release.released, release.before);
+        }
+    }
+
+    /**
+     * One release {@link #withdraw} can take back: the clock it changed, what that clock held
+     * before, and what the release installed (#1425).
+     */
+    @API(status = Status.INTERNAL)
+    public static final class Withdrawable {
+
+        private final Clock clock;
+
+        private final @Nullable Stamp before;
+
+        private final Stamp released;
+
+        private Withdrawable(Clock clock, @Nullable Stamp before, Stamp released) {
+            this.clock = clock;
+            this.before = before;
+            this.released = released;
+        }
+    }
+
+    /**
      * Declares that the calling thread has received what earlier {@link #release} calls on
      * {@code sync} published.
      *
