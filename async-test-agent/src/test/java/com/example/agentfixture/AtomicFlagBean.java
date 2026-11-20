@@ -100,6 +100,159 @@ public class AtomicFlagBean {
         return data;
     }
 
+    // --- The rest of the store forms, and the reads that return a stored value (#1317) ---
+
+    public void publishThroughBooleanLazySet() {
+        data = data + 1;
+        done.lazySet(true);
+    }
+
+    public void publishThroughBooleanSetRelease() {
+        data = data + 1;
+        done.setRelease(true);
+    }
+
+    public void publishThroughBooleanCompareAndExchange() {
+        data = data + 1;
+        done.compareAndExchange(false, true);
+    }
+
+    public void publishThroughBooleanWeakCompareAndSetVolatile() {
+        data = data + 1;
+        while (!done.weakCompareAndSetVolatile(false, true)) {
+            Thread.onSpinWait();
+        }
+    }
+
+    public void publishThroughBooleanWeakCompareAndSetRelease() {
+        data = data + 1;
+        while (!done.weakCompareAndSetRelease(false, true)) {
+            Thread.onSpinWait();
+        }
+    }
+
+    public void publishThroughIntLazySet() {
+        data = data + 1;
+        count.lazySet(5);
+    }
+
+    public void publishThroughIntSetRelease() {
+        data = data + 1;
+        count.setRelease(5);
+    }
+
+    public void publishThroughIntCompareAndExchange() {
+        data = data + 1;
+        count.compareAndExchange(0, 3);
+    }
+
+    public void publishThroughIntCompareAndExchangeRelease() {
+        data = data + 1;
+        count.compareAndExchangeRelease(0, 3);
+    }
+
+    public void publishThroughIntWeakCompareAndSetVolatile() {
+        data = data + 1;
+        while (!count.weakCompareAndSetVolatile(0, 3)) {
+            Thread.onSpinWait();
+        }
+    }
+
+    public void publishThroughIntWeakCompareAndSetRelease() {
+        data = data + 1;
+        while (!count.weakCompareAndSetRelease(0, 3)) {
+            Thread.onSpinWait();
+        }
+    }
+
+    public void publishThroughIntUpdateAndGet() {
+        data = data + 1;
+        count.updateAndGet(c -> c + 3);
+    }
+
+    public void publishThroughIntGetAndUpdate() {
+        data = data + 1;
+        count.getAndUpdate(c -> c + 3);
+    }
+
+    public void publishThroughIntAccumulateAndGet() {
+        data = data + 1;
+        count.accumulateAndGet(3, Integer::sum);
+    }
+
+    public void publishThroughIntGetAndAccumulate() {
+        data = data + 1;
+        count.getAndAccumulate(3, Integer::sum);
+    }
+
+    public void publishThroughLongLazySet() {
+        data = data + 1;
+        total.lazySet(5L);
+    }
+
+    public void publishThroughLongSetRelease() {
+        data = data + 1;
+        total.setRelease(5L);
+    }
+
+    public void publishThroughLongWeakCompareAndSetVolatile() {
+        data = data + 1;
+        while (!total.weakCompareAndSetVolatile(0L, 3L)) {
+            Thread.onSpinWait();
+        }
+    }
+
+    /** A plain store: no release, so it publishes nothing. */
+    public void publishThroughIntSetPlain() {
+        data = data + 1;
+        count.setPlain(5);
+    }
+
+    /** Reads the flag through the previous value a {@code getAndSet} returns. */
+    public int bumpAfterBooleanGetAndSet() {
+        if (!done.getAndSet(true)) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    /** Reads the count through the previous value a {@code getAndSet} returns. */
+    public int bumpAfterCountGetAndSet() {
+        if (count.getAndSet(9) < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    /** Reads the count through the witness of an exchange that loses. */
+    public int bumpAfterCountExchange() {
+        if (count.compareAndExchange(0, 0) < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    /** Reads the count through the previous value an identity update returns. */
+    public int bumpAfterCountUpdate() {
+        if (count.getAndUpdate(c -> c) < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    /** Reads the count through the previous value an add of nothing returns. */
+    public int bumpAfterCountAdd() {
+        if (count.getAndAdd(0) < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
     /** Updates the data having read no atomic: nothing orders it after the writer. */
     public int bumpWithoutAFlag() {
         data = data + 1;

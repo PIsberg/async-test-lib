@@ -883,6 +883,7 @@ public final class TelemetryRegistry {
         }
         primitiveSlotStoring(flag, value ? 1 : 0);
         boolean previous = flag.getAndSet(value);
+        HappensBefore.acquireVolatile(flag, SLOT_VALUE, previous ? 1 : 0);
         if (value && !previous) {
             SpinLocks.acquire(flag);
         }
@@ -936,6 +937,8 @@ public final class TelemetryRegistry {
     private static int addPublishing(AtomicInteger count, int delta) {
         for (;;) {
             int seen = count.get();
+            // The read half of the update: the value it returns was stored by someone (#1317).
+            HappensBefore.acquireVolatile(count, SLOT_VALUE, seen);
             int next = seen + delta;
             primitiveSlotStoring(count, next);
             if (count.compareAndSet(seen, next)) {
@@ -944,10 +947,32 @@ public final class TelemetryRegistry {
         }
     }
 
+    /**
+     * {@code getAndUpdate}, {@code updateAndGet} and the accumulate forms as
+     * {@link #addPublishing(AtomicInteger, int)} does an add (#1317): the value read acquires, and
+     * the value about to be stored is released before the swap. The function is re-applied after a
+     * lost swap, as the JDK's own loop may re-apply it, so it must be free of side effects either way.
+     *
+     * @return the previous value when {@code previous}, else the updated one
+     */
+    private static int updatePublishing(AtomicInteger count, IntUnaryOperator function,
+                                        boolean previous) {
+        for (;;) {
+            int seen = count.get();
+            HappensBefore.acquireVolatile(count, SLOT_VALUE, seen);
+            int next = function.applyAsInt(seen);
+            primitiveSlotStoring(count, next);
+            if (count.compareAndSet(seen, next)) {
+                return previous ? seen : next;
+            }
+        }
+    }
+
     /** {@link #addPublishing(AtomicInteger, int)} for an {@code AtomicLong}. */
     private static long addPublishing(AtomicLong count, long delta) {
         for (;;) {
             long seen = count.get();
+            HappensBefore.acquireVolatile(count, SLOT_VALUE, seen);
             long next = seen + delta;
             primitiveSlotStoring(count, next);
             if (count.compareAndSet(seen, next)) {
@@ -972,6 +997,7 @@ public final class TelemetryRegistry {
         if (!value) {
             SpinLocks.release(flag);
         }
+        primitiveSlotStoring(flag, value ? 1 : 0);
         flag.lazySet(value);
     }
 
@@ -1161,6 +1187,7 @@ public final class TelemetryRegistry {
     public static void lazySetAtomicLongUnrelated(AtomicLong count, long value) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicSwapped(count);
+        primitiveSlotStoring(count, value);
         count.lazySet(value);
     }
 
@@ -1168,6 +1195,7 @@ public final class TelemetryRegistry {
     public static void setReleaseAtomicLongUnrelated(AtomicLong count, long value) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicSwapped(count);
+        primitiveSlotStoring(count, value);
         count.setRelease(value);
     }
 
@@ -1178,6 +1206,7 @@ public final class TelemetryRegistry {
         if (value == 0) {
             SpinLocks.release(count);
         }
+        primitiveSlotStoring(count, value);
         count.lazySet(value);
     }
 
@@ -1208,6 +1237,7 @@ public final class TelemetryRegistry {
         if (value == 0) {
             SpinLocks.release(count);
         }
+        primitiveSlotStoring(count, value);
         count.setRelease(value);
     }
 
@@ -1215,6 +1245,7 @@ public final class TelemetryRegistry {
     public static void lazySetAtomicLong(AtomicLong count, long value) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicStored(count);
+        primitiveSlotStoring(count, value);
         count.lazySet(value);
     }
 
@@ -1222,6 +1253,7 @@ public final class TelemetryRegistry {
     public static void setReleaseAtomicLong(AtomicLong count, long value) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicStored(count);
+        primitiveSlotStoring(count, value);
         count.setRelease(value);
     }
 
@@ -1256,7 +1288,11 @@ public final class TelemetryRegistry {
     public static boolean weakCompareAndSetVolatileAtomicLong(AtomicLong count, long expected, long update) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicSwapped(count);
-        return count.weakCompareAndSetVolatile(expected, update);
+        boolean won = count.weakCompareAndSetVolatile(expected, update);
+        if (won) {
+            primitiveSlotStoring(count, update);
+        }
+        return won;
     }
 
     /** Weaves {@code AtomicInteger.set}; storing 0 releases. @param count the atomic @param value the value @since 1.12.1 */
@@ -1295,6 +1331,7 @@ public final class TelemetryRegistry {
         if (value == 0) {
             SpinLocks.release(count);
         }
+        primitiveSlotStoring(count, value);
         count.lazySet(value);
     }
 
@@ -1534,6 +1571,7 @@ public final class TelemetryRegistry {
         ControlledSchedule.point();
         primitiveSlotStoring(count, value);
         int previous = count.getAndSet(value);
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, previous);
         if (value != 1) {
             SpinLocks.release(count);
         }
@@ -1623,6 +1661,10 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int witness = count.compareAndExchange(expected, update);
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, witness);
+        if (witness == expected) {
+            primitiveSlotStoring(count, update);
+        }
         if (witness == expected && update != 1) {
             SpinLocks.release(count);
         }
@@ -1664,6 +1706,9 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         boolean won = count.weakCompareAndSetVolatile(expected, update);
+        if (won) {
+            primitiveSlotStoring(count, update);
+        }
         if (won && update != 1) {
             SpinLocks.release(count);
         }
@@ -1683,6 +1728,10 @@ public final class TelemetryRegistry {
                                                           boolean update) {
         ControlledSchedule.point();
         boolean witness = flag.compareAndExchange(expected, update);
+        HappensBefore.acquireVolatile(flag, SLOT_VALUE, witness ? 1 : 0);
+        if (witness == expected) {
+            primitiveSlotStoring(flag, update ? 1 : 0);
+        }
         if (witness == expected && !update) {
             SpinLocks.release(flag);
         }
@@ -1721,6 +1770,9 @@ public final class TelemetryRegistry {
                                                                  boolean expected, boolean update) {
         ControlledSchedule.point();
         boolean won = flag.weakCompareAndSetVolatile(expected, update);
+        if (won) {
+            primitiveSlotStoring(flag, update ? 1 : 0);
+        }
         if (won && !update) {
             SpinLocks.release(flag);
         }
@@ -2169,6 +2221,7 @@ public final class TelemetryRegistry {
         if (value == 0) {
             SpinLocks.release(count);
         }
+        primitiveSlotStoring(count, value);
         count.setRelease(value);
     }
 
@@ -2227,6 +2280,9 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         boolean won = count.weakCompareAndSetRelease(expected, update);
+        if (won) {
+            primitiveSlotStoring(count, update);
+        }
         if (won && update != 1) {
             SpinLocks.release(count);
         }
@@ -2247,6 +2303,7 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int witness = count.compareAndExchangeAcquire(expected, update);
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, witness);
         if (witness == expected && update != 1) {
             SpinLocks.release(count);
         }
@@ -2267,6 +2324,9 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int witness = count.compareAndExchangeRelease(expected, update);
+        if (witness == expected) {
+            primitiveSlotStoring(count, update);
+        }
         if (witness == expected && update != 1) {
             SpinLocks.release(count);
         }
@@ -2285,7 +2345,7 @@ public final class TelemetryRegistry {
     public static int getAndUpdateAtomicInteger(AtomicInteger count, IntUnaryOperator function) {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
-        int previous = count.getAndUpdate(function);
+        int previous = updatePublishing(count, function, true);
         if (count.get() != 1) {
             SpinLocks.release(count);
         }
@@ -2303,7 +2363,7 @@ public final class TelemetryRegistry {
     public static int updateAndGetAtomicInteger(AtomicInteger count, IntUnaryOperator function) {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
-        int current = count.updateAndGet(function);
+        int current = updatePublishing(count, function, false);
         if (current != 1) {
             SpinLocks.release(count);
         }
@@ -2324,7 +2384,7 @@ public final class TelemetryRegistry {
                                                     IntBinaryOperator function) {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
-        int previous = count.getAndAccumulate(operand, function);
+        int previous = updatePublishing(count, c -> function.applyAsInt(c, operand), true);
         if (count.get() != 1) {
             SpinLocks.release(count);
         }
@@ -2344,7 +2404,7 @@ public final class TelemetryRegistry {
                                                     IntBinaryOperator function) {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
-        int current = count.accumulateAndGet(operand, function);
+        int current = updatePublishing(count, c -> function.applyAsInt(c, operand), false);
         if (current != 1) {
             SpinLocks.release(count);
         }
@@ -2393,6 +2453,7 @@ public final class TelemetryRegistry {
         if (!value) {
             SpinLocks.release(flag);
         }
+        primitiveSlotStoring(flag, value ? 1 : 0);
         flag.setRelease(value);
     }
 
@@ -2449,6 +2510,9 @@ public final class TelemetryRegistry {
                                                                 boolean update) {
         ControlledSchedule.point();
         boolean won = flag.weakCompareAndSetRelease(expected, update);
+        if (won) {
+            primitiveSlotStoring(flag, update ? 1 : 0);
+        }
         if (won && !update) {
             SpinLocks.release(flag);
         }
@@ -2468,6 +2532,7 @@ public final class TelemetryRegistry {
                                                                  boolean update) {
         ControlledSchedule.point();
         boolean witness = flag.compareAndExchangeAcquire(expected, update);
+        HappensBefore.acquireVolatile(flag, SLOT_VALUE, witness ? 1 : 0);
         if (witness == expected && !update) {
             SpinLocks.release(flag);
         }
@@ -2487,6 +2552,9 @@ public final class TelemetryRegistry {
                                                                  boolean update) {
         ControlledSchedule.point();
         boolean witness = flag.compareAndExchangeRelease(expected, update);
+        if (witness == expected) {
+            primitiveSlotStoring(flag, update ? 1 : 0);
+        }
         if (witness == expected && !update) {
             SpinLocks.release(flag);
         }

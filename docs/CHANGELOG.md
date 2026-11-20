@@ -65,6 +65,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The rest of the store forms of an `AtomicBoolean`, `AtomicInteger` or `AtomicLong` publish (#1317, part).**
+  Since #1315 `set`, `getAndSet`, `compareAndSet` and the arithmetic forms released and `get`
+  acquired. A field published through `lazySet`, `setRelease`, `updateAndGet` and the other
+  update and accumulate forms, or a won `compareAndExchange` or volatile or release weak
+  compare-and-set, and read after a `get` that saw the value, was reported as an unordered
+  publication on correct code. Those forms release now, and the value `getAndSet`, an update or
+  an add returns, and a `compareAndExchange` witness, acquire. The plain and opaque forms still
+  order nothing, as the memory model says. `AtomicFlagPublicationWeavingTest`.
 - **A `FutureTask` run by a `ThreadGroup` or stack-size `Thread` constructor, or by a `Thread`
   subclass's `super(task)`, is ordered before its `get` (#1401).** Since #1350 the agent handed
   over the target of `new Thread(task)` and `new Thread(task, name)` only, so the same task run

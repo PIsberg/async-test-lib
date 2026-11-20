@@ -107,6 +107,151 @@ class AtomicFlagPublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("AtomicBoolean.lazySet publishes (#1317)")
+    void aBooleanLazySetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughBooleanLazySet, AtomicFlagBean::bumpAfterBoolean);
+    }
+
+    @Test
+    @DisplayName("AtomicBoolean.setRelease publishes (#1317)")
+    void aBooleanSetReleasePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughBooleanSetRelease, AtomicFlagBean::bumpAfterBoolean);
+    }
+
+    @Test
+    @DisplayName("a won AtomicBoolean.compareAndExchange publishes (#1317)")
+    void aBooleanCompareAndExchangePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughBooleanCompareAndExchange, AtomicFlagBean::bumpAfterBoolean);
+    }
+
+    @Test
+    @DisplayName("a won AtomicBoolean.weakCompareAndSetVolatile publishes (#1317)")
+    void aBooleanWeakCasVolatilePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughBooleanWeakCompareAndSetVolatile, AtomicFlagBean::bumpAfterBoolean);
+    }
+
+    @Test
+    @DisplayName("a won AtomicBoolean.weakCompareAndSetRelease publishes (#1317)")
+    void aBooleanWeakCasReleasePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughBooleanWeakCompareAndSetRelease, AtomicFlagBean::bumpAfterBoolean);
+    }
+
+    @Test
+    @DisplayName("AtomicInteger.lazySet publishes (#1317)")
+    void anIntLazySetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntLazySet, AtomicFlagBean::bumpAfterCount);
+    }
+
+    @Test
+    @DisplayName("AtomicInteger.setRelease publishes (#1317)")
+    void anIntSetReleasePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntSetRelease, AtomicFlagBean::bumpAfterCount);
+    }
+
+    @Test
+    @DisplayName("a won AtomicInteger.compareAndExchange publishes (#1317)")
+    void anIntCompareAndExchangePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntCompareAndExchange, AtomicFlagBean::bumpAfterCount);
+    }
+
+    @Test
+    @DisplayName("a won AtomicInteger.compareAndExchangeRelease publishes (#1317)")
+    void anIntCompareAndExchangeReleasePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntCompareAndExchangeRelease, AtomicFlagBean::bumpAfterCount);
+    }
+
+    @Test
+    @DisplayName("a won AtomicInteger.weakCompareAndSetVolatile publishes (#1317)")
+    void anIntWeakCasVolatilePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntWeakCompareAndSetVolatile, AtomicFlagBean::bumpAfterCount);
+    }
+
+    @Test
+    @DisplayName("a won AtomicInteger.weakCompareAndSetRelease publishes (#1317)")
+    void anIntWeakCasReleasePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntWeakCompareAndSetRelease, AtomicFlagBean::bumpAfterCount);
+    }
+
+    @Test
+    @DisplayName("AtomicInteger.updateAndGet publishes (#1317)")
+    void anIntUpdateAndGetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntUpdateAndGet, AtomicFlagBean::bumpAfterCount);
+    }
+
+    @Test
+    @DisplayName("AtomicInteger.getAndUpdate publishes (#1317)")
+    void anIntGetAndUpdatePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntGetAndUpdate, AtomicFlagBean::bumpAfterCount);
+    }
+
+    @Test
+    @DisplayName("AtomicInteger.accumulateAndGet publishes (#1317)")
+    void anIntAccumulateAndGetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntAccumulateAndGet, AtomicFlagBean::bumpAfterCount);
+    }
+
+    @Test
+    @DisplayName("AtomicInteger.getAndAccumulate publishes (#1317)")
+    void anIntGetAndAccumulatePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntGetAndAccumulate, AtomicFlagBean::bumpAfterCount);
+    }
+
+    @Test
+    @DisplayName("AtomicLong.lazySet publishes (#1317)")
+    void aLongLazySetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongLazySet, AtomicFlagBean::bumpAfterTotal);
+    }
+
+    @Test
+    @DisplayName("AtomicLong.setRelease publishes (#1317)")
+    void aLongSetReleasePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongSetRelease, AtomicFlagBean::bumpAfterTotal);
+    }
+
+    @Test
+    @DisplayName("a won AtomicLong.weakCompareAndSetVolatile publishes (#1317)")
+    void aLongWeakCasVolatilePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongWeakCompareAndSetVolatile, AtomicFlagBean::bumpAfterTotal);
+    }
+
+    @Test
+    @DisplayName("the previous value of an AtomicBoolean.getAndSet acquires (#1317)")
+    void aBooleanGetAndSetAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughBooleanSet, AtomicFlagBean::bumpAfterBooleanGetAndSet);
+    }
+
+    @Test
+    @DisplayName("the previous value of an AtomicInteger.getAndSet acquires (#1317)")
+    void anIntGetAndSetAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntSet, AtomicFlagBean::bumpAfterCountGetAndSet);
+    }
+
+    @Test
+    @DisplayName("the witness of an AtomicInteger.compareAndExchange acquires (#1317)")
+    void anIntExchangeWitnessAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntSet, AtomicFlagBean::bumpAfterCountExchange);
+    }
+
+    @Test
+    @DisplayName("the value an AtomicInteger.getAndUpdate returns acquires (#1317)")
+    void anIntUpdateResultAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntSet, AtomicFlagBean::bumpAfterCountUpdate);
+    }
+
+    @Test
+    @DisplayName("the value an AtomicInteger.getAndAdd returns acquires (#1317)")
+    void anIntAddResultAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntSet, AtomicFlagBean::bumpAfterCountAdd);
+    }
+
+    @Test
+    @DisplayName("setPlain orders nothing: a plain store is no release (#1317)")
+    void aPlainStoreStillRaces() throws InterruptedException {
+        assertRaced(AtomicFlagBean::publishThroughIntSetPlain, AtomicFlagBean::bumpAfterCount,
+                "setPlain has no release semantics, so a get that saw it orders nothing");
+    }
+
+    @Test
     @DisplayName("an update with no read of the flag keeps its finding")
     void anUpdateThatReadNoFlagIsStillARace() throws InterruptedException {
         assertRaced(AtomicFlagBean::publishThroughBooleanSet, AtomicFlagBean::bumpWithoutAFlag,
