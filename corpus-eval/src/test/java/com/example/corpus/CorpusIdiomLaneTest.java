@@ -3832,6 +3832,42 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    private static final Rounds<ConcurrentHashMap<String, Limits>> SEARCHED_VALUES = new Rounds<>(ConcurrentHashMap::new);
+    private static final Rounds<ConcurrentHashMap<String, Limits>> LATE_SEARCHED_VALUES =
+            new Rounds<>(ConcurrentHashMap::new);
+
+    /** One thread puts a built value in a ConcurrentHashMap; the others find it with searchValues(). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentMap_valueReadThroughSearchValues() {
+        correct(() -> {
+            Turn<ConcurrentHashMap<String, Limits>> turn = SEARCHED_VALUES.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                built.limit = 10;
+                turn.shared().put("limits", built);
+            } else {
+                awaitAMapping(turn.shared());
+                use(turn.shared().searchValues(1L, value -> value).limit);
+            }
+        });
+    }
+
+    /** The same map, with the value filled in after the put that published it. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_concurrentMap_searchValuesValueFilledInLate() {
+        broken(() -> {
+            Turn<ConcurrentHashMap<String, Limits>> turn = LATE_SEARCHED_VALUES.next();
+            if (turn.opensTheRound()) {
+                Limits built = new Limits();
+                turn.shared().put("limits", built);
+                built.limit = 10;
+            } else {
+                awaitAMapping(turn.shared());
+                use(turn.shared().searchValues(1L, value -> value).limit);
+            }
+        });
+    }
+
     private static final Rounds<ConcurrentHashMap<Limits, Boolean>> KEYED = new Rounds<>(ConcurrentHashMap::new);
     private static final Rounds<ConcurrentHashMap<Limits, Boolean>> LATE_KEYED = new Rounds<>(ConcurrentHashMap::new);
 

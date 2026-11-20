@@ -487,11 +487,13 @@ read with `peek` or `pop`, read with `getFirst` or `getLast` on a `Deque` or a `
 `SortedSet.first` or `last` or a `NavigableSet` `floor`, `ceiling`, `lower`, `higher`, `pollFirst`
 or `pollLast`, through `Deque.descendingIterator` or a `listIterator()` in either direction, out
 of `toArray`, or as a `parallelStream()` reaches it, a value read through the `elements()`
-enumeration of a `ConcurrentHashMap` or `Hashtable`, and what a `ConcurrentHashMap.search` or
-`reduceValues` returns, an object put into such a map as the key and read back through
+enumeration of a `ConcurrentHashMap` or `Hashtable`, what a `ConcurrentHashMap` `search`,
+`searchValues`, `searchKeys`, `searchEntries`, `reduce`, `reduceValues`, `reduceKeys` or
+`reduceEntries` returns (#1375; the primitive `reduce*To*` forms return no object to receive),
+the keys and values a threshold `forEach`, `forEachKey`, `forEachValue` or `forEachEntry` hands
+its action or transformer, an object put into such a map as the key and read back through
 `keySet()`, `keys()` or an entry (a `String`, a boxed number or an enum constant is not published
-as a key, since unrelated code shares it; the other `ConcurrentHashMap` `search*` and `reduce*`
-forms are not modelled yet, #1375),
+as a key, since unrelated code shares it),
 `CountDownLatch.countDown` and an `await` that reached zero, `Semaphore.release` and an acquire that
 took a permit, a `CyclicBarrier.await` and the normal returns from the same generation (#1246; the
 generation is read under the barrier's own lock, which needs `collections=true`), with the

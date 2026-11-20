@@ -372,6 +372,53 @@ class CollectionAccessWeaverTest {
             return receiver.reduceValues(parallelismThreshold, transformer, reducer);
         }
 
+        public static Object concurrentMapSearchValues(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                long parallelismThreshold, java.util.function.Function<Object, Object> searchFunction) {
+            return receiver.searchValues(parallelismThreshold, searchFunction);
+        }
+
+        public static Object concurrentMapSearchKeys(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                long parallelismThreshold, java.util.function.Function<Object, Object> searchFunction) {
+            return receiver.searchKeys(parallelismThreshold, searchFunction);
+        }
+
+        public static Object concurrentMapSearchEntries(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                long parallelismThreshold,
+                java.util.function.Function<java.util.Map.Entry<Object, Object>, Object> searchFunction) {
+            return receiver.searchEntries(parallelismThreshold, searchFunction);
+        }
+
+        public static Object concurrentMapReduce(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                long parallelismThreshold, java.util.function.BiFunction<Object, Object, Object> transformer,
+                java.util.function.BiFunction<Object, Object, Object> reducer) {
+            return receiver.reduce(parallelismThreshold, transformer, reducer);
+        }
+
+        public static Object concurrentMapReduceKeys(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                long parallelismThreshold, java.util.function.BiFunction<Object, Object, Object> reducer) {
+            return receiver.reduceKeys(parallelismThreshold, reducer);
+        }
+
+        public static Object concurrentMapReduceKeys(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                long parallelismThreshold, java.util.function.Function<Object, Object> transformer,
+                java.util.function.BiFunction<Object, Object, Object> reducer) {
+            return receiver.reduceKeys(parallelismThreshold, transformer, reducer);
+        }
+
+        public static java.util.Map.Entry<Object, Object> concurrentMapReduceEntries(
+                java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold,
+                java.util.function.BiFunction<java.util.Map.Entry<Object, Object>, java.util.Map.Entry<Object, Object>,
+                        ? extends java.util.Map.Entry<Object, Object>> reducer) {
+            return receiver.reduceEntries(parallelismThreshold, reducer);
+        }
+
+        public static Object concurrentMapReduceEntries(java.util.concurrent.ConcurrentHashMap<Object, Object> receiver,
+                long parallelismThreshold,
+                java.util.function.Function<java.util.Map.Entry<Object, Object>, Object> transformer,
+                java.util.function.BiFunction<Object, Object, Object> reducer) {
+            return receiver.reduceEntries(parallelismThreshold, transformer, reducer);
+        }
+
         public static Object[] collectionToArray(java.util.Collection<Object> receiver) {
             return receiver.toArray();
         }

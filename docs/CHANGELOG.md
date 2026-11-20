@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The rest of `ConcurrentHashMap`'s bulk reads order what they read after the put that published
+  it (#1375).** With `collections=true`, an object built by one thread, put into a
+  `ConcurrentHashMap` and read back by another through `searchValues`, `searchKeys`,
+  `searchEntries`, `reduce`, `reduceKeys` or `reduceEntries` (either form), or inside the
+  action or transformer of a threshold `forEach`, `forEachKey`, `forEachValue` or
+  `forEachEntry`, drew an `ATOMICITY` PROMPT finding: the map orders the build before each
+  read, and the model never heard of the read. Those calls are woven now, as `search` and
+  `reduceValues` were (#1294). `AgentHappensBeforeFeedTest`; corpus idiom pair
+  `idiom_concurrentMap_valueReadThroughSearchValues` / `idiom_concurrentMap_searchValuesValueFilledInLate`.
+
 - **`SemaphoreMisuseDetector` reports an over-release only when a thread returns more permits than
   it took (#1292).** Without a registered permit count, a signal semaphore that started with
   permits and was acquired first (a waiter takes one, a thread that holds none releases three) was

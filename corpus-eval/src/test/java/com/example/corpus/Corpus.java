@@ -6958,6 +6958,23 @@ final class Corpus {
                             + "unordered",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_concurrentMap_valueReadThroughSearchValues", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread puts a built value in a ConcurrentHashMap, the others read it "
+                            + "through searchValues(1, ...). The collection orders the build before "
+                            + "each read (#1375)"),
+
+            new RecordingSubject("idiom_concurrentMap_searchValuesValueFilledInLate", JDK,
+                    "java.util.concurrent.ConcurrentHashMap",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same map with the element's field written after the put "
+                            + "published it: the write and the other threads' reads are "
+                            + "unordered",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_concurrentMap_objectPublishedAsKey", JDK,
                     "java.util.concurrent.ConcurrentHashMap",
                     DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,

@@ -913,6 +913,158 @@ public final class AgentCollectionHooks {
     }
 
     /**
+     * Weaves {@code ConcurrentHashMap.searchValues(long, Function)}: what the search returns, most
+     * often one of the values, is received by the caller, as {@link #concurrentMapSearch} (#1375).
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the search across the pool
+     * @param searchFunction       the function that returns non-null for a match
+     * @return the first non-null result, or null
+     * @since 1.15.0
+     */
+    public static @Nullable Object concurrentMapSearchValues(
+            java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - searchValues is declared by ConcurrentHashMap
+            Function<Object, Object> searchFunction) {
+        ControlledSchedule.point();
+        record(receiver, "searchValues", false);
+        return received(receiver, receiver.searchValues(parallelismThreshold, searchFunction));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.searchKeys(long, Function)}, as {@link #concurrentMapSearchValues}:
+     * a key the map published is received (#1375).
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the search across the pool
+     * @param searchFunction       the function that returns non-null for a match
+     * @return the first non-null result, or null
+     * @since 1.15.0
+     */
+    public static @Nullable Object concurrentMapSearchKeys(
+            java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - searchKeys is declared by ConcurrentHashMap
+            Function<Object, Object> searchFunction) {
+        ControlledSchedule.point();
+        record(receiver, "searchKeys", false);
+        return received(receiver, receiver.searchKeys(parallelismThreshold, searchFunction));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.searchEntries(long, Function)}, as
+     * {@link #concurrentMapSearchValues} (#1375).
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the search across the pool
+     * @param searchFunction       the function that returns non-null for a match
+     * @return the first non-null result, or null
+     * @since 1.15.0
+     */
+    public static @Nullable Object concurrentMapSearchEntries(
+            java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - searchEntries is declared by ConcurrentHashMap
+            Function<Map.Entry<Object, Object>, Object> searchFunction) {
+        ControlledSchedule.point();
+        record(receiver, "searchEntries", false);
+        return received(receiver, receiver.searchEntries(parallelismThreshold, searchFunction));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.reduce(long, BiFunction, BiFunction)}: the reduction is
+     * received, as {@link #concurrentMapReduceValues} (#1375).
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param transformer          what each key and value become
+     * @param reducer              the function combining two transformed results
+     * @return the reduction, or null when nothing was transformed
+     * @since 1.15.0
+     */
+    public static @Nullable Object concurrentMapReduce(
+            java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - reduce is declared by ConcurrentHashMap
+            BiFunction<Object, Object, Object> transformer, BiFunction<Object, Object, Object> reducer) {
+        ControlledSchedule.point();
+        record(receiver, "reduce", false);
+        return received(receiver, receiver.reduce(parallelismThreshold, transformer, reducer));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.reduceKeys(long, BiFunction)}: the reduction, one of the
+     * keys when the reducer picks, is received (#1375).
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param reducer              the function combining two keys
+     * @return the reduction, or null when the map is empty
+     * @since 1.15.0
+     */
+    public static @Nullable Object concurrentMapReduceKeys(
+            java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - reduceKeys is declared by ConcurrentHashMap
+            BiFunction<Object, Object, Object> reducer) {
+        ControlledSchedule.point();
+        record(receiver, "reduceKeys", false);
+        return received(receiver, receiver.reduceKeys(parallelismThreshold, reducer));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.reduceKeys(long, Function, BiFunction)}, as
+     * {@link #concurrentMapReduceKeys(java.util.concurrent.ConcurrentHashMap, long, BiFunction)} (#1375).
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param transformer          what each key becomes
+     * @param reducer              the function combining two transformed keys
+     * @return the reduction, or null when nothing was transformed
+     * @since 1.15.0
+     */
+    public static @Nullable Object concurrentMapReduceKeys(
+            java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - reduceKeys is declared by ConcurrentHashMap
+            Function<Object, Object> transformer, BiFunction<Object, Object, Object> reducer) {
+        ControlledSchedule.point();
+        record(receiver, "reduceKeys", false);
+        return received(receiver, receiver.reduceKeys(parallelismThreshold, transformer, reducer));
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.reduceEntries(long, BiFunction)}: the reduction is one of
+     * the map's entries, so its key and value, which the map published, are received (#1375).
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param reducer              the function combining two entries
+     * @return the reduction, or null when the map is empty
+     * @since 1.15.0
+     */
+    public static Map.@Nullable Entry<Object, Object> concurrentMapReduceEntries(
+            java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - reduceEntries is declared by ConcurrentHashMap
+            BiFunction<Map.Entry<Object, Object>, Map.Entry<Object, Object>, ? extends Map.Entry<Object, Object>> reducer) {
+        ControlledSchedule.point();
+        record(receiver, "reduceEntries", false);
+        Map.Entry<Object, Object> entry = receiver.reduceEntries(parallelismThreshold, reducer);
+        if (entry != null) {
+            received(receiver, entry.getKey());
+            received(receiver, entry.getValue());
+        }
+        return entry;
+    }
+
+    /**
+     * Weaves {@code ConcurrentHashMap.reduceEntries(long, Function, BiFunction)}: the reduction is
+     * received, as {@link #concurrentMapReduceValues} (#1375).
+     *
+     * @param receiver             the map
+     * @param parallelismThreshold the size from which the map splits the work across the pool
+     * @param transformer          what each entry becomes
+     * @param reducer              the function combining two transformed entries
+     * @return the reduction, or null when nothing was transformed
+     * @since 1.15.0
+     */
+    public static @Nullable Object concurrentMapReduceEntries(
+            java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - reduceEntries is declared by ConcurrentHashMap
+            Function<Map.Entry<Object, Object>, Object> transformer, BiFunction<Object, Object, Object> reducer) {
+        ControlledSchedule.point();
+        record(receiver, "reduceEntries", false);
+        return received(receiver, receiver.reduceEntries(parallelismThreshold, transformer, reducer));
+    }
+
+    /**
      * Weaves {@code Collection.toArray()}, which hands out every element at once: all of them are
      * received by the caller (#1294).
      *
