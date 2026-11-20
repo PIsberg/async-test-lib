@@ -2431,7 +2431,7 @@ the agent, and were as stated on their first run.
 
 **Where it stops.** With these pairs, the two #542 added, the commons-lang3 one and the two #545
 added below, the Guava service pair (#736) and the Guava HMAC hasher pair (#1321),
-20 of the 53 agent-fed detectors are measured in both directions on call sites inside a library.
+20 of the 54 agent-fed detectors are measured in both directions on call sites inside a library.
 `LibraryReach` records why the other 33 are not,
 and `EveryAgentFedDetectorIsReachedThroughALibraryTest` holds that list to both directions:
 

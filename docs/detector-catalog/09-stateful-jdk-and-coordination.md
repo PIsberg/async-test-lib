@@ -89,7 +89,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 115. Shared Iterator Detector
 * **Severity**: `HIGH`
-* **Description**: Detects a single `Iterator`/`ListIterator`/`Spliterator` instance driven from more than one thread. An iterator carries mutable cursor state confined to the thread that obtained it, regardless of whether the backing collection is itself thread-safe; racing `hasNext()`/`next()`/`remove()` calls on the same instance skip or duplicate elements, throw a spurious `NoSuchElementException`, or corrupt the underlying structure.
+* **Description**: Detects a single `Iterator`/`ListIterator`/`Spliterator` instance driven from more than one thread. An iterator carries mutable cursor state confined to the thread that obtained it, regardless of whether the backing collection is itself thread-safe; racing `hasNext()`/`next()`/`remove()` calls on the same instance skip or duplicate elements, throw a spurious `NoSuchElementException`, or corrupt the underlying structure. A `java.util.StringTokenizer` and a `java.text.BreakIterator` hold the same kind of cursor; with the agent (`collections=true`) every call on one is recorded here without instrumentation, so one held in a field and used by several threads is reported (#1322, since 1.15.0). A plain `Iterator` is still recorded by hand.
 * **Buggy Code**:
   ```java
   Iterator<String> it = sharedList.iterator();

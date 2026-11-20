@@ -65,6 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `StringTokenizer` or `BreakIterator` shared by several threads is reported (#1322).** Both
+  hold a cursor every call moves or reads, and a shared one drew nothing. With the agent
+  (`collections=true`) every `StringTokenizer` call (`hasMoreTokens`, `nextToken`, `countTokens`,
+  `hasMoreElements`, `nextElement`) and every `BreakIterator` call (`setText`, `first`, `last`,
+  `next`, `previous`, `following`, `preceding`, `current`, `isBoundary`, `getText`) is
+  recorded on `SharedIteratorDetector`, which is now agent-fed (54 of the detectors). A plain
+  `Iterator` is still recorded by hand (#1309). `AgentSharedInstanceHooksTest`; corpus idiom pair
+  `idiom_stringTokenizer_onePerThread` / `idiom_stringTokenizer_sharedByEveryThread`.
+
 - **A `StringJoiner` shared by several threads is reported (#1309, part).** With the agent
   (`collections=true`), one `StringJoiner` every thread added to drew nothing, while a shared
   `StringBuilder` doing the same is reported: a joiner appends to an internal array with no lock.

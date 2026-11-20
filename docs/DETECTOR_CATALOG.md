@@ -346,7 +346,7 @@ wondering about the silence, know which kind each detector is. The classificatio
 the two drift or when the agent-fed set stops matching the classes the woven streams are wired
 into.
 
-### Agent-fed (53)
+### Agent-fed (54)
 
 Read the agent's woven streams (field accesses, collection call sites, lock acquisitions) and fire
 on unmodified code, third-party code included, whenever the agent is attached:
@@ -554,7 +554,7 @@ VERDICT, so a `minTrust = VERDICT` gate keeps failing on it.
 `SharedMessageDigestDetector`, `SharedStatefulCryptoDetector`, `CalendarDetector`, `StringBuilderDetector`,
 `SharedDecimalFormatDetector`, `SharedFormatterDetector`, `SharedDeflaterDetector`,
 `SharedByteBufferDetector`, `SharedCharsetCoderDetector`, `SharedChecksumDetector`,
-`SharedSplittableRandomDetector`, `SemaphoreMisuseDetector`,
+`SharedSplittableRandomDetector`, `SharedIteratorDetector`, `SemaphoreMisuseDetector`,
 `CountDownLatchDetector`, `LatchMisuseDetector`, `BlockingQueueDetector`, `SleepInLockDetector`,
 `MissedSignalDetector`, `SpuriousWakeupDetector`, `ConditionVariableDetector`, `ExplicitGcDetector`, `CompletableFutureObtrudeDetector`,
 `DaemonThreadHygieneDetector`, `ABAProblemDetector`,
@@ -641,7 +641,7 @@ describe a shape in the code rather
 than any particular method, and no substitution can see a shape; the one shape the agent reads,
 an `InterruptedException` handler's, is read by a weaver of its own, above.
 
-### Recording-only (91)
+### Recording-only (90)
 
 Fire only when the test body records what it did, through the detector's `record*`/`register*`
 API, usually reached via `AsyncTestContext`. Attaching the agent changes nothing for these; the
@@ -680,7 +680,7 @@ recording is the feed:
 `ThreadLocalRandomMisuseDetector`,
 `StableValueMisuseDetector`,
 `StructuredTaskScopeMisuseDetector`, `GathererConcurrencyMisuseDetector`,
-`FileChannelPositionRaceDetector`, `SharedIteratorDetector`, `HighContentionAtomicDetector`,
+`FileChannelPositionRaceDetector`, `HighContentionAtomicDetector`,
 `SharedJsonMapperReconfigDetector`, `LazyConstantMisuseDetector`, `FinalFieldMutationDetector`,
 `SharedKdfDetector`, `FutureBlockingDetector`,
 `FlowPublisherConcurrencyDetector`, `ConfinedArenaThreadEscapeDetector`,

@@ -85,6 +85,9 @@ public final class DetectorFeeds {
             DetectorType.SHARED_CHARSET_CODER,
             DetectorType.SHARED_CHECKSUM,
             DetectorType.SHARED_SPLITTABLE_RANDOM,
+            // A StringTokenizer or BreakIterator held in a field: one cursor, every call moves or
+            // reads it (#1322).
+            DetectorType.SHARED_ITERATOR,
             // The coordination primitives. Sharing is the point of these, so what the detectors
             // report is protocol misuse - a permit that never came back, an offer whose false
             // return was discarded. Nobody instruments a semaphore three layers down in the

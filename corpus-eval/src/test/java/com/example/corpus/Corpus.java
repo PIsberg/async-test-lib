@@ -5574,6 +5574,20 @@ final class Corpus {
                             + "with no lock, like a shared StringBuilder (#1309)",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_stringTokenizer_onePerThread", JDK,
+                    "java.util.StringTokenizer",
+                    DetectorType.SHARED_ITERATOR, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread tokenizes with a StringTokenizer of its own"),
+
+            new RecordingSubject("idiom_stringTokenizer_sharedByEveryThread", JDK,
+                    "java.util.StringTokenizer",
+                    DetectorType.SHARED_ITERATOR, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread checks hasMoreTokens and takes nextToken from one tokenizer, "
+                            + "one cursor between them (#1322)",
+                    IssueSeverity.HIGH),
+
             // --- Hand-offs the happens-before model learned in #741: a completion, an executor
             //     submission and its get, an exchange, an AtomicReference set and get. Each correct
             //     row was a known gap until then, and each twin reaches the value another way.
