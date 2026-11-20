@@ -153,6 +153,46 @@ class AgentExecutorHooksTest {
         };
     }
 
+    /** {@return the message of the NullPointerException {@code call} threw, or "returned"} */
+    private static String nullMessage(Callable<?> call) {
+        try {
+            call.call();
+            return "returned";
+        } catch (NullPointerException e) {
+            return String.valueOf(e.getMessage());
+        } catch (Exception e) {
+            return e.getClass().getName();
+        }
+    }
+
+    @Test
+    @DisplayName("a task of a pool handing invokeAll or invokeAny a null task list gets the pool's own exception")
+    void aNullTaskListGoesToTheExecutor() throws Exception {
+        // The hooks read tasks.size() to record the wait before handing the call on (#1415), so a
+        // task of the pool got the hook's NullPointerException, not the one the pool throws.
+        ExecutorService pool = kept(Executors.newFixedThreadPool(2));
+        installed();
+        try {
+            Object answers = AgentConcurrencyUtilHooks.get(AgentConcurrencyUtilHooks.submit(pool,
+                    (Callable<Object>) () -> List.of(
+                            List.of(nullMessage(() -> AgentConcurrencyUtilHooks.invokeAll(pool, null)),
+                                    nullMessage(() -> pool.invokeAll(null))),
+                            List.of(nullMessage(() -> AgentConcurrencyUtilHooks.invokeAll(pool, null, 1, TimeUnit.SECONDS)),
+                                    nullMessage(() -> pool.invokeAll(null, 1, TimeUnit.SECONDS))),
+                            List.of(nullMessage(() -> AgentConcurrencyUtilHooks.invokeAny(pool, null)),
+                                    nullMessage(() -> pool.invokeAny(null))),
+                            List.of(nullMessage(() -> AgentConcurrencyUtilHooks.invokeAny(pool, null, 1, TimeUnit.SECONDS)),
+                                    nullMessage(() -> pool.invokeAny(null, 1, TimeUnit.SECONDS))))));
+            for (Object pair : (List<?>) answers) {
+                List<?> wovenAndDirect = (List<?>) pair;
+                assertEquals(wovenAndDirect.get(1), wovenAndDirect.get(0),
+                        "the woven call must fail as the pool's own call does: " + answers);
+            }
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
     /** A wait on {@code inner} through invokeAll, with a timeout so the deadlock ends (#1175). */
     private static Callable<Object> invokeAllOn(ExecutorService inner) {
         return () -> AgentConcurrencyUtilHooks.invokeAll(inner,

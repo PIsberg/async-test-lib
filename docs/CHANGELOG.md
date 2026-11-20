@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A woven stream, `ConcurrentHashMap.forEach*` or `Arrays.parallelSetAll` call throws for a null
+  callback again, as the JDK call does (#1415).** Inside a run the hooks wrapped the callback in a
+  lambda of their own before calling the JDK, which then saw a non-null argument: `stream.map(null)`
+  threw only when an element ran it, and `Stream.empty().parallel().forEach(null)`,
+  `new ConcurrentHashMap<>().forEach(1, null)` or `Arrays.parallelSetAll(new int[0], null)` did
+  not throw at all. All 97 such hooks now check their callbacks on entry. And a pool task's
+  `invokeAll(null)` or `invokeAny(null)` failed with the hook's own `NullPointerException` (from
+  `tasks.size()`) instead of the pool's. `AgentConcurrencyUtilHooksNullCallbackTest`,
+  `AgentExecutorHooksTest`.
+
 - **`LivelockDetector` no longer reports an idle pooled worker as starved, and its starvation
   rule reads the window it documents (#1414).** With platform workers, a worker that had finished
   its body parked in its pool, WAITING with flat CPU time, and a peer's `captureSnapshot()` in a
