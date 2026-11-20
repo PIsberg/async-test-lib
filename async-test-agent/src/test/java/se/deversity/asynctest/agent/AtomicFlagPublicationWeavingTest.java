@@ -233,15 +233,19 @@ class AtomicFlagPublicationWeavingTest {
     }
 
     @Test
-    @DisplayName("the value an AtomicInteger.getAndUpdate returns acquires (#1317)")
-    void anIntUpdateResultAcquires() throws InterruptedException {
-        assertOrdered(AtomicFlagBean::publishThroughIntSet, AtomicFlagBean::bumpAfterCountUpdate);
+    @DisplayName("the value an AtomicInteger.getAndUpdate returns acquires nothing (#1317)")
+    void anIntUpdateResultAcquiresNothing() throws InterruptedException {
+        assertRaced(AtomicFlagBean::publishThroughIntSet, AtomicFlagBean::bumpAfterCountUpdate,
+                "an update's read does not acquire: a counter every thread bumps would hand every "
+                        + "bumper's clock to each of them (AtomicCounterClockTest)");
     }
 
     @Test
-    @DisplayName("the value an AtomicInteger.getAndAdd returns acquires (#1317)")
-    void anIntAddResultAcquires() throws InterruptedException {
-        assertOrdered(AtomicFlagBean::publishThroughIntSet, AtomicFlagBean::bumpAfterCountAdd);
+    @DisplayName("the value an AtomicInteger.getAndAdd returns acquires nothing (#1317)")
+    void anIntAddResultAcquiresNothing() throws InterruptedException {
+        assertRaced(AtomicFlagBean::publishThroughIntSet, AtomicFlagBean::bumpAfterCountAdd,
+                "an add's read does not acquire: a counter every thread bumps would hand every "
+                        + "bumper's clock to each of them (AtomicCounterClockTest)");
     }
 
     @Test

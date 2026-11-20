@@ -70,9 +70,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   acquired. A field published through `lazySet`, `setRelease`, `updateAndGet` and the other
   update and accumulate forms, or a won `compareAndExchange` or volatile or release weak
   compare-and-set, and read after a `get` that saw the value, was reported as an unordered
-  publication on correct code. Those forms release now, and the value `getAndSet`, an update or
-  an add returns, and a `compareAndExchange` witness, acquire. The plain and opaque forms still
-  order nothing, as the memory model says. `AtomicFlagPublicationWeavingTest`.
+  publication on correct code. Those forms release now, and the value `getAndSet` returns and a
+  `compareAndExchange` witness acquire. The value an add or update returns deliberately acquires
+  nothing: a counter every thread bumps collects every bumper's clock, and handing it to each
+  bumper filled a 2 GB heap within seconds in the corpus idioms lane (`AtomicCounterClockTest`).
+  The plain and opaque forms still order nothing, as the memory model says.
+  `AtomicFlagPublicationWeavingTest`.
 - **A `FutureTask` run by a `ThreadGroup` or stack-size `Thread` constructor, or by a `Thread`
   subclass's `super(task)`, is ordered before its `get` (#1401).** Since #1350 the agent handed
   over the target of `new Thread(task)` and `new Thread(task, name)` only, so the same task run

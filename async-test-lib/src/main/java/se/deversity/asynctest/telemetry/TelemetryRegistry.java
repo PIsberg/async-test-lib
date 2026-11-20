@@ -937,8 +937,6 @@ public final class TelemetryRegistry {
     private static int addPublishing(AtomicInteger count, int delta) {
         for (;;) {
             int seen = count.get();
-            // The read half of the update: the value it returns was stored by someone (#1317).
-            HappensBefore.acquireVolatile(count, SLOT_VALUE, seen);
             int next = seen + delta;
             primitiveSlotStoring(count, next);
             if (count.compareAndSet(seen, next)) {
@@ -949,9 +947,15 @@ public final class TelemetryRegistry {
 
     /**
      * {@code getAndUpdate}, {@code updateAndGet} and the accumulate forms as
-     * {@link #addPublishing(AtomicInteger, int)} does an add (#1317): the value read acquires, and
-     * the value about to be stored is released before the swap. The function is re-applied after a
-     * lost swap, as the JDK's own loop may re-apply it, so it must be free of side effects either way.
+     * {@link #addPublishing(AtomicInteger, int)} does an add (#1317): the value about to be stored
+     * is released before the swap. The function is re-applied after a lost swap, as the JDK's own
+     * loop may re-apply it, so it must be free of side effects either way.
+     *
+     * <p>The value read does not acquire, here or in an add. A counter bumped by every thread
+     * collects every bumper's clock in its releases, and a bump that acquired would hand that whole
+     * clock to each bumping thread and to every access it records afterwards: a static counter
+     * bumped once per body execution filled a 2 GB heap within seconds (AtomicCounterClockTest).
+     * A {@code get} of the counter still acquires.
      *
      * @return the previous value when {@code previous}, else the updated one
      */
@@ -959,7 +963,6 @@ public final class TelemetryRegistry {
                                         boolean previous) {
         for (;;) {
             int seen = count.get();
-            HappensBefore.acquireVolatile(count, SLOT_VALUE, seen);
             int next = function.applyAsInt(seen);
             primitiveSlotStoring(count, next);
             if (count.compareAndSet(seen, next)) {
@@ -972,7 +975,6 @@ public final class TelemetryRegistry {
     private static long addPublishing(AtomicLong count, long delta) {
         for (;;) {
             long seen = count.get();
-            HappensBefore.acquireVolatile(count, SLOT_VALUE, seen);
             long next = seen + delta;
             primitiveSlotStoring(count, next);
             if (count.compareAndSet(seen, next)) {
