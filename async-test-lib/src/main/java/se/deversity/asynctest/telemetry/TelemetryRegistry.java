@@ -928,9 +928,11 @@ public final class TelemetryRegistry {
      * known before the store and can be released first (#1315). An arithmetic update's result is
      * not on the stack, and a release made after the store would leave a reader that saw the new
      * value in between nothing to acquire, which a reader spinning on a completion counter does
-     * often. An attempt that loses the swap has released a value it did not store; the thread
-     * stores its own on the next turn of the loop, and until then a reader of the winner's value
-     * is ordered after this thread too.
+     * often. An attempt that loses the swap has released a value it did not store, and withdraws
+     * that release while it is still the atomic's latest (#1316). When the winner released after
+     * it, the winner's release has folded this thread's in, and until the thread stores its own
+     * value on the next turn of the loop a reader of the winner's value is ordered after this
+     * thread too.
      *
      * @return the updated value
      */
@@ -942,6 +944,7 @@ public final class TelemetryRegistry {
             if (count.compareAndSet(seen, next)) {
                 return next;
             }
+            HappensBefore.withdrawVolatile(count, SLOT_VALUE);
         }
     }
 
@@ -968,6 +971,7 @@ public final class TelemetryRegistry {
             if (count.compareAndSet(seen, next)) {
                 return previous ? seen : next;
             }
+            HappensBefore.withdrawVolatile(count, SLOT_VALUE);
         }
     }
 
@@ -980,6 +984,7 @@ public final class TelemetryRegistry {
             if (count.compareAndSet(seen, next)) {
                 return next;
             }
+            HappensBefore.withdrawVolatile(count, SLOT_VALUE);
         }
     }
 

@@ -921,6 +921,70 @@ class AgentHappensBeforeFeedTest {
     }
 
     @Test
+    @DisplayName("a lost attempt of an atomic update withdraws the release it made (#1316)")
+    void aLostAttemptWithdrawsItsRelease() throws InterruptedException {
+        assertTrue(lostAttemptReported(true),
+                "the updater's first attempt lost the swap to another thread's store of the same "
+                        + "value, so a get that saw that value must not be ordered after the updater");
+        assertFalse(lostAttemptReported(false),
+                "the updater's attempt stored the value the get saw, so its release orders the read");
+    }
+
+    /**
+     * A thread writes the box and runs a woven {@code getAndUpdate} on a count holding 0. With
+     * {@code lost}, the first time the function runs another thread stores 1 through a woven
+     * {@code set}, so the attempt to store the function's 1 releases it and then loses the swap;
+     * the second time, with the count holding the other thread's 1, a reader gets the count and
+     * reads the box. Without {@code lost} the attempt stores 1 itself and the reader runs after
+     * it. Nothing else orders the reader after the box's write (#1316).
+     */
+    private static boolean lostAttemptReported(boolean lost) throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box box = new Box();
+        AtomicInteger count = new AtomicInteger();
+        AtomicReference<String> setUpWrong = new AtomicReference<>();
+        Runnable read = () -> onItsOwnThread(() -> {
+            if (TelemetryRegistry.getAtomicInteger(count) != 1) {
+                setUpWrong.set("the reader did not see 1");
+            }
+            detector.recordFieldRead(box, "value");
+        });
+        AtomicInteger calls = new AtomicInteger();
+        Thread updater = new Thread(() -> {
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            TelemetryRegistry.getAndUpdateAtomicInteger(count, c -> {
+                int call = calls.incrementAndGet();
+                if (lost && call == 1) {
+                    onItsOwnThread(() -> TelemetryRegistry.setAtomicInteger(count, 1));
+                } else if (lost && call == 2) {
+                    read.run();
+                }
+                return c == 0 ? 1 : c + 10;
+            });
+            if (!lost) {
+                read.run();
+            }
+        });
+        updater.start();
+        updater.join();
+        assertNull(setUpWrong.get());
+        assertEquals(lost ? 2 : 1, calls.get(), "the update did not take the intended attempts");
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    /** Runs {@code body} on a new, unwoven thread and waits for it: the start orders nothing. */
+    private static void onItsOwnThread(Runnable body) {
+        Thread thread = new Thread(body);
+        thread.start();
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Test
     @DisplayName("a store into a primitive atomic orders the writer before a get that saw it (#1315)")
     void aPrimitiveAtomicFlagPublishes() throws InterruptedException {
         AtomicBoolean flag = new AtomicBoolean();

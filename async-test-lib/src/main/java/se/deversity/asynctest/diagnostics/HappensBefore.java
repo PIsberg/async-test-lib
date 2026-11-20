@@ -349,8 +349,11 @@ public final class HappensBefore {
             return;
         }
         ThreadClock me = CLOCKS.get();
-        fieldClock(me, owner, field).release(me.current, value, known, stored, reference);
-        // A volatile field's release is never withdrawn, and it ends the window of the last one.
+        FieldClock clock = fieldClock(me, owner, field);
+        Release installed = clock.release(me.current, value, known, stored, reference);
+        me.lastVolatileClock = installed == null ? null : clock;
+        me.lastVolatileRelease = installed;
+        // An object's release can no longer be retracted once a volatile field has released.
         me.forgetRelease();
         me.published = true;
     }
@@ -629,6 +632,38 @@ public final class HappensBefore {
         // Only an object's own clock matches here: a volatile field's release is never withdrawn.
         if (clock != null && clock == SYNC.get(new IdentityKey.Weak(sync, null))) { // NOPMD CompareObjectsWithEquals - the same clock, not an equal one
             clock.compareAndSet(released, before);
+        }
+    }
+
+    /**
+     * Takes back the calling thread's last {@link #releaseVolatile(Object, String, long)} of
+     * {@code owner}'s {@code field}, for a write that released before it stored and then did not
+     * store: the lost attempt of an atomic update's compare-and-set loop (#1316).
+     *
+     * <p>Exact or nothing, as {@link #retract} is: the field goes back to the release before this
+     * one only while this one is still its latest. Another thread's release made in between was
+     * built on this one and keeps everything it published, so the loser's writes stay ordered
+     * before a read of that thread's value; a release only the loser made, which the reader would
+     * otherwise find by the value the winner stored too, is gone. Call it right after the lost
+     * attempt, before the thread releases anything else.
+     *
+     * @param owner the object the field belongs to; {@code null} is ignored
+     * @param field the field's name, as the release named it
+     * @since 1.15.0
+     */
+    @API(status = Status.INTERNAL)
+    @SuppressWarnings("ReferenceEquality") // the same clock object, not an equal one
+    public static void withdrawVolatile(@Nullable Object owner, String field) {
+        if (owner == null) {
+            return;
+        }
+        ThreadClock me = CLOCKS.get();
+        FieldClock clock = me.lastVolatileClock;
+        Release installed = me.lastVolatileRelease;
+        me.lastVolatileClock = null;
+        me.lastVolatileRelease = null;
+        if (clock != null && installed != null && clock == fieldClock(me, owner, field)) { // NOPMD CompareObjectsWithEquals - the same clock, not an equal one
+            clock.withdraw(installed);
         }
     }
 
@@ -1081,21 +1116,30 @@ public final class HappensBefore {
          * {@code value}, or of the object {@code stored} when {@code reference}. Lock-free, for
          * the reason {@link SyncClock#field} gives.
          */
-        void release(Stamp mine, long value, boolean known, @Nullable Object stored,
-                     boolean reference) {
+        @Nullable Release release(Stamp mine, long value, boolean known, @Nullable Object stored,
+                                  boolean reference) {
             for (;;) {
                 Release seen = latest;
                 Release next = seen == null
                         ? new Release(mine, value, known, stored, reference, null)
                         : seen.then(mine, value, known, stored, reference);
                 if (next == seen) { // NOPMD CompareObjectsWithEquals - then returns its receiver when nothing changed
-                    return;
+                    return null;
                 }
                 if (LATEST.compareAndSet(this, seen, next)) {
                     next.trim(kept());
-                    return;
+                    return next;
                 }
             }
+        }
+
+        /**
+         * Puts the field back to the release before {@code installed} while {@code installed} is
+         * still its latest, for {@link HappensBefore#withdrawVolatile} (#1316). A release made
+         * since has folded {@code installed} into its own clock, and nothing is withdrawn then.
+         */
+        void withdraw(Release installed) {
+            LATEST.compareAndSet(this, installed, installed.previous);
         }
 
         /** {@return the table of threads swapping into the field, created on first use} */
@@ -1406,6 +1450,15 @@ public final class HappensBefore {
         @Nullable Stamp beforeLastRelease;
 
         @Nullable Stamp lastReleased;
+
+        /**
+         * The volatile field clock this thread's last {@link HappensBefore#releaseVolatile} changed
+         * and the release it installed there, for {@link HappensBefore#withdrawVolatile} (#1316).
+         * Read and written by the owning thread only.
+         */
+        @Nullable FieldClock lastVolatileClock;
+
+        @Nullable Release lastVolatileRelease;
 
         /**
          * The volatile field clocks this thread used last, a lookup cache for

@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A lost attempt of an atomic increment, add or update withdraws the release it made (#1316,
+  part).** The woven arithmetic and update forms of `AtomicInteger` and `AtomicLong` release the
+  value they are about to store before each compare-and-set attempt. An attempt that lost to
+  another thread storing the same value left its release as the atomic's latest, so a `get` that
+  saw the winner's value was ordered after the loser's earlier writes too, an edge the program
+  does not have, which could hide a race on them. The attempt now withdraws its release
+  (`HappensBefore.withdrawVolatile`) while it is still the latest. When the winner released after
+  the loser, the winner's release has already folded the loser's in; that order stays open on
+  #1316. `AgentHappensBeforeFeedTest`.
+
 - **An `addAll` into a concurrent set or other non-queue collection publishes only what went in
   (#1425).** The woven `addAll` released every element before the call and, outside queues,
   withdrew nothing, so an element a set refused (an equal one was already there) or that a call
