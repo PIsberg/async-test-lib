@@ -44,9 +44,9 @@ class AgentCryptoHooksTest {
     private static final byte[] MESSAGE = "sixteen byte msg".getBytes(StandardCharsets.US_ASCII);
     private static final byte[] AAD = {9, 8, 7};
 
-    private static final SecretKey MAC_KEY;
+    static final SecretKey MAC_KEY;
     private static final SecretKey AES_KEY;
-    private static final KeyPair PAIR;
+    static final KeyPair PAIR;
     private static final byte[] NONCE = new byte[12];
     private static final byte[] AAD_NONCE = new byte[12];
     private static final byte[] TAG;
@@ -292,9 +292,112 @@ class AgentCryptoHooksTest {
     }
 
     @Test
+    @DisplayName("the init, reset, wrap and unwrap hooks delegate (#1324)")
+    void initResetWrapAndUnwrapDelegate() throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        AgentSharedInstanceHooks.init(mac, MAC_KEY);
+        assertArrayEquals(TAG, mac.doFinal(MESSAGE), "init(Key) keyed the Mac");
+        mac.update(MESSAGE);
+        AgentSharedInstanceHooks.reset(mac);
+        assertArrayEquals(TAG, mac.doFinal(MESSAGE), "reset dropped the bytes fed before it");
+        Mac withSpec = Mac.getInstance("HmacSHA256");
+        assertThrows(java.security.InvalidAlgorithmParameterException.class,
+                () -> AgentSharedInstanceHooks.init(withSpec, MAC_KEY, new GCMParameterSpec(128, NONCE)),
+                "the Mac's own exception reaches the caller");
+
+        Signature signer = Signature.getInstance("SHA256withECDSA");
+        AgentSharedInstanceHooks.initSign(signer, PAIR.getPrivate());
+        signer.update(MESSAGE);
+        byte[] signature = signer.sign();
+        AgentSharedInstanceHooks.initSign(signer, PAIR.getPrivate(), new SecureRandom());
+        Signature verifier = Signature.getInstance("SHA256withECDSA");
+        AgentSharedInstanceHooks.initVerify(verifier, PAIR.getPublic());
+        verifier.update(MESSAGE);
+        assertTrue(verifier.verify(signature), "initSign and initVerify keyed the Signature");
+        assertSameThrow(() -> verifier.initVerify((java.security.cert.Certificate) null),
+                () -> AgentSharedInstanceHooks.initVerify(verifier, (java.security.cert.Certificate) null),
+                "the Signature's own exception reaches the caller");
+
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        GCMParameterSpec spec = new GCMParameterSpec(128, NONCE);
+        AgentSharedInstanceHooks.init(cipher, Cipher.DECRYPT_MODE, AES_KEY, spec);
+        assertArrayEquals(MESSAGE, cipher.doFinal(CIPHERTEXT), "init(int, Key, AlgorithmParameterSpec)");
+        AgentSharedInstanceHooks.init(cipher, Cipher.DECRYPT_MODE, AES_KEY, spec, new SecureRandom());
+        assertArrayEquals(MESSAGE, cipher.doFinal(CIPHERTEXT), "init(int, Key, AlgorithmParameterSpec, SecureRandom)");
+        java.security.AlgorithmParameters params = java.security.AlgorithmParameters.getInstance("GCM");
+        params.init(spec);
+        AgentSharedInstanceHooks.init(cipher, Cipher.DECRYPT_MODE, AES_KEY, params);
+        assertArrayEquals(MESSAGE, cipher.doFinal(CIPHERTEXT), "init(int, Key, AlgorithmParameters)");
+        AgentSharedInstanceHooks.init(cipher, Cipher.DECRYPT_MODE, AES_KEY, params, new SecureRandom());
+        assertArrayEquals(MESSAGE, cipher.doFinal(CIPHERTEXT), "init(int, Key, AlgorithmParameters, SecureRandom)");
+        Cipher wrapper = Cipher.getInstance("AESWrap");
+        AgentSharedInstanceHooks.init(wrapper, Cipher.WRAP_MODE, AES_KEY);
+        byte[] wrapped = AgentSharedInstanceHooks.wrap(wrapper, MAC_KEY);
+        AgentSharedInstanceHooks.init(wrapper, Cipher.UNWRAP_MODE, AES_KEY, new SecureRandom());
+        java.security.Key unwrapped = AgentSharedInstanceHooks.unwrap(wrapper, wrapped, "HmacSHA256", Cipher.SECRET_KEY);
+        assertArrayEquals(MAC_KEY.getEncoded(), unwrapped.getEncoded(), "init, wrap and unwrap round-trip a key");
+        assertSameThrow(() -> cipher.init(Cipher.ENCRYPT_MODE, (java.security.cert.Certificate) null),
+                () -> AgentSharedInstanceHooks.init(cipher, Cipher.ENCRYPT_MODE, (java.security.cert.Certificate) null),
+                "the Cipher's own exception reaches the caller");
+        assertSameThrow(() -> cipher.init(Cipher.ENCRYPT_MODE, (java.security.cert.Certificate) null, new SecureRandom()),
+                () -> AgentSharedInstanceHooks.init(cipher, Cipher.ENCRYPT_MODE,
+                        (java.security.cert.Certificate) null, new SecureRandom()),
+                "the Cipher's own exception reaches the caller");
+    }
+
+    @Test
+    @DisplayName("a shared primitive only initialised, reset, wrapped or unwrapped is reported; one per thread or one handed through a pool is not (#1324)")
+    void initResetWrapAndUnwrapAreRecorded() throws Exception {
+        Mac sharedMac = mac();
+        assertTrue(reportOf(() -> sharedMac, mac -> AgentSharedInstanceHooks.init(mac, MAC_KEY))
+                .contains("Mac is stateful"), "two threads re-keying one Mac");
+        assertTrue(reportOf(() -> sharedMac, AgentSharedInstanceHooks::reset).contains("Mac is stateful"),
+                "two threads resetting one Mac");
+        Signature sharedSigner = signer();
+        assertTrue(reportOf(() -> sharedSigner, signer -> AgentSharedInstanceHooks.initSign(signer, PAIR.getPrivate()))
+                .contains("Signature is stateful"), "two threads re-keying one Signature");
+        Cipher sharedWrapper = Cipher.getInstance("AESWrap");
+        sharedWrapper.init(Cipher.WRAP_MODE, AES_KEY);
+        assertTrue(reportOf(() -> sharedWrapper, wrapper -> AgentSharedInstanceHooks.wrap(wrapper, MAC_KEY))
+                .contains("Cipher is stateful"), "two threads wrapping keys with one Cipher");
+
+        assertEquals("", reportOf(AgentCryptoHooksTest::mac, mac -> AgentSharedInstanceHooks.init(mac, MAC_KEY)),
+                "one Mac per thread is correct code");
+        assertEquals("", reportOf(() -> {
+            try {
+                return Cipher.getInstance("AESWrap");
+            } catch (GeneralSecurityException e) {
+                throw new IllegalStateException(e);
+            }
+        }, wrapper -> {
+            AgentSharedInstanceHooks.init(wrapper, Cipher.WRAP_MODE, AES_KEY);
+            AgentSharedInstanceHooks.wrap(wrapper, MAC_KEY);
+        }), "one wrapping Cipher per thread is correct code");
+
+        java.util.concurrent.BlockingQueue<Object> pool = new java.util.concurrent.LinkedBlockingQueue<>();
+        pool.add(mac());
+        assertEquals("", reportOf(() -> pool, macs -> {
+            Mac borrowed = (Mac) AgentConcurrencyUtilHooks.take(macs);
+            try {
+                AgentSharedInstanceHooks.init(borrowed, MAC_KEY);
+                AgentSharedInstanceHooks.doFinal(borrowed, MESSAGE);
+            } finally {
+                AgentConcurrencyUtilHooks.put(macs, borrowed);
+            }
+        }), "one Mac handed from thread to thread through a pool is never used by two at once");
+    }
+
+    @Test
     @DisplayName("outside a run the hooks only delegate")
     void outsideARunTheHooksOnlyDelegate() throws Exception {
         assertArrayEquals(TAG, AgentSharedInstanceHooks.doFinal(mac(), MESSAGE));
+    }
+
+    /** Asserts the hook throws the same exception type the direct call does. */
+    private static void assertSameThrow(org.junit.jupiter.api.function.Executable direct,
+                                        org.junit.jupiter.api.function.Executable hooked, String why) {
+        Throwable expected = assertThrows(Throwable.class, direct, "the direct call throws");
+        assertEquals(expected.getClass(), assertThrows(Throwable.class, hooked, why).getClass(), why);
     }
 
     /** The findings after two threads each ran {@code use} on what {@code source} gave them. */

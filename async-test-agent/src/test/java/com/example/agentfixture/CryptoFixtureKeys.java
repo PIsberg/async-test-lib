@@ -23,7 +23,7 @@ final class CryptoFixtureKeys {
 
     static final byte[] MESSAGE = {1, 2, 3, 4, 5, 6, 7, 8};
 
-    private static final SecretKey MAC_KEY;
+    static final SecretKey MAC_KEY;
     private static final SecretKey AES_KEY;
     private static final KeyPair SIGNING;
     private static final byte[] NONCE = new byte[12];
@@ -51,6 +51,17 @@ final class CryptoFixtureKeys {
     }
 
     private CryptoFixtureKeys() {
+    }
+
+    /** {@return a key-wrapping Cipher, initialised to wrap with the fixture's AES key} */
+    static Cipher wrapper() {
+        try {
+            Cipher cipher = Cipher.getInstance("AESWrap");
+            cipher.init(Cipher.WRAP_MODE, AES_KEY);
+            return cipher;
+        } catch (java.security.GeneralSecurityException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     static Mac mac() {

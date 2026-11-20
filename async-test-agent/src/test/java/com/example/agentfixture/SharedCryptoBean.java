@@ -24,6 +24,8 @@ public class SharedCryptoBean {
     private final Signature verifier = CryptoFixtureKeys.verifier();
     private final Cipher updatedCipher = CryptoFixtureKeys.decrypter();
     private final Cipher finishedCipher = CryptoFixtureKeys.decrypter();
+    private final Mac rekeyedMac = CryptoFixtureKeys.mac();
+    private final Cipher wrapper = CryptoFixtureKeys.wrapper();
 
     /** How many calls the race broke. */
     private final AtomicInteger racesAbsorbed = new AtomicInteger();
@@ -61,6 +63,16 @@ public class SharedCryptoBean {
     /** Decrypts in one call on the shared {@code Cipher}. */
     public void cipherDoFinal() {
         absorbing(() -> finishedCipher.doFinal(CryptoFixtureKeys.CIPHERTEXT));
+    }
+
+    /** Re-keys the shared {@code Mac}, and computes nothing with it (#1324). */
+    public void macInit() {
+        absorbing(() -> rekeyedMac.init(CryptoFixtureKeys.MAC_KEY));
+    }
+
+    /** Wraps a key with the shared {@code Cipher}, its only use (#1324). */
+    public void cipherWrap() {
+        absorbing(() -> wrapper.wrap(CryptoFixtureKeys.MAC_KEY));
     }
 
     /** {@return how many calls the race broke} */
