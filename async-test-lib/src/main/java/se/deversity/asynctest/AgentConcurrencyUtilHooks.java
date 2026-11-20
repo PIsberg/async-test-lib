@@ -4941,8 +4941,13 @@ public final class AgentConcurrencyUtilHooks {
                                             long parallelismThreshold,
                                             BiConsumer<Object, Object> action) {
         Objects.requireNonNull(action);
-        parallelBulk(operation -> receiver.forEach(parallelismThreshold, operation == null ? action
-                : (key, value) -> operation.element(() -> action.accept(key, value))));
+        BiConsumer<Object, Object> receiving = (key, value) -> {
+            receiveFrom(receiver, key);
+            receiveFrom(receiver, value);
+            action.accept(key, value);
+        };
+        parallelBulk(operation -> receiver.forEach(parallelismThreshold, operation == null ? receiving
+                : (key, value) -> operation.element(() -> receiving.accept(key, value))));
     }
 
     /**
@@ -4956,8 +4961,9 @@ public final class AgentConcurrencyUtilHooks {
     public static void concurrentMapForEachKey(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
                                                long parallelismThreshold, Consumer<Object> action) {
         Objects.requireNonNull(action);
-        parallelBulk(operation -> receiver.forEachKey(parallelismThreshold, operation == null ? action
-                : key -> operation.element(() -> action.accept(key))));
+        Consumer<Object> receiving = receivingFrom(receiver, action);
+        parallelBulk(operation -> receiver.forEachKey(parallelismThreshold, operation == null ? receiving
+                : key -> operation.element(() -> receiving.accept(key))));
     }
 
     /**
@@ -4972,8 +4978,9 @@ public final class AgentConcurrencyUtilHooks {
     public static void concurrentMapForEachValue(ConcurrentHashMap<Object, Object> receiver, // NOPMD LooseCoupling - the threshold forms are declared by ConcurrentHashMap
                                                  long parallelismThreshold, Consumer<Object> action) {
         Objects.requireNonNull(action);
-        parallelBulk(operation -> receiver.forEachValue(parallelismThreshold, operation == null ? action
-                : value -> operation.element(() -> action.accept(value))));
+        Consumer<Object> receiving = receivingFrom(receiver, action);
+        parallelBulk(operation -> receiver.forEachValue(parallelismThreshold, operation == null ? receiving
+                : value -> operation.element(() -> receiving.accept(value))));
     }
 
     /**
@@ -4989,8 +4996,31 @@ public final class AgentConcurrencyUtilHooks {
                                                  long parallelismThreshold,
                                                  Consumer<Map.Entry<Object, Object>> action) {
         Objects.requireNonNull(action);
-        parallelBulk(operation -> receiver.forEachEntry(parallelismThreshold, operation == null ? action
-                : entry -> operation.element(() -> action.accept(entry))));
+        Consumer<Map.Entry<Object, Object>> receiving = entry -> {
+            receiveFrom(receiver, entry.getKey());
+            receiveFrom(receiver, entry.getValue());
+            action.accept(entry);
+        };
+        parallelBulk(operation -> receiver.forEachEntry(parallelismThreshold, operation == null ? receiving
+                : entry -> operation.element(() -> receiving.accept(entry))));
+    }
+
+    /**
+     * Receives what a threshold {@code forEach} hands its action or transformer from {@code map}, as
+     * a {@code get} receives the value it returns: the map orders the put before it (#1375).
+     */
+    private static void receiveFrom(Map<?, ?> map, @Nullable Object element) {
+        if (element != null && HappensBefore.publishesElements(map)) {
+            HappensBefore.acquire(element);
+        }
+    }
+
+    /** {@return {@code action}, receiving each key or value from {@code map} before it runs (#1375)} */
+    private static Consumer<Object> receivingFrom(Map<?, ?> map, Consumer<Object> action) {
+        return element -> {
+            receiveFrom(map, element);
+            action.accept(element);
+        };
     }
 
     /**
@@ -5031,10 +5061,15 @@ public final class AgentConcurrencyUtilHooks {
                                             Consumer<Object> action) {
         Objects.requireNonNull(transformer);
         Objects.requireNonNull(action);
-        parallelBulk(operation -> receiver.forEach(parallelismThreshold, operation == null ? transformer
+        BiFunction<Object, Object, Object> receiving = (key, value) -> {
+            receiveFrom(receiver, key);
+            receiveFrom(receiver, value);
+            return transformer.apply(key, value);
+        };
+        parallelBulk(operation -> receiver.forEach(parallelismThreshold, operation == null ? receiving
                         : (key, value) -> {
                             List<Object> result = new ArrayList<>(1);
-                            operation.element(() -> result.add(transformer.apply(key, value)));
+                            operation.element(() -> result.add(receiving.apply(key, value)));
                             return result.get(0);
                         },
                 actionElement(operation, action)));
@@ -5056,8 +5091,12 @@ public final class AgentConcurrencyUtilHooks {
                                                Consumer<Object> action) {
         Objects.requireNonNull(transformer);
         Objects.requireNonNull(action);
+        Function<Object, Object> receiving = input -> {
+            receiveFrom(receiver, input);
+            return transformer.apply(input);
+        };
         parallelBulk(operation -> receiver.forEachKey(parallelismThreshold,
-                transformerElement(operation, transformer), actionElement(operation, action)));
+                transformerElement(operation, receiving), actionElement(operation, action)));
     }
 
     /**
@@ -5076,8 +5115,12 @@ public final class AgentConcurrencyUtilHooks {
                                                  Consumer<Object> action) {
         Objects.requireNonNull(transformer);
         Objects.requireNonNull(action);
+        Function<Object, Object> receiving = input -> {
+            receiveFrom(receiver, input);
+            return transformer.apply(input);
+        };
         parallelBulk(operation -> receiver.forEachValue(parallelismThreshold,
-                transformerElement(operation, transformer), actionElement(operation, action)));
+                transformerElement(operation, receiving), actionElement(operation, action)));
     }
 
     /**
@@ -5096,8 +5139,13 @@ public final class AgentConcurrencyUtilHooks {
                                                  Consumer<Object> action) {
         Objects.requireNonNull(transformer);
         Objects.requireNonNull(action);
+        Function<Map.Entry<Object, Object>, Object> receiving = entry -> {
+            receiveFrom(receiver, entry.getKey());
+            receiveFrom(receiver, entry.getValue());
+            return transformer.apply(entry);
+        };
         parallelBulk(operation -> receiver.forEachEntry(parallelismThreshold,
-                transformerElement(operation, transformer), actionElement(operation, action)));
+                transformerElement(operation, receiving), actionElement(operation, action)));
     }
 
     /**

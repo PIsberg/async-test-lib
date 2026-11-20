@@ -414,6 +414,23 @@ final class CollectionAccessWeaver {
                     "concurrentMapReduceValues", long.class, BiFunction.class),
             Entry.call(java.util.concurrent.ConcurrentHashMap.class, "reduceValues",
                     "concurrentMapReduceValues", long.class, Function.class, BiFunction.class),
+            // The rest of the bulk reads: what each returns is received too (#1375).
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "searchValues",
+                    "concurrentMapSearchValues", long.class, Function.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "searchKeys",
+                    "concurrentMapSearchKeys", long.class, Function.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "searchEntries",
+                    "concurrentMapSearchEntries", long.class, Function.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "reduce",
+                    "concurrentMapReduce", long.class, BiFunction.class, BiFunction.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "reduceKeys",
+                    "concurrentMapReduceKeys", long.class, BiFunction.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "reduceKeys",
+                    "concurrentMapReduceKeys", long.class, Function.class, BiFunction.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "reduceEntries",
+                    "concurrentMapReduceEntries", long.class, BiFunction.class),
+            Entry.call(java.util.concurrent.ConcurrentHashMap.class, "reduceEntries",
+                    "concurrentMapReduceEntries", long.class, Function.class, BiFunction.class),
             // A BitSet is neither a Collection nor a Map, and as unsafe to share as either:
             // set is a read-modify-write of one long word (#1297).
             Entry.call(BitSet.class, "set", "bitSetSet", int.class),

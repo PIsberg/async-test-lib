@@ -321,6 +321,62 @@ class AgentHappensBeforeFeedTest {
     }
 
     @Test
+    @DisplayName("the rest of ConcurrentHashMap's bulk reads receive what they return (#1375)")
+    @SuppressWarnings("unchecked")
+    void wovenBulkReadsReceiveWhatTheyReturn() throws InterruptedException {
+        ConcurrentHashMap<Object, Object> values = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(values, "k", b),
+                () -> AgentCollectionHooks.concurrentMapSearchValues(values, 1L, v -> v)), "put then searchValues");
+        ConcurrentHashMap<Object, Object> keys = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(keys, b, Boolean.TRUE),
+                () -> AgentCollectionHooks.concurrentMapSearchKeys(keys, 1L, k -> k)), "put then searchKeys");
+        ConcurrentHashMap<Object, Object> entries = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(entries, "k", b),
+                () -> AgentCollectionHooks.concurrentMapSearchEntries(entries, 1L,
+                        e -> ((java.util.Map.Entry<Object, Object>) e).getValue())), "put then searchEntries");
+        ConcurrentHashMap<Object, Object> reduced = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(reduced, "k", b),
+                () -> AgentCollectionHooks.concurrentMapReduce(reduced, 1L, (k, v) -> v, (a, c) -> a)),
+                "put then reduce");
+        ConcurrentHashMap<Object, Object> reducedKeys = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(reducedKeys, b, Boolean.TRUE),
+                () -> AgentCollectionHooks.concurrentMapReduceKeys(reducedKeys, 1L, (a, c) -> a)), "put then reduceKeys");
+        ConcurrentHashMap<Object, Object> transformedKeys = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(transformedKeys, b, Boolean.TRUE),
+                () -> AgentCollectionHooks.concurrentMapReduceKeys(transformedKeys, 1L, k -> k, (a, c) -> a)),
+                "put then reduceKeys with a transformer");
+        ConcurrentHashMap<Object, Object> reducedEntries = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(reducedEntries, "k", b),
+                () -> ((java.util.Map.Entry<Object, Object>) AgentCollectionHooks.concurrentMapReduceEntries(
+                        reducedEntries, 1L, (a, c) -> a)).getValue()), "put then reduceEntries");
+        ConcurrentHashMap<Object, Object> transformedEntries = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(transformedEntries, "k", b),
+                () -> AgentCollectionHooks.concurrentMapReduceEntries(transformedEntries, 1L,
+                        e -> ((java.util.Map.Entry<Object, Object>) e).getValue(), (a, c) -> a)),
+                "put then reduceEntries with a transformer");
+        ConcurrentHashMap<Object, Object> unwoven = new ConcurrentHashMap<>();
+        assertTrue(containerHandOffReported(b -> AgentCollectionHooks.mapPut(unwoven, "k", b),
+                () -> unwoven.searchValues(1L, v -> v)), "the unwoven searchValues received nothing");
+    }
+
+    @Test
+    @DisplayName("a value read inside a threshold forEach's action is received (#1375)")
+    void wovenThresholdForEachReceivesWhatTheActionReads() throws InterruptedException {
+        ConcurrentHashMap<Object, Object> walked = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(walked, "k", b), () -> {
+            AtomicReference<Object> seen = new AtomicReference<>();
+            AgentConcurrencyUtilHooks.concurrentMapForEach(walked, 1L, (k, v) -> seen.set(v));
+            return seen.get();
+        }), "put then forEach(1, action)");
+        ConcurrentHashMap<Object, Object> values = new ConcurrentHashMap<>();
+        assertFalse(containerHandOffReported(b -> AgentCollectionHooks.mapPut(values, "k", b), () -> {
+            AtomicReference<Object> seen = new AtomicReference<>();
+            AgentConcurrencyUtilHooks.concurrentMapForEachValue(values, 1L, seen::set);
+            return seen.get();
+        }), "put then forEachValue(1, action)");
+    }
+
+    @Test
     @DisplayName("a ConcurrentHashMap search or reduceValues receives the value it returns (#1294)")
     void wovenSearchAndReduceValues() throws InterruptedException {
         ConcurrentHashMap<Object, Object> searched = new ConcurrentHashMap<>();
