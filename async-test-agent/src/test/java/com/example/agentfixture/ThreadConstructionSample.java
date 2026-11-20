@@ -13,6 +13,11 @@ public class ThreadConstructionSample {
         return new Thread(Thread.currentThread().getThreadGroup(), task);
     }
 
+    /** {@code new Thread(group, task, name, stackSize)} (#1401). */
+    public static Thread inAGroupWithAStackSize(Runnable task) {
+        return new Thread(Thread.currentThread().getThreadGroup(), task, "sized", 256 * 1024L);
+    }
+
     /** {@code new Thread(group, task, name)} (#1401). */
     public static Thread inAGroupNamed(Runnable task) {
         return new Thread(Thread.currentThread().getThreadGroup(), task, "grouped");
@@ -62,6 +67,38 @@ public class ThreadConstructionSample {
      */
     public static Thread withABranchInItsArguments(Runnable task, boolean chosen) {
         return new Thread(chosen ? task : () -> { });
+    }
+
+    /** A direct subclass handing its task straight to its superclass constructor (#1401). */
+    public static final class TaskThread extends Thread {
+
+        /**
+         * @param task what the thread runs, handed to {@code Thread(Runnable)}
+         */
+        public TaskThread(Runnable task) {
+            super(task);
+        }
+
+        /**
+         * @param task what the thread runs
+         * @param name the thread's name, handed with it to {@code Thread(Runnable, String)}
+         */
+        public TaskThread(Runnable task, String name) {
+            super(task, name);
+        }
+
+        /**
+         * @param task      what the thread runs
+         * @param stackSize handed with the task to the stack-size constructor
+         */
+        public TaskThread(Runnable task, long stackSize) {
+            super(null, task, "sized", stackSize);
+        }
+
+        /** Hands nothing on: {@code Thread()}. */
+        public TaskThread() {
+            super();
+        }
     }
 
     /** A direct subclass that constructs another thread inside its superclass call. */
