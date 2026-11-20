@@ -2295,7 +2295,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the mac
      * @param key the call's {@code Key} argument, passed through
-     * @throws InvalidKeyException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
      * @since 1.15.0
      */
     public static void init(Mac receiver, java.security.Key key) throws java.security.InvalidKeyException {
@@ -2310,8 +2310,8 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the mac
      * @param key the call's {@code Key} argument, passed through
      * @param params the call's {@code AlgorithmParameterSpec} argument, passed through
-     * @throws InvalidKeyException as the original call does
-     * @throws InvalidAlgorithmParameterException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
+     * @throws java.security.InvalidAlgorithmParameterException as the original call does
      * @since 1.15.0
      */
     public static void init(Mac receiver, java.security.Key key, java.security.spec.AlgorithmParameterSpec params) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
@@ -2337,7 +2337,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the signature
      * @param privateKey the call's {@code PrivateKey} argument, passed through
-     * @throws InvalidKeyException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
      * @since 1.15.0
      */
     public static void initSign(Signature receiver, java.security.PrivateKey privateKey) throws java.security.InvalidKeyException {
@@ -2352,7 +2352,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the signature
      * @param privateKey the call's {@code PrivateKey} argument, passed through
      * @param random the call's {@code SecureRandom} argument, passed through
-     * @throws InvalidKeyException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
      * @since 1.15.0
      */
     public static void initSign(Signature receiver, java.security.PrivateKey privateKey, java.security.SecureRandom random) throws java.security.InvalidKeyException {
@@ -2366,7 +2366,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the signature
      * @param publicKey the call's {@code PublicKey} argument, passed through
-     * @throws InvalidKeyException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
      * @since 1.15.0
      */
     public static void initVerify(Signature receiver, java.security.PublicKey publicKey) throws java.security.InvalidKeyException {
@@ -2380,7 +2380,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the signature
      * @param certificate the call's {@code Certificate} argument, passed through
-     * @throws InvalidKeyException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
      * @since 1.15.0
      */
     public static void initVerify(Signature receiver, java.security.cert.Certificate certificate) throws java.security.InvalidKeyException {
@@ -2395,7 +2395,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the cipher
      * @param opmode the call's {@code int} argument, passed through
      * @param key the call's {@code Key} argument, passed through
-     * @throws InvalidKeyException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
      * @since 1.15.0
      */
     public static void init(Cipher receiver, int opmode, java.security.Key key) throws java.security.InvalidKeyException {
@@ -2411,7 +2411,7 @@ public final class AgentSharedInstanceHooks {
      * @param opmode the call's {@code int} argument, passed through
      * @param key the call's {@code Key} argument, passed through
      * @param random the call's {@code SecureRandom} argument, passed through
-     * @throws InvalidKeyException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
      * @since 1.15.0
      */
     public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.SecureRandom random) throws java.security.InvalidKeyException {
@@ -2427,8 +2427,8 @@ public final class AgentSharedInstanceHooks {
      * @param opmode the call's {@code int} argument, passed through
      * @param key the call's {@code Key} argument, passed through
      * @param params the call's {@code AlgorithmParameterSpec} argument, passed through
-     * @throws InvalidKeyException as the original call does
-     * @throws InvalidAlgorithmParameterException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
+     * @throws java.security.InvalidAlgorithmParameterException as the original call does
      * @since 1.15.0
      */
     public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.spec.AlgorithmParameterSpec params) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
@@ -2445,8 +2445,8 @@ public final class AgentSharedInstanceHooks {
      * @param key the call's {@code Key} argument, passed through
      * @param params the call's {@code AlgorithmParameterSpec} argument, passed through
      * @param random the call's {@code SecureRandom} argument, passed through
-     * @throws InvalidKeyException as the original call does
-     * @throws InvalidAlgorithmParameterException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
+     * @throws java.security.InvalidAlgorithmParameterException as the original call does
      * @since 1.15.0
      */
     public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.spec.AlgorithmParameterSpec params, java.security.SecureRandom random) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
@@ -2462,8 +2462,8 @@ public final class AgentSharedInstanceHooks {
      * @param opmode the call's {@code int} argument, passed through
      * @param key the call's {@code Key} argument, passed through
      * @param params the call's {@code AlgorithmParameters} argument, passed through
-     * @throws InvalidKeyException as the original call does
-     * @throws InvalidAlgorithmParameterException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
+     * @throws java.security.InvalidAlgorithmParameterException as the original call does
      * @since 1.15.0
      */
     public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.AlgorithmParameters params) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
@@ -2480,8 +2480,8 @@ public final class AgentSharedInstanceHooks {
      * @param key the call's {@code Key} argument, passed through
      * @param params the call's {@code AlgorithmParameters} argument, passed through
      * @param random the call's {@code SecureRandom} argument, passed through
-     * @throws InvalidKeyException as the original call does
-     * @throws InvalidAlgorithmParameterException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
+     * @throws java.security.InvalidAlgorithmParameterException as the original call does
      * @since 1.15.0
      */
     public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.AlgorithmParameters params, java.security.SecureRandom random) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
@@ -2496,7 +2496,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the cipher
      * @param opmode the call's {@code int} argument, passed through
      * @param certificate the call's {@code Certificate} argument, passed through
-     * @throws InvalidKeyException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
      * @since 1.15.0
      */
     public static void init(Cipher receiver, int opmode, java.security.cert.Certificate certificate) throws java.security.InvalidKeyException {
@@ -2512,7 +2512,7 @@ public final class AgentSharedInstanceHooks {
      * @param opmode the call's {@code int} argument, passed through
      * @param certificate the call's {@code Certificate} argument, passed through
      * @param random the call's {@code SecureRandom} argument, passed through
-     * @throws InvalidKeyException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
      * @since 1.15.0
      */
     public static void init(Cipher receiver, int opmode, java.security.cert.Certificate certificate, java.security.SecureRandom random) throws java.security.InvalidKeyException {
@@ -2528,7 +2528,7 @@ public final class AgentSharedInstanceHooks {
      * @param key the call's {@code Key} argument, passed through
      * @return what the original call returns
      * @throws IllegalBlockSizeException as the original call does
-     * @throws InvalidKeyException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
      * @since 1.15.0
      */
     public static byte[] wrap(Cipher receiver, java.security.Key key) throws IllegalBlockSizeException, java.security.InvalidKeyException {
@@ -2545,8 +2545,8 @@ public final class AgentSharedInstanceHooks {
      * @param wrappedKeyAlgorithm the call's {@code String} argument, passed through
      * @param wrappedKeyType the call's {@code int} argument, passed through
      * @return what the original call returns
-     * @throws InvalidKeyException as the original call does
-     * @throws NoSuchAlgorithmException as the original call does
+     * @throws java.security.InvalidKeyException as the original call does
+     * @throws java.security.NoSuchAlgorithmException as the original call does
      * @since 1.15.0
      */
     public static java.security.Key unwrap(Cipher receiver, byte[] wrappedKey, String wrappedKeyAlgorithm, int wrappedKeyType) throws java.security.InvalidKeyException, java.security.NoSuchAlgorithmException {
