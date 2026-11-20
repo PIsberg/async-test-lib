@@ -123,6 +123,9 @@ class AgentSharedInstanceHooksEachAloneTest {
         if (type == StringBuilder.class || type == Appendable.class) {
             return new StringBuilder();
         }
+        if (type == java.util.StringJoiner.class) {
+            return new java.util.StringJoiner(",");
+        }
         if (type == java.text.MessageFormat.class) {
             return new java.text.MessageFormat("{0}", Locale.ROOT);
         }
@@ -232,6 +235,9 @@ class AgentSharedInstanceHooksEachAloneTest {
         if (type == CharSequence.class) {
             return "cs";
         }
+        if (type == java.util.StringJoiner.class) {
+            return new java.util.StringJoiner(",").add("m");
+        }
         if (type == CharBuffer.class) {
             return CharBuffer.allocate(64);
         }
@@ -263,7 +269,7 @@ class AgentSharedInstanceHooksEachAloneTest {
             if (receiver instanceof Calendar) {
                 return AsyncTestContext.calendarDetector().analyze().hasIssues();
             }
-            if (receiver instanceof StringBuilder) {
+            if (receiver instanceof StringBuilder || receiver instanceof java.util.StringJoiner) {
                 return AsyncTestContext.stringBuilderDetector().analyze().hasIssues();
             }
             if (receiver instanceof NumberFormat || receiver instanceof java.text.MessageFormat) {
@@ -302,6 +308,10 @@ class AgentSharedInstanceHooksEachAloneTest {
                 // may never hold it at once, which the hand-off rule rightly excuses (#992). It is
                 // covered by PersistenceHandleWeavingTest and entityManagerHandedOverIsSilent.
                 .filter(m -> !"persistenceHandleClosed".equals(m.getName()))
+                // A StringJoiner's toString and length are reads: two threads only reading share
+                // nothing a finding needs, as a builder's reads do not (#1309). Both are covered
+                // beside the writes in AgentSharedInstanceHooksTest.stringJoiner.
+                .filter(m -> !"joinerToString".equals(m.getName()) && !"joinerLength".equals(m.getName()))
                 .sorted(Comparator.comparing(Method::toString))
                 .toList();
     }

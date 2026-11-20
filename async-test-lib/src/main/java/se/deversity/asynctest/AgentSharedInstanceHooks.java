@@ -753,6 +753,90 @@ public final class AgentSharedInstanceHooks {
         return receiver.append(value);
     }
 
+    /**
+     * Weaves {@code StringJoiner.add(CharSequence)}: an append to the joiner's unsynchronised
+     * array, recorded on the {@code STRING_BUILDER} detector as a builder's is (#1309).
+     *
+     * @param receiver the joiner
+     * @param element  the element to add
+     * @return the joiner, so the call chain is unchanged
+     * @since 1.15.0
+     */
+    public static java.util.StringJoiner joinerAdd(java.util.StringJoiner receiver, CharSequence element) {
+        ControlledSchedule.point();
+        recordJoiner(receiver, true);
+        return receiver.add(element);
+    }
+
+    /**
+     * Weaves {@code StringJoiner.merge(StringJoiner)}: a write of the receiver and a read of the
+     * joiner merged in (#1309).
+     *
+     * @param receiver the joiner merged into
+     * @param other    the joiner whose contents are added
+     * @return the receiver, so the call chain is unchanged
+     * @since 1.15.0
+     */
+    public static java.util.StringJoiner joinerMerge(java.util.StringJoiner receiver, java.util.StringJoiner other) {
+        ControlledSchedule.point();
+        recordJoiner(receiver, true);
+        if (other != null) {
+            recordJoiner(other, false);
+        }
+        return receiver.merge(other);
+    }
+
+    /**
+     * Weaves {@code StringJoiner.setEmptyValue(CharSequence)}, a write (#1309).
+     *
+     * @param receiver   the joiner
+     * @param emptyValue what an empty joiner reads as
+     * @return the joiner, so the call chain is unchanged
+     * @since 1.15.0
+     */
+    public static java.util.StringJoiner joinerSetEmptyValue(java.util.StringJoiner receiver, CharSequence emptyValue) {
+        ControlledSchedule.point();
+        recordJoiner(receiver, true);
+        return receiver.setEmptyValue(emptyValue);
+    }
+
+    /**
+     * Weaves {@code StringJoiner.toString()}, a read (#1309).
+     *
+     * @param receiver the joiner
+     * @return the joined text
+     * @since 1.15.0
+     */
+    public static String joinerToString(java.util.StringJoiner receiver) {
+        ControlledSchedule.point();
+        recordJoiner(receiver, false);
+        return receiver.toString();
+    }
+
+    /**
+     * Weaves {@code StringJoiner.length()}, a read (#1309).
+     *
+     * @param receiver the joiner
+     * @return the length of the joined text
+     * @since 1.15.0
+     */
+    public static int joinerLength(java.util.StringJoiner receiver) {
+        ControlledSchedule.point();
+        recordJoiner(receiver, false);
+        return receiver.length();
+    }
+
+    private static void recordJoiner(java.util.StringJoiner receiver, boolean write) {
+        StringBuilderDetector detector = AsyncTestContext.currentStringBuilderDetector();
+        if (detector != null && receiver != null) {
+            if (write) {
+                detector.recordJoinerAppend(receiver, receiver.getClass().getName());
+            } else {
+                detector.recordJoinerRead(receiver, receiver.getClass().getName());
+            }
+        }
+    }
+
     private static void recordBuilder(StringBuilder receiver) {
         StringBuilderDetector detector = AsyncTestContext.currentStringBuilderDetector();
         if (detector != null) {
