@@ -3198,6 +3198,221 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * Weaves {@code AtomicReferenceArray.updateAndGet} as {@link #updateAndGetAtomicReference}
+     * does the atomic's: the woven get of the element, then the woven compareAndSet, so the
+     * reference the function returns is published and its argument acquired (#1336).
+     *
+     * @param slots  the array the call site invoked
+     * @param index  the element
+     * @param update the function applied to the current reference, again after a lost swap
+     * @return the reference stored
+     * @since 1.15.0
+     */
+    public static @Nullable Object updateAndGetReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                              UnaryOperator<Object> update) {
+        for (;;) {
+            Object seen = getReferenceArray(slots, index);
+            Object next = update.apply(seen);
+            if (compareAndSetReferenceArray(slots, index, seen, next)) {
+                return next;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.getAndUpdate}, as {@link #updateAndGetReferenceArray}.
+     *
+     * @param slots  the array the call site invoked
+     * @param index  the element
+     * @param update the function applied to the current reference, again after a lost swap
+     * @return the reference replaced
+     * @since 1.15.0
+     */
+    public static @Nullable Object getAndUpdateReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                              UnaryOperator<Object> update) {
+        for (;;) {
+            Object seen = getReferenceArray(slots, index);
+            if (compareAndSetReferenceArray(slots, index, seen, update.apply(seen))) {
+                return seen;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.accumulateAndGet}, as {@link #updateAndGetReferenceArray}.
+     *
+     * @param slots       the array the call site invoked
+     * @param index       the element
+     * @param given       the function's second argument
+     * @param accumulator the function applied to the current reference and {@code given}
+     * @return the reference stored
+     * @since 1.15.0
+     */
+    public static @Nullable Object accumulateAndGetReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                                  @Nullable Object given,
+                                                                  BinaryOperator<Object> accumulator) {
+        for (;;) {
+            Object seen = getReferenceArray(slots, index);
+            Object next = accumulator.apply(seen, given);
+            if (compareAndSetReferenceArray(slots, index, seen, next)) {
+                return next;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.getAndAccumulate}, as {@link #updateAndGetReferenceArray}.
+     *
+     * @param slots       the array the call site invoked
+     * @param index       the element
+     * @param given       the function's second argument
+     * @param accumulator the function applied to the current reference and {@code given}
+     * @return the reference replaced
+     * @since 1.15.0
+     */
+    public static @Nullable Object getAndAccumulateReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                                  @Nullable Object given,
+                                                                  BinaryOperator<Object> accumulator) {
+        for (;;) {
+            Object seen = getReferenceArray(slots, index);
+            if (compareAndSetReferenceArray(slots, index, seen, accumulator.apply(seen, given))) {
+                return seen;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.compareAndExchange} as
+     * {@link #compareAndExchangeAtomicReference} does the atomic's (#1336): a won exchange is the
+     * woven compareAndSet; a lost one returns what the element held, read with the woven get.
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the reference the element must hold
+     * @param update   the reference to store
+     * @return {@code expected} when the exchange happened, otherwise what the element held
+     * @since 1.15.0
+     */
+    @SuppressWarnings("ReferenceEquality") // the element compares by identity
+    public static @Nullable Object compareAndExchangeReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                                    @Nullable Object expected,
+                                                                    @Nullable Object update) {
+        for (;;) {
+            if (compareAndSetReferenceArray(slots, index, expected, update)) {
+                return expected;
+            }
+            Object witness = getReferenceArray(slots, index);
+            if (witness != expected) { // NOPMD CompareObjectsWithEquals - the element compares by identity
+                return witness;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.weakCompareAndSetVolatile} as the strong swap, which a
+     * weak one may always be (#1336). {@code weakCompareAndSetPlain} and the deprecated
+     * {@code weakCompareAndSet} have plain memory semantics and stay unwoven.
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the reference the element must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetVolatileReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                                  @Nullable Object expected,
+                                                                  @Nullable Object update) {
+        return compareAndSetReferenceArray(slots, index, expected, update);
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceFieldUpdater.updateAndGet} as
+     * {@link #updateAndGetAtomicReference} does the atomic's: the woven get of the receiver's
+     * slot, then the woven compareAndSet (#1336).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param update   the function applied to the current reference, again after a lost swap
+     * @return the reference stored
+     * @since 1.15.0
+     */
+    public static @Nullable Object updateAndGetReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
+                                                                Object receiver, UnaryOperator<Object> update) {
+        for (;;) {
+            Object seen = getReferenceUpdater(updater, receiver);
+            Object next = update.apply(seen);
+            if (compareAndSetReferenceUpdater(updater, receiver, seen, next)) {
+                return next;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceFieldUpdater.getAndUpdate}, as {@link #updateAndGetReferenceUpdater}.
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param update   the function applied to the current reference, again after a lost swap
+     * @return the reference replaced
+     * @since 1.15.0
+     */
+    public static @Nullable Object getAndUpdateReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
+                                                                Object receiver, UnaryOperator<Object> update) {
+        for (;;) {
+            Object seen = getReferenceUpdater(updater, receiver);
+            if (compareAndSetReferenceUpdater(updater, receiver, seen, update.apply(seen))) {
+                return seen;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceFieldUpdater.accumulateAndGet}, as
+     * {@link #updateAndGetReferenceUpdater}.
+     *
+     * @param updater     the updater the call site invoked
+     * @param receiver    the object whose field is the slot
+     * @param given       the function's second argument
+     * @param accumulator the function applied to the current reference and {@code given}
+     * @return the reference stored
+     * @since 1.15.0
+     */
+    public static @Nullable Object accumulateAndGetReferenceUpdater(
+            AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
+            @Nullable Object given, BinaryOperator<Object> accumulator) {
+        for (;;) {
+            Object seen = getReferenceUpdater(updater, receiver);
+            Object next = accumulator.apply(seen, given);
+            if (compareAndSetReferenceUpdater(updater, receiver, seen, next)) {
+                return next;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceFieldUpdater.getAndAccumulate}, as
+     * {@link #updateAndGetReferenceUpdater}.
+     *
+     * @param updater     the updater the call site invoked
+     * @param receiver    the object whose field is the slot
+     * @param given       the function's second argument
+     * @param accumulator the function applied to the current reference and {@code given}
+     * @return the reference replaced
+     * @since 1.15.0
+     */
+    public static @Nullable Object getAndAccumulateReferenceUpdater(
+            AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
+            @Nullable Object given, BinaryOperator<Object> accumulator) {
+        for (;;) {
+            Object seen = getReferenceUpdater(updater, receiver);
+            if (compareAndSetReferenceUpdater(updater, receiver, seen, accumulator.apply(seen, given))) {
+                return seen;
+            }
+        }
+    }
+
+    /**
      * Weaves {@code AtomicReferenceFieldUpdater.set}: an offer of {@code value} to the receiver's
      * slot (#664).
      *

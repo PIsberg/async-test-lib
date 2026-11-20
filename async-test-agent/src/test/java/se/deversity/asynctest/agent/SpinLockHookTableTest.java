@@ -202,8 +202,18 @@ class SpinLockHookTableTest {
             assertTrue(substituted.contains(form), form + " stores with a volatile write, so the object "
                     + "it stores is published to the get that returns it (#1334); substituted: " + substituted);
         }
+        for (String form : List.of("AtomicReferenceArray.updateAndGet", "AtomicReferenceArray.getAndUpdate",
+                "AtomicReferenceArray.accumulateAndGet", "AtomicReferenceArray.getAndAccumulate",
+                "AtomicReferenceArray.compareAndExchange", "AtomicReferenceArray.weakCompareAndSetVolatile",
+                "AtomicReferenceFieldUpdater.updateAndGet", "AtomicReferenceFieldUpdater.getAndUpdate",
+                "AtomicReferenceFieldUpdater.accumulateAndGet", "AtomicReferenceFieldUpdater.getAndAccumulate")) {
+            assertTrue(substituted.contains(form), form + " stores with a volatile write, so the object "
+                    + "it stores is published to the get that returns it (#1336); substituted: " + substituted);
+        }
         for (String form : List.of("AtomicReference.weakCompareAndSetPlain", "AtomicReference.weakCompareAndSet",
-                "AtomicReference.setPlain", "AtomicReference.getPlain")) {
+                "AtomicReference.setPlain", "AtomicReference.getPlain",
+                "AtomicReferenceArray.weakCompareAndSetPlain", "AtomicReferenceArray.weakCompareAndSet",
+                "AtomicReferenceArray.setPlain", "AtomicReferenceArray.getPlain")) {
             assertTrue(!substituted.contains(form), form + " has plain memory semantics and orders "
                     + "nothing: substituting it as a release would hide an unsafe publication");
         }

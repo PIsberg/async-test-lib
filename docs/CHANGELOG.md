@@ -65,6 +65,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An object published through an `AtomicReferenceArray` or `AtomicReferenceFieldUpdater`
+  update function is ordered (#1336, part).** With the agent attached, an element replaced by a
+  successor built inside `AtomicReferenceArray.updateAndGet` (or `getAndUpdate`,
+  `accumulateAndGet`, `getAndAccumulate`, `compareAndExchange`, `weakCompareAndSetVolatile`),
+  or a field replaced through an `AtomicReferenceFieldUpdater`'s update or accumulate forms, was
+  reported by `AtomicityValidator` at PROMPT when another thread read the successor's state
+  through the slot: these forms stored with a volatile write that released nothing. Both new
+  must-stay-silent corpus idiom rows were reported before. Each form now runs as the woven `get`
+  and the woven `compareAndSet`, as `AtomicReference`'s have since #1334. The reference
+  `VarHandle` forms and the one-sided acquire and release flavours stay open on #1336.
+  `TelemetryRegistryHooksMatchTheJdkTest`, `SpinLockHookTableTest`.
+
 - **A lost attempt of an atomic increment, add or update withdraws the release it made (#1316,
   part).** The woven arithmetic and update forms of `AtomicInteger` and `AtomicLong` release the
   value they are about to store before each compare-and-set attempt. An attempt that lost to

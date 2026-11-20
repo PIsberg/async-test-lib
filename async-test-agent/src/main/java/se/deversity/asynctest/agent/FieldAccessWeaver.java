@@ -228,28 +228,41 @@ final class FieldAccessWeaver {
     /**
      * The {@code AtomicReferenceFieldUpdater} calls substituted; the hook is the name plus
      * {@code ReferenceUpdater}. {@code get}, a volatile read, acquires the store whose value it
-     * returned (#741).
+     * returned (#741). The update and accumulate forms run as that get and the woven
+     * compareAndSet, as the {@code AtomicReference} ones do (#1336).
      */
     private static final Map<String, String> REFERENCE_UPDATER_FORMS = Map.of(
             "get", "(" + OBJECT + ")" + OBJECT,
             "set", "(" + OBJECT + OBJECT + ")V",
             "lazySet", "(" + OBJECT + OBJECT + ")V",
             "compareAndSet", "(" + OBJECT + OBJECT + OBJECT + ")Z",
-            "getAndSet", "(" + OBJECT + OBJECT + ")" + OBJECT);
+            "getAndSet", "(" + OBJECT + OBJECT + ")" + OBJECT,
+            "updateAndGet", "(" + OBJECT + "Ljava/util/function/UnaryOperator;)" + OBJECT,
+            "getAndUpdate", "(" + OBJECT + "Ljava/util/function/UnaryOperator;)" + OBJECT,
+            "accumulateAndGet", "(" + OBJECT + OBJECT + "Ljava/util/function/BinaryOperator;)" + OBJECT,
+            "getAndAccumulate", "(" + OBJECT + OBJECT + "Ljava/util/function/BinaryOperator;)" + OBJECT);
 
     /**
      * The {@code AtomicReferenceArray} calls substituted; the hook is the name plus
      * {@code ReferenceArray}. {@code get} and {@code getAcquire} acquire the store of that element
-     * whose value they returned (#741).
+     * whose value they returned (#741). The update, accumulate, exchange and weak-volatile forms
+     * run as that get and the woven compareAndSet, as the {@code AtomicReference} ones do (#1336);
+     * {@code weakCompareAndSetPlain} and the deprecated {@code weakCompareAndSet} are left alone.
      */
-    private static final Map<String, String> REFERENCE_ARRAY_FORMS = Map.of(
-            "get", "(I)" + OBJECT,
-            "getAcquire", "(I)" + OBJECT,
-            "set", "(I" + OBJECT + ")V",
-            "lazySet", "(I" + OBJECT + ")V",
-            "setRelease", "(I" + OBJECT + ")V",
-            "compareAndSet", "(I" + OBJECT + OBJECT + ")Z",
-            "getAndSet", "(I" + OBJECT + ")" + OBJECT);
+    private static final Map<String, String> REFERENCE_ARRAY_FORMS = Map.ofEntries(
+            Map.entry("get", "(I)" + OBJECT),
+            Map.entry("getAcquire", "(I)" + OBJECT),
+            Map.entry("set", "(I" + OBJECT + ")V"),
+            Map.entry("lazySet", "(I" + OBJECT + ")V"),
+            Map.entry("setRelease", "(I" + OBJECT + ")V"),
+            Map.entry("compareAndSet", "(I" + OBJECT + OBJECT + ")Z"),
+            Map.entry("getAndSet", "(I" + OBJECT + ")" + OBJECT),
+            Map.entry("updateAndGet", "(ILjava/util/function/UnaryOperator;)" + OBJECT),
+            Map.entry("getAndUpdate", "(ILjava/util/function/UnaryOperator;)" + OBJECT),
+            Map.entry("accumulateAndGet", "(I" + OBJECT + "Ljava/util/function/BinaryOperator;)" + OBJECT),
+            Map.entry("getAndAccumulate", "(I" + OBJECT + "Ljava/util/function/BinaryOperator;)" + OBJECT),
+            Map.entry("compareAndExchange", "(I" + OBJECT + OBJECT + ")" + OBJECT),
+            Map.entry("weakCompareAndSetVolatile", "(I" + OBJECT + OBJECT + ")Z"));
 
     /**
      * The {@code AtomicStampedReference} calls substituted; the hook is the name plus
