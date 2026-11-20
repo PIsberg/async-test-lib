@@ -46,6 +46,45 @@ class RoundTimeoutProgressTest {
                 "both workers were asleep in the body: " + timeout.getCause().getMessage());
     }
 
+    @Test
+    void aRoundThatHangsLateWithLittleBudgetLeftIsStillAPossibleDeadlock() {
+        // Correct 40 ms rounds until most of the budget is spent, then the two workers take two
+        // locks in opposite orders. The hung round starts with under four rounds' worth of budget
+        // left, which the timing rule alone reads as running out (#1393); both workers are parked
+        // on a lock when it ends, which says otherwise.
+        long[] started = {0L};
+        java.util.concurrent.locks.ReentrantLock first = new java.util.concurrent.locks.ReentrantLock();
+        java.util.concurrent.locks.ReentrantLock second = new java.util.concurrent.locks.ReentrantLock();
+        java.util.concurrent.atomic.AtomicInteger arrivals = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.CyclicBarrier bothHold = new java.util.concurrent.CyclicBarrier(2);
+        AssertionError timeout = assertThrows(AssertionError.class, () -> withUnstretchedBudget(() ->
+                AsyncTestRunner.run(config().threads(2).invocations(40).timeoutMs(1000).build(), () -> {
+                    synchronized (started) {
+                        if (started[0] == 0L) {
+                            started[0] = System.nanoTime();
+                        }
+                    }
+                    if (System.nanoTime() - started[0] < 850_000_000L) {
+                        Thread.sleep(40);
+                        return;
+                    }
+                    boolean even = arrivals.getAndIncrement() % 2 == 0;
+                    java.util.concurrent.locks.ReentrantLock mine = even ? first : second;
+                    java.util.concurrent.locks.ReentrantLock theirs = even ? second : first;
+                    mine.lockInterruptibly();
+                    try {
+                        bothHold.await();
+                        theirs.lockInterruptibly();
+                        theirs.unlock();
+                    } finally {
+                        mine.unlock();
+                    }
+                })));
+
+        assertTrue(timeout.getMessage().contains("Possible deadlock"), timeout.getMessage());
+        assertFalse(timeout.getMessage().contains("raise it or lower invocations"), timeout.getMessage());
+    }
+
     private static AsyncTestConfig.Builder config() {
         return AsyncTestConfig.builder().licenseMockMode(true).preset(Preset.NONE);
     }

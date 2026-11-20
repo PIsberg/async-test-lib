@@ -80,7 +80,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="232.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DISPLAY_NAME: ThreadLocal&lt;…</text>
   <text x="232.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">PENDING_TEARDOWN: ThreadLo…</text>
   <text x="232.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">AGENT_ABSENCE_LOGGED: java…</text>
-  <text x="232.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+12 more)</text>
+  <text x="232.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+14 more)</text>
   <line x1="224.0" y1="185.0" x2="404.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="232.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">displayNameOf(Method): Str…</text>
   <text x="232.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">execute(ReflectiveInvocati…</text>
@@ -88,7 +88,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="232.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">resolveTimeoutMultiplier()…</text>
   <text x="232.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeAndGate(AsyncTestCo…</text>
   <text x="232.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">reportAndGate(AsyncTestCon…</text>
-  <text x="232.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+30 more)</text>
+  <text x="232.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+32 more)</text>
 </g>
 <g id="LicenseGuard">
   <title>LicenseGuard [CLASS]</title>

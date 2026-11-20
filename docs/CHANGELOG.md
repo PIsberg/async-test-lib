@@ -65,6 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A round that hangs late in a long run is called a possible deadlock (#1393).** Since #1386 a
+  timeout whose last round had less than four average rounds' worth of budget left said the budget
+  ran out, so a deadlock in round 21 of 40 read as a slow body. The runner now samples the workers
+  still in the body when a round runs out, before interrupting them, and when every one is BLOCKED
+  or WAITING with no timeout in each sample, the message says "Possible deadlock" and that every
+  worker was parked, however much budget was left. `RoundTimeoutProgressTest`; docs/TROUBLESHOOTING.md.
+
 - **A `FutureTask` handed to a `ThreadFactory` is ordered before a `get` on it (#1401, part).**
   With the agent, `factory.newThread(task).start()` then `task.get()` left the read unordered,
   so a field the task set and the caller then read drew an `AtomicityValidator` finding on

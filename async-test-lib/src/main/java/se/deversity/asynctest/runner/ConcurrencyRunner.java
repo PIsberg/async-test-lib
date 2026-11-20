@@ -689,8 +689,8 @@ public class ConcurrencyRunner {
             // missing test (#426). It stays as the guard local to this branch.
             quiesceWorkers(executor, testMethod);
             if (isTimeoutLike(e)) {
-                throw timeoutError(effectiveTimeoutMs, e, phase2Analysis,
-                        config.detectDeadlocks, progress);
+                throw timeoutError(effectiveTimeoutMs, e, phase2Analysis, config.detectDeadlocks,
+                        progressAfter(e, progress));
             }
             reportFailure(e, currentSeed, lastSchedule, phase2Analysis);
             throw e;
@@ -1209,6 +1209,8 @@ public class ConcurrencyRunner {
         // Workers that got past the start barrier, so a timed-out round can say whether any never
         // reached the body rather than guessing (#1386).
         AtomicInteger pastBarrier = new AtomicInteger();
+        // The workers inside the body right now, sampled if the round runs out (#1393).
+        Set<Thread> inBody = ConcurrentHashMap.newKeySet();
 
         Object target = context.getTarget().orElse(null);
         Object[] args = context.getArguments().toArray();
@@ -1250,6 +1252,7 @@ public class ConcurrencyRunner {
                         if (phase1.livelock != null) {
                             phase1.livelock.workerEnteredBody(Thread.currentThread());
                         }
+                        inBody.add(Thread.currentThread());
                         try {
                             Object result = method.invoke(target, args);
                             // Async test body support: if the method returns a CompletionStage,
@@ -1262,6 +1265,7 @@ public class ConcurrencyRunner {
                                      .get(roundTimeoutMs, TimeUnit.MILLISECONDS);
                             }
                         } finally {
+                            inBody.remove(Thread.currentThread());
                             if (phase1.livelock != null) {
                                 phase1.livelock.workerLeftBody(Thread.currentThread());
                             }
@@ -1312,6 +1316,7 @@ public class ConcurrencyRunner {
             // not left its work on its own, and a detector must not read it as though it had (#598).
             phase2Context.markRoundTimedOut();
             // Before the interrupts, so what is sampled is what the bodies were doing.
+            boolean workersParked = everyWorkerParked(inBody);
             if (phase1.livelock != null) {
                 phase1.livelock.roundTimedOut();
             }
@@ -1320,7 +1325,7 @@ public class ConcurrencyRunner {
             }
             AssertionError roundTimeout = new RoundTimeoutError(
                     roundTimeoutMessage(threads, finished, passedBarrier, roundTimeoutMs)
-                            + attachedFailures(failures.size()));
+                            + attachedFailures(failures.size()), workersParked);
             // The workers that DID finish often carry the diagnosis: a worker that threw
             // before the barrier is the most common reason its peers never arrived, and
             // throwing here without them reported only a thread count. `failures` is a
@@ -1335,6 +1340,39 @@ public class ConcurrencyRunner {
         if (!failures.isEmpty()) {
             throw buildMultiFailureError(failures);
         }
+    }
+
+    /** How many times, and how far apart, a timed-out round's workers are sampled (#1393). */
+    private static final int PARKED_SAMPLES = 5;
+    private static final long PARKED_SAMPLE_GAP_MS = 10;
+
+    /**
+     * {@return whether every worker still in the body was BLOCKED or WAITING, with no timeout, in
+     * each of a few samples} That is a round that will not finish however much budget it gets,
+     * which the arithmetic on the budget cannot tell from one that simply ran out (#1393). A
+     * worker sleeping or in a timed wait is TIMED_WAITING and still going somewhere, so it keeps
+     * the verdict to the budget, and so does a round with no worker left in the body.
+     */
+    static boolean everyWorkerParked(Set<Thread> inBody) {
+        if (inBody.isEmpty()) {
+            return false;
+        }
+        for (int sample = 0; sample < PARKED_SAMPLES; sample++) {
+            for (Thread worker : inBody) {
+                Thread.State state = worker.getState();
+                if (state != Thread.State.BLOCKED && state != Thread.State.WAITING
+                        && state != Thread.State.TERMINATED) {
+                    return false;
+                }
+            }
+            try {
+                Thread.sleep(PARKED_SAMPLE_GAP_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return !inBody.isEmpty();
     }
 
     /**
@@ -1381,14 +1419,29 @@ public class ConcurrencyRunner {
      * @param lastRoundBudgetMs what was left of the budget when the last round started, zero or
      *                          less when it ran out between rounds
      */
-    record RunProgress(int roundsCompleted, int invocations, long lastRoundBudgetMs) {
+    record RunProgress(int roundsCompleted, int invocations, long lastRoundBudgetMs,
+                       boolean workersParked) {
 
         /** A round with less than this many average rounds' worth of budget left ran out, not hung. */
         private static final int ROOMY_ROUNDS = 4;
 
+        RunProgress(int roundsCompleted, int invocations, long lastRoundBudgetMs) {
+            this(roundsCompleted, invocations, lastRoundBudgetMs, false);
+        }
+
+        /** {@return this progress, for a round whose unfinished workers were all parked (#1393)} */
+        RunProgress withWorkersParked() {
+            return new RunProgress(roundsCompleted, invocations, lastRoundBudgetMs, true);
+        }
+
         /** {@return the first sentence of the run's timeout} */
         String headline(long timeoutMs) {
             String done = roundsCompleted + " of " + invocations + " rounds completed";
+            if (workersParked) {
+                // Evidence beats the arithmetic: the round would not have finished with more budget.
+                return "Test timed out after " + timeoutMs + "ms. Possible deadlock, starvation, or visibility issue. "
+                        + done + "; every worker still in the body was blocked or waiting with no timeout.";
+            }
             if (budgetRanOut(timeoutMs)) {
                 return ranOutOfBudget(timeoutMs, done);
             }
@@ -1481,6 +1534,12 @@ public class ConcurrencyRunner {
         return Math.max(0L, TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime()));
     }
 
+    /** {@return {@code progress}, marked parked when the round that ran out found its workers so (#1393)} */
+    private static RunProgress progressAfter(AssertionError timeout, RunProgress progress) {
+        return timeout instanceof RoundTimeoutError round && round.workersParked
+                ? progress.withWorkersParked() : progress;
+    }
+
     /**
      * True only for the runner's own timeout marker, {@link RoundTimeoutError}.
      *
@@ -1511,8 +1570,17 @@ public class ConcurrencyRunner {
     @SuppressWarnings("PMD.DoNotExtendJavaLangError")
     static final class RoundTimeoutError extends AssertionError {
         private static final long serialVersionUID = 1L;
+
+        /** Whether the round's unfinished workers were all parked when it ran out (#1393). */
+        final boolean workersParked;
+
         RoundTimeoutError(String message) {
+            this(message, false);
+        }
+
+        RoundTimeoutError(String message, boolean workersParked) {
             super(message);
+            this.workersParked = workersParked;
         }
     }
 
