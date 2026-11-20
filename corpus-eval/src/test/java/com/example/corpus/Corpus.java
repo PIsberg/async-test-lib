@@ -6446,6 +6446,22 @@ final class Corpus {
                             + "exceed releases by one per thread",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_semaphore_signalWithStartingPermits", JDK,
+                    "java.util.concurrent.Semaphore",
+                    DetectorType.SEMAPHORE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the waiters take the starting permits first, then a thread that never holds "
+                            + "one sends a permit per waiter and one more; releases outnumber "
+                            + "acquisitions, but no thread returns a permit it took (#1292)"),
+
+            new RecordingSubject("idiom_semaphore_holderReturnsItsPermitTwice", JDK,
+                    "java.util.concurrent.Semaphore",
+                    DetectorType.SEMAPHORE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread takes a permit and returns it twice, so each holder released "
+                            + "one permit more than it acquired",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_semaphore_signalledByAThreadTheBodyStarted", JDK,
                     "java.util.concurrent.Semaphore",
                     DetectorType.SEMAPHORE, Contract.THREAD_SAFE,

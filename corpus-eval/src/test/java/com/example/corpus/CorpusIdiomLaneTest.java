@@ -2984,6 +2984,45 @@ class CorpusIdiomLaneTest {
         broken(() -> UNSIGNALLED.next().shared().acquire());
     }
 
+    /** A semaphore with permits from the start, and the latch that holds its signal back. */
+    private record StartedSignal(Semaphore permits, java.util.concurrent.CountDownLatch taken) {
+    }
+
+    private static final Rounds<StartedSignal> STARTED_SIGNALS = new Rounds<>(() -> new StartedSignal(
+            new Semaphore(THREADS - 1), new java.util.concurrent.CountDownLatch(THREADS - 1)));
+
+    /**
+     * A signal that starts with permits and is acquired first (#1292): every waiter takes one of
+     * the starting permits, then the round's first thread, which never holds one, sends a permit
+     * per waiter and one more ahead of the next. No thread returns a permit it took.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_semaphore_signalWithStartingPermits() {
+        correct(() -> {
+            Turn<StartedSignal> turn = STARTED_SIGNALS.next();
+            if (turn.opensTheRound()) {
+                turn.shared().taken().await();
+                turn.shared().permits().release(THREADS);
+            } else {
+                turn.shared().permits().acquire();
+                turn.shared().taken().countDown();
+            }
+        });
+    }
+
+    private static final Rounds<Semaphore> RETURNED_TWICE = new Rounds<>(() -> new Semaphore(THREADS));
+
+    /** Every thread takes a permit and returns it twice: one release more than it acquired (#1292). */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_semaphore_holderReturnsItsPermitTwice() {
+        broken(() -> {
+            Semaphore permits = RETURNED_TWICE.next().shared();
+            permits.acquire();
+            permits.release();
+            permits.release();
+        });
+    }
+
     /**
      * The signal comes from a thread the body starts, which is not one of the run's workers: the
      * body waits on the semaphore for the helper to finish, the way a test waits for a callback.
