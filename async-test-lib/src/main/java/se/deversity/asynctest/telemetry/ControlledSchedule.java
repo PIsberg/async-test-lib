@@ -343,6 +343,14 @@ public final class ControlledSchedule {
             task.schedule().taskDone(task.slot());
             return null;
         }
+        // A pool thread built in woven code was adopted at its start, and reaches this before any
+        // point when it starts in unwoven pool code. It runs the task as the task's slot, so its
+        // own slot is done here: left ready, a grant to it waits for a thread that is busy in
+        // another slot's turn, and counts that wait as an escape (#1413).
+        Adoption carrier = ADOPTED.remove(Thread.currentThread());
+        if (carrier != null) {
+            carrier.schedule().taskDone(carrier.slot());
+        }
         task.schedule().join(task.slot());
         return task;
     }
@@ -585,6 +593,11 @@ public final class ControlledSchedule {
             pending[worker.slot] = null;
             if (running == worker.slot) {
                 running = -1;
+                grant();
+            } else if (running < 0 && !anyOutside()) {
+                // Nobody holds the round: an adopted task that escaped and ends here, with a
+                // worker waiting for it, is the only one left to hand it on. A task has no thread
+                // for childEnded() to see end (#1413).
                 grant();
             }
         } finally {
@@ -862,7 +875,10 @@ public final class ControlledSchedule {
         worker.inside = true;
         lock.lock();
         try {
-            if (closed || status[child] == Status.DONE) {
+            // A worker the point freed (interrupted) or counted escaped does not hold the round,
+            // so it has none to give up: taking it back here would revoke the turn of whoever
+            // does hold it and wait again on an interrupt that already ended one wait (#1413).
+            if (closed || status[child] == Status.DONE || worker.free || running != worker.slot) {
                 return;
             }
             int slot = worker.slot;
@@ -1155,6 +1171,8 @@ public final class ControlledSchedule {
                 Thread.currentThread().interrupt();
                 worker.free = true;
                 status[worker.slot] = Status.ESCAPED;
+                pending[worker.slot] = null;
+                joining[worker.slot] = -1;
                 escapes++;
                 return;
             }

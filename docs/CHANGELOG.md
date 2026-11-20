@@ -65,6 +65,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The controlled schedule no longer hangs a round, takes away a turn, or counts a false escape
+  around an executor task (#1413).** Three transitions: an adopted task that escaped and then ended
+  while its submitter waited in `get` left nobody holding the round, and the submitter waited until
+  the round timed out (its `leave()` now grants when no one runs and no worker is outside a
+  rendezvous); a submitter interrupted at the point before its `get` was made ready again, took
+  the round from whoever held it, and was counted escaped twice (a freed or escaped worker now skips
+  the join wait, and the interrupt path clears its pending lock and join); and a pool thread
+  adopted at its start that ran an adopted task before reaching any point left its own slot ready
+  with nobody to fill it, which a grant then counted as an escape (the thread's slot is now done
+  when it starts the task). `ControlledScheduleTaskTransitionTest`.
+
 - **A constructor that builds an object before its superclass call loads again with
   `fields=true` (#1412).** The field weaver took the first `INVOKESPECIAL <init>` in a
   constructor for the superclass call, so a helper's `new Object()` in the arguments of
