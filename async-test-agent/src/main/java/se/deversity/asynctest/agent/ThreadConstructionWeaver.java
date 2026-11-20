@@ -43,10 +43,12 @@ import org.jspecify.annotations.Nullable;
  * <p>And one more, before the constructor rather than after (#1350): the {@code INVOKESPECIAL} of a
  * {@code new Thread(task)} or {@code new Thread(task, name)} gets a copy of {@code task} handed to
  * the hook's {@code threadTarget(Object)} first, a {@code DUP} for the first shape and
- * {@code DUP2, POP} for the second. A {@code FutureTask} run that way is run by {@code Thread.run}
- * inside the JDK, so the target is the only way the library learns which thread ran it. The other
- * {@code Thread} constructors, with a {@code ThreadGroup} or a stack size, are left alone, and a
- * library without {@code threadTarget} gets none of these calls.
+ * {@code DUP2, POP} for the second. {@code new Thread(group, task)} and
+ * {@code new Thread(group, task, name)} keep the task in the same place, so they get the same
+ * copies (#1401). A {@code FutureTask} run that way is run by {@code Thread.run} inside the JDK, so
+ * the target is the only way the library learns which thread ran it. The constructors with a stack
+ * size, whose two-slot {@code long} sits above the task, are left alone, and a library without
+ * {@code threadTarget} gets none of these calls.
  *
  * <p>All of them insert values and a static call that consumes them, around one instruction and
  * before whatever follows: no branch, no new frame, only {@code maxStack} grows, which
@@ -84,6 +86,14 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
 
     /** The constructor {@code new Thread(task, name)} calls. */
     private static final String NAMED_RUNNABLE_CONSTRUCTOR = "(Ljava/lang/Runnable;Ljava/lang/String;)V";
+
+    /** The constructor {@code new Thread(group, task)} calls (#1401). */
+    private static final String GROUP_RUNNABLE_CONSTRUCTOR =
+            "(Ljava/lang/ThreadGroup;Ljava/lang/Runnable;)V";
+
+    /** The constructor {@code new Thread(group, task, name)} calls (#1401). */
+    private static final String GROUP_NAMED_RUNNABLE_CONSTRUCTOR =
+            "(Ljava/lang/ThreadGroup;Ljava/lang/Runnable;Ljava/lang/String;)V";
 
     /** The internal name of the class holding {@link #HOOK}. */
     private final String hookOwner;
@@ -278,9 +288,11 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
          * name)} to the hook, leaving the constructor's arguments as they were (#1350).
          */
         private void handOverTarget(String descriptor) {
-            if (RUNNABLE_CONSTRUCTOR.equals(descriptor)) {
+            if (RUNNABLE_CONSTRUCTOR.equals(descriptor)
+                    || GROUP_RUNNABLE_CONSTRUCTOR.equals(descriptor)) {
                 super.visitInsn(Opcodes.DUP);                 // task -> task, task
-            } else if (NAMED_RUNNABLE_CONSTRUCTOR.equals(descriptor)) {
+            } else if (NAMED_RUNNABLE_CONSTRUCTOR.equals(descriptor)
+                    || GROUP_NAMED_RUNNABLE_CONSTRUCTOR.equals(descriptor)) {
                 super.visitInsn(Opcodes.DUP2);                // task, name -> task, name, task, name
                 super.visitInsn(Opcodes.POP);                 //            -> task, name, task
             } else {
