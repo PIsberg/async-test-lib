@@ -348,4 +348,64 @@ public class SemaphoreMisuseDetectorTest {
 
         assertFalse(report.hasIssues(), report.toString());
     }
+
+    private static void onItsOwnThread(Runnable work) {
+        Thread thread = new Thread(work);
+        thread.start();
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * A signal that starts with permits and is acquired first (#1292): the waiter takes one, the
+     * signalling thread, which never held any, releases three. No holder returned a permit twice.
+     */
+    @Test
+    void aSignalWithStartingPermitsAcquiredFirstIsNotAnOverRelease() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore signal = new Semaphore(2);
+        onItsOwnThread(() -> detector.recordAcquire(signal, "signal"));
+        onItsOwnThread(() -> {
+            for (int i = 0; i < 3; i++) {
+                detector.recordRelease(signal, "signal");
+            }
+        });
+
+        SemaphoreMisuseDetector.SemaphoreMisuseReport report = detector.analyze();
+
+        assertTrue(report.overReleases.isEmpty(), "the releasing thread held nothing to return: " + report);
+    }
+
+    /** Acquired on one thread and released on another is a hand-off, which a semaphore allows. */
+    @Test
+    void aPermitHandedToAnotherThreadToReleaseIsNotAnOverRelease() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore permits = new Semaphore(1);
+        onItsOwnThread(() -> detector.recordAcquire(permits, "permits"));
+        onItsOwnThread(() -> detector.recordRelease(permits, "permits"));
+
+        assertFalse(detector.analyze().hasIssues(), "one permit taken, one returned");
+    }
+
+    /** A thread that took one permit and returned two is an over-release whoever else signals. */
+    @Test
+    void aHolderThatReturnsTwiceIsAnOverReleaseBesideASignal() {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        Semaphore mixed = new Semaphore(1);
+        onItsOwnThread(() -> {
+            detector.recordAcquire(mixed, "mixed");
+            detector.recordRelease(mixed, "mixed");
+            detector.recordRelease(mixed, "mixed");
+        });
+        onItsOwnThread(() -> detector.recordRelease(mixed, "mixed"));
+
+        SemaphoreMisuseDetector.SemaphoreMisuseReport report = detector.analyze();
+
+        assertEquals(1, report.overReleases.size(), report.toString());
+        assertTrue(report.overReleases.get(0).contains("1 extra release"), report.toString());
+    }
 }

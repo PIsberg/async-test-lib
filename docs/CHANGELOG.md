@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`SemaphoreMisuseDetector` reports an over-release only when a thread returns more permits than
+  it took (#1292).** Without a registered permit count, a signal semaphore that started with
+  permits and was acquired first (a waiter takes one, a thread that holds none releases three) was
+  reported as an over-release at VERDICT trust, since only the semaphore's first event decided
+  whether it was a signal. Each thread's acquisitions and releases are now counted in its own
+  program order: a release while holding nothing, by a thread that never acquired, is a signal or a
+  hand-off and is not reported; one after the thread has returned everything it took is. A
+  registered semaphore is still held to its declared count. `SemaphoreMisuseDetectorTest`; corpus
+  idiom pair `idiom_semaphore_signalWithStartingPermits` / `idiom_semaphore_holderReturnsItsPermitTwice`.
+
 - **A thread the body started and left running fails the run when it fails just after the last
   round (#1379).** With the agent, an `AssertionError` on such a thread that came after the run's
   last check was handed to the default handler and never failed the test. The runner now joins

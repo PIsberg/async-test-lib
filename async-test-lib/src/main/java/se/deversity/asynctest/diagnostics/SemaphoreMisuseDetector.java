@@ -16,10 +16,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 
  * Common semaphore issues detected:
  * - Permit leaks: acquire() without matching release()
- * - Over-release: release() called more times than acquire()
- *   (not concluded for a semaphore the run released before it ever acquired it, unless the test
- *   registered its permits: that is how a signal looks, one thread releasing and another
- *   acquiring, and a signal nobody has awaited yet is a surplus, not a permit returned twice)
+ * - Over-release: a thread returning more permits than it acquired (#1292); a release by a
+ *   thread that holds none and never acquired one is a signal or a hand-off, not a permit
+ *   returned twice. A semaphore registered with its permit count is held to that count instead.
  * - Unreleased permits at test completion
  * - Concurrent access patterns that may cause starvation
  * 
@@ -67,11 +66,43 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
          */
         volatile boolean releasedBeforeAcquired;
 
+        /**
+         * Per thread, the permits it acquired and released (#1292). A thread that returns more
+         * than it took is the over-release; a thread that releases without ever having acquired
+         * is a signal, or a permit handed over to it to return, both of which a semaphore allows.
+         */
+        final Map<Long, ThreadPermits> byThread = new ConcurrentHashMap<>();
+
         SemaphoreState(Semaphore semaphore, String name, int permits) {
             this.semaphore = semaphore;
             this.name = name;
             this.initialPermits = new AtomicInteger(permits);
         }
+    }
+
+    /**
+     * One thread's permits on one semaphore, in its own program order: how many it holds, whether
+     * it has ever acquired one, and how many releases it made while holding none after that.
+     */
+    static final class ThreadPermits {
+        final AtomicInteger held = new AtomicInteger();
+        volatile boolean acquiredBefore;
+        final AtomicInteger returnedTwice = new AtomicInteger();
+    }
+
+    private static ThreadPermits permitsOf(SemaphoreState state) {
+        Long thread = Thread.currentThread().threadId();
+        ThreadPermits permits = state.byThread.get(thread);
+        return permits != null ? permits : state.byThread.computeIfAbsent(thread, k -> new ThreadPermits());
+    }
+
+    /** {@return the releases threads made with none of their own permits left to return} */
+    private static int returnedTwice(SemaphoreState state) {
+        int extra = 0;
+        for (ThreadPermits permits : state.byThread.values()) {
+            extra += permits.returnedTwice.get();
+        }
+        return extra;
     }
 
     @Override
@@ -113,6 +144,9 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
         // contention made them matter.
         SemaphoreState state = stateFor(semaphore, name, "semaphore");
         state.acquireCount.incrementAndGet();
+        ThreadPermits mine = permitsOf(state);
+        mine.held.incrementAndGet();
+        mine.acquiredBefore = true;
         state.acquiringThreads.add(Thread.currentThread().threadId());
         int current = state.currentAcquires.incrementAndGet();
         state.maxConcurrentAcquires.updateAndGet(max -> Math.max(max, current));
@@ -136,6 +170,15 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
             state.releasedBeforeAcquired = true;
         }
         state.releaseCount.incrementAndGet();
+        // Recorded by the releasing thread itself, so its counts follow its own program order: a
+        // release while it holds a permit returns one, a release before it ever acquired is a
+        // signal, and one after it has returned everything it took is the over-release (#1292).
+        ThreadPermits mine = permitsOf(state);
+        if (mine.held.get() > 0) {
+            mine.held.decrementAndGet();
+        } else if (mine.acquiredBefore) {
+            mine.returnedTwice.incrementAndGet();
+        }
         state.releasingThreads.add(Thread.currentThread().threadId());
         state.currentAcquires.decrementAndGet();
     }
@@ -204,15 +247,25 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
                     acquires - releases - returnedByHelpers));
             }
 
-            // Check for over-release (more releases than acquires). With no declared capacity
-            // to hold it to, a semaphore released before it was ever acquired is a signal, and
-            // its surplus is a signal not yet awaited.
-            boolean signal = initialPermits < 0 && state.releasedBeforeAcquired;
-            if (releases > acquires + takenByHelpers && !signal) {
-                report.overReleases.add(String.format(
-                    "%s: released %d times but acquired only %d times (%d extra releases)",
-                    state.name, releases, acquires + takenByHelpers,
-                    releases - acquires - takenByHelpers));
+            // Check for over-release. A registered capacity is the caller's own statement, so the
+            // run's releases are held to its acquisitions. Without one, only a thread that returned
+            // more permits than it took has over-released (#1292): a thread that releases without
+            // having acquired is a signal, sent ahead of or beside its waiters, or returns a permit
+            // another thread took. Permits helper threads took and never returned cover as many.
+            if (initialPermits >= 0) {
+                if (releases > acquires + takenByHelpers) {
+                    report.overReleases.add(String.format(
+                        "%s: released %d times but acquired only %d times (%d extra releases)",
+                        state.name, releases, acquires + takenByHelpers,
+                        releases - acquires - takenByHelpers));
+                }
+            } else {
+                int extra = returnedTwice(state) - takenByHelpers;
+                if (extra > 0) {
+                    report.overReleases.add(String.format(
+                        "%s: a thread released more permits than it acquired (%d extra release%s)",
+                        state.name, extra, extra == 1 ? "" : "s"));
+                }
             }
 
             // Check for unreleased permits at completion
