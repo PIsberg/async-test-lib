@@ -183,6 +183,32 @@ public class InterruptHandlingShapes {
         calls++;
     }
 
+    /** Handled: restores the flag inside an outer catch of anything else, which returns (#1417). */
+    public void restoreInsideAnOuterCatch() {
+        try {
+            try {
+                Thread.sleep(0);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        } catch (RuntimeException ex) {
+            LOG.fine("something else went wrong");
+        }
+    }
+
+    /** Swallowed: an empty handler inside an outer catch of anything else is still empty (#1417). */
+    public void swallowInsideAnOuterCatch() {
+        try {
+            try {
+                Thread.sleep(0);
+            } catch (InterruptedException e) {
+                // nothing
+            }
+        } catch (RuntimeException ex) {
+            LOG.fine("something else went wrong");
+        }
+    }
+
     /** A thread's own loop: exiting {@code run()} on an interrupt is its interruption policy. */
     public static class Worker implements Runnable {
 
