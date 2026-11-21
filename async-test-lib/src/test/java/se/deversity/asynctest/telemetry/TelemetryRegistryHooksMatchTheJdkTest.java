@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
@@ -55,10 +56,11 @@ class TelemetryRegistryHooksMatchTheJdkTest {
     static final class Bean {
         volatile int count = 5;
         volatile Object ref = A;
+        volatile long tally = (1L << 40) + 5L;
 
         @Override
         public String toString() {
-            return count + "/" + ref;
+            return count + "/" + ref + "/" + tally;
         }
     }
 
@@ -70,6 +72,8 @@ class TelemetryRegistryHooksMatchTheJdkTest {
     private static final VarHandle ARRAY = MethodHandles.arrayElementVarHandle(Object[].class);
     private static final AtomicIntegerFieldUpdater<Bean> INT_UPDATER =
             AtomicIntegerFieldUpdater.newUpdater(Bean.class, "count");
+    private static final AtomicLongFieldUpdater<Bean> LONG_UPDATER =
+            AtomicLongFieldUpdater.newUpdater(Bean.class, "tally");
     private static final AtomicReferenceFieldUpdater<Bean, Object> REF_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(Bean.class, Object.class, "ref");
 
@@ -263,6 +267,44 @@ class TelemetryRegistryHooksMatchTheJdkTest {
     private void intUpdaterCases() {
         Supplier<Bean> bean = Bean::new;
         Function<Bean, Object> state = Bean::toString;
+        // AtomicLongFieldUpdater (#1275, #1317), whose hooks keep the JDK's call when the field is unresolved, as here.
+        long big = (1L << 40) + 5L;
+        add("getLongUpdater", bean, b -> TelemetryRegistry.getLongUpdater(LONG_UPDATER, b), LONG_UPDATER::get, state);
+        addStore("setLongUpdater", bean, b -> TelemetryRegistry.setLongUpdater(LONG_UPDATER, b, 7L),
+                b -> LONG_UPDATER.set(b, 7L), state);
+        addStore("lazySetLongUpdater", bean, b -> TelemetryRegistry.lazySetLongUpdater(LONG_UPDATER, b, 7L),
+                b -> LONG_UPDATER.lazySet(b, 7L), state);
+        for (long expected : new long[] {big, 4L}) {
+            add("compareAndSetLongUpdater(" + expected + ", 7)", bean,
+                    b -> TelemetryRegistry.compareAndSetLongUpdater(LONG_UPDATER, b, expected, 7L),
+                    b -> LONG_UPDATER.compareAndSet(b, expected, 7L), state);
+        }
+        add("getAndSetLongUpdater", bean, b -> TelemetryRegistry.getAndSetLongUpdater(LONG_UPDATER, b, 7L),
+                b -> LONG_UPDATER.getAndSet(b, 7L), state);
+        add("getAndAddLongUpdater", bean, b -> TelemetryRegistry.getAndAddLongUpdater(LONG_UPDATER, b, 3L),
+                b -> LONG_UPDATER.getAndAdd(b, 3L), state);
+        add("addAndGetLongUpdater", bean, b -> TelemetryRegistry.addAndGetLongUpdater(LONG_UPDATER, b, 3L),
+                b -> LONG_UPDATER.addAndGet(b, 3L), state);
+        add("getAndIncrementLongUpdater", bean, b -> TelemetryRegistry.getAndIncrementLongUpdater(LONG_UPDATER, b),
+                LONG_UPDATER::getAndIncrement, state);
+        add("incrementAndGetLongUpdater", bean, b -> TelemetryRegistry.incrementAndGetLongUpdater(LONG_UPDATER, b),
+                LONG_UPDATER::incrementAndGet, state);
+        add("getAndDecrementLongUpdater", bean, b -> TelemetryRegistry.getAndDecrementLongUpdater(LONG_UPDATER, b),
+                LONG_UPDATER::getAndDecrement, state);
+        add("decrementAndGetLongUpdater", bean, b -> TelemetryRegistry.decrementAndGetLongUpdater(LONG_UPDATER, b),
+                LONG_UPDATER::decrementAndGet, state);
+        add("getAndUpdateLongUpdater", bean,
+                b -> TelemetryRegistry.getAndUpdateLongUpdater(LONG_UPDATER, b, t -> t * 3),
+                b -> LONG_UPDATER.getAndUpdate(b, t -> t * 3), state);
+        add("updateAndGetLongUpdater", bean,
+                b -> TelemetryRegistry.updateAndGetLongUpdater(LONG_UPDATER, b, t -> t * 3),
+                b -> LONG_UPDATER.updateAndGet(b, t -> t * 3), state);
+        add("getAndAccumulateLongUpdater", bean,
+                b -> TelemetryRegistry.getAndAccumulateLongUpdater(LONG_UPDATER, b, 2L, (x, y) -> x * 10 + y),
+                b -> LONG_UPDATER.getAndAccumulate(b, 2L, (x, y) -> x * 10 + y), state);
+        add("accumulateAndGetLongUpdater", bean,
+                b -> TelemetryRegistry.accumulateAndGetLongUpdater(LONG_UPDATER, b, 2L, (x, y) -> x * 10 + y),
+                b -> LONG_UPDATER.accumulateAndGet(b, 2L, (x, y) -> x * 10 + y), state);
         addStore("setIntUpdater", bean, b -> TelemetryRegistry.setIntUpdater(INT_UPDATER, b, 7),
                 b -> INT_UPDATER.set(b, 7), state);
         addStore("lazySetIntUpdater", bean, b -> TelemetryRegistry.lazySetIntUpdater(INT_UPDATER, b, 7),

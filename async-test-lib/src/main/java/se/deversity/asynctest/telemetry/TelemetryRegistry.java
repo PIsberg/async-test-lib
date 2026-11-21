@@ -23,6 +23,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
@@ -836,6 +837,322 @@ public final class TelemetryRegistry {
         if (field != null && SpinLocks.isSpinField(field)) {
             SpinLocks.release(receiver, field);
         }
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.get}: the acquire of the store it read, and the check half of a check-then-act (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @return the field's value
+     * @since 1.15.0
+     */
+    public static long getLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterRead(receiver, field);
+        ControlledSchedule.point();
+        long value = erasedLong(updater).get(receiver);
+        longUpdaterLoaded(receiver, field, value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.set}: released under the field's own slot before the store (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param value    the value to store
+     * @since 1.15.0
+     */
+    public static void setLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver, long value) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterStored(receiver, field);
+        ControlledSchedule.point();
+        longUpdaterStoring(receiver, field, value);
+        erasedLong(updater).set(receiver, value);
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.lazySet}: released under the field's own slot before the store (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param value    the value to store
+     * @since 1.15.0
+     */
+    public static void lazySetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver, long value) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterStored(receiver, field);
+        ControlledSchedule.point();
+        longUpdaterStoring(receiver, field, value);
+        erasedLong(updater).lazySet(receiver, value);
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.compareAndSet}: a won swap releases what it stored (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean compareAndSetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver,
+                                                   long expected, long update) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, field);
+        ControlledSchedule.point();
+        boolean won = erasedLong(updater).compareAndSet(receiver, expected, update);
+        if (won) {
+            longUpdaterStoring(receiver, field, update);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.getAndSet}: the store releases and the previous value acquires (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param value    the value to store
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndSetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver, long value) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, field);
+        ControlledSchedule.point();
+        longUpdaterStoring(receiver, field, value);
+        long previous = erasedLong(updater).getAndSet(receiver, value);
+        longUpdaterLoaded(receiver, field, previous);
+        return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.getAndAdd}: the act half of a check-then-act, run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param delta    the value to add
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndAddLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver, long delta) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, field);
+        ControlledSchedule.point();
+        return longUpdaterAddPublishing(erasedLong(updater), receiver, field, delta, true);
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.addAndGet}: the act half of a check-then-act, run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param delta    the value to add
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static long addAndGetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver, long delta) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, field);
+        ControlledSchedule.point();
+        return longUpdaterAddPublishing(erasedLong(updater), receiver, field, delta, false);
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.getAndIncrement}: the act half of a check-then-act, run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndIncrementLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, field);
+        ControlledSchedule.point();
+        return longUpdaterAddPublishing(erasedLong(updater), receiver, field, 1L, true);
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.incrementAndGet}: the act half of a check-then-act, run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static long incrementAndGetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, field);
+        ControlledSchedule.point();
+        return longUpdaterAddPublishing(erasedLong(updater), receiver, field, 1L, false);
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.getAndDecrement}: the act half of a check-then-act, run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndDecrementLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, field);
+        ControlledSchedule.point();
+        return longUpdaterAddPublishing(erasedLong(updater), receiver, field, -1L, true);
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.decrementAndGet}: the act half of a check-then-act, run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static long decrementAndGetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, field);
+        ControlledSchedule.point();
+        return longUpdaterAddPublishing(erasedLong(updater), receiver, field, -1L, false);
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.getAndUpdate}: run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param function the update, applied again after a lost swap as the JDK's own loop does
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndUpdateLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver,
+                                     LongUnaryOperator function) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, field);
+        ControlledSchedule.point();
+        return longUpdaterUpdatePublishing(erasedLong(updater), receiver, field, function, true);
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.updateAndGet}: run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param function the update, applied again after a lost swap as the JDK's own loop does
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static long updateAndGetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver,
+                                     LongUnaryOperator function) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, field);
+        ControlledSchedule.point();
+        return longUpdaterUpdatePublishing(erasedLong(updater), receiver, field, function, false);
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.getAndAccumulate}: run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param operand  the function's second argument
+     * @param function the accumulator, applied to the current value and {@code operand}
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndAccumulateLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver,
+                                         long operand, LongBinaryOperator function) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, field);
+        ControlledSchedule.point();
+        return longUpdaterUpdatePublishing(erasedLong(updater), receiver, field,
+                c -> function.applyAsLong(c, operand), true);
+    }
+
+    /**
+     * Weaves {@code AtomicLongFieldUpdater.accumulateAndGet}: run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param operand  the function's second argument
+     * @param function the accumulator, applied to the current value and {@code operand}
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static long accumulateAndGetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver,
+                                         long operand, LongBinaryOperator function) {
+        String field = SpinLocks.longFieldOf(updater);
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, field);
+        ControlledSchedule.point();
+        return longUpdaterUpdatePublishing(erasedLong(updater), receiver, field,
+                c -> function.applyAsLong(c, operand), false);
+    }
+
+    /** {@link #updaterStoring} for a long field (#1317). */
+    private static void longUpdaterStoring(@Nullable Object receiver, @Nullable String field, long value) {
+        if (receiver != null && field != null) {
+            HappensBefore.releaseVolatile(receiver, field, value);
+        }
+    }
+
+    /** {@link #updaterLoaded} for a long field (#1317). */
+    private static void longUpdaterLoaded(@Nullable Object receiver, @Nullable String field, long value) {
+        if (receiver != null && field != null) {
+            HappensBefore.acquireVolatile(receiver, field, value);
+        }
+    }
+
+    /**
+     * {@link #updaterAddPublishing} for an {@code AtomicLongFieldUpdater} (#1317).
+     *
+     * @return the previous value when {@code previous}, else the updated one
+     */
+    private static long longUpdaterAddPublishing(AtomicLongFieldUpdater<Object> target, Object receiver,
+                                                 @Nullable String field, long delta, boolean previous) {
+        if (receiver == null || field == null) {
+            return previous ? target.getAndAdd(receiver, delta) : target.addAndGet(receiver, delta);
+        }
+        for (;;) {
+            long seen = target.get(receiver);
+            long next = seen + delta;
+            HappensBefore.releaseVolatile(receiver, field, next);
+            if (target.compareAndSet(receiver, seen, next)) {
+                return previous ? seen : next;
+            }
+            HappensBefore.withdrawVolatile(receiver, field);
+        }
+    }
+
+    /**
+     * {@link #updaterUpdatePublishing} for an {@code AtomicLongFieldUpdater} (#1317).
+     *
+     * @return the previous value when {@code previous}, else the updated one
+     */
+    private static long longUpdaterUpdatePublishing(AtomicLongFieldUpdater<Object> target, Object receiver,
+                                                    @Nullable String field, LongUnaryOperator function,
+                                                    boolean previous) {
+        if (receiver == null || field == null) {
+            return previous ? target.getAndUpdate(receiver, function) : target.updateAndGet(receiver, function);
+        }
+        for (;;) {
+            long seen = target.get(receiver);
+            long next = function.applyAsLong(seen);
+            HappensBefore.releaseVolatile(receiver, field, next);
+            if (target.compareAndSet(receiver, seen, next)) {
+                return previous ? seen : next;
+            }
+            HappensBefore.withdrawVolatile(receiver, field);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static AtomicLongFieldUpdater<Object> erasedLong(AtomicLongFieldUpdater<?> updater) {
+        return (AtomicLongFieldUpdater<Object>) updater;
     }
 
     /**

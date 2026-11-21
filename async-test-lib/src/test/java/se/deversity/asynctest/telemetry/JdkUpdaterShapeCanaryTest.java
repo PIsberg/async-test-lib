@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,6 +30,7 @@ class JdkUpdaterShapeCanaryTest {
     static final class Flag {
         volatile int busy;
         volatile Object slot;
+        volatile long tally;
     }
 
     private static final String HOW_TO_FIX = " SpinLocks.describe(AtomicIntegerFieldUpdater) reads this "
@@ -91,6 +93,36 @@ class JdkUpdaterShapeCanaryTest {
         } catch (NoSuchMethodException e) {
             fail(ReferenceSlots.UPDATER_IMPL + " has no (Class, Class, String, Class) constructor any more."
                     + REFERENCE_HOW_TO_FIX, e);
+        }
+    }
+
+    // ---- AtomicLongFieldUpdater, which SpinLocks.longFieldOf reads the same way (#1275, #1317) --
+
+    private static final String LONG_HOW_TO_FIX = " SpinLocks.longFieldOf reads this to name the field a "
+            + "long updater reaches; on this JDK its slots would silently keep no clock and no "
+            + "check-then-act key. Update SpinLocks before shipping on " + Runtime.version() + ".";
+
+    @Test
+    @DisplayName("the JDK still hands out the long updater implementation SpinLocks reads")
+    void theLongUpdaterImplementationIsTheOneRead() {
+        Class<?> impl = AtomicLongFieldUpdater.newUpdater(Flag.class, "tally").getClass();
+        assertEquals(SpinLocks.LONG_UPDATER_IMPL, impl.getName(),
+                "AtomicLongFieldUpdater.newUpdater now returns " + impl.getName() + "." + LONG_HOW_TO_FIX);
+        assertEquals(null, impl.getClassLoader(),
+                "the implementation is no longer a bootstrap class." + LONG_HOW_TO_FIX);
+    }
+
+    @Test
+    @DisplayName("the long updater keeps its offset and tclass fields and (Class, String, Class) constructor")
+    void theLongUpdaterKeepsItsShape() throws ClassNotFoundException {
+        Class<?> impl = Class.forName(SpinLocks.LONG_UPDATER_IMPL);
+        assertInstanceField(impl, SpinLocks.UPDATER_OFFSET, long.class);
+        assertInstanceField(impl, SpinLocks.UPDATER_TARGET, Class.class);
+        try {
+            impl.getDeclaredConstructor(Class.class, String.class, Class.class);
+        } catch (NoSuchMethodException e) {
+            fail(SpinLocks.LONG_UPDATER_IMPL + " has no (Class, String, Class) constructor any more."
+                    + LONG_HOW_TO_FIX, e);
         }
     }
 

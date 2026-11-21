@@ -411,6 +411,49 @@ class AtomicFlagPublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("an AtomicLongFieldUpdater.set publishes to its get (#1317)")
+    void aLongUpdaterSetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongUpdaterSet, AtomicFlagBean::bumpAfterLongUpdaterGet);
+    }
+
+    @Test
+    @DisplayName("a won AtomicLongFieldUpdater.compareAndSet publishes to its get (#1317)")
+    void aLongUpdaterCompareAndSetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongUpdaterCompareAndSet, AtomicFlagBean::bumpAfterLongUpdaterGet);
+    }
+
+    @Test
+    @DisplayName("an AtomicLongFieldUpdater.addAndGet publishes to its get (#1317)")
+    void aLongUpdaterAddAndGetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongUpdaterAddAndGet, AtomicFlagBean::bumpAfterLongUpdaterGet);
+    }
+
+    @Test
+    @DisplayName("an AtomicLongFieldUpdater.updateAndGet publishes to its get (#1317)")
+    void aLongUpdaterUpdateAndGetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongUpdaterUpdateAndGet, AtomicFlagBean::bumpAfterLongUpdaterGet);
+    }
+
+    @Test
+    @DisplayName("a direct volatile long write is acquired by a long updater get (#1317)")
+    void aDirectLongWriteIsAcquiredByALongUpdaterGet() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughDirectLongVolatileWrite, AtomicFlagBean::bumpAfterLongUpdaterGet);
+    }
+
+    @Test
+    @DisplayName("a long updater set is acquired by a direct volatile read (#1317)")
+    void aLongUpdaterSetIsAcquiredByADirectRead() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongUpdaterSet, AtomicFlagBean::bumpAfterDirectLongVolatileRead);
+    }
+
+    @Test
+    @DisplayName("the woven long updater forms return what the JDK's do (#1317)")
+    void theWovenLongUpdaterFormsReturnWhatTheJdksDo() {
+        assertEquals("5,5,8,8,8,8,14,14,18,18,36,true,4", new AtomicFlagBean().longUpdaterArithmeticTrace(),
+                "each form, run as a releasing compare-and-set loop, returns the JDK's value");
+    }
+
+    @Test
     @DisplayName("the woven updater forms return what the JDK's do (#1317)")
     void theWovenUpdaterFormsReturnWhatTheJdksDo() {
         assertEquals("5,5,8,8,8,8,14,14,18,18,36,true,4", new AtomicFlagBean().updaterArithmeticTrace(),

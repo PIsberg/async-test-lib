@@ -95,6 +95,7 @@ final class FieldAccessWeaver {
     /** Internal names of the call-site owners whose spinlock calls are substituted (#554, #558). */
     private static final String VAR_HANDLE = "java/lang/invoke/VarHandle";
     private static final String INT_UPDATER = "java/util/concurrent/atomic/AtomicIntegerFieldUpdater";
+    private static final String LONG_UPDATER = "java/util/concurrent/atomic/AtomicLongFieldUpdater";
     private static final String ATOMIC_BOOLEAN = "java/util/concurrent/atomic/AtomicBoolean";
     private static final String ATOMIC_INTEGER = "java/util/concurrent/atomic/AtomicInteger";
     private static final String ATOMIC_LONG = "java/util/concurrent/atomic/AtomicLong";
@@ -125,6 +126,28 @@ final class FieldAccessWeaver {
             Map.entry("updateAndGet", "(Ljava/lang/Object;" + UNARY + ")I"),
             Map.entry("getAndAccumulate", "(Ljava/lang/Object;I" + BINARY + ")I"),
             Map.entry("accumulateAndGet", "(Ljava/lang/Object;I" + BINARY + ")I"));
+
+    /**
+     * The {@code AtomicLongFieldUpdater} calls substituted; the hook is the name plus
+     * {@code LongUpdater} (#1275, #1317). Every form that orders or checks something: the deprecated
+     * {@code weakCompareAndSet} has plain semantics and is left alone.
+     */
+    private static final Map<String, String> LONG_UPDATER_FORMS = Map.ofEntries(
+            Map.entry("get", "(Ljava/lang/Object;)J"),
+            Map.entry("set", "(Ljava/lang/Object;J)V"),
+            Map.entry("lazySet", "(Ljava/lang/Object;J)V"),
+            Map.entry("compareAndSet", "(Ljava/lang/Object;JJ)Z"),
+            Map.entry("getAndSet", "(Ljava/lang/Object;J)J"),
+            Map.entry("getAndAdd", "(Ljava/lang/Object;J)J"),
+            Map.entry("addAndGet", "(Ljava/lang/Object;J)J"),
+            Map.entry("getAndIncrement", "(Ljava/lang/Object;)J"),
+            Map.entry("incrementAndGet", "(Ljava/lang/Object;)J"),
+            Map.entry("getAndDecrement", "(Ljava/lang/Object;)J"),
+            Map.entry("decrementAndGet", "(Ljava/lang/Object;)J"),
+            Map.entry("getAndUpdate", "(Ljava/lang/Object;Ljava/util/function/LongUnaryOperator;)J"),
+            Map.entry("updateAndGet", "(Ljava/lang/Object;Ljava/util/function/LongUnaryOperator;)J"),
+            Map.entry("getAndAccumulate", "(Ljava/lang/Object;JLjava/util/function/LongBinaryOperator;)J"),
+            Map.entry("accumulateAndGet", "(Ljava/lang/Object;JLjava/util/function/LongBinaryOperator;)J"));
 
     /** The {@code AtomicBoolean} calls substituted; the hook is the name plus {@code AtomicBoolean}. */
     private static final Map<String, String> ATOMIC_BOOLEAN_FORMS = Map.ofEntries(
@@ -1117,6 +1140,7 @@ final class FieldAccessWeaver {
             return switch (owner) {
                 case VAR_HANDLE -> varHandleHook(name, descriptor);
                 case INT_UPDATER -> atomicHook(INT_UPDATER_FORMS, name, descriptor, "IntUpdater");
+                case LONG_UPDATER -> atomicHook(LONG_UPDATER_FORMS, name, descriptor, "LongUpdater");
                 case ATOMIC_BOOLEAN -> atomicHook(ATOMIC_BOOLEAN_FORMS, name, descriptor, "AtomicBoolean");
                 case ATOMIC_INTEGER -> atomicHook(ATOMIC_INTEGER_FORMS, name, descriptor, "AtomicInteger");
                 case ATOMIC_LONG -> atomicHook(ATOMIC_LONG_FORMS, name, descriptor, "AtomicLong");

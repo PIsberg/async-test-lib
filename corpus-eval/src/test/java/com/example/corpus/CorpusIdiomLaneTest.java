@@ -48,6 +48,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
@@ -3058,6 +3059,65 @@ class CorpusIdiomLaneTest {
                     admissions.handshake.letAPeerOvertake();
                 }
                 UpdatedAdmissions.ADMITTED.incrementAndGet(admissions);
+            }
+            if (turn.ticket() == 1) {
+                admissions.handshake.overtook();
+            }
+        });
+    }
+
+    /** {@link Admissions} with the count in a volatile long a long updater reaches (#1275). */
+    private static final class LongUpdatedAdmissions {
+        static final AtomicLongFieldUpdater<LongUpdatedAdmissions> ADMITTED =
+                AtomicLongFieldUpdater.newUpdater(LongUpdatedAdmissions.class, "admitted");
+        volatile long admitted;
+        final Admissions handshake = new Admissions();
+    }
+
+    private static final Rounds<LongUpdatedAdmissions> CAS_LONG_ADMISSIONS = new Rounds<>(LongUpdatedAdmissions::new);
+    private static final Rounds<LongUpdatedAdmissions> CHECKED_LONG_ADMISSIONS = new Rounds<>(LongUpdatedAdmissions::new);
+
+    /** The compareAndSet loop through a long updater. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_longUpdaterAdmission_compareAndSetLoop() {
+        correct(() -> {
+            Turn<LongUpdatedAdmissions> turn = CAS_LONG_ADMISSIONS.next();
+            LongUpdatedAdmissions admissions = turn.shared();
+            if (turn.ticket() == 1) {
+                admissions.handshake.awaitAPeersCheck();
+            }
+            boolean first = true;
+            for (;;) {
+                long now = LongUpdatedAdmissions.ADMITTED.get(admissions);
+                if (first && turn.ticket() == 0) {
+                    admissions.handshake.letAPeerOvertake();
+                }
+                first = false;
+                if (now >= Admissions.LIMIT
+                        || LongUpdatedAdmissions.ADMITTED.compareAndSet(admissions, now, now + 1L)) {
+                    break;
+                }
+            }
+            if (turn.ticket() == 1) {
+                admissions.handshake.overtook();
+            }
+        });
+    }
+
+    /** The check-then-increment through a long updater. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_longUpdaterAdmission_checkThenIncrement() {
+        broken(() -> {
+            Turn<LongUpdatedAdmissions> turn = CHECKED_LONG_ADMISSIONS.next();
+            LongUpdatedAdmissions admissions = turn.shared();
+            if (turn.ticket() == 1) {
+                admissions.handshake.awaitAPeersCheck();
+            }
+            if (LongUpdatedAdmissions.ADMITTED.get(admissions) < Admissions.LIMIT) {
+                if (turn.ticket() == 0) {
+                    admissions.handshake.letAPeerOvertake();
+                }
+                LongUpdatedAdmissions.ADMITTED.incrementAndGet(admissions);
             }
             if (turn.ticket() == 1) {
                 admissions.handshake.overtook();

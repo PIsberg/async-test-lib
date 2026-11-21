@@ -4,6 +4,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
 /**
  * A plain field published by a primitive atomic used as a completion flag (#1315).
@@ -27,6 +28,63 @@ public class AtomicFlagBean {
 
     static final AtomicIntegerFieldUpdater<AtomicFlagBean> GATE =
             AtomicIntegerFieldUpdater.newUpdater(AtomicFlagBean.class, "gate");
+
+    /** A volatile long reached both directly and through {@link #TALLY} (#1317). */
+    public volatile long tally;
+
+    static final AtomicLongFieldUpdater<AtomicFlagBean> TALLY =
+            AtomicLongFieldUpdater.newUpdater(AtomicFlagBean.class, "tally");
+
+    public void publishThroughLongUpdaterSet() {
+        data = data + 1;
+        TALLY.set(this, 5L);
+    }
+
+    public void publishThroughLongUpdaterCompareAndSet() {
+        data = data + 1;
+        TALLY.compareAndSet(this, 0L, 5L);
+    }
+
+    public void publishThroughLongUpdaterAddAndGet() {
+        data = data + 1;
+        TALLY.addAndGet(this, 5L);
+    }
+
+    public void publishThroughLongUpdaterUpdateAndGet() {
+        data = data + 1;
+        TALLY.updateAndGet(this, t -> t + 5L);
+    }
+
+    public void publishThroughDirectLongVolatileWrite() {
+        data = data + 1;
+        tally = 5L;
+    }
+
+    public int bumpAfterLongUpdaterGet() {
+        if (TALLY.get(this) < 1L) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    public int bumpAfterDirectLongVolatileRead() {
+        if (tally < 1L) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    /** Every long updater form on {@link #tally} from 0, joined: what the woven loops must return. */
+    public String longUpdaterArithmeticTrace() {
+        return TALLY.addAndGet(this, 5L) + "," + TALLY.getAndAdd(this, 2L) + "," + TALLY.incrementAndGet(this)
+                + "," + TALLY.getAndIncrement(this) + "," + TALLY.decrementAndGet(this)
+                + "," + TALLY.getAndDecrement(this) + "," + TALLY.updateAndGet(this, t -> t * 2L)
+                + "," + TALLY.getAndUpdate(this, t -> t + 1L) + "," + TALLY.accumulateAndGet(this, 3L, Long::sum)
+                + "," + TALLY.getAndAccumulate(this, 2L, (a, b) -> a * b) + "," + TALLY.getAndSet(this, 1L)
+                + "," + TALLY.compareAndSet(this, 1L, 4L) + "," + TALLY.get(this);
+    }
 
     // --- An AtomicIntegerFieldUpdater slot, and the same field read or written directly (#1317) ---
 
