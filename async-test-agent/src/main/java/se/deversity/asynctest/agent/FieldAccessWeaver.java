@@ -124,8 +124,9 @@ final class FieldAccessWeaver {
 
     /** The {@code AtomicBoolean} calls substituted; the hook is the name plus {@code AtomicBoolean}. */
     private static final Map<String, String> ATOMIC_BOOLEAN_FORMS = Map.ofEntries(
-            // A volatile read: the acquire of the store it returned (#1315).
+            // A volatile read: the acquire of the store it returned (#1315), and getAcquire (#1317).
             Map.entry("get", "()Z"),
+            Map.entry("getAcquire", "()Z"),
             Map.entry("compareAndSet", "(ZZ)Z"),
             Map.entry("getAndSet", "(Z)Z"),
             Map.entry("set", "(Z)V"),
@@ -145,6 +146,10 @@ final class FieldAccessWeaver {
     /** The {@code AtomicInteger} calls substituted; the hook is the name plus {@code AtomicInteger}. */
     private static final Map<String, String> ATOMIC_INTEGER_FORMS = Map.ofEntries(
             Map.entry("get", "()I"),
+            // The other acquiring reads, each the acquire of the store it returned (#1317).
+            Map.entry("getAcquire", "()I"),
+            Map.entry("intValue", "()I"),
+            Map.entry("longValue", "()J"),
             // Never a release: the act half of a check-then-act (#1249).
             Map.entry("incrementAndGet", "()I"),
             Map.entry("getAndIncrement", "()I"),
@@ -178,6 +183,10 @@ final class FieldAccessWeaver {
      */
     private static final Map<String, String> ATOMIC_LONG_FORMS = Map.ofEntries(
             Map.entry("get", "()J"),
+            // The other acquiring reads, each the acquire of the store it returned (#1317).
+            Map.entry("getAcquire", "()J"),
+            Map.entry("longValue", "()J"),
+            Map.entry("intValue", "()I"),
             Map.entry("set", "(J)V"),
             Map.entry("lazySet", "(J)V"),
             Map.entry("setRelease", "(J)V"),
@@ -228,28 +237,41 @@ final class FieldAccessWeaver {
     /**
      * The {@code AtomicReferenceFieldUpdater} calls substituted; the hook is the name plus
      * {@code ReferenceUpdater}. {@code get}, a volatile read, acquires the store whose value it
-     * returned (#741).
+     * returned (#741). The update and accumulate forms run as that get and the woven
+     * compareAndSet, as the {@code AtomicReference} ones do (#1336).
      */
     private static final Map<String, String> REFERENCE_UPDATER_FORMS = Map.of(
             "get", "(" + OBJECT + ")" + OBJECT,
             "set", "(" + OBJECT + OBJECT + ")V",
             "lazySet", "(" + OBJECT + OBJECT + ")V",
             "compareAndSet", "(" + OBJECT + OBJECT + OBJECT + ")Z",
-            "getAndSet", "(" + OBJECT + OBJECT + ")" + OBJECT);
+            "getAndSet", "(" + OBJECT + OBJECT + ")" + OBJECT,
+            "updateAndGet", "(" + OBJECT + "Ljava/util/function/UnaryOperator;)" + OBJECT,
+            "getAndUpdate", "(" + OBJECT + "Ljava/util/function/UnaryOperator;)" + OBJECT,
+            "accumulateAndGet", "(" + OBJECT + OBJECT + "Ljava/util/function/BinaryOperator;)" + OBJECT,
+            "getAndAccumulate", "(" + OBJECT + OBJECT + "Ljava/util/function/BinaryOperator;)" + OBJECT);
 
     /**
      * The {@code AtomicReferenceArray} calls substituted; the hook is the name plus
      * {@code ReferenceArray}. {@code get} and {@code getAcquire} acquire the store of that element
-     * whose value they returned (#741).
+     * whose value they returned (#741). The update, accumulate, exchange and weak-volatile forms
+     * run as that get and the woven compareAndSet, as the {@code AtomicReference} ones do (#1336);
+     * {@code weakCompareAndSetPlain} and the deprecated {@code weakCompareAndSet} are left alone.
      */
-    private static final Map<String, String> REFERENCE_ARRAY_FORMS = Map.of(
-            "get", "(I)" + OBJECT,
-            "getAcquire", "(I)" + OBJECT,
-            "set", "(I" + OBJECT + ")V",
-            "lazySet", "(I" + OBJECT + ")V",
-            "setRelease", "(I" + OBJECT + ")V",
-            "compareAndSet", "(I" + OBJECT + OBJECT + ")Z",
-            "getAndSet", "(I" + OBJECT + ")" + OBJECT);
+    private static final Map<String, String> REFERENCE_ARRAY_FORMS = Map.ofEntries(
+            Map.entry("get", "(I)" + OBJECT),
+            Map.entry("getAcquire", "(I)" + OBJECT),
+            Map.entry("set", "(I" + OBJECT + ")V"),
+            Map.entry("lazySet", "(I" + OBJECT + ")V"),
+            Map.entry("setRelease", "(I" + OBJECT + ")V"),
+            Map.entry("compareAndSet", "(I" + OBJECT + OBJECT + ")Z"),
+            Map.entry("getAndSet", "(I" + OBJECT + ")" + OBJECT),
+            Map.entry("updateAndGet", "(ILjava/util/function/UnaryOperator;)" + OBJECT),
+            Map.entry("getAndUpdate", "(ILjava/util/function/UnaryOperator;)" + OBJECT),
+            Map.entry("accumulateAndGet", "(I" + OBJECT + "Ljava/util/function/BinaryOperator;)" + OBJECT),
+            Map.entry("getAndAccumulate", "(I" + OBJECT + "Ljava/util/function/BinaryOperator;)" + OBJECT),
+            Map.entry("compareAndExchange", "(I" + OBJECT + OBJECT + ")" + OBJECT),
+            Map.entry("weakCompareAndSetVolatile", "(I" + OBJECT + OBJECT + ")Z"));
 
     /**
      * The {@code AtomicStampedReference} calls substituted; the hook is the name plus
@@ -1218,6 +1240,9 @@ final class FieldAccessWeaver {
                     case "getAndSet" -> arguments.length == 3 && isReference(result);
                     // The acquiring reads (#741); a plain or opaque get orders nothing.
                     case "getVolatile", "getAcquire" -> arguments.length == 2 && isReference(result);
+                    // The volatile exchange and weak swap (#1336); the one-sided flavours stay unwoven.
+                    case "compareAndExchange" -> arguments.length == 4 && isReference(result);
+                    case "weakCompareAndSet" -> arguments.length == 4 && result.getSort() == Type.BOOLEAN;
                     default -> false;
                 };
                 return matches ? name + "ArrayReferenceHandle" : null;
@@ -1234,6 +1259,8 @@ final class FieldAccessWeaver {
                 case "compareAndSet" -> arguments.length == 3 && result.getSort() == Type.BOOLEAN;
                 case "getAndSet" -> arguments.length == 2 && isReference(result);
                 case "getVolatile", "getAcquire" -> arguments.length == 1 && isReference(result);
+                case "compareAndExchange" -> arguments.length == 3 && isReference(result);
+                case "weakCompareAndSet" -> arguments.length == 3 && result.getSort() == Type.BOOLEAN;
                 default -> false;
             };
             if (instanceMatches) {
@@ -1245,6 +1272,8 @@ final class FieldAccessWeaver {
                 case "compareAndSet" -> arguments.length == 2 && result.getSort() == Type.BOOLEAN;
                 case "getAndSet" -> arguments.length == 1 && isReference(result);
                 case "getVolatile", "getAcquire" -> arguments.length == 0 && isReference(result);
+                case "compareAndExchange" -> arguments.length == 2 && isReference(result);
+                case "weakCompareAndSet" -> arguments.length == 2 && result.getSort() == Type.BOOLEAN;
                 default -> false;
             };
             return staticMatches ? name + "StaticReferenceHandle" : null;
@@ -1260,15 +1289,17 @@ final class FieldAccessWeaver {
          * <p>An atomic's hook takes the atomic and then the call's own erased parameters. A
          * {@code VarHandle} hook takes the handle and one {@code Object} per operand (plus the
          * {@code int} index for an array element), and returns {@code Object} for a
-         * {@code getAndSet} or an acquiring read, which {@link #castToCallSiteResult} narrows back.
+         * {@code getAndSet}, an acquiring read or a {@code compareAndExchange} (#1336), which
+         * {@link #castToCallSiteResult} narrows back.
          */
         private static String referenceSlotHookDescriptor(String owner, String hook,
                                                           String descriptor) {
             if (!VAR_HANDLE.equals(owner)) {
                 return "(L" + owner + ";" + descriptor.substring(1);
             }
-            String result = hook.startsWith("get") ? "Ljava/lang/Object;"
-                    : hook.startsWith("compareAndSet") ? "Z" : "V";
+            String result = hook.startsWith("get") || hook.startsWith("compareAndExchange")
+                    ? "Ljava/lang/Object;"
+                    : hook.startsWith("compareAndSet") || hook.startsWith("weakCompareAndSet") ? "Z" : "V";
             if (hook.endsWith("ArrayReferenceHandle")) {
                 return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;I"
                         + "Ljava/lang/Object;".repeat(Type.getArgumentTypes(descriptor).length - 2)

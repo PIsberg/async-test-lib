@@ -7,6 +7,8 @@ import se.deversity.asynctest.AsyncTest;
 import se.deversity.asynctest.AsyncTestContext;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -46,6 +48,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.StampedLock;
@@ -1118,6 +1122,124 @@ class CorpusIdiomLaneTest {
             for (;;) {
                 Config fresh = new Config();
                 fresh.setPort(seen == null ? 1 : seen.getPort() + 1);
+                Config witness = reference.value;
+                if (witness == seen) {
+                    reference.value = fresh;
+                    break;
+                }
+                seen = witness;
+            }
+            use(reference.value.getPort());
+        });
+    }
+
+    // --- The same publication through an array element or a field updater (#1336) ------------
+
+    private static final Rounds<AtomicReferenceArray<Config>> UPDATED_ELEMENTS =
+            new Rounds<>(() -> new AtomicReferenceArray<>(1));
+    private static final Rounds<PlainReference> REPLACED_ELEMENTS = new Rounds<>(PlainReference::new);
+    private static final Rounds<UpdatedHolder> UPDATED_HOLDERS = new Rounds<>(UpdatedHolder::new);
+    private static final Rounds<PlainReference> REPLACED_HOLDERS = new Rounds<>(PlainReference::new);
+
+    /** A config slot reached through an {@code AtomicReferenceFieldUpdater}. */
+    private static final class UpdatedHolder {
+        static final AtomicReferenceFieldUpdater<UpdatedHolder, Config> VALUE =
+                AtomicReferenceFieldUpdater.newUpdater(UpdatedHolder.class, Config.class, "value");
+
+        volatile Config value;
+    }
+
+    /** {@return a successor of {@code old}, its port set after construction} */
+    private static Config successorOf(Config old) {
+        Config fresh = new Config();
+        fresh.setPort(old == null ? 1 : old.getPort() + 1);
+        return fresh;
+    }
+
+    /** Every thread replaces element 0 with a successor it builds inside the array's updateAndGet. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_arrayUpdateAndGet_buildsTheSuccessorInTheFunction() {
+        correct(() -> {
+            AtomicReferenceArray<Config> slots = UPDATED_ELEMENTS.next().shared();
+            Config mine = slots.updateAndGet(0, CorpusIdiomLaneTest::successorOf);
+            use(mine.getPort() + slots.get(0).getPort());
+        });
+    }
+
+    /** The same replacement through a plain field: read, build, assign. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_arrayUpdateAndGet_plainFieldReadThenAssign() {
+        broken(() -> {
+            PlainReference reference = REPLACED_ELEMENTS.next().shared();
+            reference.value = successorOf(reference.value);
+            use(reference.value.getPort());
+        });
+    }
+
+    /** Every thread replaces the holder's config with a successor built inside the updater's updateAndGet. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_updaterUpdateAndGet_buildsTheSuccessorInTheFunction() {
+        correct(() -> {
+            UpdatedHolder holder = UPDATED_HOLDERS.next().shared();
+            Config mine = UpdatedHolder.VALUE.updateAndGet(holder, CorpusIdiomLaneTest::successorOf);
+            use(mine.getPort() + UpdatedHolder.VALUE.get(holder).getPort());
+        });
+    }
+
+    /** The same replacement through a plain field: read, build, assign. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_updaterUpdateAndGet_plainFieldReadThenAssign() {
+        broken(() -> {
+            PlainReference reference = REPLACED_HOLDERS.next().shared();
+            reference.value = successorOf(reference.value);
+            use(reference.value.getPort());
+        });
+    }
+
+    private static final Rounds<HandledHolder> EXCHANGED_HOLDERS = new Rounds<>(HandledHolder::new);
+    private static final Rounds<PlainReference> COMPARED_HOLDERS = new Rounds<>(PlainReference::new);
+
+    /** A config slot reached through a {@code VarHandle} on a volatile field. */
+    private static final class HandledHolder {
+        static final VarHandle VALUE;
+
+        static {
+            try {
+                VALUE = MethodHandles.lookup().findVarHandle(HandledHolder.class, "value", Config.class);
+            } catch (ReflectiveOperationException e) {
+                throw new ExceptionInInitializerError(e);
+            }
+        }
+
+        volatile Config value;
+    }
+
+    /** The compareAndExchange loop through a VarHandle, carrying on from the witness. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_varHandleCompareAndExchange_retriesFromTheWitness() {
+        correct(() -> {
+            HandledHolder holder = EXCHANGED_HOLDERS.next().shared();
+            Config seen = (Config) HandledHolder.VALUE.getVolatile(holder);
+            for (;;) {
+                Config fresh = successorOf(seen);
+                Config witness = (Config) HandledHolder.VALUE.compareAndExchange(holder, seen, fresh);
+                if (witness == seen) {
+                    break;
+                }
+                seen = witness;
+            }
+            use(((Config) HandledHolder.VALUE.getVolatile(holder)).getPort());
+        });
+    }
+
+    /** The same loop through a plain field: compare what is there, then assign. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_varHandleCompareAndExchange_plainFieldCompareThenAssign() {
+        broken(() -> {
+            PlainReference reference = COMPARED_HOLDERS.next().shared();
+            Config seen = reference.value;
+            for (;;) {
+                Config fresh = successorOf(seen);
                 Config witness = reference.value;
                 if (witness == seen) {
                     reference.value = fresh;

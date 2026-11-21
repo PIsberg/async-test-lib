@@ -161,7 +161,14 @@ class SpinLockHookTableTest {
                 new String[] {"getVolatile", "()" + chunk},
                 new String[] {"getAcquire", "()" + chunk},
                 new String[] {"getVolatile", "([Ljava/lang/Object;I)" + chunk},
-                new String[] {"getAcquire", "([Ljava/lang/Object;I)" + chunk})) {
+                new String[] {"getAcquire", "([Ljava/lang/Object;I)" + chunk},
+                // The volatile exchange and weak swap (#1336): instance, static and array element.
+                new String[] {"compareAndExchange", "(" + receiver + chunk + chunk + ")" + chunk},
+                new String[] {"weakCompareAndSet", "(" + receiver + chunk + chunk + ")Z"},
+                new String[] {"compareAndExchange", "(" + chunk + chunk + ")" + chunk},
+                new String[] {"weakCompareAndSet", "(" + chunk + chunk + ")Z"},
+                new String[] {"compareAndExchange", "([Ljava/lang/Object;I" + chunk + chunk + ")" + chunk},
+                new String[] {"weakCompareAndSet", "([Ljava/lang/Object;I" + chunk + chunk + ")Z"})) {
             FieldAccessWeaver.Substitution substitution =
                     FieldAccessWeaver.referenceSlotSubstitution(handle, call[0], call[1]);
             assertTrue(substitution != null, "VarHandle." + call[0] + call[1] + " must be substituted");
@@ -176,7 +183,11 @@ class SpinLockHookTableTest {
                 new String[] {"set", "(" + receiver + "I)V"},
                 // A plain or opaque read orders nothing, so it is left alone.
                 new String[] {"get", "(" + receiver + ")" + chunk},
-                new String[] {"getOpaque", "(" + receiver + ")" + chunk})) {
+                new String[] {"getOpaque", "(" + receiver + ")" + chunk},
+                // Plain, and still not woven: the one-sided flavours (#1336).
+                new String[] {"weakCompareAndSetPlain", "(" + receiver + chunk + chunk + ")Z"},
+                new String[] {"compareAndExchangeAcquire", "(" + receiver + chunk + chunk + ")" + chunk},
+                new String[] {"weakCompareAndSetRelease", "(" + receiver + chunk + chunk + ")Z"})) {
             assertTrue(FieldAccessWeaver.referenceSlotSubstitution(handle, untouched[0], untouched[1]) == null,
                     "not a reference slot the weaver observes: VarHandle." + untouched[0] + untouched[1]);
         }
@@ -202,8 +213,18 @@ class SpinLockHookTableTest {
             assertTrue(substituted.contains(form), form + " stores with a volatile write, so the object "
                     + "it stores is published to the get that returns it (#1334); substituted: " + substituted);
         }
+        for (String form : List.of("AtomicReferenceArray.updateAndGet", "AtomicReferenceArray.getAndUpdate",
+                "AtomicReferenceArray.accumulateAndGet", "AtomicReferenceArray.getAndAccumulate",
+                "AtomicReferenceArray.compareAndExchange", "AtomicReferenceArray.weakCompareAndSetVolatile",
+                "AtomicReferenceFieldUpdater.updateAndGet", "AtomicReferenceFieldUpdater.getAndUpdate",
+                "AtomicReferenceFieldUpdater.accumulateAndGet", "AtomicReferenceFieldUpdater.getAndAccumulate")) {
+            assertTrue(substituted.contains(form), form + " stores with a volatile write, so the object "
+                    + "it stores is published to the get that returns it (#1336); substituted: " + substituted);
+        }
         for (String form : List.of("AtomicReference.weakCompareAndSetPlain", "AtomicReference.weakCompareAndSet",
-                "AtomicReference.setPlain", "AtomicReference.getPlain")) {
+                "AtomicReference.setPlain", "AtomicReference.getPlain",
+                "AtomicReferenceArray.weakCompareAndSetPlain", "AtomicReferenceArray.weakCompareAndSet",
+                "AtomicReferenceArray.setPlain", "AtomicReferenceArray.getPlain")) {
             assertTrue(!substituted.contains(form), form + " has plain memory semantics and orders "
                     + "nothing: substituting it as a release would hide an unsafe publication");
         }

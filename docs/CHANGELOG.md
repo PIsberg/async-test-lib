@@ -65,6 +65,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`getAcquire`, `intValue` and `longValue` on a primitive atomic acquire like `get` (#1317,
+  part).** With the agent attached, a field published through a store into an `AtomicBoolean`,
+  `AtomicInteger` or `AtomicLong` and read after `getAcquire()`, `intValue()` or `longValue()`
+  saw the stored value was reported by `AtomicityValidator` as an unordered publication on
+  correct code: only `get` acquired. All seven reads are now woven and acquire what the store of
+  the value they returned published; the `AtomicInteger` and `AtomicLong` ones are also the check
+  half of a check-then-act, as `get` is. `AtomicFlagPublicationWeavingTest`.
+
+- **An object published through an `AtomicReferenceArray` or `AtomicReferenceFieldUpdater`
+  update function is ordered (#1336, part).** With the agent attached, an element replaced by a
+  successor built inside `AtomicReferenceArray.updateAndGet` (or `getAndUpdate`,
+  `accumulateAndGet`, `getAndAccumulate`, `compareAndExchange`, `weakCompareAndSetVolatile`),
+  or a field replaced through an `AtomicReferenceFieldUpdater`'s update or accumulate forms, was
+  reported by `AtomicityValidator` at PROMPT when another thread read the successor's state
+  through the slot: these forms stored with a volatile write that released nothing. Both new
+  must-stay-silent corpus idiom rows were reported before. Each form now runs as the woven `get`
+  and the woven `compareAndSet`, as `AtomicReference`'s have since #1334. So do a reference
+  `VarHandle`'s `compareAndExchange` and `weakCompareAndSet` (volatile on a handle), on an
+  instance field, a static field or an array element, which a third idiom row measured as
+  reported before. The one-sided acquire and release flavours stay open on #1336.
+  `TelemetryRegistryHooksMatchTheJdkTest`, `SpinLockHookTableTest`.
+
+- **A lost attempt of an atomic increment, add or update withdraws the release it made (#1316,
+  part).** The woven arithmetic and update forms of `AtomicInteger` and `AtomicLong` release the
+  value they are about to store before each compare-and-set attempt. An attempt that lost to
+  another thread storing the same value left its release as the atomic's latest, so a `get` that
+  saw the winner's value was ordered after the loser's earlier writes too, an edge the program
+  does not have, which could hide a race on them. The attempt now withdraws its release
+  (`HappensBefore.withdrawVolatile`) while it is still the latest. When the winner released after
+  the loser, the winner's release has already folded the loser's in; that order stays open on
+  #1316. `AgentHappensBeforeFeedTest`.
+
+- **An `addAll` into a concurrent set or other non-queue collection publishes only what went in
+  (#1425).** The woven `addAll` released every element before the call and, outside queues,
+  withdrew nothing, so an element a set refused (an equal one was already there) or that a call
+  throwing part way never added stayed published, and a thread that reached it some other way was
+  ordered after the producer by a hand-off that never happened, which could hide a race. The
+  single-slot `HappensBefore.retract` could not have helped: it keeps only the last release and
+  forgets it at the next stamped access, which an element's own `equals` makes inside the call.
+  Each element's release is now handed back (`HappensBefore.releaseWithdrawable`) and withdrawn
+  for every element when the call returns `false`, and for every element the collection does not
+  hold by identity when it throws. `AgentHappensBeforeFeedTest`.
+
+- **The rest of the store forms of an `AtomicBoolean`, `AtomicInteger` or `AtomicLong` publish (#1317, part).**
+  Since #1315 `set`, `getAndSet`, `compareAndSet` and the arithmetic forms released and `get`
+  acquired. A field published through `lazySet`, `setRelease`, `updateAndGet` and the other
+  update and accumulate forms, or a won `compareAndExchange` or volatile or release weak
+  compare-and-set, and read after a `get` that saw the value, was reported as an unordered
+  publication on correct code. Those forms release now, and the value `getAndSet` returns and a
+  `compareAndExchange` witness acquire. The value an add or update returns deliberately acquires
+  nothing: a counter every thread bumps collects every bumper's clock, and handing it to each
+  bumper filled a 2 GB heap within seconds in the corpus idioms lane (`AtomicCounterClockTest`).
+  The plain and opaque forms still order nothing, as the memory model says.
+  `AtomicFlagPublicationWeavingTest`.
 - **A `FutureTask` run by a `ThreadGroup` or stack-size `Thread` constructor, or by a `Thread`
   subclass's `super(task)`, is ordered before its `get` (#1401).** Since #1350 the agent handed
   over the target of `new Thread(task)` and `new Thread(task, name)` only, so the same task run
@@ -173,8 +227,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hold it did have (the read hold, when the write view was unlocked by mistake); it now records no
   release, and still reaches the try-lock detector. And an interrupted `lockInterruptibly` under a
   controlled schedule gave back a hold the schedule never granted, leaving its table saying a lock
-  the worker held was free. A failed multi-element `addAll` still withdraws only its last
-  element's release (#1425). `AgentHookExceptionPathsTest`, `ControlledScheduleAbandonedAcquireTest`.
+  the worker held was free. `AgentHookExceptionPathsTest`, `ControlledScheduleAbandonedAcquireTest`.
 
 - **A handler that restores the interrupt flag inside an outer `catch` is no longer reported as
   swallowing it (#1417).** With `collections=true`, the interrupt-handler walk followed an edge to

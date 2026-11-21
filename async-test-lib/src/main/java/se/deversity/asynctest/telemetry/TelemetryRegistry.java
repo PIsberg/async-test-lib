@@ -883,6 +883,7 @@ public final class TelemetryRegistry {
         }
         primitiveSlotStoring(flag, value ? 1 : 0);
         boolean previous = flag.getAndSet(value);
+        HappensBefore.acquireVolatile(flag, SLOT_VALUE, previous ? 1 : 0);
         if (value && !previous) {
             SpinLocks.acquire(flag);
         }
@@ -901,6 +902,21 @@ public final class TelemetryRegistry {
     public static boolean getAtomicBoolean(AtomicBoolean flag) {
         ControlledSchedule.point();
         boolean value = flag.get();
+        HappensBefore.acquireVolatile(flag, SLOT_VALUE, value ? 1 : 0);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicBoolean.getAcquire}, an acquiring read: it takes what the store of the
+     * value it returned published, as {@link #getAtomicBoolean} does (#1317).
+     *
+     * @param flag the flag the call site read
+     * @return the flag's value
+     * @since 1.15.0
+     */
+    public static boolean getAcquireAtomicBoolean(AtomicBoolean flag) {
+        ControlledSchedule.point();
+        boolean value = flag.getAcquire();
         HappensBefore.acquireVolatile(flag, SLOT_VALUE, value ? 1 : 0);
         return value;
     }
@@ -927,9 +943,11 @@ public final class TelemetryRegistry {
      * known before the store and can be released first (#1315). An arithmetic update's result is
      * not on the stack, and a release made after the store would leave a reader that saw the new
      * value in between nothing to acquire, which a reader spinning on a completion counter does
-     * often. An attempt that loses the swap has released a value it did not store; the thread
-     * stores its own on the next turn of the loop, and until then a reader of the winner's value
-     * is ordered after this thread too.
+     * often. An attempt that loses the swap has released a value it did not store, and withdraws
+     * that release while it is still the atomic's latest (#1316). When the winner released after
+     * it, the winner's release has folded this thread's in, and until the thread stores its own
+     * value on the next turn of the loop a reader of the winner's value is ordered after this
+     * thread too.
      *
      * @return the updated value
      */
@@ -941,6 +959,34 @@ public final class TelemetryRegistry {
             if (count.compareAndSet(seen, next)) {
                 return next;
             }
+            HappensBefore.withdrawVolatile(count, SLOT_VALUE);
+        }
+    }
+
+    /**
+     * {@code getAndUpdate}, {@code updateAndGet} and the accumulate forms as
+     * {@link #addPublishing(AtomicInteger, int)} does an add (#1317): the value about to be stored
+     * is released before the swap. The function is re-applied after a lost swap, as the JDK's own
+     * loop may re-apply it, so it must be free of side effects either way.
+     *
+     * <p>The value read does not acquire, here or in an add. A counter bumped by every thread
+     * collects every bumper's clock in its releases, and a bump that acquired would hand that whole
+     * clock to each bumping thread and to every access it records afterwards: a static counter
+     * bumped once per body execution filled a 2 GB heap within seconds (AtomicCounterClockTest).
+     * A {@code get} of the counter still acquires.
+     *
+     * @return the previous value when {@code previous}, else the updated one
+     */
+    private static int updatePublishing(AtomicInteger count, IntUnaryOperator function,
+                                        boolean previous) {
+        for (;;) {
+            int seen = count.get();
+            int next = function.applyAsInt(seen);
+            primitiveSlotStoring(count, next);
+            if (count.compareAndSet(seen, next)) {
+                return previous ? seen : next;
+            }
+            HappensBefore.withdrawVolatile(count, SLOT_VALUE);
         }
     }
 
@@ -953,6 +999,7 @@ public final class TelemetryRegistry {
             if (count.compareAndSet(seen, next)) {
                 return next;
             }
+            HappensBefore.withdrawVolatile(count, SLOT_VALUE);
         }
     }
 
@@ -972,6 +1019,7 @@ public final class TelemetryRegistry {
         if (!value) {
             SpinLocks.release(flag);
         }
+        primitiveSlotStoring(flag, value ? 1 : 0);
         flag.lazySet(value);
     }
 
@@ -1014,6 +1062,44 @@ public final class TelemetryRegistry {
         int value = count.get();
         HappensBefore.acquireVolatile(count, SLOT_VALUE, value);
         return value;
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.getAcquire}, an acquiring read and the check half of a
+     * check-then-act like {@link #getAtomicInteger} (#1317).
+     *
+     * @param count the atomic the call site read
+     * @return the atomic's value
+     * @since 1.15.0
+     */
+    public static int getAcquireAtomicInteger(AtomicInteger count) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicRead(count);
+        int value = count.getAcquire();
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.intValue}, which is {@code get} (#1317).
+     *
+     * @param count the atomic the call site read
+     * @return the atomic's value
+     * @since 1.15.0
+     */
+    public static int intValueAtomicInteger(AtomicInteger count) {
+        return getAtomicInteger(count);
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.longValue}, which is {@code get} widened (#1317).
+     *
+     * @param count the atomic the call site read
+     * @return the atomic's value as a {@code long}
+     * @since 1.15.0
+     */
+    public static long longValueAtomicInteger(AtomicInteger count) {
+        return getAtomicInteger(count);
     }
 
     /**
@@ -1135,6 +1221,44 @@ public final class TelemetryRegistry {
         return value;
     }
 
+    /**
+     * Weaves {@code AtomicLong.getAcquire}, an acquiring read and the check half of a
+     * check-then-act like {@link #getAtomicLong} (#1317).
+     *
+     * @param count the atomic the call site read
+     * @return the atomic's value
+     * @since 1.15.0
+     */
+    public static long getAcquireAtomicLong(AtomicLong count) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicRead(count);
+        long value = count.getAcquire();
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicLong.longValue}, which is {@code get} (#1317).
+     *
+     * @param count the atomic the call site read
+     * @return the atomic's value
+     * @since 1.15.0
+     */
+    public static long longValueAtomicLong(AtomicLong count) {
+        return getAtomicLong(count);
+    }
+
+    /**
+     * Weaves {@code AtomicLong.intValue}, which is {@code get} narrowed (#1317).
+     *
+     * @param count the atomic the call site read
+     * @return the atomic's value narrowed to an {@code int}, as the JDK's own method does
+     * @since 1.15.0
+     */
+    public static int intValueAtomicLong(AtomicLong count) {
+        return (int) getAtomicLong(count);
+    }
+
     /** Weaves {@code AtomicLong.set}. @param count the atomic @param value the value @since 1.14.1 */
     public static void setAtomicLong(AtomicLong count, long value) {
         ControlledSchedule.point();
@@ -1161,6 +1285,7 @@ public final class TelemetryRegistry {
     public static void lazySetAtomicLongUnrelated(AtomicLong count, long value) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicSwapped(count);
+        primitiveSlotStoring(count, value);
         count.lazySet(value);
     }
 
@@ -1168,6 +1293,7 @@ public final class TelemetryRegistry {
     public static void setReleaseAtomicLongUnrelated(AtomicLong count, long value) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicSwapped(count);
+        primitiveSlotStoring(count, value);
         count.setRelease(value);
     }
 
@@ -1178,6 +1304,7 @@ public final class TelemetryRegistry {
         if (value == 0) {
             SpinLocks.release(count);
         }
+        primitiveSlotStoring(count, value);
         count.lazySet(value);
     }
 
@@ -1208,6 +1335,7 @@ public final class TelemetryRegistry {
         if (value == 0) {
             SpinLocks.release(count);
         }
+        primitiveSlotStoring(count, value);
         count.setRelease(value);
     }
 
@@ -1215,6 +1343,7 @@ public final class TelemetryRegistry {
     public static void lazySetAtomicLong(AtomicLong count, long value) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicStored(count);
+        primitiveSlotStoring(count, value);
         count.lazySet(value);
     }
 
@@ -1222,6 +1351,7 @@ public final class TelemetryRegistry {
     public static void setReleaseAtomicLong(AtomicLong count, long value) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicStored(count);
+        primitiveSlotStoring(count, value);
         count.setRelease(value);
     }
 
@@ -1256,7 +1386,11 @@ public final class TelemetryRegistry {
     public static boolean weakCompareAndSetVolatileAtomicLong(AtomicLong count, long expected, long update) {
         ControlledSchedule.point();
         AgentConcurrencyUtilHooks.atomicSwapped(count);
-        return count.weakCompareAndSetVolatile(expected, update);
+        boolean won = count.weakCompareAndSetVolatile(expected, update);
+        if (won) {
+            primitiveSlotStoring(count, update);
+        }
+        return won;
     }
 
     /** Weaves {@code AtomicInteger.set}; storing 0 releases. @param count the atomic @param value the value @since 1.12.1 */
@@ -1295,6 +1429,7 @@ public final class TelemetryRegistry {
         if (value == 0) {
             SpinLocks.release(count);
         }
+        primitiveSlotStoring(count, value);
         count.lazySet(value);
     }
 
@@ -1534,6 +1669,7 @@ public final class TelemetryRegistry {
         ControlledSchedule.point();
         primitiveSlotStoring(count, value);
         int previous = count.getAndSet(value);
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, previous);
         if (value != 1) {
             SpinLocks.release(count);
         }
@@ -1623,6 +1759,10 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int witness = count.compareAndExchange(expected, update);
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, witness);
+        if (witness == expected) {
+            primitiveSlotStoring(count, update);
+        }
         if (witness == expected && update != 1) {
             SpinLocks.release(count);
         }
@@ -1664,6 +1804,9 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         boolean won = count.weakCompareAndSetVolatile(expected, update);
+        if (won) {
+            primitiveSlotStoring(count, update);
+        }
         if (won && update != 1) {
             SpinLocks.release(count);
         }
@@ -1683,6 +1826,10 @@ public final class TelemetryRegistry {
                                                           boolean update) {
         ControlledSchedule.point();
         boolean witness = flag.compareAndExchange(expected, update);
+        HappensBefore.acquireVolatile(flag, SLOT_VALUE, witness ? 1 : 0);
+        if (witness == expected) {
+            primitiveSlotStoring(flag, update ? 1 : 0);
+        }
         if (witness == expected && !update) {
             SpinLocks.release(flag);
         }
@@ -1721,6 +1868,9 @@ public final class TelemetryRegistry {
                                                                  boolean expected, boolean update) {
         ControlledSchedule.point();
         boolean won = flag.weakCompareAndSetVolatile(expected, update);
+        if (won) {
+            primitiveSlotStoring(flag, update ? 1 : 0);
+        }
         if (won && !update) {
             SpinLocks.release(flag);
         }
@@ -2169,6 +2319,7 @@ public final class TelemetryRegistry {
         if (value == 0) {
             SpinLocks.release(count);
         }
+        primitiveSlotStoring(count, value);
         count.setRelease(value);
     }
 
@@ -2227,6 +2378,9 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         boolean won = count.weakCompareAndSetRelease(expected, update);
+        if (won) {
+            primitiveSlotStoring(count, update);
+        }
         if (won && update != 1) {
             SpinLocks.release(count);
         }
@@ -2247,6 +2401,7 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int witness = count.compareAndExchangeAcquire(expected, update);
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, witness);
         if (witness == expected && update != 1) {
             SpinLocks.release(count);
         }
@@ -2267,6 +2422,9 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
         int witness = count.compareAndExchangeRelease(expected, update);
+        if (witness == expected) {
+            primitiveSlotStoring(count, update);
+        }
         if (witness == expected && update != 1) {
             SpinLocks.release(count);
         }
@@ -2285,7 +2443,7 @@ public final class TelemetryRegistry {
     public static int getAndUpdateAtomicInteger(AtomicInteger count, IntUnaryOperator function) {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
-        int previous = count.getAndUpdate(function);
+        int previous = updatePublishing(count, function, true);
         if (count.get() != 1) {
             SpinLocks.release(count);
         }
@@ -2303,7 +2461,7 @@ public final class TelemetryRegistry {
     public static int updateAndGetAtomicInteger(AtomicInteger count, IntUnaryOperator function) {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
-        int current = count.updateAndGet(function);
+        int current = updatePublishing(count, function, false);
         if (current != 1) {
             SpinLocks.release(count);
         }
@@ -2324,7 +2482,7 @@ public final class TelemetryRegistry {
                                                     IntBinaryOperator function) {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
-        int previous = count.getAndAccumulate(operand, function);
+        int previous = updatePublishing(count, c -> function.applyAsInt(c, operand), true);
         if (count.get() != 1) {
             SpinLocks.release(count);
         }
@@ -2344,7 +2502,7 @@ public final class TelemetryRegistry {
                                                     IntBinaryOperator function) {
         AgentConcurrencyUtilHooks.atomicSwapped(count);
         ControlledSchedule.point();
-        int current = count.accumulateAndGet(operand, function);
+        int current = updatePublishing(count, c -> function.applyAsInt(c, operand), false);
         if (current != 1) {
             SpinLocks.release(count);
         }
@@ -2393,6 +2551,7 @@ public final class TelemetryRegistry {
         if (!value) {
             SpinLocks.release(flag);
         }
+        primitiveSlotStoring(flag, value ? 1 : 0);
         flag.setRelease(value);
     }
 
@@ -2449,6 +2608,9 @@ public final class TelemetryRegistry {
                                                                 boolean update) {
         ControlledSchedule.point();
         boolean won = flag.weakCompareAndSetRelease(expected, update);
+        if (won) {
+            primitiveSlotStoring(flag, update ? 1 : 0);
+        }
         if (won && !update) {
             SpinLocks.release(flag);
         }
@@ -2468,6 +2630,7 @@ public final class TelemetryRegistry {
                                                                  boolean update) {
         ControlledSchedule.point();
         boolean witness = flag.compareAndExchangeAcquire(expected, update);
+        HappensBefore.acquireVolatile(flag, SLOT_VALUE, witness ? 1 : 0);
         if (witness == expected && !update) {
             SpinLocks.release(flag);
         }
@@ -2487,6 +2650,9 @@ public final class TelemetryRegistry {
                                                                  boolean update) {
         ControlledSchedule.point();
         boolean witness = flag.compareAndExchangeRelease(expected, update);
+        if (witness == expected) {
+            primitiveSlotStoring(flag, update ? 1 : 0);
+        }
         if (witness == expected && !update) {
             SpinLocks.release(flag);
         }
@@ -3120,6 +3286,349 @@ public final class TelemetryRegistry {
                                                                    @Nullable Object expected,
                                                                    @Nullable Object update) {
         return compareAndSetAtomicReference(slot, expected, update);
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.updateAndGet} as {@link #updateAndGetAtomicReference}
+     * does the atomic's: the woven get of the element, then the woven compareAndSet, so the
+     * reference the function returns is published and its argument acquired (#1336).
+     *
+     * @param slots  the array the call site invoked
+     * @param index  the element
+     * @param update the function applied to the current reference, again after a lost swap
+     * @return the reference stored
+     * @since 1.15.0
+     */
+    public static @Nullable Object updateAndGetReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                              UnaryOperator<Object> update) {
+        for (;;) {
+            Object seen = getReferenceArray(slots, index);
+            Object next = update.apply(seen);
+            if (compareAndSetReferenceArray(slots, index, seen, next)) {
+                return next;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.getAndUpdate}, as {@link #updateAndGetReferenceArray}.
+     *
+     * @param slots  the array the call site invoked
+     * @param index  the element
+     * @param update the function applied to the current reference, again after a lost swap
+     * @return the reference replaced
+     * @since 1.15.0
+     */
+    public static @Nullable Object getAndUpdateReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                              UnaryOperator<Object> update) {
+        for (;;) {
+            Object seen = getReferenceArray(slots, index);
+            if (compareAndSetReferenceArray(slots, index, seen, update.apply(seen))) {
+                return seen;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.accumulateAndGet}, as {@link #updateAndGetReferenceArray}.
+     *
+     * @param slots       the array the call site invoked
+     * @param index       the element
+     * @param given       the function's second argument
+     * @param accumulator the function applied to the current reference and {@code given}
+     * @return the reference stored
+     * @since 1.15.0
+     */
+    public static @Nullable Object accumulateAndGetReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                                  @Nullable Object given,
+                                                                  BinaryOperator<Object> accumulator) {
+        for (;;) {
+            Object seen = getReferenceArray(slots, index);
+            Object next = accumulator.apply(seen, given);
+            if (compareAndSetReferenceArray(slots, index, seen, next)) {
+                return next;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.getAndAccumulate}, as {@link #updateAndGetReferenceArray}.
+     *
+     * @param slots       the array the call site invoked
+     * @param index       the element
+     * @param given       the function's second argument
+     * @param accumulator the function applied to the current reference and {@code given}
+     * @return the reference replaced
+     * @since 1.15.0
+     */
+    public static @Nullable Object getAndAccumulateReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                                  @Nullable Object given,
+                                                                  BinaryOperator<Object> accumulator) {
+        for (;;) {
+            Object seen = getReferenceArray(slots, index);
+            if (compareAndSetReferenceArray(slots, index, seen, accumulator.apply(seen, given))) {
+                return seen;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.compareAndExchange} as
+     * {@link #compareAndExchangeAtomicReference} does the atomic's (#1336): a won exchange is the
+     * woven compareAndSet; a lost one returns what the element held, read with the woven get.
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the reference the element must hold
+     * @param update   the reference to store
+     * @return {@code expected} when the exchange happened, otherwise what the element held
+     * @since 1.15.0
+     */
+    @SuppressWarnings("ReferenceEquality") // the element compares by identity
+    public static @Nullable Object compareAndExchangeReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                                    @Nullable Object expected,
+                                                                    @Nullable Object update) {
+        for (;;) {
+            if (compareAndSetReferenceArray(slots, index, expected, update)) {
+                return expected;
+            }
+            Object witness = getReferenceArray(slots, index);
+            if (witness != expected) { // NOPMD CompareObjectsWithEquals - the element compares by identity
+                return witness;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceArray.weakCompareAndSetVolatile} as the strong swap, which a
+     * weak one may always be (#1336). {@code weakCompareAndSetPlain} and the deprecated
+     * {@code weakCompareAndSet} have plain memory semantics and stay unwoven.
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the reference the element must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetVolatileReferenceArray(AtomicReferenceArray<Object> slots, int index,
+                                                                  @Nullable Object expected,
+                                                                  @Nullable Object update) {
+        return compareAndSetReferenceArray(slots, index, expected, update);
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceFieldUpdater.updateAndGet} as
+     * {@link #updateAndGetAtomicReference} does the atomic's: the woven get of the receiver's
+     * slot, then the woven compareAndSet (#1336).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param update   the function applied to the current reference, again after a lost swap
+     * @return the reference stored
+     * @since 1.15.0
+     */
+    public static @Nullable Object updateAndGetReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
+                                                                Object receiver, UnaryOperator<Object> update) {
+        for (;;) {
+            Object seen = getReferenceUpdater(updater, receiver);
+            Object next = update.apply(seen);
+            if (compareAndSetReferenceUpdater(updater, receiver, seen, next)) {
+                return next;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceFieldUpdater.getAndUpdate}, as {@link #updateAndGetReferenceUpdater}.
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param update   the function applied to the current reference, again after a lost swap
+     * @return the reference replaced
+     * @since 1.15.0
+     */
+    public static @Nullable Object getAndUpdateReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
+                                                                Object receiver, UnaryOperator<Object> update) {
+        for (;;) {
+            Object seen = getReferenceUpdater(updater, receiver);
+            if (compareAndSetReferenceUpdater(updater, receiver, seen, update.apply(seen))) {
+                return seen;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceFieldUpdater.accumulateAndGet}, as
+     * {@link #updateAndGetReferenceUpdater}.
+     *
+     * @param updater     the updater the call site invoked
+     * @param receiver    the object whose field is the slot
+     * @param given       the function's second argument
+     * @param accumulator the function applied to the current reference and {@code given}
+     * @return the reference stored
+     * @since 1.15.0
+     */
+    public static @Nullable Object accumulateAndGetReferenceUpdater(
+            AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
+            @Nullable Object given, BinaryOperator<Object> accumulator) {
+        for (;;) {
+            Object seen = getReferenceUpdater(updater, receiver);
+            Object next = accumulator.apply(seen, given);
+            if (compareAndSetReferenceUpdater(updater, receiver, seen, next)) {
+                return next;
+            }
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicReferenceFieldUpdater.getAndAccumulate}, as
+     * {@link #updateAndGetReferenceUpdater}.
+     *
+     * @param updater     the updater the call site invoked
+     * @param receiver    the object whose field is the slot
+     * @param given       the function's second argument
+     * @param accumulator the function applied to the current reference and {@code given}
+     * @return the reference replaced
+     * @since 1.15.0
+     */
+    public static @Nullable Object getAndAccumulateReferenceUpdater(
+            AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
+            @Nullable Object given, BinaryOperator<Object> accumulator) {
+        for (;;) {
+            Object seen = getReferenceUpdater(updater, receiver);
+            if (compareAndSetReferenceUpdater(updater, receiver, seen, accumulator.apply(seen, given))) {
+                return seen;
+            }
+        }
+    }
+
+    /**
+     * Weaves a reference {@code VarHandle.compareAndExchange} on an instance field as
+     * {@link #compareAndExchangeAtomicReference} does the atomic's (#1336): a won exchange is the
+     * woven compareAndSet; a lost one returns what the field held, read with the woven
+     * {@code getVolatile}.
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param expected the reference the field must hold
+     * @param update   the reference to store
+     * @return {@code expected} when the exchange happened, otherwise what the field held
+     * @since 1.15.0
+     */
+    @SuppressWarnings("ReferenceEquality") // the field compares by identity
+    public static @Nullable Object compareAndExchangeReferenceHandle(VarHandle handle, Object receiver,
+                                                                     @Nullable Object expected,
+                                                                     @Nullable Object update) {
+        for (;;) {
+            if (compareAndSetReferenceHandle(handle, receiver, expected, update)) {
+                return expected;
+            }
+            Object witness = getVolatileReferenceHandle(handle, receiver);
+            if (witness != expected) { // NOPMD CompareObjectsWithEquals - the field compares by identity
+                return witness;
+            }
+        }
+    }
+
+    /**
+     * Weaves a reference {@code VarHandle.weakCompareAndSet} on an instance field, which has
+     * volatile semantics on a handle, as the strong swap a weak one may always be (#1336).
+     * {@code weakCompareAndSetPlain} and the acquire and release flavours stay unwoven.
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field is the slot
+     * @param expected the reference the field must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetReferenceHandle(VarHandle handle, Object receiver,
+                                                           @Nullable Object expected,
+                                                           @Nullable Object update) {
+        return compareAndSetReferenceHandle(handle, receiver, expected, update);
+    }
+
+    /**
+     * {@link #compareAndExchangeReferenceHandle} for a static field (#1336).
+     *
+     * @param handle   the handle the call site invoked
+     * @param expected the reference the field must hold
+     * @param update   the reference to store
+     * @return {@code expected} when the exchange happened, otherwise what the field held
+     * @since 1.15.0
+     */
+    @SuppressWarnings("ReferenceEquality") // the field compares by identity
+    public static @Nullable Object compareAndExchangeStaticReferenceHandle(VarHandle handle,
+                                                                           @Nullable Object expected,
+                                                                           @Nullable Object update) {
+        for (;;) {
+            if (compareAndSetStaticReferenceHandle(handle, expected, update)) {
+                return expected;
+            }
+            Object witness = getVolatileStaticReferenceHandle(handle);
+            if (witness != expected) { // NOPMD CompareObjectsWithEquals - the field compares by identity
+                return witness;
+            }
+        }
+    }
+
+    /**
+     * {@link #weakCompareAndSetReferenceHandle} for a static field (#1336).
+     *
+     * @param handle   the handle the call site invoked
+     * @param expected the reference the field must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetStaticReferenceHandle(VarHandle handle,
+                                                                 @Nullable Object expected,
+                                                                 @Nullable Object update) {
+        return compareAndSetStaticReferenceHandle(handle, expected, update);
+    }
+
+    /**
+     * {@link #compareAndExchangeReferenceHandle} for an array element (#1336).
+     *
+     * @param handle   the handle the call site invoked
+     * @param array    the array whose element at {@code index} is the slot
+     * @param index    the element
+     * @param expected the reference the element must hold
+     * @param update   the reference to store
+     * @return {@code expected} when the exchange happened, otherwise what the element held
+     * @since 1.15.0
+     */
+    @SuppressWarnings("ReferenceEquality") // the element compares by identity
+    public static @Nullable Object compareAndExchangeArrayReferenceHandle(VarHandle handle, Object array,
+                                                                          int index, @Nullable Object expected,
+                                                                          @Nullable Object update) {
+        for (;;) {
+            if (compareAndSetArrayReferenceHandle(handle, array, index, expected, update)) {
+                return expected;
+            }
+            Object witness = getVolatileArrayReferenceHandle(handle, array, index);
+            if (witness != expected) { // NOPMD CompareObjectsWithEquals - the element compares by identity
+                return witness;
+            }
+        }
+    }
+
+    /**
+     * {@link #weakCompareAndSetReferenceHandle} for an array element (#1336).
+     *
+     * @param handle   the handle the call site invoked
+     * @param array    the array whose element at {@code index} is the slot
+     * @param index    the element
+     * @param expected the reference the element must hold
+     * @param update   the reference to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetArrayReferenceHandle(VarHandle handle, Object array, int index,
+                                                                @Nullable Object expected,
+                                                                @Nullable Object update) {
+        return compareAndSetArrayReferenceHandle(handle, array, index, expected, update);
     }
 
     /**

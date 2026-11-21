@@ -2,6 +2,7 @@ package se.deversity.asynctest;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -920,6 +921,70 @@ class AgentHappensBeforeFeedTest {
     }
 
     @Test
+    @DisplayName("a lost attempt of an atomic update withdraws the release it made (#1316)")
+    void aLostAttemptWithdrawsItsRelease() throws InterruptedException {
+        assertTrue(lostAttemptReported(true),
+                "the updater's first attempt lost the swap to another thread's store of the same "
+                        + "value, so a get that saw that value must not be ordered after the updater");
+        assertFalse(lostAttemptReported(false),
+                "the updater's attempt stored the value the get saw, so its release orders the read");
+    }
+
+    /**
+     * A thread writes the box and runs a woven {@code getAndUpdate} on a count holding 0. With
+     * {@code lost}, the first time the function runs another thread stores 1 through a woven
+     * {@code set}, so the attempt to store the function's 1 releases it and then loses the swap;
+     * the second time, with the count holding the other thread's 1, a reader gets the count and
+     * reads the box. Without {@code lost} the attempt stores 1 itself and the reader runs after
+     * it. Nothing else orders the reader after the box's write (#1316).
+     */
+    private static boolean lostAttemptReported(boolean lost) throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box box = new Box();
+        AtomicInteger count = new AtomicInteger();
+        AtomicReference<String> setUpWrong = new AtomicReference<>();
+        Runnable read = () -> onItsOwnThread(() -> {
+            if (TelemetryRegistry.getAtomicInteger(count) != 1) {
+                setUpWrong.set("the reader did not see 1");
+            }
+            detector.recordFieldRead(box, "value");
+        });
+        AtomicInteger calls = new AtomicInteger();
+        Thread updater = new Thread(() -> {
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            TelemetryRegistry.getAndUpdateAtomicInteger(count, c -> {
+                int call = calls.incrementAndGet();
+                if (lost && call == 1) {
+                    onItsOwnThread(() -> TelemetryRegistry.setAtomicInteger(count, 1));
+                } else if (lost && call == 2) {
+                    read.run();
+                }
+                return c == 0 ? 1 : c + 10;
+            });
+            if (!lost) {
+                read.run();
+            }
+        });
+        updater.start();
+        updater.join();
+        assertNull(setUpWrong.get());
+        assertEquals(lost ? 2 : 1, calls.get(), "the update did not take the intended attempts");
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    /** Runs {@code body} on a new, unwoven thread and waits for it: the start orders nothing. */
+    private static void onItsOwnThread(Runnable body) {
+        Thread thread = new Thread(body);
+        thread.start();
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Test
     @DisplayName("a store into a primitive atomic orders the writer before a get that saw it (#1315)")
     void aPrimitiveAtomicFlagPublishes() throws InterruptedException {
         AtomicBoolean flag = new AtomicBoolean();
@@ -1471,6 +1536,112 @@ class AgentHappensBeforeFeedTest {
                         + "consumer through nothing: the addAll must not have released it");
         assertFalse(batchElementReported(true),
                 "the queue took the first box and the consumer took it out: the hand-off orders them");
+    }
+
+    @Test
+    @DisplayName("an addAll that adds nothing to a set publishes none of its elements (#1425)")
+    void aSetAddAllThatAddsNothingPublishesNothing() throws InterruptedException {
+        assertTrue(setBatchElementReported(true, 0),
+                "the set already held an equal first tag, so the producer's write of this one "
+                        + "reached the consumer through nothing: the addAll must not have released it");
+        assertTrue(setBatchElementReported(true, 1),
+                "the set already held an equal second tag, so the addAll must not have released it");
+    }
+
+    @Test
+    @DisplayName("an addAll into a set that throws part way publishes only what went in (#1425)")
+    void aSetAddAllThatThrowsPartWayPublishesOnlyWhatWentIn() throws InterruptedException {
+        assertTrue(setBatchElementReported(false, 1),
+                "the addAll threw before the second tag went in, so the producer's write of it "
+                        + "reached the consumer through nothing: its release must be withdrawn");
+        assertFalse(setBatchElementReported(false, 0),
+                "the first tag went in before the throw, so its release stays and orders the read");
+    }
+
+    /** An element whose equality is its id, so a set can hold an equal one that is another object. */
+    static final class Tag {
+        final int id;
+        int value;
+
+        Tag(int id) {
+            this.id = id;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            return other instanceof Tag tag && tag.id == id;
+        }
+
+        @Override
+        public int hashCode() {
+            return id;
+        }
+    }
+
+    /**
+     * A producer writes two tags and adds both to a concurrent set through the woven {@code addAll}.
+     * With {@code alreadyHeld} the set holds an equal tag for each, so the call adds nothing and
+     * returns {@code false}; otherwise a {@code null} between the two makes it throw after the
+     * first went in. The consumer reads tag {@code read} through a concurrent map the main thread
+     * published it through before either thread ran, which orders nothing between the two of
+     * them, so only a release the {@code addAll} left in place can order the read (#1425).
+     */
+    private static boolean setBatchElementReported(boolean alreadyHeld, int read)
+            throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Set<Object> set = ConcurrentHashMap.newKeySet();
+        Tag[] tags = {new Tag(1), new Tag(2)};
+        List<Object> batch;
+        if (alreadyHeld) {
+            set.add(new Tag(1));
+            set.add(new Tag(2));
+            batch = List.of(tags[0], tags[1]);
+        } else {
+            batch = Arrays.asList(tags[0], null, tags[1]);
+        }
+        Map<Object, Object> registry = new ConcurrentHashMap<>();
+        AgentCollectionHooks.mapPut(registry, "tag", tags[read]);
+        CountDownLatch handed = new CountDownLatch(1);
+        AtomicReference<String> setUpWrong = new AtomicReference<>();
+        Thread producer = new Thread(() -> {
+            for (Tag tag : tags) {
+                tag.value = 1;
+                detector.recordFieldWrite(tag, "value");
+            }
+            try {
+                if (AgentCollectionHooks.collectionAddAll(set, batch) || !alreadyHeld) {
+                    setUpWrong.set("the addAll changed the set or did not throw");
+                }
+            } catch (NullPointerException partWay) {
+                if (alreadyHeld || !set.contains(tags[0]) || set.contains(tags[1])) {
+                    setUpWrong.set("the addAll did not stop between the two tags");
+                }
+            }
+            handed.countDown(); // unwoven, so it orders nothing as far as the model knows
+        });
+        Thread consumer = new Thread(() -> {
+            Object received;
+            try {
+                handed.await();
+                received = AgentCollectionHooks.mapGet(registry, "tag");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            Tag tag = tags[read];
+            if (received != tag) {
+                setUpWrong.set("the consumer did not receive the tag it reads");
+            }
+            detector.recordFieldRead(tag, "value");
+            tag.value++;
+            detector.recordFieldWrite(tag, "value");
+        });
+        producer.start();
+        consumer.start();
+        producer.join();
+        consumer.join();
+        assertNull(setUpWrong.get());
+        return detector.analyzeRaceConditions().hasIssues();
     }
 
     @Test

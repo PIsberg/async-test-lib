@@ -5727,6 +5727,55 @@ final class Corpus {
                             + "with nothing making the two one step",
                     IssueSeverity.HIGH),
 
+            // --- The same publication through an array element or a field updater (#1336).
+
+            new RecordingSubject("idiom_arrayUpdateAndGet_buildsTheSuccessorInTheFunction", JDK,
+                    "java.util.concurrent.atomic.AtomicReferenceArray",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread replaces a config element with a successor built inside the "
+                            + "array's updateAndGet, its port set after construction and before the "
+                            + "swap. Reported before #1336, when the array's updateAndGet was not woven"),
+
+            new RecordingSubject("idiom_arrayUpdateAndGet_plainFieldReadThenAssign", JDK,
+                    IDIOM_LANE + "PlainReference",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same replacement through a plain field: read, build, assign, with "
+                            + "nothing ordering one thread's assignment before another's read",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_updaterUpdateAndGet_buildsTheSuccessorInTheFunction", JDK,
+                    "java.util.concurrent.atomic.AtomicReferenceFieldUpdater",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same replacement through an AtomicReferenceFieldUpdater's updateAndGet. "
+                            + "Reported before #1336, when the updater's updateAndGet was not woven"),
+
+            new RecordingSubject("idiom_updaterUpdateAndGet_plainFieldReadThenAssign", JDK,
+                    IDIOM_LANE + "PlainReference",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same replacement through a plain field, with nothing ordering one "
+                            + "thread's assignment before another's read",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_varHandleCompareAndExchange_retriesFromTheWitness", JDK,
+                    "java.lang.invoke.VarHandle",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the compareAndExchange loop through a VarHandle on a volatile field, carrying "
+                            + "on from the witness a lost exchange returned. Reported before #1336, "
+                            + "when a handle's compareAndExchange was not woven"),
+
+            new RecordingSubject("idiom_varHandleCompareAndExchange_plainFieldCompareThenAssign", JDK,
+                    IDIOM_LANE + "PlainReference",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same loop through a plain field: compare what is there, then assign, "
+                            + "with nothing making the two one step",
+                    IssueSeverity.HIGH),
+
             // --- A pool that hands out holders (#747): the first pair is a known gap, the second
             //     the declaration that closes it for a user today.
 
