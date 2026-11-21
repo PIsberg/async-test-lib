@@ -8447,6 +8447,64 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * A woven read of a field through an updater, {@link #atomicRead} for a slot that is not an
+     * object of its own (#1275): tracked by the field's key, so every updater and every call
+     * reaching the same field of the same object meet.
+     *
+     * @param receiver the object whose field was read
+     * @param field    the field, {@code declaringClass.name}; {@code null} or empty when the
+     *                 updater could not say, which records nothing
+     */
+    public static void updaterRead(Object receiver, @Nullable String field) {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
+        if (detector != null && receiver != null && field != null && !field.isEmpty()) {
+            detector.agentRead(HappensBefore.fieldKey(receiver, field), field, receiver);
+        }
+    }
+
+    /**
+     * A woven arithmetic update of a field through an updater, {@link #atomicIncremented} for a
+     * slot that is not an object of its own (#1275).
+     *
+     * @param receiver the object whose field was updated
+     * @param field    the field, as {@link #updaterRead} takes it
+     */
+    public static void updaterIncremented(Object receiver, @Nullable String field) {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
+        if (detector != null && receiver != null && field != null && !field.isEmpty()) {
+            detector.agentIncrement(HappensBefore.fieldKey(receiver, field), field, receiver);
+        }
+    }
+
+    /**
+     * A woven atomic swap of a field through an updater, which ends a pending read, as
+     * {@link #atomicSwapped} does for an atomic (#1275).
+     *
+     * @param receiver the object whose field was swapped
+     * @param field    the field, as {@link #updaterRead} takes it
+     */
+    public static void updaterSwapped(Object receiver, @Nullable String field) {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
+        if (detector != null && receiver != null && field != null && !field.isEmpty()) {
+            detector.agentSwap(HappensBefore.fieldKey(receiver, field), field);
+        }
+    }
+
+    /**
+     * A woven plain store to a field through an updater, as {@link #atomicStored} records one to
+     * an atomic (#1275).
+     *
+     * @param receiver the object whose field was written
+     * @param field    the field, as {@link #updaterRead} takes it
+     */
+    public static void updaterStored(Object receiver, @Nullable String field) {
+        AtomicNonAtomicUpdateDetector detector = AsyncTestContext.currentAtomicNonAtomicUpdateDetector();
+        if (detector != null && receiver != null && field != null && !field.isEmpty()) {
+            detector.agentStore(HappensBefore.fieldKey(receiver, field), field, receiver);
+        }
+    }
+
+    /**
      * A woven store to an {@code AtomicReference} (#1174). Only a stored object can have been built
      * from the read, so an enum or a {@code Boolean}, which is a status, or {@code null}, ends the
      * read instead.

@@ -108,6 +108,10 @@ final class FieldAccessWeaver {
      * each is matched on; the hook is the name plus {@code IntUpdater} (#558, #658, #667).
      */
     private static final Map<String, String> INT_UPDATER_FORMS = Map.ofEntries(
+            // The read and the increments, the halves of a check-then-act on the field (#1275).
+            Map.entry("get", "(Ljava/lang/Object;)I"),
+            Map.entry("incrementAndGet", "(Ljava/lang/Object;)I"),
+            Map.entry("getAndIncrement", "(Ljava/lang/Object;)I"),
             Map.entry("compareAndSet", "(Ljava/lang/Object;II)Z"),
             Map.entry("weakCompareAndSet", "(Ljava/lang/Object;II)Z"),
             Map.entry("set", "(Ljava/lang/Object;I)V"),

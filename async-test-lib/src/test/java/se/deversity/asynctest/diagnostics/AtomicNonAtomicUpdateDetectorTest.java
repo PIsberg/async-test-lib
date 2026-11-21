@@ -316,6 +316,34 @@ public class AtomicNonAtomicUpdateDetectorTest {
     }
 
     @Test
+    void aCheckThenIncrementOfAFieldThroughAnUpdaterIsReportedUnderTheFieldsName() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        Object receiver = new Object();
+        Object key = new Object(); // what HappensBefore.fieldKey hands the hooks for receiver's field
+        d.agentRead(key, "Admissions.admitted", receiver);
+        onAnotherThread(() -> d.agentIncrement(key, "Admissions.admitted", receiver));
+        d.agentIncrement(key, "Admissions.admitted", receiver);
+
+        var report = d.analyze();
+        assertTrue(report.hasIssues(), "the same check-then-act as on an atomic, through a field (#1275)");
+        assertTrue(report.toString().contains("Admissions.admitted"),
+                "the finding names the field, not the key object: " + report);
+    }
+
+    @Test
+    void anIncrementOfAnotherFieldDoesNotPairWithTheCheck() throws InterruptedException {
+        var d = new AtomicNonAtomicUpdateDetector();
+        Object receiver = new Object();
+        Object checked = new Object();
+        Object incremented = new Object();
+        d.agentRead(checked, "Admissions.admitted", receiver);
+        onAnotherThread(() -> d.agentIncrement(incremented, "Admissions.rejected", receiver));
+        d.agentIncrement(incremented, "Admissions.rejected", receiver);
+        assertFalse(d.analyze().hasIssues(),
+                "two fields of one object are two slots: a check of one is not the check of the other");
+    }
+
+    @Test
     void aGetThenAnIncrementWithNoWriteBetweenIsCorrect() throws InterruptedException {
         var d = new AtomicNonAtomicUpdateDetector();
         AtomicInteger admitted = new AtomicInteger();

@@ -295,6 +295,12 @@ class TelemetryRegistryHooksMatchTheJdkTest {
         add("getAndAccumulateIntUpdater", bean,
                 b -> TelemetryRegistry.getAndAccumulateIntUpdater(INT_UPDATER, b, 2, (x, y) -> x * 10 + y),
                 b -> INT_UPDATER.getAndAccumulate(b, 2, (x, y) -> x * 10 + y), state);
+        // The read and the increments (#1275).
+        add("getIntUpdater", bean, b -> TelemetryRegistry.getIntUpdater(INT_UPDATER, b), INT_UPDATER::get, state);
+        add("incrementAndGetIntUpdater", bean, b -> TelemetryRegistry.incrementAndGetIntUpdater(INT_UPDATER, b),
+                INT_UPDATER::incrementAndGet, state);
+        add("getAndIncrementIntUpdater", bean, b -> TelemetryRegistry.getAndIncrementIntUpdater(INT_UPDATER, b),
+                INT_UPDATER::getAndIncrement, state);
         add("accumulateAndGetIntUpdater", bean,
                 b -> TelemetryRegistry.accumulateAndGetIntUpdater(INT_UPDATER, b, 2, (x, y) -> x * 10 + y),
                 b -> INT_UPDATER.accumulateAndGet(b, 2, (x, y) -> x * 10 + y), state);

@@ -6476,6 +6476,22 @@ final class Corpus {
                             + "threads that pass the check together admit past the limit (#1249)",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_updaterAdmission_compareAndSetLoop", JDK,
+                    "java.util.concurrent.atomic.AtomicIntegerFieldUpdater",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same admission through an AtomicIntegerFieldUpdater: a get and "
+                            + "compareAndSet loop that re-checks the limit after every lost race"),
+
+            new RecordingSubject("idiom_updaterAdmission_checkThenIncrement", JDK,
+                    "java.util.concurrent.atomic.AtomicIntegerFieldUpdater",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same admission through an AtomicIntegerFieldUpdater: get, then "
+                            + "incrementAndGet, so two threads that pass the check together admit "
+                            + "past the limit. Silent before #1275",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_boundedMembership_sizeThenPutUnderTheMonitor", JDK,
                     "java.util.concurrent.ConcurrentHashMap",
                     DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
