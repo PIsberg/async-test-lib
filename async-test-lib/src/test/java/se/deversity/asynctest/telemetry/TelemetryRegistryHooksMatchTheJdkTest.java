@@ -8,8 +8,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
@@ -135,6 +137,7 @@ class TelemetryRegistryHooksMatchTheJdkTest {
         atomicReferenceCases();
         referenceUpdaterCases();
         referenceArrayCases();
+        atomicArrayCases();
         referenceHandleCases();
         staticReferenceHandleCases();
         arrayReferenceHandleCases();
@@ -653,6 +656,95 @@ class TelemetryRegistryHooksMatchTheJdkTest {
                     s -> expected == A ? untilWon(() -> s.weakCompareAndSetVolatile(1, expected, C))
                             : s.weakCompareAndSetVolatile(1, expected, C), state);
         }
+    }
+
+    // ---- AtomicIntegerArray and AtomicLongArray (#1317) --------------------------------------
+
+    private void atomicArrayCases() {
+        // Index 1 holds 5 and index 0 something else, so a hook reading or writing the wrong index shows.
+        Supplier<AtomicIntegerArray> ints = () -> new AtomicIntegerArray(new int[] {9, 5});
+        Function<AtomicIntegerArray, Object> intState = AtomicIntegerArray::toString;
+        add("getAtomicIntegerArray", ints, a -> TelemetryRegistry.getAtomicIntegerArray(a, 1), a -> a.get(1), intState);
+        add("getAcquireAtomicIntegerArray", ints, a -> TelemetryRegistry.getAcquireAtomicIntegerArray(a, 1),
+                a -> a.getAcquire(1), intState);
+        addStore("setAtomicIntegerArray", ints, a -> TelemetryRegistry.setAtomicIntegerArray(a, 1, 7), a -> a.set(1, 7), intState);
+        addStore("lazySetAtomicIntegerArray", ints, a -> TelemetryRegistry.lazySetAtomicIntegerArray(a, 1, 7),
+                a -> a.lazySet(1, 7), intState);
+        addStore("setReleaseAtomicIntegerArray", ints, a -> TelemetryRegistry.setReleaseAtomicIntegerArray(a, 1, 7),
+                a -> a.setRelease(1, 7), intState);
+        for (int expected : new int[] {5, 4}) {
+            String e = "(1, " + expected + ", 7)";
+            add("compareAndSetAtomicIntegerArray" + e, ints,
+                    a -> TelemetryRegistry.compareAndSetAtomicIntegerArray(a, 1, expected, 7),
+                    a -> a.compareAndSet(1, expected, 7), intState);
+            add("compareAndExchangeAtomicIntegerArray" + e, ints,
+                    a -> TelemetryRegistry.compareAndExchangeAtomicIntegerArray(a, 1, expected, 7),
+                    a -> a.compareAndExchange(1, expected, 7), intState);
+            add("compareAndExchangeAcquireAtomicIntegerArray" + e, ints,
+                    a -> TelemetryRegistry.compareAndExchangeAcquireAtomicIntegerArray(a, 1, expected, 7),
+                    a -> a.compareAndExchangeAcquire(1, expected, 7), intState);
+            add("compareAndExchangeReleaseAtomicIntegerArray" + e, ints,
+                    a -> TelemetryRegistry.compareAndExchangeReleaseAtomicIntegerArray(a, 1, expected, 7),
+                    a -> a.compareAndExchangeRelease(1, expected, 7), intState);
+            add("weakCompareAndSetVolatileAtomicIntegerArray" + e, ints,
+                    a -> expected == 5 ? untilWon(() -> TelemetryRegistry.weakCompareAndSetVolatileAtomicIntegerArray(a, 1, expected, 7))
+                            : TelemetryRegistry.weakCompareAndSetVolatileAtomicIntegerArray(a, 1, expected, 7),
+                    a -> expected == 5 ? untilWon(() -> a.weakCompareAndSetVolatile(1, expected, 7))
+                            : a.weakCompareAndSetVolatile(1, expected, 7), intState);
+            add("weakCompareAndSetReleaseAtomicIntegerArray" + e, ints,
+                    a -> expected == 5 ? untilWon(() -> TelemetryRegistry.weakCompareAndSetReleaseAtomicIntegerArray(a, 1, expected, 7))
+                            : TelemetryRegistry.weakCompareAndSetReleaseAtomicIntegerArray(a, 1, expected, 7),
+                    a -> expected == 5 ? untilWon(() -> a.weakCompareAndSetRelease(1, expected, 7))
+                            : a.weakCompareAndSetRelease(1, expected, 7), intState);
+        }
+        add("getAndSetAtomicIntegerArray", ints, a -> TelemetryRegistry.getAndSetAtomicIntegerArray(a, 1, 7),
+                a -> a.getAndSet(1, 7), intState);
+        add("getAndAddAtomicIntegerArray", ints, a -> TelemetryRegistry.getAndAddAtomicIntegerArray(a, 1, 3),
+                a -> a.getAndAdd(1, 3), intState);
+        add("addAndGetAtomicIntegerArray", ints, a -> TelemetryRegistry.addAndGetAtomicIntegerArray(a, 1, 3),
+                a -> a.addAndGet(1, 3), intState);
+        add("getAndIncrementAtomicIntegerArray", ints, a -> TelemetryRegistry.getAndIncrementAtomicIntegerArray(a, 1),
+                a -> a.getAndIncrement(1), intState);
+        add("incrementAndGetAtomicIntegerArray", ints, a -> TelemetryRegistry.incrementAndGetAtomicIntegerArray(a, 1),
+                a -> a.incrementAndGet(1), intState);
+        add("getAndDecrementAtomicIntegerArray", ints, a -> TelemetryRegistry.getAndDecrementAtomicIntegerArray(a, 1),
+                a -> a.getAndDecrement(1), intState);
+        add("decrementAndGetAtomicIntegerArray", ints, a -> TelemetryRegistry.decrementAndGetAtomicIntegerArray(a, 1),
+                a -> a.decrementAndGet(1), intState);
+        add("getAndUpdateAtomicIntegerArray", ints, a -> TelemetryRegistry.getAndUpdateAtomicIntegerArray(a, 1, x -> x * 3),
+                a -> a.getAndUpdate(1, x -> x * 3), intState);
+        add("updateAndGetAtomicIntegerArray", ints, a -> TelemetryRegistry.updateAndGetAtomicIntegerArray(a, 1, x -> x * 3),
+                a -> a.updateAndGet(1, x -> x * 3), intState);
+        add("getAndAccumulateAtomicIntegerArray", ints,
+                a -> TelemetryRegistry.getAndAccumulateAtomicIntegerArray(a, 1, 2, (x, y) -> x * 10 + y),
+                a -> a.getAndAccumulate(1, 2, (x, y) -> x * 10 + y), intState);
+        add("accumulateAndGetAtomicIntegerArray", ints,
+                a -> TelemetryRegistry.accumulateAndGetAtomicIntegerArray(a, 1, 2, (x, y) -> x * 10 + y),
+                a -> a.accumulateAndGet(1, 2, (x, y) -> x * 10 + y), intState);
+
+        long big = (1L << 40) + 5L;
+        Supplier<AtomicLongArray> longs = () -> new AtomicLongArray(new long[] {9L, big});
+        Function<AtomicLongArray, Object> longState = AtomicLongArray::toString;
+        add("getAtomicLongArray", longs, a -> TelemetryRegistry.getAtomicLongArray(a, 1), a -> a.get(1), longState);
+        addStore("setAtomicLongArray", longs, a -> TelemetryRegistry.setAtomicLongArray(a, 1, 7L), a -> a.set(1, 7L), longState);
+        for (long expected : new long[] {big, 4L}) {
+            String e = "(1, " + expected + ", 7)";
+            add("compareAndSetAtomicLongArray" + e, longs,
+                    a -> TelemetryRegistry.compareAndSetAtomicLongArray(a, 1, expected, 7L),
+                    a -> a.compareAndSet(1, expected, 7L), longState);
+            add("compareAndExchangeAtomicLongArray" + e, longs,
+                    a -> TelemetryRegistry.compareAndExchangeAtomicLongArray(a, 1, expected, 7L),
+                    a -> a.compareAndExchange(1, expected, 7L), longState);
+        }
+        add("getAndSetAtomicLongArray", longs, a -> TelemetryRegistry.getAndSetAtomicLongArray(a, 1, 7L),
+                a -> a.getAndSet(1, 7L), longState);
+        add("getAndAddAtomicLongArray", longs, a -> TelemetryRegistry.getAndAddAtomicLongArray(a, 1, 3L),
+                a -> a.getAndAdd(1, 3L), longState);
+        add("decrementAndGetAtomicLongArray", longs, a -> TelemetryRegistry.decrementAndGetAtomicLongArray(a, 1),
+                a -> a.decrementAndGet(1), longState);
+        add("accumulateAndGetAtomicLongArray", longs,
+                a -> TelemetryRegistry.accumulateAndGetAtomicLongArray(a, 1, 2L, (x, y) -> x * 10 + y),
+                a -> a.accumulateAndGet(1, 2L, (x, y) -> x * 10 + y), longState);
     }
 
     // ---- reference VarHandles: instance field, static field, array element ---------------------

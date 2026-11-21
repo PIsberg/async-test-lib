@@ -22,7 +22,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1249,6 +1251,754 @@ public final class TelemetryRegistry {
             }
             HappensBefore.withdrawVolatile(receiver, field);
         }
+    }
+
+    // ---- AtomicIntegerArray and AtomicLongArray (#1317) ---------------------------------------
+
+    /**
+     * Weaves {@code AtomicIntegerArray.get}: the acquire of the store it read (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @return the element's value
+     * @since 1.15.0
+     */
+    public static int getAtomicIntegerArray(AtomicIntegerArray slots, int index) {
+        ControlledSchedule.point();
+        int value = slots.get(index);
+        arrayLoaded(slots, index, value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.getAcquire}: the acquire of the store it read (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @return the element's value
+     * @since 1.15.0
+     */
+    public static int getAcquireAtomicIntegerArray(AtomicIntegerArray slots, int index) {
+        ControlledSchedule.point();
+        int value = slots.getAcquire(index);
+        arrayLoaded(slots, index, value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.set}: released before the store (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param value    the value to store
+     * @since 1.15.0
+     */
+    public static void setAtomicIntegerArray(AtomicIntegerArray slots, int index, int value) {
+        ControlledSchedule.point();
+        arrayStoring(slots, index, value);
+        slots.set(index, value);
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.lazySet}: released before the store (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param value    the value to store
+     * @since 1.15.0
+     */
+    public static void lazySetAtomicIntegerArray(AtomicIntegerArray slots, int index, int value) {
+        ControlledSchedule.point();
+        arrayStoring(slots, index, value);
+        slots.lazySet(index, value);
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.setRelease}: released before the store (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param value    the value to store
+     * @since 1.15.0
+     */
+    public static void setReleaseAtomicIntegerArray(AtomicIntegerArray slots, int index, int value) {
+        ControlledSchedule.point();
+        arrayStoring(slots, index, value);
+        slots.setRelease(index, value);
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.compareAndSet}: a won swap releases what it stored (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the value the element must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean compareAndSetAtomicIntegerArray(AtomicIntegerArray slots, int index, int expected, int update) {
+        ControlledSchedule.point();
+        boolean won = slots.compareAndSet(index, expected, update);
+        if (won) {
+            arrayStoring(slots, index, update);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.weakCompareAndSetVolatile}: a won swap releases what it stored (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the value the element must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetVolatileAtomicIntegerArray(AtomicIntegerArray slots, int index, int expected, int update) {
+        ControlledSchedule.point();
+        boolean won = slots.weakCompareAndSetVolatile(index, expected, update);
+        if (won) {
+            arrayStoring(slots, index, update);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.weakCompareAndSetRelease}: a won swap releases what it stored (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the value the element must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetReleaseAtomicIntegerArray(AtomicIntegerArray slots, int index, int expected, int update) {
+        ControlledSchedule.point();
+        boolean won = slots.weakCompareAndSetRelease(index, expected, update);
+        if (won) {
+            arrayStoring(slots, index, update);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.compareAndExchange}: the witness acquires, and a won exchange releases what it stored (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the value the element must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.15.0
+     */
+    public static int compareAndExchangeAtomicIntegerArray(AtomicIntegerArray slots, int index, int expected, int update) {
+        ControlledSchedule.point();
+        int witness = slots.compareAndExchange(index, expected, update);
+        arrayLoaded(slots, index, witness);
+        if (witness == expected) {
+            arrayStoring(slots, index, update);
+        }
+        return witness;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.compareAndExchangeAcquire}: the witness acquires (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the value the element must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.15.0
+     */
+    public static int compareAndExchangeAcquireAtomicIntegerArray(AtomicIntegerArray slots, int index, int expected, int update) {
+        ControlledSchedule.point();
+        int witness = slots.compareAndExchangeAcquire(index, expected, update);
+        arrayLoaded(slots, index, witness);
+        return witness;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.compareAndExchangeRelease}: a won exchange releases what it stored (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the value the element must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.15.0
+     */
+    public static int compareAndExchangeReleaseAtomicIntegerArray(AtomicIntegerArray slots, int index, int expected, int update) {
+        ControlledSchedule.point();
+        int witness = slots.compareAndExchangeRelease(index, expected, update);
+        if (witness == expected) {
+            arrayStoring(slots, index, update);
+        }
+        return witness;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.getAndSet}: the store releases and the previous value acquires (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param value    the value to store
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static int getAndSetAtomicIntegerArray(AtomicIntegerArray slots, int index, int value) {
+        ControlledSchedule.point();
+        arrayStoring(slots, index, value);
+        int previous = slots.getAndSet(index, value);
+        arrayLoaded(slots, index, previous);
+        return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.getAndAdd}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param delta    the value to add
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static int getAndAddAtomicIntegerArray(AtomicIntegerArray slots, int index, int delta) {
+        ControlledSchedule.point();
+        return arrayAddPublishing(slots, index, delta, true);
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.addAndGet}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param delta    the value to add
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static int addAndGetAtomicIntegerArray(AtomicIntegerArray slots, int index, int delta) {
+        ControlledSchedule.point();
+        return arrayAddPublishing(slots, index, delta, false);
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.getAndIncrement}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static int getAndIncrementAtomicIntegerArray(AtomicIntegerArray slots, int index) {
+        ControlledSchedule.point();
+        return arrayAddPublishing(slots, index, 1, true);
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.incrementAndGet}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static int incrementAndGetAtomicIntegerArray(AtomicIntegerArray slots, int index) {
+        ControlledSchedule.point();
+        return arrayAddPublishing(slots, index, 1, false);
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.getAndDecrement}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static int getAndDecrementAtomicIntegerArray(AtomicIntegerArray slots, int index) {
+        ControlledSchedule.point();
+        return arrayAddPublishing(slots, index, -1, true);
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.decrementAndGet}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static int decrementAndGetAtomicIntegerArray(AtomicIntegerArray slots, int index) {
+        ControlledSchedule.point();
+        return arrayAddPublishing(slots, index, -1, false);
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.getAndUpdate}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param function the update, applied again after a lost swap as the JDK's own loop does
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static int getAndUpdateAtomicIntegerArray(AtomicIntegerArray slots, int index, IntUnaryOperator function) {
+        ControlledSchedule.point();
+        return arrayUpdatePublishing(slots, index, function, true);
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.updateAndGet}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param function the update, applied again after a lost swap as the JDK's own loop does
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static int updateAndGetAtomicIntegerArray(AtomicIntegerArray slots, int index, IntUnaryOperator function) {
+        ControlledSchedule.point();
+        return arrayUpdatePublishing(slots, index, function, false);
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.getAndAccumulate}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param operand  the function's second argument
+     * @param function the accumulator, applied to the current value and {@code operand}
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static int getAndAccumulateAtomicIntegerArray(AtomicIntegerArray slots, int index, int operand, IntBinaryOperator function) {
+        ControlledSchedule.point();
+        return arrayUpdatePublishing(slots, index, c -> function.applyAsInt(c, operand), true);
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerArray.accumulateAndGet}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param operand  the function's second argument
+     * @param function the accumulator, applied to the current value and {@code operand}
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static int accumulateAndGetAtomicIntegerArray(AtomicIntegerArray slots, int index, int operand, IntBinaryOperator function) {
+        ControlledSchedule.point();
+        return arrayUpdatePublishing(slots, index, c -> function.applyAsInt(c, operand), false);
+    }
+
+    /** {@code AtomicIntegerArray}'s arithmetic forms as a releasing compare-and-set loop that withdraws a lost attempt (#1317). */
+    private static int arrayAddPublishing(AtomicIntegerArray slots, int index, int delta, boolean previous) {
+        for (;;) {
+            int seen = slots.get(index);
+            int next = seen + delta;
+            arrayStoring(slots, index, next);
+            if (slots.compareAndSet(index, seen, next)) {
+                return previous ? seen : next;
+            }
+            HappensBefore.withdrawVolatile(slots, ReferenceSlots.element(index));
+        }
+    }
+
+    /** {@code AtomicIntegerArray}'s update and accumulate forms, as {@link #arrayAddPublishing(AtomicIntegerArray, int, int, boolean)} (#1317). */
+    private static int arrayUpdatePublishing(AtomicIntegerArray slots, int index, IntUnaryOperator function, boolean previous) {
+        for (;;) {
+            int seen = slots.get(index);
+            int next = function.applyAsInt(seen);
+            arrayStoring(slots, index, next);
+            if (slots.compareAndSet(index, seen, next)) {
+                return previous ? seen : next;
+            }
+            HappensBefore.withdrawVolatile(slots, ReferenceSlots.element(index));
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.get}: the acquire of the store it read (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @return the element's value
+     * @since 1.15.0
+     */
+    public static long getAtomicLongArray(AtomicLongArray slots, int index) {
+        ControlledSchedule.point();
+        long value = slots.get(index);
+        arrayLoaded(slots, index, value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.getAcquire}: the acquire of the store it read (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @return the element's value
+     * @since 1.15.0
+     */
+    public static long getAcquireAtomicLongArray(AtomicLongArray slots, int index) {
+        ControlledSchedule.point();
+        long value = slots.getAcquire(index);
+        arrayLoaded(slots, index, value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.set}: released before the store (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param value    the value to store
+     * @since 1.15.0
+     */
+    public static void setAtomicLongArray(AtomicLongArray slots, int index, long value) {
+        ControlledSchedule.point();
+        arrayStoring(slots, index, value);
+        slots.set(index, value);
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.lazySet}: released before the store (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param value    the value to store
+     * @since 1.15.0
+     */
+    public static void lazySetAtomicLongArray(AtomicLongArray slots, int index, long value) {
+        ControlledSchedule.point();
+        arrayStoring(slots, index, value);
+        slots.lazySet(index, value);
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.setRelease}: released before the store (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param value    the value to store
+     * @since 1.15.0
+     */
+    public static void setReleaseAtomicLongArray(AtomicLongArray slots, int index, long value) {
+        ControlledSchedule.point();
+        arrayStoring(slots, index, value);
+        slots.setRelease(index, value);
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.compareAndSet}: a won swap releases what it stored (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the value the element must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean compareAndSetAtomicLongArray(AtomicLongArray slots, int index, long expected, long update) {
+        ControlledSchedule.point();
+        boolean won = slots.compareAndSet(index, expected, update);
+        if (won) {
+            arrayStoring(slots, index, update);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.weakCompareAndSetVolatile}: a won swap releases what it stored (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the value the element must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetVolatileAtomicLongArray(AtomicLongArray slots, int index, long expected, long update) {
+        ControlledSchedule.point();
+        boolean won = slots.weakCompareAndSetVolatile(index, expected, update);
+        if (won) {
+            arrayStoring(slots, index, update);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.weakCompareAndSetRelease}: a won swap releases what it stored (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the value the element must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetReleaseAtomicLongArray(AtomicLongArray slots, int index, long expected, long update) {
+        ControlledSchedule.point();
+        boolean won = slots.weakCompareAndSetRelease(index, expected, update);
+        if (won) {
+            arrayStoring(slots, index, update);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.compareAndExchange}: the witness acquires, and a won exchange releases what it stored (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the value the element must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.15.0
+     */
+    public static long compareAndExchangeAtomicLongArray(AtomicLongArray slots, int index, long expected, long update) {
+        ControlledSchedule.point();
+        long witness = slots.compareAndExchange(index, expected, update);
+        arrayLoaded(slots, index, witness);
+        if (witness == expected) {
+            arrayStoring(slots, index, update);
+        }
+        return witness;
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.compareAndExchangeAcquire}: the witness acquires (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the value the element must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.15.0
+     */
+    public static long compareAndExchangeAcquireAtomicLongArray(AtomicLongArray slots, int index, long expected, long update) {
+        ControlledSchedule.point();
+        long witness = slots.compareAndExchangeAcquire(index, expected, update);
+        arrayLoaded(slots, index, witness);
+        return witness;
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.compareAndExchangeRelease}: a won exchange releases what it stored (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param expected the value the element must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.15.0
+     */
+    public static long compareAndExchangeReleaseAtomicLongArray(AtomicLongArray slots, int index, long expected, long update) {
+        ControlledSchedule.point();
+        long witness = slots.compareAndExchangeRelease(index, expected, update);
+        if (witness == expected) {
+            arrayStoring(slots, index, update);
+        }
+        return witness;
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.getAndSet}: the store releases and the previous value acquires (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param value    the value to store
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndSetAtomicLongArray(AtomicLongArray slots, int index, long value) {
+        ControlledSchedule.point();
+        arrayStoring(slots, index, value);
+        long previous = slots.getAndSet(index, value);
+        arrayLoaded(slots, index, previous);
+        return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.getAndAdd}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param delta    the value to add
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndAddAtomicLongArray(AtomicLongArray slots, int index, long delta) {
+        ControlledSchedule.point();
+        return arrayAddPublishing(slots, index, delta, true);
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.addAndGet}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param delta    the value to add
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static long addAndGetAtomicLongArray(AtomicLongArray slots, int index, long delta) {
+        ControlledSchedule.point();
+        return arrayAddPublishing(slots, index, delta, false);
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.getAndIncrement}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndIncrementAtomicLongArray(AtomicLongArray slots, int index) {
+        ControlledSchedule.point();
+        return arrayAddPublishing(slots, index, 1L, true);
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.incrementAndGet}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static long incrementAndGetAtomicLongArray(AtomicLongArray slots, int index) {
+        ControlledSchedule.point();
+        return arrayAddPublishing(slots, index, 1L, false);
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.getAndDecrement}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndDecrementAtomicLongArray(AtomicLongArray slots, int index) {
+        ControlledSchedule.point();
+        return arrayAddPublishing(slots, index, -1L, true);
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.decrementAndGet}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static long decrementAndGetAtomicLongArray(AtomicLongArray slots, int index) {
+        ControlledSchedule.point();
+        return arrayAddPublishing(slots, index, -1L, false);
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.getAndUpdate}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param function the update, applied again after a lost swap as the JDK's own loop does
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndUpdateAtomicLongArray(AtomicLongArray slots, int index, LongUnaryOperator function) {
+        ControlledSchedule.point();
+        return arrayUpdatePublishing(slots, index, function, true);
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.updateAndGet}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param function the update, applied again after a lost swap as the JDK's own loop does
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static long updateAndGetAtomicLongArray(AtomicLongArray slots, int index, LongUnaryOperator function) {
+        ControlledSchedule.point();
+        return arrayUpdatePublishing(slots, index, function, false);
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.getAndAccumulate}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param operand  the function's second argument
+     * @param function the accumulator, applied to the current value and {@code operand}
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndAccumulateAtomicLongArray(AtomicLongArray slots, int index, long operand, LongBinaryOperator function) {
+        ControlledSchedule.point();
+        return arrayUpdatePublishing(slots, index, c -> function.applyAsLong(c, operand), true);
+    }
+
+    /**
+     * Weaves {@code AtomicLongArray.accumulateAndGet}: run as a releasing compare-and-set loop (#1317).
+     *
+     * @param slots    the array the call site invoked
+     * @param index    the element
+     * @param operand  the function's second argument
+     * @param function the accumulator, applied to the current value and {@code operand}
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static long accumulateAndGetAtomicLongArray(AtomicLongArray slots, int index, long operand, LongBinaryOperator function) {
+        ControlledSchedule.point();
+        return arrayUpdatePublishing(slots, index, c -> function.applyAsLong(c, operand), false);
+    }
+
+    /** {@code AtomicLongArray}'s arithmetic forms as a releasing compare-and-set loop that withdraws a lost attempt (#1317). */
+    private static long arrayAddPublishing(AtomicLongArray slots, int index, long delta, boolean previous) {
+        for (;;) {
+            long seen = slots.get(index);
+            long next = seen + delta;
+            arrayStoring(slots, index, next);
+            if (slots.compareAndSet(index, seen, next)) {
+                return previous ? seen : next;
+            }
+            HappensBefore.withdrawVolatile(slots, ReferenceSlots.element(index));
+        }
+    }
+
+    /** {@code AtomicLongArray}'s update and accumulate forms, as {@link #arrayAddPublishing(AtomicLongArray, int, long, boolean)} (#1317). */
+    private static long arrayUpdatePublishing(AtomicLongArray slots, int index, LongUnaryOperator function, boolean previous) {
+        for (;;) {
+            long seen = slots.get(index);
+            long next = function.applyAsLong(seen);
+            arrayStoring(slots, index, next);
+            if (slots.compareAndSet(index, seen, next)) {
+                return previous ? seen : next;
+            }
+            HappensBefore.withdrawVolatile(slots, ReferenceSlots.element(index));
+        }
+    }
+
+    /**
+     * The release half of a store into an atomic array element (#1317): each element is its own
+     * slot, named by its index as a reference array's elements are, so a store to one element
+     * publishes nothing to a read of another.
+     */
+    private static void arrayStoring(Object slots, int index, long value) {
+        HappensBefore.releaseVolatile(slots, ReferenceSlots.element(index), value);
+    }
+
+    /** The acquire half of a read of an atomic array element, as {@link #arrayStoring} (#1317). */
+    private static void arrayLoaded(Object slots, int index, long value) {
+        HappensBefore.acquireVolatile(slots, ReferenceSlots.element(index), value);
     }
 
     /**

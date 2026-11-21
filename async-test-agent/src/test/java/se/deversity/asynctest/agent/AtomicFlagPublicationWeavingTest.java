@@ -504,6 +504,69 @@ class AtomicFlagPublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("an AtomicIntegerArray set publishes to a get of the element (#1317)")
+    void anIntArraySetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntArraySet, AtomicFlagBean::bumpAfterIntArrayGet);
+    }
+
+    @Test
+    @DisplayName("a won AtomicIntegerArray compareAndSet publishes (#1317)")
+    void anIntArrayCompareAndSetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntArrayCompareAndSet, AtomicFlagBean::bumpAfterIntArrayGet);
+    }
+
+    @Test
+    @DisplayName("an AtomicIntegerArray addAndGet publishes (#1317)")
+    void anIntArrayAddAndGetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntArrayAddAndGet, AtomicFlagBean::bumpAfterIntArrayGet);
+    }
+
+    @Test
+    @DisplayName("an AtomicIntegerArray updateAndGet publishes (#1317)")
+    void anIntArrayUpdateAndGetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntArrayUpdateAndGet, AtomicFlagBean::bumpAfterIntArrayGet);
+    }
+
+    @Test
+    @DisplayName("an AtomicIntegerArray getAcquire acquires the store it read (#1317)")
+    void anIntArrayGetAcquireAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntArraySet, AtomicFlagBean::bumpAfterIntArrayGetAcquire);
+    }
+
+    @Test
+    @DisplayName("an AtomicLongArray set publishes to a get of the element (#1317)")
+    void aLongArraySetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongArraySet, AtomicFlagBean::bumpAfterLongArrayGet);
+    }
+
+    @Test
+    @DisplayName("an AtomicLongArray incrementAndGet publishes (#1317)")
+    void aLongArrayIncrementAndGetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongArrayIncrementAndGet, AtomicFlagBean::bumpAfterLongArrayGet);
+    }
+
+    @Test
+    @DisplayName("an AtomicIntegerArray setPlain orders nothing (#1317)")
+    void anIntArraySetPlainStillRaces() throws InterruptedException {
+        assertRaced(AtomicFlagBean::publishThroughIntArraySetPlain, AtomicFlagBean::bumpAfterIntArrayGet,
+                "setPlain has no release semantics, so a get that saw it orders nothing");
+    }
+
+    @Test
+    @DisplayName("a store to another element of an AtomicIntegerArray publishes nothing to this one (#1317)")
+    void anotherElementPublishesNothing() throws InterruptedException {
+        assertRaced(AtomicFlagBean::publishThroughAnotherIntElement, AtomicFlagBean::bumpAfterIntArrayGet,
+                "each element is its own slot: element 1's release is not element 2's");
+    }
+
+    @Test
+    @DisplayName("the woven atomic array forms return what the JDK's do (#1317)")
+    void theWovenArrayFormsReturnWhatTheJdksDo() {
+        assertEquals("5,5,8,8,8,8,14,14,18,18,36,1,4,0", new AtomicFlagBean().intArrayTrace());
+        assertEquals("5,5,8,8,8,8,14,14,18,18,36,1,4,0", new AtomicFlagBean().longArrayTrace());
+    }
+
+    @Test
     @DisplayName("the woven updater forms return what the JDK's do (#1317)")
     void theWovenUpdaterFormsReturnWhatTheJdksDo() {
         assertEquals("5,5,8,8,8,8,14,14,18,18,36,true,4", new AtomicFlagBean().updaterArithmeticTrace(),

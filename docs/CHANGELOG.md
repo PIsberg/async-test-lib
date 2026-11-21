@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An `AtomicIntegerArray` or `AtomicLongArray` element publishes (#1317, part).** With the agent
+  attached, neither atomic array was woven, so a field published through an element's `set`,
+  `lazySet`, `setRelease`, won swap, `getAndSet` or arithmetic and update forms and read after a
+  `get` or `getAcquire` of that element that saw the value was reported as an unordered
+  publication on correct code. Each element is now a slot of its own (named by its index, as a
+  reference array's elements are), modelled as an `AtomicInteger`: stores release, reads and
+  volatile or acquire witnesses acquire, the arithmetic and update forms run as a releasing
+  compare-and-set loop, and the plain, opaque and acquire-only stores stay unwoven.
+  `AtomicFlagPublicationWeavingTest`.
+
 - **An `int` instance-field `VarHandle` publishes and feeds the check-then-act rule (#1275,
   #1317, part).** With the agent attached, the woven `int` handle calls only did the spinlock
   bookkeeping and `getVolatile`/`getAcquire` were not woven, so a field published through a
