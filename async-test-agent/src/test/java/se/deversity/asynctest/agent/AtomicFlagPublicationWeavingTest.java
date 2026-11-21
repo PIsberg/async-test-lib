@@ -291,6 +291,72 @@ class AtomicFlagPublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("AtomicLong.getAndSet publishes (#1317)")
+    void aLongGetAndSetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongGetAndSet, AtomicFlagBean::bumpAfterTotal);
+    }
+
+    @Test
+    @DisplayName("a won AtomicLong.compareAndExchange publishes (#1317)")
+    void aLongCompareAndExchangePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongCompareAndExchange, AtomicFlagBean::bumpAfterTotal);
+    }
+
+    @Test
+    @DisplayName("a won AtomicLong.compareAndExchangeRelease publishes (#1317)")
+    void aLongCompareAndExchangeReleasePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongCompareAndExchangeRelease, AtomicFlagBean::bumpAfterTotal);
+    }
+
+    @Test
+    @DisplayName("a won AtomicLong.weakCompareAndSetRelease publishes (#1317)")
+    void aLongWeakCasReleasePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongWeakCompareAndSetRelease, AtomicFlagBean::bumpAfterTotal);
+    }
+
+    @Test
+    @DisplayName("AtomicLong.updateAndGet publishes (#1317)")
+    void aLongUpdateAndGetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongUpdateAndGet, AtomicFlagBean::bumpAfterTotal);
+    }
+
+    @Test
+    @DisplayName("AtomicLong.getAndUpdate publishes (#1317)")
+    void aLongGetAndUpdatePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongGetAndUpdate, AtomicFlagBean::bumpAfterTotal);
+    }
+
+    @Test
+    @DisplayName("AtomicLong.accumulateAndGet publishes (#1317)")
+    void aLongAccumulateAndGetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongAccumulateAndGet, AtomicFlagBean::bumpAfterTotal);
+    }
+
+    @Test
+    @DisplayName("AtomicLong.getAndAccumulate publishes (#1317)")
+    void aLongGetAndAccumulatePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongGetAndAccumulate, AtomicFlagBean::bumpAfterTotal);
+    }
+
+    @Test
+    @DisplayName("the previous value of an AtomicLong.getAndSet acquires (#1317)")
+    void aLongGetAndSetAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongSet, AtomicFlagBean::bumpAfterTotalGetAndSet);
+    }
+
+    @Test
+    @DisplayName("the witness of an AtomicLong.compareAndExchange acquires (#1317)")
+    void aLongExchangeWitnessAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongSet, AtomicFlagBean::bumpAfterTotalExchange);
+    }
+
+    @Test
+    @DisplayName("the witness of an AtomicLong.compareAndExchangeAcquire acquires (#1317)")
+    void aLongExchangeAcquireWitnessAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongSet, AtomicFlagBean::bumpAfterTotalExchangeAcquire);
+    }
+
+    @Test
     @DisplayName("setPlain orders nothing: a plain store is no release (#1317)")
     void aPlainStoreStillRaces() throws InterruptedException {
         assertRaced(AtomicFlagBean::publishThroughIntSetPlain, AtomicFlagBean::bumpAfterCount,

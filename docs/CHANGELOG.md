@@ -65,6 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An `AtomicLong` publishes through every swap and update form `AtomicInteger` does (#1317,
+  part).** With the agent attached, a field published through `AtomicLong.getAndSet`, a won
+  `compareAndExchange` or `compareAndExchangeRelease`, a won `weakCompareAndSetRelease`, or
+  `updateAndGet` and the other update and accumulate forms, and read after a `get` that saw the
+  value, was reported by `AtomicityValidator` as an unordered publication on correct code: the
+  weaver did not substitute those forms on `AtomicLong`. The previous value of a `getAndSet` and
+  the witness of a `compareAndExchange` or `compareAndExchangeAcquire` now acquire too. Ten new
+  hooks, modelled on `AtomicInteger`'s. `AtomicFlagPublicationWeavingTest`.
+
 - **`getAcquire`, `intValue` and `longValue` on a primitive atomic acquire like `get` (#1317,
   part).** With the agent attached, a field published through a store into an `AtomicBoolean`,
   `AtomicInteger` or `AtomicLong` and read after `getAcquire()`, `intValue()` or `longValue()`

@@ -198,7 +198,18 @@ final class FieldAccessWeaver {
             Map.entry("decrementAndGet", "()J"),
             Map.entry("getAndDecrement", "()J"),
             Map.entry("addAndGet", "(J)J"),
-            Map.entry("getAndAdd", "(J)J"));
+            Map.entry("getAndAdd", "(J)J"),
+            // The rest of the swaps and updates, as AtomicInteger's (#1317).
+            Map.entry("getAndSet", "(J)J"),
+            Map.entry("compareAndExchange", "(JJ)J"),
+            Map.entry("compareAndExchangeAcquire", "(JJ)J"),
+            Map.entry("compareAndExchangeRelease", "(JJ)J"),
+            Map.entry("weakCompareAndSetAcquire", "(JJ)Z"),
+            Map.entry("weakCompareAndSetRelease", "(JJ)Z"),
+            Map.entry("getAndUpdate", "(Ljava/util/function/LongUnaryOperator;)J"),
+            Map.entry("updateAndGet", "(Ljava/util/function/LongUnaryOperator;)J"),
+            Map.entry("getAndAccumulate", "(JLjava/util/function/LongBinaryOperator;)J"),
+            Map.entry("accumulateAndGet", "(JLjava/util/function/LongBinaryOperator;)J"));
 
     /** Internal names of the reference slots whose offers and takes are substituted (#664). */
     private static final String ATOMIC_REFERENCE = "java/util/concurrent/atomic/AtomicReference";

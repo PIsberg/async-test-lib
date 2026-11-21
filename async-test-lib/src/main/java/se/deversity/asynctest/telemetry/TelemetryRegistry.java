@@ -31,6 +31,8 @@ import java.util.concurrent.atomic.AtomicStampedReference;
 import java.util.function.BinaryOperator;
 import java.util.function.IntBinaryOperator;
 import java.util.function.IntUnaryOperator;
+import java.util.function.LongBinaryOperator;
+import java.util.function.LongUnaryOperator;
 import java.util.function.UnaryOperator;
 
 /**
@@ -1353,6 +1355,196 @@ public final class TelemetryRegistry {
         AgentConcurrencyUtilHooks.atomicStored(count);
         primitiveSlotStoring(count, value);
         count.setRelease(value);
+    }
+
+    /**
+     * {@link #updatePublishing(AtomicInteger, IntUnaryOperator, boolean)} for an {@code AtomicLong}
+     * (#1317): the value about to be stored is released before the swap, and a lost attempt
+     * withdraws its release.
+     *
+     * @return the previous value when {@code previous}, else the updated one
+     */
+    private static long updatePublishing(AtomicLong count, LongUnaryOperator function, boolean previous) {
+        for (;;) {
+            long seen = count.get();
+            long next = function.applyAsLong(seen);
+            primitiveSlotStoring(count, next);
+            if (count.compareAndSet(seen, next)) {
+                return previous ? seen : next;
+            }
+            HappensBefore.withdrawVolatile(count, SLOT_VALUE);
+        }
+    }
+
+    /**
+     * Weaves {@code AtomicLong.getAndSet}: the store releases and the previous value acquires
+     * what the store of it published, as {@link #getAndSetAtomicInteger} does (#1317).
+     *
+     * @param count the atomic the call site invoked
+     * @param value the value to store
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndSetAtomicLong(AtomicLong count, long value) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        primitiveSlotStoring(count, value);
+        long previous = count.getAndSet(value);
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, previous);
+        return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicLong.compareAndExchange}: the witness acquires, and a won exchange
+     * releases what it stored (#1317).
+     *
+     * @param count    the atomic the call site invoked
+     * @param expected the value it must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.15.0
+     */
+    public static long compareAndExchangeAtomicLong(AtomicLong count, long expected, long update) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        long witness = count.compareAndExchange(expected, update);
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, witness);
+        if (witness == expected) {
+            primitiveSlotStoring(count, update);
+        }
+        return witness;
+    }
+
+    /**
+     * Weaves {@code AtomicLong.compareAndExchangeAcquire}: the witness acquires; the store has no
+     * release semantics and publishes nothing (#1317).
+     *
+     * @param count    the atomic the call site invoked
+     * @param expected the value it must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.15.0
+     */
+    public static long compareAndExchangeAcquireAtomicLong(AtomicLong count, long expected, long update) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        long witness = count.compareAndExchangeAcquire(expected, update);
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, witness);
+        return witness;
+    }
+
+    /**
+     * Weaves {@code AtomicLong.compareAndExchangeRelease}: a won exchange releases what it
+     * stored; the witness has no acquire semantics and receives nothing (#1317).
+     *
+     * @param count    the atomic the call site invoked
+     * @param expected the value it must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.15.0
+     */
+    public static long compareAndExchangeReleaseAtomicLong(AtomicLong count, long expected, long update) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        long witness = count.compareAndExchangeRelease(expected, update);
+        if (witness == expected) {
+            primitiveSlotStoring(count, update);
+        }
+        return witness;
+    }
+
+    /**
+     * Weaves {@code AtomicLong.weakCompareAndSetAcquire}: a swap with acquire semantics only,
+     * which publishes nothing; woven so the check-then-act rule sees the swap (#1317).
+     *
+     * @param count    the atomic the call site invoked
+     * @param expected the value it must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetAcquireAtomicLong(AtomicLong count, long expected, long update) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        return count.weakCompareAndSetAcquire(expected, update);
+    }
+
+    /**
+     * Weaves {@code AtomicLong.weakCompareAndSetRelease}: a won swap releases what it stored (#1317).
+     *
+     * @param count    the atomic the call site invoked
+     * @param expected the value it must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetReleaseAtomicLong(AtomicLong count, long expected, long update) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        boolean won = count.weakCompareAndSetRelease(expected, update);
+        if (won) {
+            primitiveSlotStoring(count, update);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves {@code AtomicLong.getAndUpdate} as a compare-and-set loop that releases each value
+     * before it stores it (#1317).
+     *
+     * @param count    the atomic the call site invoked
+     * @param function the update function, applied again after a lost swap as the JDK's own loop does
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndUpdateAtomicLong(AtomicLong count, LongUnaryOperator function) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        return updatePublishing(count, function, true);
+    }
+
+    /**
+     * Weaves {@code AtomicLong.updateAndGet}, as {@link #getAndUpdateAtomicLong} (#1317).
+     *
+     * @param count    the atomic the call site invoked
+     * @param function the update function, applied again after a lost swap as the JDK's own loop does
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static long updateAndGetAtomicLong(AtomicLong count, LongUnaryOperator function) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        return updatePublishing(count, function, false);
+    }
+
+    /**
+     * Weaves {@code AtomicLong.getAndAccumulate}, as {@link #getAndUpdateAtomicLong} (#1317).
+     *
+     * @param count    the atomic the call site invoked
+     * @param operand  the function's second argument
+     * @param function the accumulator, applied to the current value and {@code operand}
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndAccumulateAtomicLong(AtomicLong count, long operand, LongBinaryOperator function) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        return updatePublishing(count, c -> function.applyAsLong(c, operand), true);
+    }
+
+    /**
+     * Weaves {@code AtomicLong.accumulateAndGet}, as {@link #getAndUpdateAtomicLong} (#1317).
+     *
+     * @param count    the atomic the call site invoked
+     * @param operand  the function's second argument
+     * @param function the accumulator, applied to the current value and {@code operand}
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static long accumulateAndGetAtomicLong(AtomicLong count, long operand, LongBinaryOperator function) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicSwapped(count);
+        return updatePublishing(count, c -> function.applyAsLong(c, operand), false);
     }
 
     /**
