@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -221,7 +222,7 @@ final class SpinLocks {
     static @Nullable String fieldOf(AtomicIntegerFieldUpdater<?> updater) {
         String field = HANDLE_FIELDS.get(updater);
         if (field == null) {
-            field = describe(updater);
+            field = describe(updater, UPDATER_IMPL, int.class);
             HANDLE_FIELDS.put(updater, field);
             if (!field.isEmpty()) {
                 SPIN_FIELDS.add(field);
@@ -229,6 +230,28 @@ final class SpinLocks {
         }
         return field.isEmpty() ? null : field;
     }
+
+    /**
+     * {@return the field {@code updater} reaches, as {@code declaringClass.field}, or {@code null}}
+     *
+     * <p>{@link #fieldOf(AtomicIntegerFieldUpdater)} for an {@code AtomicLongFieldUpdater}, read the
+     * same way from the JDK's implementation (#1275, #1317). A long field is never a spinlock flag,
+     * so it is not added to the flags a release is checked against.
+     */
+    static @Nullable String longFieldOf(AtomicLongFieldUpdater<?> updater) {
+        String field = HANDLE_FIELDS.get(updater);
+        if (field == null) {
+            field = describe(updater, LONG_UPDATER_IMPL, long.class);
+            HANDLE_FIELDS.put(updater, field);
+        }
+        return field.isEmpty() ? null : field;
+    }
+
+    /**
+     * The JDK's {@code AtomicLongFieldUpdater} implementation, read as {@link #UPDATER_IMPL} is.
+     * {@code JdkUpdaterShapeCanaryTest} fails the build on a JDK where it changes shape.
+     */
+    static final String LONG_UPDATER_IMPL = "java.util.concurrent.atomic.AtomicLongFieldUpdater$CASUpdater";
 
     /**
      * The JDK's one {@code AtomicIntegerFieldUpdater} implementation, the only shape read.
@@ -247,14 +270,15 @@ final class SpinLocks {
     /**
      * {@return {@code targetClass.field} for the field {@code updater} really swaps, else ""}
      *
-     * <p>"" whenever the answer is not certain: the implementation is not the JDK's, it cannot be
-     * read, or zero or several fields of the target class share the updater's offset.
+     * <p>"" whenever the answer is not certain: the implementation is not the JDK's ({@code implName}),
+     * it cannot be read, or zero or several volatile {@code fieldType} fields of the target class
+     * share the updater's offset. The int and long updaters' implementations have the same members.
      */
     @SuppressWarnings("ReferenceEquality")
-    private static String describe(AtomicIntegerFieldUpdater<?> updater) {
+    private static String describe(Object updater, String implName, Class<?> fieldType) {
         try {
             Class<?> impl = updater.getClass();
-            if (!UPDATER_IMPL.equals(impl.getName()) || impl.getClassLoader() != null) {
+            if (!implName.equals(impl.getName()) || impl.getClassLoader() != null) {
                 return "";
             }
             Field offsetField = impl.getDeclaredField(UPDATER_OFFSET);
@@ -269,7 +293,7 @@ final class SpinLocks {
             String found = null;
             for (Field candidate : target.getDeclaredFields()) {
                 int modifiers = candidate.getModifiers();
-                if (candidate.getType() != int.class || !Modifier.isVolatile(modifiers)
+                if (candidate.getType() != fieldType || !Modifier.isVolatile(modifiers)
                         || Modifier.isStatic(modifiers)) {
                     continue;
                 }

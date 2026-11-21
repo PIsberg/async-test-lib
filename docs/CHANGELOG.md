@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An `AtomicLongFieldUpdater` publishes and feeds the check-then-act rule, as the int updater
+  does (#1275, #1317, part).** With the agent attached, nothing an `AtomicLongFieldUpdater` did was
+  woven: a field published through its stores and read after its `get` (or a direct volatile read)
+  was reported as an unordered publication on correct code, and a check-then-increment through it
+  was silent. Its 15 forms that order or check something are now woven, publishing under the
+  field's own slot and keyed per object and field for `AtomicNonAtomicUpdateDetector`; the field
+  is resolved from the JDK's implementation as the int updater's is, and
+  `JdkUpdaterShapeCanaryTest` now pins that shape too. Corpus idiom pair
+  `idiom_longUpdaterAdmission_*`, `AtomicFlagPublicationWeavingTest`.
+
 - **An `AtomicIntegerFieldUpdater` publishes, under the same slot as its field (#1317, part).**
   With the agent attached, a field published through an updater's `set`, `lazySet`, won
   `compareAndSet`, `getAndSet` or arithmetic and update forms and read after the updater's `get`

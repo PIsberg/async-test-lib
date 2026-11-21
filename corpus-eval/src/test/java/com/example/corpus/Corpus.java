@@ -6492,6 +6492,21 @@ final class Corpus {
                             + "past the limit. Silent before #1275",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_longUpdaterAdmission_compareAndSetLoop", JDK,
+                    "java.util.concurrent.atomic.AtomicLongFieldUpdater",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same admission through an AtomicLongFieldUpdater: a get and "
+                            + "compareAndSet loop that re-checks the limit after every lost race"),
+
+            new RecordingSubject("idiom_longUpdaterAdmission_checkThenIncrement", JDK,
+                    "java.util.concurrent.atomic.AtomicLongFieldUpdater",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same admission through an AtomicLongFieldUpdater: get, then "
+                            + "incrementAndGet. Silent before #1275's long updater part",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_boundedMembership_sizeThenPutUnderTheMonitor", JDK,
                     "java.util.concurrent.ConcurrentHashMap",
                     DetectorType.CONCURRENT_MAP_CHECK_THEN_ACT, Contract.THREAD_SAFE,
