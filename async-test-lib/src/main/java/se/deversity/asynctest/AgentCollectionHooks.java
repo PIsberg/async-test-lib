@@ -920,7 +920,7 @@ public final class AgentCollectionHooks {
      * @param parallelismThreshold the size from which the map splits the search across the pool
      * @param searchFunction       the function that returns non-null for a match
      * @return the first non-null result, or null
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object concurrentMapSearchValues(
             java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - searchValues is declared by ConcurrentHashMap
@@ -938,7 +938,7 @@ public final class AgentCollectionHooks {
      * @param parallelismThreshold the size from which the map splits the search across the pool
      * @param searchFunction       the function that returns non-null for a match
      * @return the first non-null result, or null
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object concurrentMapSearchKeys(
             java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - searchKeys is declared by ConcurrentHashMap
@@ -956,7 +956,7 @@ public final class AgentCollectionHooks {
      * @param parallelismThreshold the size from which the map splits the search across the pool
      * @param searchFunction       the function that returns non-null for a match
      * @return the first non-null result, or null
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object concurrentMapSearchEntries(
             java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - searchEntries is declared by ConcurrentHashMap
@@ -975,7 +975,7 @@ public final class AgentCollectionHooks {
      * @param transformer          what each key and value become
      * @param reducer              the function combining two transformed results
      * @return the reduction, or null when nothing was transformed
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object concurrentMapReduce(
             java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - reduce is declared by ConcurrentHashMap
@@ -993,7 +993,7 @@ public final class AgentCollectionHooks {
      * @param parallelismThreshold the size from which the map splits the work across the pool
      * @param reducer              the function combining two keys
      * @return the reduction, or null when the map is empty
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object concurrentMapReduceKeys(
             java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - reduceKeys is declared by ConcurrentHashMap
@@ -1012,7 +1012,7 @@ public final class AgentCollectionHooks {
      * @param transformer          what each key becomes
      * @param reducer              the function combining two transformed keys
      * @return the reduction, or null when nothing was transformed
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object concurrentMapReduceKeys(
             java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - reduceKeys is declared by ConcurrentHashMap
@@ -1030,7 +1030,7 @@ public final class AgentCollectionHooks {
      * @param parallelismThreshold the size from which the map splits the work across the pool
      * @param reducer              the function combining two entries
      * @return the reduction, or null when the map is empty
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static Map.@Nullable Entry<Object, Object> concurrentMapReduceEntries(
             java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - reduceEntries is declared by ConcurrentHashMap
@@ -1054,7 +1054,7 @@ public final class AgentCollectionHooks {
      * @param transformer          what each entry becomes
      * @param reducer              the function combining two transformed entries
      * @return the reduction, or null when nothing was transformed
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object concurrentMapReduceEntries(
             java.util.concurrent.ConcurrentHashMap<Object, Object> receiver, long parallelismThreshold, // NOPMD LooseCoupling - reduceEntries is declared by ConcurrentHashMap

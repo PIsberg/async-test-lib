@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.4] - 2026-11-21
+
+### Upgrading
+
+Like 1.14.1 to 1.14.3, this patch carries what [SUPPORT_POLICY.md](SUPPORT_POLICY.md) calls
+minor: two new public overloads, a behaviour change in the runner, and detectors that now fire on
+cases they missed. The owner asked for 1.14.4 on 2026-11-21. Each change below can turn a green
+build red, on a real defect:
+
+- An `AssertionError` on a thread the test body started now fails the test, and any other
+  uncaught throwable on such a thread is an `UncaughtExceptionHandlerDetector` finding (#1253,
+  #1379). Suites whose body-started threads have been failing assertions unnoticed will go red.
+- A `ReentrantLock` deadlock between virtual threads is reported on JDK 25 and later (#1384).
+- With the agent attached, more code is observed: atomic field updaters, `int` and `long`
+  instance-field `VarHandle`s, `AtomicIntegerArray` and `AtomicLongArray` elements and the rest of
+  the `AtomicLong` and reference-slot forms publish (#1275, #1317, #1336), a check-then-increment
+  through an `AtomicIntegerFieldUpdater` is reported (#1275), and a shared `StringTokenizer`,
+  `BreakIterator` (#1322) or `StringJoiner` (#1309), a `Mac`, `Signature` or `Cipher` used only to
+  re-key, reset, wrap or unwrap (#1324), and a dropped one-shot `schedule` whose task threw (#1281)
+  are reported.
+- A timeout message now says whether the budget ran out or a round hung (#1386, #1393). The test
+  still fails either way.
+
+Most of the Fixed entries below go the other way: false positives on correct code that are gone,
+among them a deadlock that belonged to another run in progress at the same time (#1385).
+
 ### Changed (behaviour)
 
 - **A timeout says whether the budget ran out or a round hung (#1386).** `timeoutMs` covers the

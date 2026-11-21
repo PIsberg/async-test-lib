@@ -219,7 +219,7 @@ public final class AgentThreadHooks {
      * inside user code, so it must not throw.
      *
      * @param target the {@code Runnable} the thread is being constructed around
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void threadTarget(Object target) {
         // Set or cleared on every call: a construction that threw never reached threadConstructed,

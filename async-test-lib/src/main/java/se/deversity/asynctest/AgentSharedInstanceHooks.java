@@ -761,7 +761,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the joiner
      * @param element  the element to add
      * @return the joiner, so the call chain is unchanged
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static java.util.StringJoiner joinerAdd(java.util.StringJoiner receiver, CharSequence element) {
         ControlledSchedule.point();
@@ -776,7 +776,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the joiner merged into
      * @param other    the joiner whose contents are added
      * @return the receiver, so the call chain is unchanged
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static java.util.StringJoiner joinerMerge(java.util.StringJoiner receiver, java.util.StringJoiner other) {
         ControlledSchedule.point();
@@ -793,7 +793,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver   the joiner
      * @param emptyValue what an empty joiner reads as
      * @return the joiner, so the call chain is unchanged
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static java.util.StringJoiner joinerSetEmptyValue(java.util.StringJoiner receiver, CharSequence emptyValue) {
         ControlledSchedule.point();
@@ -806,7 +806,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the joiner
      * @return the joined text
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static String joinerToString(java.util.StringJoiner receiver) {
         ControlledSchedule.point();
@@ -819,7 +819,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the joiner
      * @return the length of the joined text
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int joinerLength(java.util.StringJoiner receiver) {
         ControlledSchedule.point();
@@ -844,7 +844,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the tokenizer
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean tokenizerHasMoreTokens(java.util.StringTokenizer receiver) {
         ControlledSchedule.point();
@@ -858,7 +858,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the tokenizer
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static String tokenizerNextToken(java.util.StringTokenizer receiver) {
         ControlledSchedule.point();
@@ -873,7 +873,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the tokenizer
      * @param delimiters as the original call takes it
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static String tokenizerNextToken(java.util.StringTokenizer receiver, String delimiters) {
         ControlledSchedule.point();
@@ -887,7 +887,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the tokenizer
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean tokenizerHasMoreElements(java.util.StringTokenizer receiver) {
         ControlledSchedule.point();
@@ -901,7 +901,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the tokenizer
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static Object tokenizerNextElement(java.util.StringTokenizer receiver) {
         ControlledSchedule.point();
@@ -915,7 +915,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the tokenizer
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int tokenizerCountTokens(java.util.StringTokenizer receiver) {
         ControlledSchedule.point();
@@ -929,7 +929,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the break iterator
      * @param text as the original call takes it
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void breakSetText(java.text.BreakIterator receiver, String text) {
         ControlledSchedule.point();
@@ -943,7 +943,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the break iterator
      * @param text as the original call takes it
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void breakSetText(java.text.BreakIterator receiver, java.text.CharacterIterator text) {
         ControlledSchedule.point();
@@ -957,7 +957,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the break iterator
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int breakFirst(java.text.BreakIterator receiver) {
         ControlledSchedule.point();
@@ -971,7 +971,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the break iterator
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int breakLast(java.text.BreakIterator receiver) {
         ControlledSchedule.point();
@@ -985,7 +985,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the break iterator
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int breakNext(java.text.BreakIterator receiver) {
         ControlledSchedule.point();
@@ -1000,7 +1000,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the break iterator
      * @param n as the original call takes it
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int breakNext(java.text.BreakIterator receiver, int n) {
         ControlledSchedule.point();
@@ -1014,7 +1014,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the break iterator
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int breakPrevious(java.text.BreakIterator receiver) {
         ControlledSchedule.point();
@@ -1029,7 +1029,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the break iterator
      * @param offset as the original call takes it
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int breakFollowing(java.text.BreakIterator receiver, int offset) {
         ControlledSchedule.point();
@@ -1044,7 +1044,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the break iterator
      * @param offset as the original call takes it
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int breakPreceding(java.text.BreakIterator receiver, int offset) {
         ControlledSchedule.point();
@@ -1058,7 +1058,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the break iterator
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int breakCurrent(java.text.BreakIterator receiver) {
         ControlledSchedule.point();
@@ -1073,7 +1073,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the break iterator
      * @param offset as the original call takes it
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean breakIsBoundary(java.text.BreakIterator receiver, int offset) {
         ControlledSchedule.point();
@@ -1087,7 +1087,7 @@ public final class AgentSharedInstanceHooks {
      *
      * @param receiver the break iterator
      * @return what the original call returns
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static java.text.CharacterIterator breakGetText(java.text.BreakIterator receiver) {
         ControlledSchedule.point();
@@ -2296,7 +2296,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the mac
      * @param key the call's {@code Key} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void init(Mac receiver, java.security.Key key) throws java.security.InvalidKeyException {
         ControlledSchedule.point();
@@ -2312,7 +2312,7 @@ public final class AgentSharedInstanceHooks {
      * @param params the call's {@code AlgorithmParameterSpec} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
      * @throws java.security.InvalidAlgorithmParameterException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void init(Mac receiver, java.security.Key key, java.security.spec.AlgorithmParameterSpec params) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
         ControlledSchedule.point();
@@ -2324,7 +2324,7 @@ public final class AgentSharedInstanceHooks {
      * Weaves {@code Mac.reset()}.
      *
      * @param receiver the mac
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void reset(Mac receiver) {
         ControlledSchedule.point();
@@ -2338,7 +2338,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the signature
      * @param privateKey the call's {@code PrivateKey} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void initSign(Signature receiver, java.security.PrivateKey privateKey) throws java.security.InvalidKeyException {
         ControlledSchedule.point();
@@ -2353,7 +2353,7 @@ public final class AgentSharedInstanceHooks {
      * @param privateKey the call's {@code PrivateKey} argument, passed through
      * @param random the call's {@code SecureRandom} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void initSign(Signature receiver, java.security.PrivateKey privateKey, java.security.SecureRandom random) throws java.security.InvalidKeyException {
         ControlledSchedule.point();
@@ -2367,7 +2367,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the signature
      * @param publicKey the call's {@code PublicKey} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void initVerify(Signature receiver, java.security.PublicKey publicKey) throws java.security.InvalidKeyException {
         ControlledSchedule.point();
@@ -2381,7 +2381,7 @@ public final class AgentSharedInstanceHooks {
      * @param receiver the signature
      * @param certificate the call's {@code Certificate} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void initVerify(Signature receiver, java.security.cert.Certificate certificate) throws java.security.InvalidKeyException {
         ControlledSchedule.point();
@@ -2396,7 +2396,7 @@ public final class AgentSharedInstanceHooks {
      * @param opmode the call's {@code int} argument, passed through
      * @param key the call's {@code Key} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void init(Cipher receiver, int opmode, java.security.Key key) throws java.security.InvalidKeyException {
         ControlledSchedule.point();
@@ -2412,7 +2412,7 @@ public final class AgentSharedInstanceHooks {
      * @param key the call's {@code Key} argument, passed through
      * @param random the call's {@code SecureRandom} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.SecureRandom random) throws java.security.InvalidKeyException {
         ControlledSchedule.point();
@@ -2429,7 +2429,7 @@ public final class AgentSharedInstanceHooks {
      * @param params the call's {@code AlgorithmParameterSpec} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
      * @throws java.security.InvalidAlgorithmParameterException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.spec.AlgorithmParameterSpec params) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
         ControlledSchedule.point();
@@ -2447,7 +2447,7 @@ public final class AgentSharedInstanceHooks {
      * @param random the call's {@code SecureRandom} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
      * @throws java.security.InvalidAlgorithmParameterException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.spec.AlgorithmParameterSpec params, java.security.SecureRandom random) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
         ControlledSchedule.point();
@@ -2464,7 +2464,7 @@ public final class AgentSharedInstanceHooks {
      * @param params the call's {@code AlgorithmParameters} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
      * @throws java.security.InvalidAlgorithmParameterException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.AlgorithmParameters params) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
         ControlledSchedule.point();
@@ -2482,7 +2482,7 @@ public final class AgentSharedInstanceHooks {
      * @param random the call's {@code SecureRandom} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
      * @throws java.security.InvalidAlgorithmParameterException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void init(Cipher receiver, int opmode, java.security.Key key, java.security.AlgorithmParameters params, java.security.SecureRandom random) throws java.security.InvalidKeyException, java.security.InvalidAlgorithmParameterException {
         ControlledSchedule.point();
@@ -2497,7 +2497,7 @@ public final class AgentSharedInstanceHooks {
      * @param opmode the call's {@code int} argument, passed through
      * @param certificate the call's {@code Certificate} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void init(Cipher receiver, int opmode, java.security.cert.Certificate certificate) throws java.security.InvalidKeyException {
         ControlledSchedule.point();
@@ -2513,7 +2513,7 @@ public final class AgentSharedInstanceHooks {
      * @param certificate the call's {@code Certificate} argument, passed through
      * @param random the call's {@code SecureRandom} argument, passed through
      * @throws java.security.InvalidKeyException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void init(Cipher receiver, int opmode, java.security.cert.Certificate certificate, java.security.SecureRandom random) throws java.security.InvalidKeyException {
         ControlledSchedule.point();
@@ -2529,7 +2529,7 @@ public final class AgentSharedInstanceHooks {
      * @return what the original call returns
      * @throws IllegalBlockSizeException as the original call does
      * @throws java.security.InvalidKeyException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static byte[] wrap(Cipher receiver, java.security.Key key) throws IllegalBlockSizeException, java.security.InvalidKeyException {
         ControlledSchedule.point();
@@ -2547,7 +2547,7 @@ public final class AgentSharedInstanceHooks {
      * @return what the original call returns
      * @throws java.security.InvalidKeyException as the original call does
      * @throws java.security.NoSuchAlgorithmException as the original call does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static java.security.Key unwrap(Cipher receiver, byte[] wrappedKey, String wrappedKeyAlgorithm, int wrappedKeyType) throws java.security.InvalidKeyException, java.security.NoSuchAlgorithmException {
         ControlledSchedule.point();

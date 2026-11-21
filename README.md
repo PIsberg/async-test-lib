@@ -186,13 +186,13 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    <dependency>
        <groupId>se.deversity.async-test-lib</groupId>
        <artifactId>async-test-lib</artifactId>
-       <version>1.14.3</version>
+       <version>1.14.4</version>
        <scope>test</scope>
    </dependency>
    <dependency>
        <groupId>se.deversity.async-test-lib</groupId>
        <artifactId>async-test-agent</artifactId>
-       <version>1.14.3</version>
+       <version>1.14.4</version>
        <scope>test</scope>
    </dependency>
    ```
@@ -291,8 +291,8 @@ one sweep exercised eleven new detectors and the whole agent lockset overhaul at
    }
 
    dependencies {
-       testImplementation("se.deversity.async-test-lib:async-test-lib:1.14.3")
-       asyncTestAgent("se.deversity.async-test-lib:async-test-agent:1.14.3")
+       testImplementation("se.deversity.async-test-lib:async-test-lib:1.14.4")
+       asyncTestAgent("se.deversity.async-test-lib:async-test-agent:1.14.4")
    }
 
    tasks.test {
@@ -495,7 +495,7 @@ Gate CI on serious findings while adopting incrementally:
 void checkout_concurrently() { ... }
 ```
 
-Whatever `failOn` says, a body that throws fails the test, and since 1.15.0 so does an
+Whatever `failOn` says, a body that throws fails the test, and since 1.14.4 so does an
 `AssertionError` on a thread the body started that no handler of its own took: it is the test's
 own assertion, on the wrong thread, and used to pass with only a stack trace on stderr (#1253).
 Any other exception that kills such a thread is an `UncaughtExceptionHandlerDetector` finding at
@@ -606,7 +606,7 @@ class AsyncPipelineTest {
 ```
 
 Declare the body `void` and await inside it. JUnit runs no template method that returns a value,
-so `CompletableFuture<Void> hammer_pipeline()` would never run; since 1.15.0 such an `@AsyncTest`
+so `CompletableFuture<Void> hammer_pipeline()` would never run; since 1.14.1 such an `@AsyncTest`
 fails discovery with a message naming the method, instead of passing with nothing tested (#1119).
 The same goes for a `private` or `static` `@AsyncTest`, which JUnit also skips with only a warning,
 and for a Kotlin `suspend fun`, which the runner cannot call (#1146). A method annotated

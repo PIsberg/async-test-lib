@@ -137,7 +137,7 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
      * @param key      the object the slot is tracked by
      * @param name     the slot's name in a finding; {@code null} names it after {@code key}
      * @param receiver the object whose field the slot is
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public void agentRead(Object key, @Nullable String name, Object receiver) {
         if (key == null) return;
@@ -171,7 +171,7 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
      * @param key      the object the slot is tracked by
      * @param name     the slot's name in a finding; {@code null} names it after {@code key}
      * @param receiver the object whose field the slot is
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public void agentStore(Object key, @Nullable String name, Object receiver) {
         if (key == null) return;
@@ -231,7 +231,7 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
      *
      * @param key  the object the slot is tracked by
      * @param name the slot's name in a finding; {@code null} names it after {@code key}
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public void agentSwap(Object key, @Nullable String name) {
         if (key == null) return;
@@ -264,7 +264,7 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
      * @param key      the object the slot is tracked by
      * @param name     the slot's name in a finding; {@code null} names it after {@code key}
      * @param receiver the object whose field the slot is
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public void agentIncrement(Object key, @Nullable String name, Object receiver) {
         if (key == null) return;

@@ -1401,7 +1401,7 @@ public class AtomicityValidator {
      *
      * @param count           the run's untracked array accesses; zero or less says nothing
      * @param trackedElements how many leading elements of an array {@code arrays=true} records
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public void noteUntrackedArrayAccesses(long count, int trackedElements) {
         untrackedArrayAccesses = count;

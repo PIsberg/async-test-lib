@@ -4222,7 +4222,7 @@ public final class AgentConcurrencyUtilHooks {
      * @param delay    the delay before it runs
      * @param unit     the unit of the delay
      * @return the task's future
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static ScheduledFuture<?> schedule(ScheduledExecutorService receiver, Runnable task,
             long delay, TimeUnit unit) {
@@ -4239,7 +4239,7 @@ public final class AgentConcurrencyUtilHooks {
      * @param delay    the delay before it runs
      * @param unit     the unit of the delay
      * @return the task's future
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static ScheduledFuture<Object> schedule(ScheduledExecutorService receiver,
             Callable<Object> task, long delay, TimeUnit unit) {
@@ -4254,7 +4254,7 @@ public final class AgentConcurrencyUtilHooks {
      * task still pending at analysis, such as one delayed past the run's end, draws nothing.
      *
      * @param future the future the caller discarded
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void scheduleResultDiscarded(ScheduledFuture<?> future) {
         discarded(future, "ScheduledExecutorService.schedule");

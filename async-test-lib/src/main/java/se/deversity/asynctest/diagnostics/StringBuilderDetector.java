@@ -178,7 +178,7 @@ public class StringBuilderDetector extends AbstractInstanceDetector<StringBuilde
      *
      * @param joiner the StringJoiner instance
      * @param name   the label
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public void recordJoinerAppend(java.util.StringJoiner joiner, String name) {
         recordMutation(joiner, name, "append");
@@ -190,7 +190,7 @@ public class StringBuilderDetector extends AbstractInstanceDetector<StringBuilde
      *
      * @param joiner the StringJoiner instance
      * @param name   the label
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public void recordJoinerRead(java.util.StringJoiner joiner, String name) {
         recordReadOf(joiner, name);
