@@ -1232,7 +1232,7 @@ final class FieldAccessWeaver {
             // (int) when the result is used and void when it is a statement (#658); any other
             // result type is left alone.
             boolean intOrVoid = tail.endsWith(")I") || tail.endsWith(")V");
-            return switch (name) {
+            String intHook = switch (name) {
                 case "compareAndSet", "weakCompareAndSet", "weakCompareAndSetPlain",
                      "weakCompareAndSetAcquire", "weakCompareAndSetRelease" ->
                         "II)Z".equals(tail) ? name + "Int" : null;
@@ -1250,6 +1250,29 @@ final class FieldAccessWeaver {
                 case "getVolatile", "getAcquire" -> ")I".equals(tail) ? name + "Int" : null;
                 default -> null;
             };
+            if (intHook != null) {
+                return intHook;
+            }
+            // The same forms on a long field, for publication and check-then-act only: a long is
+            // never a spinlock flag (#1275, #1317).
+            boolean longOrVoid = tail.endsWith(")J") || tail.endsWith(")V");
+            return switch (name) {
+                case "compareAndSet", "weakCompareAndSet", "weakCompareAndSetPlain",
+                     "weakCompareAndSetAcquire", "weakCompareAndSetRelease" ->
+                        "JJ)Z".equals(tail) ? name + "Long" : null;
+                case "compareAndExchange", "compareAndExchangeAcquire", "compareAndExchangeRelease" ->
+                        tail.startsWith("JJ)") && longOrVoid ? name + "Long" : null;
+                case "getAndSet", "getAndSetAcquire", "getAndSetRelease",
+                     "getAndAdd", "getAndAddAcquire", "getAndAddRelease",
+                     "getAndBitwiseOr", "getAndBitwiseOrAcquire", "getAndBitwiseOrRelease",
+                     "getAndBitwiseAnd", "getAndBitwiseAndAcquire", "getAndBitwiseAndRelease",
+                     "getAndBitwiseXor", "getAndBitwiseXorAcquire", "getAndBitwiseXorRelease" ->
+                        tail.startsWith("J)") && longOrVoid ? name + "Long" : null;
+                case "set", "setVolatile", "setRelease", "setOpaque" ->
+                        "J)V".equals(tail) ? name + "Long" : null;
+                case "getVolatile", "getAcquire" -> ")J".equals(tail) ? name + "Long" : null;
+                default -> null;
+            };
         }
 
         /**
@@ -1260,6 +1283,22 @@ final class FieldAccessWeaver {
          * erased {@code Object} receiver and {@code int} values the registry declares instead.
          */
         private static String spinLockHookDescriptor(String owner, String hook, String descriptor) {
+            if (VAR_HANDLE.equals(owner) && hook.endsWith("Long")) {
+                String prefix = "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;";
+                if ("getVolatileLong".equals(hook) || "getAcquireLong".equals(hook)) {
+                    return prefix + ")J";
+                }
+                if (hook.startsWith("compareAndSet") || hook.startsWith("weakCompareAndSet")) {
+                    return prefix + "JJ)Z";
+                }
+                if (hook.startsWith("compareAndExchange")) {
+                    return prefix + "JJ)J";
+                }
+                if (hook.startsWith("getAnd")) {
+                    return prefix + "J)J";
+                }
+                return prefix + "J)V";
+            }
             if (VAR_HANDLE.equals(owner)) {
                 if ("getVolatileInt".equals(hook) || "getAcquireInt".equals(hook)) {
                     return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;)I";

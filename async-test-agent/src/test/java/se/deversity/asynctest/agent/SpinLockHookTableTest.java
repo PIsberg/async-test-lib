@@ -85,7 +85,10 @@ class SpinLockHookTableTest {
     void everyVarHandleSubstitutionResolvesToARegistryHook() {
         Set<String> substituted = new TreeSet<>();
         List<String> shapes = List.of("(Ljava/lang/Object;)I", "(Ljava/lang/Object;I)I", "(Ljava/lang/Object;I)V",
-                "(Ljava/lang/Object;II)I", "(Ljava/lang/Object;II)V", "(Ljava/lang/Object;II)Z");
+                "(Ljava/lang/Object;II)I", "(Ljava/lang/Object;II)V", "(Ljava/lang/Object;II)Z",
+                // The long field shapes (#1275, #1317).
+                "(Ljava/lang/Object;)J", "(Ljava/lang/Object;J)J", "(Ljava/lang/Object;J)V",
+                "(Ljava/lang/Object;JJ)J", "(Ljava/lang/Object;JJ)V", "(Ljava/lang/Object;JJ)Z");
         List<String> names = new ArrayList<>();
         for (Method method : VarHandle.class.getMethods()) {
             if (method.isVarArgs() && Modifier.isNative(method.getModifiers())) {

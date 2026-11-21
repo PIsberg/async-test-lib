@@ -65,6 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `long` instance-field `VarHandle` publishes and feeds the check-then-act rule (#1275,
+  #1317, part).** No `long` `VarHandle` call was woven: a field published through
+  `setVolatile`, a won swap or `getAndAdd` and read through `getVolatile` (or directly) was
+  reported as an unordered publication on correct code, and a `getVolatile` then `getAndAdd`
+  check-then-increment was silent. The 29 `long` forms are now woven and modelled as the `int`
+  ones (per access mode, under the field's own slot), without the spinlock rules, since a `long`
+  is never a spinlock flag. Corpus idiom pair `idiom_longHandleAdmission_*`,
+  `AtomicFlagPublicationWeavingTest`.
+
 - **An `AtomicIntegerArray` or `AtomicLongArray` element publishes (#1317, part).** With the agent
   attached, neither atomic array was woven, so a field published through an element's `set`,
   `lazySet`, `setRelease`, won swap, `getAndSet` or arithmetic and update forms and read after a

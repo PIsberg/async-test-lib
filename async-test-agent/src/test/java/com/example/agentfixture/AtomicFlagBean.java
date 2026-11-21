@@ -31,6 +31,69 @@ public class AtomicFlagBean {
     static final AtomicIntegerFieldUpdater<AtomicFlagBean> GATE =
             AtomicIntegerFieldUpdater.newUpdater(AtomicFlagBean.class, "gate");
 
+    /** A volatile long reached both directly and through {@link #GAUGE}, a VarHandle (#1275, #1317). */
+    public volatile long gauge;
+
+    static final java.lang.invoke.VarHandle GAUGE;
+
+    static {
+        try {
+            GAUGE = java.lang.invoke.MethodHandles.lookup().findVarHandle(AtomicFlagBean.class, "gauge", long.class);
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    public void publishThroughLongHandleSetVolatile() {
+        data = data + 1;
+        GAUGE.setVolatile(this, 5L);
+    }
+
+    public void publishThroughLongHandleCompareAndSet() {
+        data = data + 1;
+        GAUGE.compareAndSet(this, 0L, 5L);
+    }
+
+    public void publishThroughLongHandleGetAndAdd() {
+        data = data + 1;
+        long ignored = (long) GAUGE.getAndAdd(this, 5L);
+    }
+
+    /** A plain store: no release, so it publishes nothing. */
+    public void publishThroughLongHandlePlainSet() {
+        data = data + 1;
+        GAUGE.set(this, 5L);
+    }
+
+    public void publishThroughDirectGaugeWrite() {
+        data = data + 1;
+        gauge = 5L;
+    }
+
+    public int bumpAfterLongHandleGetVolatile() {
+        if ((long) GAUGE.getVolatile(this) < 1L) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    public int bumpAfterDirectGaugeRead() {
+        if (gauge < 1L) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    /** The long handle's arithmetic, bitwise and exchange forms on {@link #gauge} from 0, joined (#1317). */
+    public String longHandleTrace() {
+        return (long) GAUGE.getAndAdd(this, 5L) + "," + (long) GAUGE.getAndAddRelease(this, 2L)
+                + "," + (long) GAUGE.getAndBitwiseOr(this, 8L) + "," + (long) GAUGE.getAndBitwiseAnd(this, 12L)
+                + "," + (long) GAUGE.getAndBitwiseXor(this, 3L) + "," + (long) GAUGE.getAndSet(this, 1L)
+                + "," + (long) GAUGE.compareAndExchange(this, 1L, 4L) + "," + (long) GAUGE.getVolatile(this);
+    }
+
     /** Atomic arrays whose element 2 is a completion flag (#1317). */
     public final AtomicIntegerArray flags = new AtomicIntegerArray(4);
 
