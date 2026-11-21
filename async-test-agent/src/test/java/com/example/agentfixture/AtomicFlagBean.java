@@ -2,6 +2,7 @@ package com.example.agentfixture;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -20,6 +21,86 @@ public class AtomicFlagBean {
     public final AtomicInteger count = new AtomicInteger();
 
     public final AtomicLong total = new AtomicLong();
+
+    /** A volatile field reached both directly and through {@link #GATE} (#1317). */
+    public volatile int gate;
+
+    static final AtomicIntegerFieldUpdater<AtomicFlagBean> GATE =
+            AtomicIntegerFieldUpdater.newUpdater(AtomicFlagBean.class, "gate");
+
+    // --- An AtomicIntegerFieldUpdater slot, and the same field read or written directly (#1317) ---
+
+    public void publishThroughUpdaterSet() {
+        data = data + 1;
+        GATE.set(this, 5);
+    }
+
+    public void publishThroughUpdaterLazySet() {
+        data = data + 1;
+        GATE.lazySet(this, 5);
+    }
+
+    public void publishThroughUpdaterCompareAndSet() {
+        data = data + 1;
+        GATE.compareAndSet(this, 0, 5);
+    }
+
+    public void publishThroughUpdaterGetAndSet() {
+        data = data + 1;
+        GATE.getAndSet(this, 5);
+    }
+
+    public void publishThroughUpdaterAddAndGet() {
+        data = data + 1;
+        GATE.addAndGet(this, 5);
+    }
+
+    public void publishThroughUpdaterIncrementAndGet() {
+        data = data + 1;
+        GATE.incrementAndGet(this);
+    }
+
+    public void publishThroughUpdaterUpdateAndGet() {
+        data = data + 1;
+        GATE.updateAndGet(this, g -> g + 5);
+    }
+
+    public void publishThroughDirectVolatileWrite() {
+        data = data + 1;
+        gate = 5;
+    }
+
+    /** The gate first and the update after it: the gate publishes nothing of the update. */
+    public void setTheUpdaterGateBeforeTheUpdate() {
+        GATE.set(this, 5);
+        data = data + 1;
+    }
+
+    public int bumpAfterUpdaterGet() {
+        if (GATE.get(this) < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    /** Every updater form on {@link #gate} from 0, joined: what the woven loops must return (#1317). */
+    public String updaterArithmeticTrace() {
+        return GATE.addAndGet(this, 5) + "," + GATE.getAndAdd(this, 2) + "," + GATE.incrementAndGet(this)
+                + "," + GATE.getAndIncrement(this) + "," + GATE.decrementAndGet(this)
+                + "," + GATE.getAndDecrement(this) + "," + GATE.updateAndGet(this, g -> g * 2)
+                + "," + GATE.getAndUpdate(this, g -> g + 1) + "," + GATE.accumulateAndGet(this, 3, Integer::sum)
+                + "," + GATE.getAndAccumulate(this, 2, (a, b) -> a * b) + "," + GATE.getAndSet(this, 1)
+                + "," + GATE.compareAndSet(this, 1, 4) + "," + GATE.get(this);
+    }
+
+    public int bumpAfterDirectVolatileRead() {
+        if (gate < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
 
     public void publishThroughBooleanSet() {
         data = data + 1;

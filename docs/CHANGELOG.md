@@ -65,6 +65,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An `AtomicIntegerFieldUpdater` publishes, under the same slot as its field (#1317, part).**
+  With the agent attached, a field published through an updater's `set`, `lazySet`, won
+  `compareAndSet`, `getAndSet` or arithmetic and update forms and read after the updater's `get`
+  (or a direct volatile read of the field) saw the value was reported by `AtomicityValidator` as
+  an unordered publication on correct code, and so was a direct volatile write read through the
+  updater: updater calls released and acquired nothing. They now release and acquire under the
+  field's own name (`DeclaringClass.field`), the slot a direct volatile access of the field uses.
+  The arithmetic and update forms run as a releasing compare-and-set loop that withdraws a lost
+  attempt, and the value they return acquires nothing (`AtomicCounterClockTest`'s reason).
+  `AtomicFlagPublicationWeavingTest`.
+
 - **A check-then-increment through an `AtomicIntegerFieldUpdater` is reported (#1275, part).**
   `if (UPDATER.get(o) < LIMIT) UPDATER.incrementAndGet(o)` admits past the limit when another
   thread's update lands between the check and the increment, as the same code on an
