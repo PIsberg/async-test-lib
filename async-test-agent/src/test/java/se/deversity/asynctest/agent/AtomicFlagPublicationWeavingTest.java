@@ -357,6 +357,75 @@ class AtomicFlagPublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("an AtomicIntegerFieldUpdater.set publishes to its get (#1317)")
+    void anUpdaterSetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughUpdaterSet, AtomicFlagBean::bumpAfterUpdaterGet);
+    }
+
+    @Test
+    @DisplayName("an AtomicIntegerFieldUpdater.lazySet publishes to its get (#1317)")
+    void anUpdaterLazySetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughUpdaterLazySet, AtomicFlagBean::bumpAfterUpdaterGet);
+    }
+
+    @Test
+    @DisplayName("a won AtomicIntegerFieldUpdater.compareAndSet publishes to its get (#1317)")
+    void anUpdaterCompareAndSetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughUpdaterCompareAndSet, AtomicFlagBean::bumpAfterUpdaterGet);
+    }
+
+    @Test
+    @DisplayName("an AtomicIntegerFieldUpdater.getAndSet publishes to its get (#1317)")
+    void anUpdaterGetAndSetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughUpdaterGetAndSet, AtomicFlagBean::bumpAfterUpdaterGet);
+    }
+
+    @Test
+    @DisplayName("an AtomicIntegerFieldUpdater.addAndGet publishes to its get (#1317)")
+    void anUpdaterAddAndGetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughUpdaterAddAndGet, AtomicFlagBean::bumpAfterUpdaterGet);
+    }
+
+    @Test
+    @DisplayName("an AtomicIntegerFieldUpdater.incrementAndGet publishes to its get (#1317)")
+    void anUpdaterIncrementAndGetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughUpdaterIncrementAndGet, AtomicFlagBean::bumpAfterUpdaterGet);
+    }
+
+    @Test
+    @DisplayName("an AtomicIntegerFieldUpdater.updateAndGet publishes to its get (#1317)")
+    void anUpdaterUpdateAndGetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughUpdaterUpdateAndGet, AtomicFlagBean::bumpAfterUpdaterGet);
+    }
+
+    @Test
+    @DisplayName("a direct volatile write is acquired by an updater get of the same field (#1317)")
+    void aDirectVolatileWriteIsAcquiredByAnUpdaterGet() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughDirectVolatileWrite, AtomicFlagBean::bumpAfterUpdaterGet);
+    }
+
+    @Test
+    @DisplayName("an updater set is acquired by a direct volatile read of the same field (#1317)")
+    void anUpdaterSetIsAcquiredByADirectVolatileRead() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughUpdaterSet, AtomicFlagBean::bumpAfterDirectVolatileRead);
+    }
+
+    @Test
+    @DisplayName("the woven updater forms return what the JDK's do (#1317)")
+    void theWovenUpdaterFormsReturnWhatTheJdksDo() {
+        assertEquals("5,5,8,8,8,8,14,14,18,18,36,true,4", new AtomicFlagBean().updaterArithmeticTrace(),
+                "each form, run as a releasing compare-and-set loop, returns the JDK's value");
+    }
+
+    @Test
+    @DisplayName("an updater set made before the update publishes nothing of it (#1317)")
+    void anUpdaterSetBeforeTheUpdatePublishesNothingOfIt() throws InterruptedException {
+        assertRaced(AtomicFlagBean::setTheUpdaterGateBeforeTheUpdate, AtomicFlagBean::bumpAfterUpdaterGet,
+                "the writer set the gate and then updated data, so the reader's get orders it after "
+                        + "the set and not after the update");
+    }
+
+    @Test
     @DisplayName("setPlain orders nothing: a plain store is no release (#1317)")
     void aPlainStoreStillRaces() throws InterruptedException {
         assertRaced(AtomicFlagBean::publishThroughIntSetPlain, AtomicFlagBean::bumpAfterCount,
