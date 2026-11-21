@@ -6507,6 +6507,21 @@ final class Corpus {
                             + "before #1275's VarHandle part",
                     IssueSeverity.HIGH),
 
+            new RecordingSubject("idiom_longHandleAdmission_compareAndSetLoop", JDK,
+                    "java.lang.invoke.VarHandle",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same admission through a VarHandle on a volatile long: a getVolatile and "
+                            + "compareAndSet loop that re-checks the limit after every lost race"),
+
+            new RecordingSubject("idiom_longHandleAdmission_checkThenIncrement", JDK,
+                    "java.lang.invoke.VarHandle",
+                    DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same admission through a long VarHandle: getVolatile, then getAndAdd. "
+                            + "Silent before #1275's long VarHandle part",
+                    IssueSeverity.HIGH),
+
             new RecordingSubject("idiom_longUpdaterAdmission_compareAndSetLoop", JDK,
                     "java.util.concurrent.atomic.AtomicLongFieldUpdater",
                     DetectorType.ATOMIC_NON_ATOMIC_UPDATE, Contract.THREAD_SAFE,

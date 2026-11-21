@@ -567,6 +567,49 @@ class AtomicFlagPublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("a long VarHandle setVolatile publishes to its getVolatile (#1317)")
+    void aLongHandleSetVolatilePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongHandleSetVolatile, AtomicFlagBean::bumpAfterLongHandleGetVolatile);
+    }
+
+    @Test
+    @DisplayName("a won long VarHandle compareAndSet publishes (#1317)")
+    void aLongHandleCompareAndSetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongHandleCompareAndSet, AtomicFlagBean::bumpAfterLongHandleGetVolatile);
+    }
+
+    @Test
+    @DisplayName("a long VarHandle getAndAdd publishes (#1317)")
+    void aLongHandleGetAndAddPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongHandleGetAndAdd, AtomicFlagBean::bumpAfterLongHandleGetVolatile);
+    }
+
+    @Test
+    @DisplayName("a direct volatile long write is acquired by a long VarHandle getVolatile (#1317)")
+    void aDirectGaugeWriteIsAcquiredByALongHandleRead() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughDirectGaugeWrite, AtomicFlagBean::bumpAfterLongHandleGetVolatile);
+    }
+
+    @Test
+    @DisplayName("a long VarHandle setVolatile is acquired by a direct volatile read (#1317)")
+    void aLongHandleSetVolatileIsAcquiredByADirectRead() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongHandleSetVolatile, AtomicFlagBean::bumpAfterDirectGaugeRead);
+    }
+
+    @Test
+    @DisplayName("a long VarHandle plain set orders nothing (#1317)")
+    void aLongHandlePlainSetStillRaces() throws InterruptedException {
+        assertRaced(AtomicFlagBean::publishThroughLongHandlePlainSet, AtomicFlagBean::bumpAfterLongHandleGetVolatile,
+                "VarHandle.set has plain semantics, so a getVolatile that saw it orders nothing");
+    }
+
+    @Test
+    @DisplayName("the woven long VarHandle forms return what the handle's do (#1317)")
+    void theWovenLongHandleFormsReturnWhatTheHandlesDo() {
+        assertEquals("0,5,7,15,12,15,1,4", new AtomicFlagBean().longHandleTrace());
+    }
+
+    @Test
     @DisplayName("the woven updater forms return what the JDK's do (#1317)")
     void theWovenUpdaterFormsReturnWhatTheJdksDo() {
         assertEquals("5,5,8,8,8,8,14,14,18,18,36,true,4", new AtomicFlagBean().updaterArithmeticTrace(),

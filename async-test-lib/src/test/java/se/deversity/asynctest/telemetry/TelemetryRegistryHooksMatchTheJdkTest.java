@@ -69,6 +69,7 @@ class TelemetryRegistryHooksMatchTheJdkTest {
     static volatile Object staticRef = A;
 
     private static final VarHandle INT;
+    private static final VarHandle LONG;
     private static final VarHandle REF;
     private static final VarHandle STATIC_REF;
     private static final VarHandle ARRAY = MethodHandles.arrayElementVarHandle(Object[].class);
@@ -83,6 +84,7 @@ class TelemetryRegistryHooksMatchTheJdkTest {
         try {
             MethodHandles.Lookup lookup = MethodHandles.lookup();
             INT = lookup.findVarHandle(Bean.class, "count", int.class);
+            LONG = lookup.findVarHandle(Bean.class, "tally", long.class);
             REF = lookup.findVarHandle(Bean.class, "ref", Object.class);
             STATIC_REF = lookup.findStaticVarHandle(TelemetryRegistryHooksMatchTheJdkTest.class,
                     "staticRef", Object.class);
@@ -266,6 +268,22 @@ class TelemetryRegistryHooksMatchTheJdkTest {
         // The acquiring reads (#1275, #1317).
         add("getVolatileInt", bean, b -> TelemetryRegistry.getVolatileInt(INT, b), b -> (int) INT.getVolatile(b), state);
         add("getAcquireInt", bean, b -> TelemetryRegistry.getAcquireInt(INT, b), b -> (int) INT.getAcquire(b), state);
+        // A long field (#1275, #1317); the hooks keep the handle's call when the field is unresolved.
+        long big = (1L << 40) + 5L;
+        add("getVolatileLong", bean, b -> TelemetryRegistry.getVolatileLong(LONG, b), b -> (long) LONG.getVolatile(b), state);
+        addStore("setVolatileLong", bean, b -> TelemetryRegistry.setVolatileLong(LONG, b, 7L), b -> LONG.setVolatile(b, 7L), state);
+        for (long expected : new long[] {big, 4L}) {
+            add("compareAndSetLong(" + expected + ", 7)", bean,
+                    b -> TelemetryRegistry.compareAndSetLong(LONG, b, expected, 7L),
+                    b -> (boolean) LONG.compareAndSet(b, expected, 7L), state);
+            add("compareAndExchangeLong(" + expected + ", 7)", bean,
+                    b -> TelemetryRegistry.compareAndExchangeLong(LONG, b, expected, 7L),
+                    b -> (long) LONG.compareAndExchange(b, expected, 7L), state);
+        }
+        add("getAndSetLong", bean, b -> TelemetryRegistry.getAndSetLong(LONG, b, 7L), b -> (long) LONG.getAndSet(b, 7L), state);
+        add("getAndAddLong", bean, b -> TelemetryRegistry.getAndAddLong(LONG, b, 3L), b -> (long) LONG.getAndAdd(b, 3L), state);
+        add("getAndBitwiseXorReleaseLong", bean, b -> TelemetryRegistry.getAndBitwiseXorReleaseLong(LONG, b, 6L),
+                b -> (long) LONG.getAndBitwiseXorRelease(b, 6L), state);
     }
 
     // ---- AtomicIntegerFieldUpdater -------------------------------------------------------------

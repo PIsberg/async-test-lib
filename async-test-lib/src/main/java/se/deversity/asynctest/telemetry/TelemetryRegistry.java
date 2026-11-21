@@ -2001,6 +2001,544 @@ public final class TelemetryRegistry {
         HappensBefore.acquireVolatile(slots, ReferenceSlots.element(index), value);
     }
 
+    // ---- long instance-field VarHandles (#1275, #1317) ----------------------------------------
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getVolatile}: the acquire of the store it read, and the check half of a check-then-act (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @return the field's value
+     * @since 1.15.0
+     */
+    public static long getVolatileLong(VarHandle handle, Object receiver) {
+        AgentConcurrencyUtilHooks.updaterRead(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        long value = (long) handle.withInvokeBehavior().getVolatile(receiver);
+        longHandleLoaded(handle, receiver, value);
+        return value;
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAcquire}: the acquire of the store it read, and the check half of a check-then-act (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @return the field's value
+     * @since 1.15.0
+     */
+    public static long getAcquireLong(VarHandle handle, Object receiver) {
+        AgentConcurrencyUtilHooks.updaterRead(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        long value = (long) handle.withInvokeBehavior().getAcquire(receiver);
+        longHandleLoaded(handle, receiver, value);
+        return value;
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.set}: a store without release semantics, which publishes nothing (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param value    the value to store
+     * @since 1.15.0
+     */
+    public static void setLong(VarHandle handle, Object receiver, long value) {
+        AgentConcurrencyUtilHooks.updaterStored(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        handle.withInvokeBehavior().set(receiver, value);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.setVolatile}: released before the store (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param value    the value to store
+     * @since 1.15.0
+     */
+    public static void setVolatileLong(VarHandle handle, Object receiver, long value) {
+        AgentConcurrencyUtilHooks.updaterStored(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        longHandleStoring(handle, receiver, value);
+        handle.withInvokeBehavior().setVolatile(receiver, value);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.setRelease}: released before the store (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param value    the value to store
+     * @since 1.15.0
+     */
+    public static void setReleaseLong(VarHandle handle, Object receiver, long value) {
+        AgentConcurrencyUtilHooks.updaterStored(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        longHandleStoring(handle, receiver, value);
+        handle.withInvokeBehavior().setRelease(receiver, value);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.setOpaque}: a store without release semantics, which publishes nothing (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param value    the value to store
+     * @since 1.15.0
+     */
+    public static void setOpaqueLong(VarHandle handle, Object receiver, long value) {
+        AgentConcurrencyUtilHooks.updaterStored(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        handle.withInvokeBehavior().setOpaque(receiver, value);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.compareAndSet}: a won swap releases what it stored (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean compareAndSetLong(VarHandle handle, Object receiver, long expected, long update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        boolean won = handle.withInvokeBehavior().compareAndSet(receiver, expected, update);
+        if (won) {
+            longHandleStoring(handle, receiver, update);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.weakCompareAndSet}: a won swap releases what it stored (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetLong(VarHandle handle, Object receiver, long expected, long update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        boolean won = handle.withInvokeBehavior().weakCompareAndSet(receiver, expected, update);
+        if (won) {
+            longHandleStoring(handle, receiver, update);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.weakCompareAndSetRelease}: a won swap releases what it stored (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetReleaseLong(VarHandle handle, Object receiver, long expected, long update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        boolean won = handle.withInvokeBehavior().weakCompareAndSetRelease(receiver, expected, update);
+        if (won) {
+            longHandleStoring(handle, receiver, update);
+        }
+        return won;
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.weakCompareAndSetPlain}: a swap without release semantics, which publishes nothing (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetPlainLong(VarHandle handle, Object receiver, long expected, long update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        return handle.withInvokeBehavior().weakCompareAndSetPlain(receiver, expected, update);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.weakCompareAndSetAcquire}: a swap without release semantics, which publishes nothing (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return whether the swap happened
+     * @since 1.15.0
+     */
+    public static boolean weakCompareAndSetAcquireLong(VarHandle handle, Object receiver, long expected, long update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        return handle.withInvokeBehavior().weakCompareAndSetAcquire(receiver, expected, update);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.compareAndExchange}: the witness acquires, and a won exchange releases what it stored (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.15.0
+     */
+    public static long compareAndExchangeLong(VarHandle handle, Object receiver, long expected, long update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        long witness = (long) handle.withInvokeBehavior().compareAndExchange(receiver, expected, update);
+        longHandleLoaded(handle, receiver, witness);
+        if (witness == expected) {
+            longHandleStoring(handle, receiver, update);
+        }
+        return witness;
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.compareAndExchangeAcquire}: the witness acquires (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.15.0
+     */
+    public static long compareAndExchangeAcquireLong(VarHandle handle, Object receiver, long expected, long update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        long witness = (long) handle.withInvokeBehavior().compareAndExchangeAcquire(receiver, expected, update);
+        longHandleLoaded(handle, receiver, witness);
+        return witness;
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.compareAndExchangeRelease}: a won exchange releases what it stored (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param expected the value the field must hold
+     * @param update   the value to store
+     * @return the witness value
+     * @since 1.15.0
+     */
+    public static long compareAndExchangeReleaseLong(VarHandle handle, Object receiver, long expected, long update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        long witness = (long) handle.withInvokeBehavior().compareAndExchangeRelease(receiver, expected, update);
+        if (witness == expected) {
+            longHandleStoring(handle, receiver, update);
+        }
+        return witness;
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndSet}: the store releases and the previous value acquires (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param value    the value to store
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndSetLong(VarHandle handle, Object receiver, long value) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        longHandleStoring(handle, receiver, value);
+        long previous = (long) handle.withInvokeBehavior().getAndSet(receiver, value);
+        longHandleLoaded(handle, receiver, previous);
+        return previous;
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndSetAcquire}: the previous value acquires (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param value    the value to store
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndSetAcquireLong(VarHandle handle, Object receiver, long value) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        long previous = (long) handle.withInvokeBehavior().getAndSetAcquire(receiver, value);
+        longHandleLoaded(handle, receiver, previous);
+        return previous;
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndSetRelease}: the store releases (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param value    the value to store
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndSetReleaseLong(VarHandle handle, Object receiver, long value) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        longHandleStoring(handle, receiver, value);
+        return (long) handle.withInvokeBehavior().getAndSetRelease(receiver, value);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndAdd}: run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param delta    the value to add
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndAddLong(VarHandle handle, Object receiver, long delta) {
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        String field = receiver == null ? null : ReferenceSlots.fieldOf(handle);
+        return field == null
+                ? (long) handle.withInvokeBehavior().getAndAdd(receiver, delta)
+                : longHandleUpdatePublishing(handle, receiver, field, HANDLE_ADD, delta);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndAddRelease}: run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param delta    the value to add
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndAddReleaseLong(VarHandle handle, Object receiver, long delta) {
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        String field = receiver == null ? null : ReferenceSlots.fieldOf(handle);
+        return field == null
+                ? (long) handle.withInvokeBehavior().getAndAddRelease(receiver, delta)
+                : longHandleUpdatePublishing(handle, receiver, field, HANDLE_ADD, delta);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndAddAcquire}: an update without release semantics, which publishes nothing (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param delta    the value to add
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndAddAcquireLong(VarHandle handle, Object receiver, long delta) {
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        return (long) handle.withInvokeBehavior().getAndAddAcquire(receiver, delta);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndBitwiseOr}: run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param mask     the bits combined with the field's value
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndBitwiseOrLong(VarHandle handle, Object receiver, long mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        String field = receiver == null ? null : ReferenceSlots.fieldOf(handle);
+        return field == null
+                ? (long) handle.withInvokeBehavior().getAndBitwiseOr(receiver, mask)
+                : longHandleUpdatePublishing(handle, receiver, field, HANDLE_OR, mask);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndBitwiseOrRelease}: run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param mask     the bits combined with the field's value
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndBitwiseOrReleaseLong(VarHandle handle, Object receiver, long mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        String field = receiver == null ? null : ReferenceSlots.fieldOf(handle);
+        return field == null
+                ? (long) handle.withInvokeBehavior().getAndBitwiseOrRelease(receiver, mask)
+                : longHandleUpdatePublishing(handle, receiver, field, HANDLE_OR, mask);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndBitwiseOrAcquire}: an update without release semantics, which publishes nothing (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param mask     the bits combined with the field's value
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndBitwiseOrAcquireLong(VarHandle handle, Object receiver, long mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        return (long) handle.withInvokeBehavior().getAndBitwiseOrAcquire(receiver, mask);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndBitwiseAnd}: run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param mask     the bits combined with the field's value
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndBitwiseAndLong(VarHandle handle, Object receiver, long mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        String field = receiver == null ? null : ReferenceSlots.fieldOf(handle);
+        return field == null
+                ? (long) handle.withInvokeBehavior().getAndBitwiseAnd(receiver, mask)
+                : longHandleUpdatePublishing(handle, receiver, field, HANDLE_AND, mask);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndBitwiseAndRelease}: run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param mask     the bits combined with the field's value
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndBitwiseAndReleaseLong(VarHandle handle, Object receiver, long mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        String field = receiver == null ? null : ReferenceSlots.fieldOf(handle);
+        return field == null
+                ? (long) handle.withInvokeBehavior().getAndBitwiseAndRelease(receiver, mask)
+                : longHandleUpdatePublishing(handle, receiver, field, HANDLE_AND, mask);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndBitwiseAndAcquire}: an update without release semantics, which publishes nothing (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param mask     the bits combined with the field's value
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndBitwiseAndAcquireLong(VarHandle handle, Object receiver, long mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        return (long) handle.withInvokeBehavior().getAndBitwiseAndAcquire(receiver, mask);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndBitwiseXor}: run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param mask     the bits combined with the field's value
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndBitwiseXorLong(VarHandle handle, Object receiver, long mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        String field = receiver == null ? null : ReferenceSlots.fieldOf(handle);
+        return field == null
+                ? (long) handle.withInvokeBehavior().getAndBitwiseXor(receiver, mask)
+                : longHandleUpdatePublishing(handle, receiver, field, HANDLE_XOR, mask);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndBitwiseXorRelease}: run as a releasing compare-and-set loop (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param mask     the bits combined with the field's value
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndBitwiseXorReleaseLong(VarHandle handle, Object receiver, long mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        String field = receiver == null ? null : ReferenceSlots.fieldOf(handle);
+        return field == null
+                ? (long) handle.withInvokeBehavior().getAndBitwiseXorRelease(receiver, mask)
+                : longHandleUpdatePublishing(handle, receiver, field, HANDLE_XOR, mask);
+    }
+
+    /**
+     * Weaves a {@code long} {@code VarHandle.getAndBitwiseXorAcquire}: an update without release semantics, which publishes nothing (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @param mask     the bits combined with the field's value
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static long getAndBitwiseXorAcquireLong(VarHandle handle, Object receiver, long mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
+        ControlledSchedule.point();
+        return (long) handle.withInvokeBehavior().getAndBitwiseXorAcquire(receiver, mask);
+    }
+
+    /** {@link #handleStoring} for a {@code long} field, resolved by {@code ReferenceSlots} (#1317). */
+    private static void longHandleStoring(VarHandle handle, @Nullable Object receiver, long value) {
+        String field = receiver == null ? null : ReferenceSlots.fieldOf(handle);
+        if (field != null) {
+            HappensBefore.releaseVolatile(receiver, field, value);
+        }
+    }
+
+    /** {@link #handleLoaded} for a {@code long} field (#1317). */
+    private static void longHandleLoaded(VarHandle handle, @Nullable Object receiver, long value) {
+        String field = receiver == null ? null : ReferenceSlots.fieldOf(handle);
+        if (field != null) {
+            HappensBefore.acquireVolatile(receiver, field, value);
+        }
+    }
+
+    /**
+     * {@link #handleUpdatePublishing} for a {@code long} field (#1317).
+     *
+     * @return the previous value
+     */
+    private static long longHandleUpdatePublishing(VarHandle handle, Object receiver, String field, int op,
+                                                   long operand) {
+        VarHandle exact = handle.withInvokeBehavior();
+        for (;;) {
+            long seen = (long) exact.getVolatile(receiver);
+            long next = switch (op) {
+                case HANDLE_OR -> seen | operand;
+                case HANDLE_AND -> seen & operand;
+                case HANDLE_XOR -> seen ^ operand;
+                default -> seen + operand;
+            };
+            HappensBefore.releaseVolatile(receiver, field, next);
+            if (exact.compareAndSet(receiver, seen, next)) {
+                return seen;
+            }
+            HappensBefore.withdrawVolatile(receiver, field);
+        }
+    }
+
     /**
      * The release half of a store through an {@code AtomicIntegerFieldUpdater} (#1317): published
      * under the field's own name, as a direct volatile write of it is, so an updater store and a
