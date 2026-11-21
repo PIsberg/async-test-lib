@@ -65,6 +65,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`getAcquire`, `intValue` and `longValue` on a primitive atomic acquire like `get` (#1317,
+  part).** With the agent attached, a field published through a store into an `AtomicBoolean`,
+  `AtomicInteger` or `AtomicLong` and read after `getAcquire()`, `intValue()` or `longValue()`
+  saw the stored value was reported by `AtomicityValidator` as an unordered publication on
+  correct code: only `get` acquired. All seven reads are now woven and acquire what the store of
+  the value they returned published; the `AtomicInteger` and `AtomicLong` ones are also the check
+  half of a check-then-act, as `get` is. `AtomicFlagPublicationWeavingTest`.
+
 - **An object published through an `AtomicReferenceArray` or `AtomicReferenceFieldUpdater`
   update function is ordered (#1336, part).** With the agent attached, an element replaced by a
   successor built inside `AtomicReferenceArray.updateAndGet` (or `getAndUpdate`,

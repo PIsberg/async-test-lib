@@ -100,6 +100,64 @@ public class AtomicFlagBean {
         return data;
     }
 
+    // --- The acquiring reads besides get (#1317): getAcquire, intValue and longValue ---
+
+    public int bumpAfterBooleanGetAcquire() {
+        if (!done.getAcquire()) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    public int bumpAfterCountGetAcquire() {
+        if (count.getAcquire() < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    public int bumpAfterCountIntValue() {
+        if (count.intValue() < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    public int bumpAfterCountLongValue() {
+        if (count.longValue() < 1L) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    public int bumpAfterTotalGetAcquire() {
+        if (total.getAcquire() < 1L) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    public int bumpAfterTotalLongValue() {
+        if (total.longValue() < 1L) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    public int bumpAfterTotalIntValue() {
+        if (total.intValue() < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
     // --- The rest of the store forms, and the reads that return a stored value (#1317) ---
 
     public void publishThroughBooleanLazySet() {

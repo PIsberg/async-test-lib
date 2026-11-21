@@ -249,6 +249,48 @@ class AtomicFlagPublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("AtomicBoolean.getAcquire acquires the store it read (#1317)")
+    void aBooleanGetAcquireAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughBooleanSet, AtomicFlagBean::bumpAfterBooleanGetAcquire);
+    }
+
+    @Test
+    @DisplayName("AtomicInteger.getAcquire acquires the store it read (#1317)")
+    void anIntGetAcquireAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntSet, AtomicFlagBean::bumpAfterCountGetAcquire);
+    }
+
+    @Test
+    @DisplayName("AtomicInteger.intValue acquires the store it read (#1317)")
+    void anIntIntValueAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntSet, AtomicFlagBean::bumpAfterCountIntValue);
+    }
+
+    @Test
+    @DisplayName("AtomicInteger.longValue acquires the store it read (#1317)")
+    void anIntLongValueAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughIntSet, AtomicFlagBean::bumpAfterCountLongValue);
+    }
+
+    @Test
+    @DisplayName("AtomicLong.getAcquire acquires the store it read (#1317)")
+    void aLongGetAcquireAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongSet, AtomicFlagBean::bumpAfterTotalGetAcquire);
+    }
+
+    @Test
+    @DisplayName("AtomicLong.longValue acquires the store it read (#1317)")
+    void aLongLongValueAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongSet, AtomicFlagBean::bumpAfterTotalLongValue);
+    }
+
+    @Test
+    @DisplayName("AtomicLong.intValue acquires the store it read (#1317)")
+    void aLongIntValueAcquires() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughLongSet, AtomicFlagBean::bumpAfterTotalIntValue);
+    }
+
+    @Test
     @DisplayName("setPlain orders nothing: a plain store is no release (#1317)")
     void aPlainStoreStillRaces() throws InterruptedException {
         assertRaced(AtomicFlagBean::publishThroughIntSetPlain, AtomicFlagBean::bumpAfterCount,

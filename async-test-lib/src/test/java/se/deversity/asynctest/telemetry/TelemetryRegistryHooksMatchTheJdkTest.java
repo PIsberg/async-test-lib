@@ -9,6 +9,7 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
@@ -304,6 +305,15 @@ class TelemetryRegistryHooksMatchTheJdkTest {
     private void atomicIntegerCases() {
         Supplier<AtomicInteger> count = () -> new AtomicInteger(5);
         Function<AtomicInteger, Object> state = AtomicInteger::get;
+        // The acquiring reads besides get (#1317), and AtomicLong's, which has no section of its own.
+        add("getAcquireAtomicInteger", count, TelemetryRegistry::getAcquireAtomicInteger, AtomicInteger::getAcquire, state);
+        add("intValueAtomicInteger", count, TelemetryRegistry::intValueAtomicInteger, AtomicInteger::intValue, state);
+        add("longValueAtomicInteger", count, TelemetryRegistry::longValueAtomicInteger, AtomicInteger::longValue, state);
+        Supplier<AtomicLong> total = () -> new AtomicLong((1L << 40) + 5L);
+        Function<AtomicLong, Object> totalState = AtomicLong::get;
+        add("getAcquireAtomicLong", total, TelemetryRegistry::getAcquireAtomicLong, AtomicLong::getAcquire, totalState);
+        add("longValueAtomicLong", total, TelemetryRegistry::longValueAtomicLong, AtomicLong::longValue, totalState);
+        add("intValueAtomicLong", total, TelemetryRegistry::intValueAtomicLong, AtomicLong::intValue, totalState);
         addStore("setAtomicInteger", count, a -> TelemetryRegistry.setAtomicInteger(a, 7), a -> a.set(7), state);
         addStore("lazySetAtomicInteger", count, a -> TelemetryRegistry.lazySetAtomicInteger(a, 7),
                 a -> a.lazySet(7), state);
@@ -373,6 +383,8 @@ class TelemetryRegistryHooksMatchTheJdkTest {
         String from = " from " + initial;
         Supplier<AtomicBoolean> flag = () -> new AtomicBoolean(initial);
         Function<AtomicBoolean, Object> state = AtomicBoolean::get;
+        add("getAcquireAtomicBoolean" + from, flag, TelemetryRegistry::getAcquireAtomicBoolean,
+                AtomicBoolean::getAcquire, state); // #1317
         addStore("setAtomicBoolean" + from, flag, f -> TelemetryRegistry.setAtomicBoolean(f, other),
                 f -> f.set(other), state);
         addStore("lazySetAtomicBoolean" + from, flag, f -> TelemetryRegistry.lazySetAtomicBoolean(f, other),

@@ -124,8 +124,9 @@ final class FieldAccessWeaver {
 
     /** The {@code AtomicBoolean} calls substituted; the hook is the name plus {@code AtomicBoolean}. */
     private static final Map<String, String> ATOMIC_BOOLEAN_FORMS = Map.ofEntries(
-            // A volatile read: the acquire of the store it returned (#1315).
+            // A volatile read: the acquire of the store it returned (#1315), and getAcquire (#1317).
             Map.entry("get", "()Z"),
+            Map.entry("getAcquire", "()Z"),
             Map.entry("compareAndSet", "(ZZ)Z"),
             Map.entry("getAndSet", "(Z)Z"),
             Map.entry("set", "(Z)V"),
@@ -145,6 +146,10 @@ final class FieldAccessWeaver {
     /** The {@code AtomicInteger} calls substituted; the hook is the name plus {@code AtomicInteger}. */
     private static final Map<String, String> ATOMIC_INTEGER_FORMS = Map.ofEntries(
             Map.entry("get", "()I"),
+            // The other acquiring reads, each the acquire of the store it returned (#1317).
+            Map.entry("getAcquire", "()I"),
+            Map.entry("intValue", "()I"),
+            Map.entry("longValue", "()J"),
             // Never a release: the act half of a check-then-act (#1249).
             Map.entry("incrementAndGet", "()I"),
             Map.entry("getAndIncrement", "()I"),
@@ -178,6 +183,10 @@ final class FieldAccessWeaver {
      */
     private static final Map<String, String> ATOMIC_LONG_FORMS = Map.ofEntries(
             Map.entry("get", "()J"),
+            // The other acquiring reads, each the acquire of the store it returned (#1317).
+            Map.entry("getAcquire", "()J"),
+            Map.entry("longValue", "()J"),
+            Map.entry("intValue", "()I"),
             Map.entry("set", "(J)V"),
             Map.entry("lazySet", "(J)V"),
             Map.entry("setRelease", "(J)V"),

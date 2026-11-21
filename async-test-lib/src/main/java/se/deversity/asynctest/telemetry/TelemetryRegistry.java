@@ -907,6 +907,21 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * Weaves {@code AtomicBoolean.getAcquire}, an acquiring read: it takes what the store of the
+     * value it returned published, as {@link #getAtomicBoolean} does (#1317).
+     *
+     * @param flag the flag the call site read
+     * @return the flag's value
+     * @since 1.15.0
+     */
+    public static boolean getAcquireAtomicBoolean(AtomicBoolean flag) {
+        ControlledSchedule.point();
+        boolean value = flag.getAcquire();
+        HappensBefore.acquireVolatile(flag, SLOT_VALUE, value ? 1 : 0);
+        return value;
+    }
+
+    /**
      * The release half of a store into an {@code AtomicBoolean}, {@code AtomicInteger} or
      * {@code AtomicLong}, which has volatile-write semantics: everything this thread did so far is
      * published to a {@code get} of the same atomic that returns {@code value} (#1315), the model
@@ -1050,6 +1065,44 @@ public final class TelemetryRegistry {
     }
 
     /**
+     * Weaves {@code AtomicInteger.getAcquire}, an acquiring read and the check half of a
+     * check-then-act like {@link #getAtomicInteger} (#1317).
+     *
+     * @param count the atomic the call site read
+     * @return the atomic's value
+     * @since 1.15.0
+     */
+    public static int getAcquireAtomicInteger(AtomicInteger count) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicRead(count);
+        int value = count.getAcquire();
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.intValue}, which is {@code get} (#1317).
+     *
+     * @param count the atomic the call site read
+     * @return the atomic's value
+     * @since 1.15.0
+     */
+    public static int intValueAtomicInteger(AtomicInteger count) {
+        return getAtomicInteger(count);
+    }
+
+    /**
+     * Weaves {@code AtomicInteger.longValue}, which is {@code get} widened (#1317).
+     *
+     * @param count the atomic the call site read
+     * @return the atomic's value as a {@code long}
+     * @since 1.15.0
+     */
+    public static long longValueAtomicInteger(AtomicInteger count) {
+        return getAtomicInteger(count);
+    }
+
+    /**
      * Weaves {@code AtomicInteger.incrementAndGet}, which is never a spinlock release: only
      * the act half of a check-then-act (#1249).
      *
@@ -1166,6 +1219,44 @@ public final class TelemetryRegistry {
         long value = count.get();
         HappensBefore.acquireVolatile(count, SLOT_VALUE, value);
         return value;
+    }
+
+    /**
+     * Weaves {@code AtomicLong.getAcquire}, an acquiring read and the check half of a
+     * check-then-act like {@link #getAtomicLong} (#1317).
+     *
+     * @param count the atomic the call site read
+     * @return the atomic's value
+     * @since 1.15.0
+     */
+    public static long getAcquireAtomicLong(AtomicLong count) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.atomicRead(count);
+        long value = count.getAcquire();
+        HappensBefore.acquireVolatile(count, SLOT_VALUE, value);
+        return value;
+    }
+
+    /**
+     * Weaves {@code AtomicLong.longValue}, which is {@code get} (#1317).
+     *
+     * @param count the atomic the call site read
+     * @return the atomic's value
+     * @since 1.15.0
+     */
+    public static long longValueAtomicLong(AtomicLong count) {
+        return getAtomicLong(count);
+    }
+
+    /**
+     * Weaves {@code AtomicLong.intValue}, which is {@code get} narrowed (#1317).
+     *
+     * @param count the atomic the call site read
+     * @return the atomic's value narrowed to an {@code int}, as the JDK's own method does
+     * @since 1.15.0
+     */
+    public static int intValueAtomicLong(AtomicLong count) {
+        return (int) getAtomicLong(count);
     }
 
     /** Weaves {@code AtomicLong.set}. @param count the atomic @param value the value @since 1.14.1 */
