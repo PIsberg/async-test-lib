@@ -454,6 +454,56 @@ class AtomicFlagPublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("a VarHandle setVolatile publishes to its getVolatile (#1317)")
+    void aHandleSetVolatilePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughHandleSetVolatile, AtomicFlagBean::bumpAfterHandleGetVolatile);
+    }
+
+    @Test
+    @DisplayName("a VarHandle setRelease publishes to its getAcquire (#1317)")
+    void aHandleSetReleasePublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughHandleSetRelease, AtomicFlagBean::bumpAfterHandleGetAcquire);
+    }
+
+    @Test
+    @DisplayName("a won VarHandle compareAndSet publishes to its getVolatile (#1317)")
+    void aHandleCompareAndSetPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughHandleCompareAndSet, AtomicFlagBean::bumpAfterHandleGetVolatile);
+    }
+
+    @Test
+    @DisplayName("a VarHandle getAndAdd publishes to its getVolatile (#1317)")
+    void aHandleGetAndAddPublishes() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughHandleGetAndAdd, AtomicFlagBean::bumpAfterHandleGetVolatile);
+    }
+
+    @Test
+    @DisplayName("a direct volatile write is acquired by a VarHandle getVolatile (#1317)")
+    void aDirectWriteIsAcquiredByAHandleGetVolatile() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughDirectLeverWrite, AtomicFlagBean::bumpAfterHandleGetVolatile);
+    }
+
+    @Test
+    @DisplayName("a VarHandle setVolatile is acquired by a direct volatile read (#1317)")
+    void aHandleSetVolatileIsAcquiredByADirectRead() throws InterruptedException {
+        assertOrdered(AtomicFlagBean::publishThroughHandleSetVolatile, AtomicFlagBean::bumpAfterDirectLeverRead);
+    }
+
+    @Test
+    @DisplayName("a VarHandle plain set orders nothing: a plain store is no release (#1317)")
+    void aHandlePlainSetStillRaces() throws InterruptedException {
+        assertRaced(AtomicFlagBean::publishThroughHandlePlainSet, AtomicFlagBean::bumpAfterHandleGetVolatile,
+                "VarHandle.set has plain semantics, so a getVolatile that saw it orders nothing");
+    }
+
+    @Test
+    @DisplayName("the woven VarHandle int forms return what the handle's do (#1317)")
+    void theWovenHandleFormsReturnWhatTheHandlesDo() {
+        assertEquals("0,5,7,15,12,15,1,4", new AtomicFlagBean().handleArithmeticTrace(),
+                "each form, run as a releasing compare-and-set loop, returns the handle's value");
+    }
+
+    @Test
     @DisplayName("the woven updater forms return what the JDK's do (#1317)")
     void theWovenUpdaterFormsReturnWhatTheJdksDo() {
         assertEquals("5,5,8,8,8,8,14,14,18,18,36,true,4", new AtomicFlagBean().updaterArithmeticTrace(),

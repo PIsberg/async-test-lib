@@ -515,7 +515,8 @@ that waits runs other tasks, and so is any executor whose bound it cannot read.
 `AtomicNonAtomicUpdateDetector` hears the woven `get`, `set` and compare-and-set calls on
 `AtomicInteger`, `AtomicLong` and `AtomicReference` (#1157, #1174), and the arithmetic updates on the first two
 (`incrementAndGet`, `getAndIncrement`, the decrements, `addAndGet`, `getAndAdd`, #1249), and since #1275 the same reads,
-updates and swaps on a field reached through an `AtomicIntegerFieldUpdater` or an `AtomicLongFieldUpdater`, tracked per object and field and named
+updates and swaps on a field reached through an `AtomicIntegerFieldUpdater`, an `AtomicLongFieldUpdater` or an `int`
+instance-field `VarHandle` (`getVolatile` or `getAcquire`, then `getAndAdd`), tracked per object and field and named
 `DeclaringClass.field`. A get then an
 arithmetic update by the same thread is a check-then-act, `if (n.get() < LIMIT) n.incrementAndGet()`: it
 is reported, as a `PROMPT`, when another thread's update landed between the two and no lock was held

@@ -65,6 +65,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **An `int` instance-field `VarHandle` publishes and feeds the check-then-act rule (#1275,
+  #1317, part).** With the agent attached, the woven `int` handle calls only did the spinlock
+  bookkeeping and `getVolatile`/`getAcquire` were not woven, so a field published through a
+  handle's `setVolatile`, `setRelease`, won swap or `getAndAdd` and read through `getVolatile` (or
+  directly) was reported as an unordered publication on correct code, and a `getVolatile` then
+  `getAndAdd` check-then-increment was silent. The hooks now release, acquire and report their
+  check-then-act role per access mode under the field's own slot, the add and bitwise forms run as
+  a releasing compare-and-set loop, and the two reads are woven. A plain `set` still publishes
+  nothing. Corpus idiom pair `idiom_handleAdmission_*`, `AtomicFlagPublicationWeavingTest`.
+
 - **An `AtomicLongFieldUpdater` publishes and feeds the check-then-act rule, as the int updater
   does (#1275, #1317, part).** With the agent attached, nothing an `AtomicLongFieldUpdater` did was
   woven: a field published through its stores and read after its `get` (or a direct volatile read)

@@ -29,6 +29,82 @@ public class AtomicFlagBean {
     static final AtomicIntegerFieldUpdater<AtomicFlagBean> GATE =
             AtomicIntegerFieldUpdater.newUpdater(AtomicFlagBean.class, "gate");
 
+    /** A volatile int reached both directly and through {@link #LEVER}, a VarHandle (#1275, #1317). */
+    public volatile int lever;
+
+    static final java.lang.invoke.VarHandle LEVER;
+
+    static {
+        try {
+            LEVER = java.lang.invoke.MethodHandles.lookup().findVarHandle(AtomicFlagBean.class, "lever", int.class);
+        } catch (ReflectiveOperationException e) {
+            throw new ExceptionInInitializerError(e);
+        }
+    }
+
+    public void publishThroughHandleSetVolatile() {
+        data = data + 1;
+        LEVER.setVolatile(this, 5);
+    }
+
+    public void publishThroughHandleSetRelease() {
+        data = data + 1;
+        LEVER.setRelease(this, 5);
+    }
+
+    public void publishThroughHandleCompareAndSet() {
+        data = data + 1;
+        LEVER.compareAndSet(this, 0, 5);
+    }
+
+    public void publishThroughHandleGetAndAdd() {
+        data = data + 1;
+        int ignored = (int) LEVER.getAndAdd(this, 5);
+    }
+
+    /** A plain store: no release, so it publishes nothing. */
+    public void publishThroughHandlePlainSet() {
+        data = data + 1;
+        LEVER.set(this, 5);
+    }
+
+    public void publishThroughDirectLeverWrite() {
+        data = data + 1;
+        lever = 5;
+    }
+
+    public int bumpAfterHandleGetVolatile() {
+        if ((int) LEVER.getVolatile(this) < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    public int bumpAfterHandleGetAcquire() {
+        if ((int) LEVER.getAcquire(this) < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    public int bumpAfterDirectLeverRead() {
+        if (lever < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    /** The handle's arithmetic and bitwise forms on {@link #lever} from 0, joined (#1317). */
+    public String handleArithmeticTrace() {
+        return (int) LEVER.getAndAdd(this, 5) + "," + (int) LEVER.getAndAddRelease(this, 2)
+                + "," + (int) LEVER.getAndBitwiseOr(this, 8) + "," + (int) LEVER.getAndBitwiseAnd(this, 12)
+                + "," + (int) LEVER.getAndBitwiseXor(this, 3) + "," + (int) LEVER.getAndSet(this, 1)
+                + "," + (int) LEVER.compareAndExchange(this, 1, 4) + "," + (int) LEVER.getVolatile(this);
+    }
+
     /** A volatile long reached both directly and through {@link #TALLY} (#1317). */
     public volatile long tally;
 

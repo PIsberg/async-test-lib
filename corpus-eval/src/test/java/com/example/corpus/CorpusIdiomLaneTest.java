@@ -3066,6 +3066,73 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    /** {@link Admissions} with the count in a volatile int a VarHandle reaches (#1275). */
+    private static final class HandledAdmissions {
+        static final VarHandle ADMITTED;
+
+        static {
+            try {
+                ADMITTED = MethodHandles.lookup().findVarHandle(HandledAdmissions.class, "admitted", int.class);
+            } catch (ReflectiveOperationException e) {
+                throw new ExceptionInInitializerError(e);
+            }
+        }
+
+        volatile int admitted;
+        final Admissions handshake = new Admissions();
+    }
+
+    private static final Rounds<HandledAdmissions> CAS_HANDLED_ADMISSIONS = new Rounds<>(HandledAdmissions::new);
+    private static final Rounds<HandledAdmissions> CHECKED_HANDLED_ADMISSIONS = new Rounds<>(HandledAdmissions::new);
+
+    /** The compareAndSet loop through a VarHandle. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_handleAdmission_compareAndSetLoop() {
+        correct(() -> {
+            Turn<HandledAdmissions> turn = CAS_HANDLED_ADMISSIONS.next();
+            HandledAdmissions admissions = turn.shared();
+            if (turn.ticket() == 1) {
+                admissions.handshake.awaitAPeersCheck();
+            }
+            boolean first = true;
+            for (;;) {
+                int now = (int) HandledAdmissions.ADMITTED.getVolatile(admissions);
+                if (first && turn.ticket() == 0) {
+                    admissions.handshake.letAPeerOvertake();
+                }
+                first = false;
+                if (now >= Admissions.LIMIT
+                        || HandledAdmissions.ADMITTED.compareAndSet(admissions, now, now + 1)) {
+                    break;
+                }
+            }
+            if (turn.ticket() == 1) {
+                admissions.handshake.overtook();
+            }
+        });
+    }
+
+    /** The check-then-increment through a VarHandle: getVolatile, then getAndAdd. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_handleAdmission_checkThenIncrement() {
+        broken(() -> {
+            Turn<HandledAdmissions> turn = CHECKED_HANDLED_ADMISSIONS.next();
+            HandledAdmissions admissions = turn.shared();
+            if (turn.ticket() == 1) {
+                admissions.handshake.awaitAPeersCheck();
+            }
+            if ((int) HandledAdmissions.ADMITTED.getVolatile(admissions) < Admissions.LIMIT) {
+                if (turn.ticket() == 0) {
+                    admissions.handshake.letAPeerOvertake();
+                }
+                int ignored = (int) HandledAdmissions.ADMITTED.getAndAdd(admissions, 1);
+            }
+            if (turn.ticket() == 1) {
+                admissions.handshake.overtook();
+            }
+        });
+    }
+
     /** {@link Admissions} with the count in a volatile long a long updater reaches (#1275). */
     private static final class LongUpdatedAdmissions {
         static final AtomicLongFieldUpdater<LongUpdatedAdmissions> ADMITTED =
