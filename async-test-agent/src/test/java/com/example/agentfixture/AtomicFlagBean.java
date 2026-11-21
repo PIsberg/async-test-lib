@@ -2,8 +2,10 @@ package com.example.agentfixture;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
 /**
@@ -28,6 +30,98 @@ public class AtomicFlagBean {
 
     static final AtomicIntegerFieldUpdater<AtomicFlagBean> GATE =
             AtomicIntegerFieldUpdater.newUpdater(AtomicFlagBean.class, "gate");
+
+    /** Atomic arrays whose element 2 is a completion flag (#1317). */
+    public final AtomicIntegerArray flags = new AtomicIntegerArray(4);
+
+    public final AtomicLongArray tallies = new AtomicLongArray(4);
+
+    public void publishThroughIntArraySet() {
+        data = data + 1;
+        flags.set(2, 5);
+    }
+
+    public void publishThroughIntArrayCompareAndSet() {
+        data = data + 1;
+        flags.compareAndSet(2, 0, 5);
+    }
+
+    public void publishThroughIntArrayAddAndGet() {
+        data = data + 1;
+        flags.addAndGet(2, 5);
+    }
+
+    public void publishThroughIntArrayUpdateAndGet() {
+        data = data + 1;
+        flags.updateAndGet(2, f -> f + 5);
+    }
+
+    /** A plain store: no release, so it publishes nothing. */
+    public void publishThroughIntArraySetPlain() {
+        data = data + 1;
+        flags.setPlain(2, 5);
+    }
+
+    /** Element 1, not the element the reader reads: it publishes nothing to element 2. */
+    public void publishThroughAnotherIntElement() {
+        data = data + 1;
+        flags.set(1, 5);
+        flags.setPlain(2, 5);
+    }
+
+    public void publishThroughLongArraySet() {
+        data = data + 1;
+        tallies.set(2, 5L);
+    }
+
+    public void publishThroughLongArrayIncrementAndGet() {
+        data = data + 1;
+        tallies.incrementAndGet(2);
+    }
+
+    public int bumpAfterIntArrayGet() {
+        if (flags.get(2) < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    public int bumpAfterIntArrayGetAcquire() {
+        if (flags.getAcquire(2) < 1) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    public int bumpAfterLongArrayGet() {
+        if (tallies.get(2) < 1L) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    /** Every int array form on element 2 from 0, joined: what the woven loops must return. */
+    public String intArrayTrace() {
+        return flags.addAndGet(2, 5) + "," + flags.getAndAdd(2, 2) + "," + flags.incrementAndGet(2)
+                + "," + flags.getAndIncrement(2) + "," + flags.decrementAndGet(2) + "," + flags.getAndDecrement(2)
+                + "," + flags.updateAndGet(2, f -> f * 2) + "," + flags.getAndUpdate(2, f -> f + 1)
+                + "," + flags.accumulateAndGet(2, 3, Integer::sum) + "," + flags.getAndAccumulate(2, 2, (a, b) -> a * b)
+                + "," + flags.getAndSet(2, 1) + "," + flags.compareAndExchange(2, 1, 4) + "," + flags.get(2)
+                + "," + flags.get(1);
+    }
+
+    /** {@link #intArrayTrace} for the long array. */
+    public String longArrayTrace() {
+        return tallies.addAndGet(2, 5L) + "," + tallies.getAndAdd(2, 2L) + "," + tallies.incrementAndGet(2)
+                + "," + tallies.getAndIncrement(2) + "," + tallies.decrementAndGet(2) + "," + tallies.getAndDecrement(2)
+                + "," + tallies.updateAndGet(2, t -> t * 2) + "," + tallies.getAndUpdate(2, t -> t + 1)
+                + "," + tallies.accumulateAndGet(2, 3L, Long::sum) + "," + tallies.getAndAccumulate(2, 2L, (a, b) -> a * b)
+                + "," + tallies.getAndSet(2, 1L) + "," + tallies.compareAndExchange(2, 1L, 4L) + "," + tallies.get(2)
+                + "," + tallies.get(1);
+    }
 
     /** A volatile int reached both directly and through {@link #LEVER}, a VarHandle (#1275, #1317). */
     public volatile int lever;

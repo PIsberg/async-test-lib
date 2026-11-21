@@ -14,7 +14,9 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
@@ -43,7 +45,8 @@ class SpinLockHookTableTest {
     void everyAtomicSubstitutionResolvesToARegistryHook() {
         Set<String> substituted = new TreeSet<>();
         for (Class<?> owner : List.of(AtomicInteger.class, AtomicBoolean.class,
-                AtomicIntegerFieldUpdater.class, AtomicLongFieldUpdater.class)) {
+                AtomicIntegerFieldUpdater.class, AtomicLongFieldUpdater.class,
+                AtomicIntegerArray.class, AtomicLongArray.class)) {
             for (Method method : owner.getMethods()) {
                 if (Modifier.isStatic(method.getModifiers())) {
                     continue;

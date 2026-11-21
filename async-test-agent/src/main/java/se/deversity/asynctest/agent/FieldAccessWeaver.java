@@ -96,6 +96,8 @@ final class FieldAccessWeaver {
     private static final String VAR_HANDLE = "java/lang/invoke/VarHandle";
     private static final String INT_UPDATER = "java/util/concurrent/atomic/AtomicIntegerFieldUpdater";
     private static final String LONG_UPDATER = "java/util/concurrent/atomic/AtomicLongFieldUpdater";
+    private static final String ATOMIC_INTEGER_ARRAY = "java/util/concurrent/atomic/AtomicIntegerArray";
+    private static final String ATOMIC_LONG_ARRAY = "java/util/concurrent/atomic/AtomicLongArray";
     private static final String ATOMIC_BOOLEAN = "java/util/concurrent/atomic/AtomicBoolean";
     private static final String ATOMIC_INTEGER = "java/util/concurrent/atomic/AtomicInteger";
     private static final String ATOMIC_LONG = "java/util/concurrent/atomic/AtomicLong";
@@ -148,6 +150,60 @@ final class FieldAccessWeaver {
             Map.entry("updateAndGet", "(Ljava/lang/Object;Ljava/util/function/LongUnaryOperator;)J"),
             Map.entry("getAndAccumulate", "(Ljava/lang/Object;JLjava/util/function/LongBinaryOperator;)J"),
             Map.entry("accumulateAndGet", "(Ljava/lang/Object;JLjava/util/function/LongBinaryOperator;)J"));
+
+    /**
+     * The {@code AtomicIntegerArray} calls substituted; the hook is the name plus
+     * {@code AtomicIntegerArray} (#1317). Every form that orders something: the plain, opaque and
+     * acquire-only stores and the deprecated {@code weakCompareAndSet} are left alone.
+     */
+    private static final Map<String, String> ATOMIC_INTEGER_ARRAY_FORMS = Map.ofEntries(
+            Map.entry("get", "(I)I"),
+            Map.entry("getAcquire", "(I)I"),
+            Map.entry("set", "(II)V"),
+            Map.entry("lazySet", "(II)V"),
+            Map.entry("setRelease", "(II)V"),
+            Map.entry("compareAndSet", "(III)Z"),
+            Map.entry("weakCompareAndSetVolatile", "(III)Z"),
+            Map.entry("weakCompareAndSetRelease", "(III)Z"),
+            Map.entry("compareAndExchange", "(III)I"),
+            Map.entry("compareAndExchangeAcquire", "(III)I"),
+            Map.entry("compareAndExchangeRelease", "(III)I"),
+            Map.entry("getAndSet", "(II)I"),
+            Map.entry("getAndAdd", "(II)I"),
+            Map.entry("addAndGet", "(II)I"),
+            Map.entry("getAndIncrement", "(I)I"),
+            Map.entry("incrementAndGet", "(I)I"),
+            Map.entry("getAndDecrement", "(I)I"),
+            Map.entry("decrementAndGet", "(I)I"),
+            Map.entry("getAndUpdate", "(ILjava/util/function/IntUnaryOperator;)I"),
+            Map.entry("updateAndGet", "(ILjava/util/function/IntUnaryOperator;)I"),
+            Map.entry("getAndAccumulate", "(IILjava/util/function/IntBinaryOperator;)I"),
+            Map.entry("accumulateAndGet", "(IILjava/util/function/IntBinaryOperator;)I"));
+
+    /** {@link #ATOMIC_INTEGER_ARRAY_FORMS} for an {@code AtomicLongArray}; the hook suffix is {@code AtomicLongArray}. */
+    private static final Map<String, String> ATOMIC_LONG_ARRAY_FORMS = Map.ofEntries(
+            Map.entry("get", "(I)J"),
+            Map.entry("getAcquire", "(I)J"),
+            Map.entry("set", "(IJ)V"),
+            Map.entry("lazySet", "(IJ)V"),
+            Map.entry("setRelease", "(IJ)V"),
+            Map.entry("compareAndSet", "(IJJ)Z"),
+            Map.entry("weakCompareAndSetVolatile", "(IJJ)Z"),
+            Map.entry("weakCompareAndSetRelease", "(IJJ)Z"),
+            Map.entry("compareAndExchange", "(IJJ)J"),
+            Map.entry("compareAndExchangeAcquire", "(IJJ)J"),
+            Map.entry("compareAndExchangeRelease", "(IJJ)J"),
+            Map.entry("getAndSet", "(IJ)J"),
+            Map.entry("getAndAdd", "(IJ)J"),
+            Map.entry("addAndGet", "(IJ)J"),
+            Map.entry("getAndIncrement", "(I)J"),
+            Map.entry("incrementAndGet", "(I)J"),
+            Map.entry("getAndDecrement", "(I)J"),
+            Map.entry("decrementAndGet", "(I)J"),
+            Map.entry("getAndUpdate", "(ILjava/util/function/LongUnaryOperator;)J"),
+            Map.entry("updateAndGet", "(ILjava/util/function/LongUnaryOperator;)J"),
+            Map.entry("getAndAccumulate", "(IJLjava/util/function/LongBinaryOperator;)J"),
+            Map.entry("accumulateAndGet", "(IJLjava/util/function/LongBinaryOperator;)J"));
 
     /** The {@code AtomicBoolean} calls substituted; the hook is the name plus {@code AtomicBoolean}. */
     private static final Map<String, String> ATOMIC_BOOLEAN_FORMS = Map.ofEntries(
@@ -1141,6 +1197,8 @@ final class FieldAccessWeaver {
                 case VAR_HANDLE -> varHandleHook(name, descriptor);
                 case INT_UPDATER -> atomicHook(INT_UPDATER_FORMS, name, descriptor, "IntUpdater");
                 case LONG_UPDATER -> atomicHook(LONG_UPDATER_FORMS, name, descriptor, "LongUpdater");
+                case ATOMIC_INTEGER_ARRAY -> atomicHook(ATOMIC_INTEGER_ARRAY_FORMS, name, descriptor, "AtomicIntegerArray");
+                case ATOMIC_LONG_ARRAY -> atomicHook(ATOMIC_LONG_ARRAY_FORMS, name, descriptor, "AtomicLongArray");
                 case ATOMIC_BOOLEAN -> atomicHook(ATOMIC_BOOLEAN_FORMS, name, descriptor, "AtomicBoolean");
                 case ATOMIC_INTEGER -> atomicHook(ATOMIC_INTEGER_FORMS, name, descriptor, "AtomicInteger");
                 case ATOMIC_LONG -> atomicHook(ATOMIC_LONG_FORMS, name, descriptor, "AtomicLong");
