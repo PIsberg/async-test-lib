@@ -81,7 +81,7 @@ class SpinLockHookTableTest {
     @DisplayName("every substituted int VarHandle call names a registry hook, for int and void call sites")
     void everyVarHandleSubstitutionResolvesToARegistryHook() {
         Set<String> substituted = new TreeSet<>();
-        List<String> shapes = List.of("(Ljava/lang/Object;I)I", "(Ljava/lang/Object;I)V",
+        List<String> shapes = List.of("(Ljava/lang/Object;)I", "(Ljava/lang/Object;I)I", "(Ljava/lang/Object;I)V",
                 "(Ljava/lang/Object;II)I", "(Ljava/lang/Object;II)V", "(Ljava/lang/Object;II)Z");
         List<String> names = new ArrayList<>();
         for (Method method : VarHandle.class.getMethods()) {
@@ -108,6 +108,10 @@ class SpinLockHookTableTest {
                 "getAndBitwiseXorAcquire", "getAndBitwiseXorRelease")) {
             assertTrue(substituted.contains(form), "VarHandle." + form
                     + " is a release the weaver observes since #667; substituted: " + substituted);
+        }
+        for (String form : List.of("getVolatile", "getAcquire")) {
+            assertTrue(substituted.contains(form), "VarHandle." + form + " is an acquiring read and the check of "
+                    + "a check-then-act (#1275, #1317); substituted: " + substituted);
         }
     }
 

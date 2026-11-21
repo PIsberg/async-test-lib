@@ -260,6 +260,9 @@ class TelemetryRegistryHooksMatchTheJdkTest {
                 b -> (int) INT.getAndBitwiseXorAcquire(b, 6), state);
         add("getAndBitwiseXorReleaseInt", bean, b -> TelemetryRegistry.getAndBitwiseXorReleaseInt(INT, b, 6),
                 b -> (int) INT.getAndBitwiseXorRelease(b, 6), state);
+        // The acquiring reads (#1275, #1317).
+        add("getVolatileInt", bean, b -> TelemetryRegistry.getVolatileInt(INT, b), b -> (int) INT.getVolatile(b), state);
+        add("getAcquireInt", bean, b -> TelemetryRegistry.getAcquireInt(INT, b), b -> (int) INT.getAcquire(b), state);
     }
 
     // ---- AtomicIntegerFieldUpdater -------------------------------------------------------------

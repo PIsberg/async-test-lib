@@ -701,11 +701,15 @@ public final class TelemetryRegistry {
      */
     public static boolean compareAndSetInt(VarHandle handle, Object receiver, int expected,
                                            int update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         if (expected == 0 && update == 1) {
             SpinLocks.aboutToAcquire(receiver, handle);
         }
         boolean won = handle.withInvokeBehavior().compareAndSet(receiver, expected, update);
+        if (won) {
+            handleStoring(handle, receiver, update);
+        }
         if (won && receiver != null && (expected == 0 && update == 1 || expected == 1 && update == 0)) {
             String field = SpinLocks.fieldOf(handle);
             if (field == null) {
@@ -724,6 +728,7 @@ public final class TelemetryRegistry {
 
     /** Weaves {@code VarHandle.set} on an {@code int} field. @param handle the handle @param receiver the owner @param value the value */
     public static void setInt(VarHandle handle, Object receiver, int value) {
+        AgentConcurrencyUtilHooks.updaterStored(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         releaseIfSpinLockField(handle, receiver);
         handle.withInvokeBehavior().set(receiver, value);
@@ -731,20 +736,25 @@ public final class TelemetryRegistry {
 
     /** Weaves {@code VarHandle.setVolatile} on an {@code int} field. @param handle the handle @param receiver the owner @param value the value */
     public static void setVolatileInt(VarHandle handle, Object receiver, int value) {
+        AgentConcurrencyUtilHooks.updaterStored(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         releaseIfSpinLockField(handle, receiver);
+        handleStoring(handle, receiver, value);
         handle.withInvokeBehavior().setVolatile(receiver, value);
     }
 
     /** Weaves {@code VarHandle.setRelease} on an {@code int} field. @param handle the handle @param receiver the owner @param value the value */
     public static void setReleaseInt(VarHandle handle, Object receiver, int value) {
+        AgentConcurrencyUtilHooks.updaterStored(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         releaseIfSpinLockField(handle, receiver);
+        handleStoring(handle, receiver, value);
         handle.withInvokeBehavior().setRelease(receiver, value);
     }
 
     /** Weaves {@code VarHandle.setOpaque} on an {@code int} field. @param handle the handle @param receiver the owner @param value the value */
     public static void setOpaqueInt(VarHandle handle, Object receiver, int value) {
+        AgentConcurrencyUtilHooks.updaterStored(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         releaseIfSpinLockField(handle, receiver);
         handle.withInvokeBehavior().setOpaque(receiver, value);
@@ -1153,6 +1163,92 @@ public final class TelemetryRegistry {
     @SuppressWarnings("unchecked")
     private static AtomicLongFieldUpdater<Object> erasedLong(AtomicLongFieldUpdater<?> updater) {
         return (AtomicLongFieldUpdater<Object>) updater;
+    }
+
+    /** Which update a {@link #handleUpdatePublishing} loop applies. */
+    private static final int HANDLE_ADD = 0;
+    private static final int HANDLE_OR = 1;
+    private static final int HANDLE_AND = 2;
+    private static final int HANDLE_XOR = 3;
+
+    /**
+     * Weaves an {@code int} {@code VarHandle.getVolatile}: the acquire of the store it read, under
+     * the field's own slot, and the check half of a check-then-act (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @return the field's value
+     * @since 1.15.0
+     */
+    public static int getVolatileInt(VarHandle handle, Object receiver) {
+        AgentConcurrencyUtilHooks.updaterRead(receiver, SpinLocks.fieldOf(handle));
+        ControlledSchedule.point();
+        int value = (int) handle.withInvokeBehavior().getVolatile(receiver);
+        handleLoaded(handle, receiver, value);
+        return value;
+    }
+
+    /**
+     * Weaves an {@code int} {@code VarHandle.getAcquire}, as {@link #getVolatileInt} (#1275, #1317).
+     *
+     * @param handle   the handle the call site invoked
+     * @param receiver the object whose field the slot is
+     * @return the field's value
+     * @since 1.15.0
+     */
+    public static int getAcquireInt(VarHandle handle, Object receiver) {
+        AgentConcurrencyUtilHooks.updaterRead(receiver, SpinLocks.fieldOf(handle));
+        ControlledSchedule.point();
+        int value = (int) handle.withInvokeBehavior().getAcquire(receiver);
+        handleLoaded(handle, receiver, value);
+        return value;
+    }
+
+    /**
+     * The release half of a store through an {@code int} {@code VarHandle} with volatile or release
+     * semantics (#1317): under the field's own name, as a direct volatile write of it, so handle and
+     * direct accesses order each other. Nothing when the handle's field cannot be told.
+     */
+    private static void handleStoring(VarHandle handle, @Nullable Object receiver, int value) {
+        String field = receiver == null ? null : SpinLocks.fieldOf(handle);
+        if (field != null) {
+            HappensBefore.releaseVolatile(receiver, field, value);
+        }
+    }
+
+    /** The acquire half of an {@code int} {@code VarHandle} read of {@code value}, as {@link #handleStoring}. */
+    private static void handleLoaded(VarHandle handle, @Nullable Object receiver, int value) {
+        String field = receiver == null ? null : SpinLocks.fieldOf(handle);
+        if (field != null) {
+            HappensBefore.acquireVolatile(receiver, field, value);
+        }
+    }
+
+    /**
+     * An {@code int} {@code VarHandle} add or bitwise update as a compare-and-set loop that releases
+     * the value about to be stored and withdraws a lost attempt, as
+     * {@link #addPublishing(AtomicInteger, int)} runs an atomic's (#1317). The value it returns
+     * acquires nothing (AtomicCounterClockTest).
+     *
+     * @return the previous value
+     */
+    private static int handleUpdatePublishing(VarHandle handle, Object receiver, String field, int op,
+                                              int operand) {
+        VarHandle exact = handle.withInvokeBehavior();
+        for (;;) {
+            int seen = (int) exact.getVolatile(receiver);
+            int next = switch (op) {
+                case HANDLE_OR -> seen | operand;
+                case HANDLE_AND -> seen & operand;
+                case HANDLE_XOR -> seen ^ operand;
+                default -> seen + operand;
+            };
+            HappensBefore.releaseVolatile(receiver, field, next);
+            if (exact.compareAndSet(receiver, seen, next)) {
+                return seen;
+            }
+            HappensBefore.withdrawVolatile(receiver, field);
+        }
     }
 
     /**
@@ -2036,8 +2132,11 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int getAndSetInt(VarHandle handle, Object receiver, int value) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
+        handleStoring(handle, receiver, value);
         int previous = (int) handle.withInvokeBehavior().getAndSet(receiver, value);
+        handleLoaded(handle, receiver, previous);
         if (value != 1) {
             releaseIfSpinLockField(handle, receiver);
         }
@@ -2054,8 +2153,12 @@ public final class TelemetryRegistry {
      * @since 1.12.1
      */
     public static int getAndAddInt(VarHandle handle, Object receiver, int delta) {
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
-        int previous = (int) handle.withInvokeBehavior().getAndAdd(receiver, delta);
+        String field = receiver == null ? null : SpinLocks.fieldOf(handle);
+        int previous = field == null
+                ? (int) handle.withInvokeBehavior().getAndAdd(receiver, delta)
+                : handleUpdatePublishing(handle, receiver, field, HANDLE_ADD, delta);
         if (previous + delta != 1) {
             releaseIfSpinLockField(handle, receiver);
         }
@@ -2075,8 +2178,13 @@ public final class TelemetryRegistry {
      */
     public static int compareAndExchangeInt(VarHandle handle, Object receiver, int expected,
                                             int update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         int witness = (int) handle.withInvokeBehavior().compareAndExchange(receiver, expected, update);
+        handleLoaded(handle, receiver, witness);
+        if (witness == expected) {
+            handleStoring(handle, receiver, update);
+        }
         if (witness == expected && update != 1) {
             releaseIfSpinLockField(handle, receiver);
         }
@@ -2096,8 +2204,12 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetInt(VarHandle handle, Object receiver, int expected,
                                                int update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         boolean won = handle.withInvokeBehavior().weakCompareAndSet(receiver, expected, update);
+        if (won) {
+            handleStoring(handle, receiver, update);
+        }
         if (won && update != 1) {
             releaseIfSpinLockField(handle, receiver);
         }
@@ -2117,6 +2229,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetPlainInt(VarHandle handle, Object receiver, int expected,
                                                     int update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         boolean won = handle.withInvokeBehavior().weakCompareAndSetPlain(receiver, expected, update);
         if (won && update != 1) {
@@ -2541,8 +2654,10 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndSetAcquireInt(VarHandle handle, Object receiver, int value) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndSetAcquire(receiver, value);
+        handleLoaded(handle, receiver, previous);
         releaseUnlessLocked(handle, receiver, value);
         return previous;
     }
@@ -2557,7 +2672,9 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndSetReleaseInt(VarHandle handle, Object receiver, int value) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
+        handleStoring(handle, receiver, value);
         int previous = (int) handle.withInvokeBehavior().getAndSetRelease(receiver, value);
         releaseUnlessLocked(handle, receiver, value);
         return previous;
@@ -2573,6 +2690,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndAddAcquireInt(VarHandle handle, Object receiver, int delta) {
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndAddAcquire(receiver, delta);
         releaseUnlessLocked(handle, receiver, previous + delta);
@@ -2589,8 +2707,12 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndAddReleaseInt(VarHandle handle, Object receiver, int delta) {
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
-        int previous = (int) handle.withInvokeBehavior().getAndAddRelease(receiver, delta);
+        String field = receiver == null ? null : SpinLocks.fieldOf(handle);
+        int previous = field == null
+                ? (int) handle.withInvokeBehavior().getAndAddRelease(receiver, delta)
+                : handleUpdatePublishing(handle, receiver, field, HANDLE_ADD, delta);
         releaseUnlessLocked(handle, receiver, previous + delta);
         return previous;
     }
@@ -2608,9 +2730,11 @@ public final class TelemetryRegistry {
      */
     public static int compareAndExchangeAcquireInt(VarHandle handle, Object receiver, int expected,
                                                    int update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         int witness = (int) handle.withInvokeBehavior()
                 .compareAndExchangeAcquire(receiver, expected, update);
+        handleLoaded(handle, receiver, witness);
         if (witness == expected) {
             releaseUnlessLocked(handle, receiver, update);
         }
@@ -2630,9 +2754,13 @@ public final class TelemetryRegistry {
      */
     public static int compareAndExchangeReleaseInt(VarHandle handle, Object receiver, int expected,
                                                    int update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         int witness = (int) handle.withInvokeBehavior()
                 .compareAndExchangeRelease(receiver, expected, update);
+        if (witness == expected) {
+            handleStoring(handle, receiver, update);
+        }
         if (witness == expected) {
             releaseUnlessLocked(handle, receiver, update);
         }
@@ -2652,6 +2780,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetAcquireInt(VarHandle handle, Object receiver, int expected,
                                                       int update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         boolean won = handle.withInvokeBehavior().weakCompareAndSetAcquire(receiver, expected, update);
         if (won) {
@@ -2673,8 +2802,12 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetReleaseInt(VarHandle handle, Object receiver, int expected,
                                                       int update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         boolean won = handle.withInvokeBehavior().weakCompareAndSetRelease(receiver, expected, update);
+        if (won) {
+            handleStoring(handle, receiver, update);
+        }
         if (won) {
             releaseUnlessLocked(handle, receiver, update);
         }
@@ -2691,8 +2824,12 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseOrInt(VarHandle handle, Object receiver, int mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
-        int previous = (int) handle.withInvokeBehavior().getAndBitwiseOr(receiver, mask);
+        String field = receiver == null ? null : SpinLocks.fieldOf(handle);
+        int previous = field == null
+                ? (int) handle.withInvokeBehavior().getAndBitwiseOr(receiver, mask)
+                : handleUpdatePublishing(handle, receiver, field, HANDLE_OR, mask);
         releaseUnlessLocked(handle, receiver, previous | mask);
         return previous;
     }
@@ -2707,6 +2844,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseOrAcquireInt(VarHandle handle, Object receiver, int mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndBitwiseOrAcquire(receiver, mask);
         releaseUnlessLocked(handle, receiver, previous | mask);
@@ -2723,8 +2861,12 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseOrReleaseInt(VarHandle handle, Object receiver, int mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
-        int previous = (int) handle.withInvokeBehavior().getAndBitwiseOrRelease(receiver, mask);
+        String field = receiver == null ? null : SpinLocks.fieldOf(handle);
+        int previous = field == null
+                ? (int) handle.withInvokeBehavior().getAndBitwiseOrRelease(receiver, mask)
+                : handleUpdatePublishing(handle, receiver, field, HANDLE_OR, mask);
         releaseUnlessLocked(handle, receiver, previous | mask);
         return previous;
     }
@@ -2739,8 +2881,12 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseAndInt(VarHandle handle, Object receiver, int mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
-        int previous = (int) handle.withInvokeBehavior().getAndBitwiseAnd(receiver, mask);
+        String field = receiver == null ? null : SpinLocks.fieldOf(handle);
+        int previous = field == null
+                ? (int) handle.withInvokeBehavior().getAndBitwiseAnd(receiver, mask)
+                : handleUpdatePublishing(handle, receiver, field, HANDLE_AND, mask);
         releaseUnlessLocked(handle, receiver, previous & mask);
         return previous;
     }
@@ -2755,6 +2901,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseAndAcquireInt(VarHandle handle, Object receiver, int mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndBitwiseAndAcquire(receiver, mask);
         releaseUnlessLocked(handle, receiver, previous & mask);
@@ -2771,8 +2918,12 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseAndReleaseInt(VarHandle handle, Object receiver, int mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
-        int previous = (int) handle.withInvokeBehavior().getAndBitwiseAndRelease(receiver, mask);
+        String field = receiver == null ? null : SpinLocks.fieldOf(handle);
+        int previous = field == null
+                ? (int) handle.withInvokeBehavior().getAndBitwiseAndRelease(receiver, mask)
+                : handleUpdatePublishing(handle, receiver, field, HANDLE_AND, mask);
         releaseUnlessLocked(handle, receiver, previous & mask);
         return previous;
     }
@@ -2787,8 +2938,12 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseXorInt(VarHandle handle, Object receiver, int mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
-        int previous = (int) handle.withInvokeBehavior().getAndBitwiseXor(receiver, mask);
+        String field = receiver == null ? null : SpinLocks.fieldOf(handle);
+        int previous = field == null
+                ? (int) handle.withInvokeBehavior().getAndBitwiseXor(receiver, mask)
+                : handleUpdatePublishing(handle, receiver, field, HANDLE_XOR, mask);
         releaseUnlessLocked(handle, receiver, previous ^ mask);
         return previous;
     }
@@ -2803,6 +2958,7 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseXorAcquireInt(VarHandle handle, Object receiver, int mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
         int previous = (int) handle.withInvokeBehavior().getAndBitwiseXorAcquire(receiver, mask);
         releaseUnlessLocked(handle, receiver, previous ^ mask);
@@ -2819,8 +2975,12 @@ public final class TelemetryRegistry {
      * @since 1.12.2
      */
     public static int getAndBitwiseXorReleaseInt(VarHandle handle, Object receiver, int mask) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(handle));
         ControlledSchedule.point();
-        int previous = (int) handle.withInvokeBehavior().getAndBitwiseXorRelease(receiver, mask);
+        String field = receiver == null ? null : SpinLocks.fieldOf(handle);
+        int previous = field == null
+                ? (int) handle.withInvokeBehavior().getAndBitwiseXorRelease(receiver, mask)
+                : handleUpdatePublishing(handle, receiver, field, HANDLE_XOR, mask);
         releaseUnlessLocked(handle, receiver, previous ^ mask);
         return previous;
     }

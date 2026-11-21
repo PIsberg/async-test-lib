@@ -1188,6 +1188,8 @@ final class FieldAccessWeaver {
                         tail.startsWith("I)") && intOrVoid ? name + "Int" : null;
                 case "set", "setVolatile", "setRelease", "setOpaque" ->
                         "I)V".equals(tail) ? name + "Int" : null;
+                // The acquiring reads, for publication and the check of a check-then-act (#1275, #1317).
+                case "getVolatile", "getAcquire" -> ")I".equals(tail) ? name + "Int" : null;
                 default -> null;
             };
         }
@@ -1201,6 +1203,9 @@ final class FieldAccessWeaver {
          */
         private static String spinLockHookDescriptor(String owner, String hook, String descriptor) {
             if (VAR_HANDLE.equals(owner)) {
+                if ("getVolatileInt".equals(hook) || "getAcquireInt".equals(hook)) {
+                    return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;)I";
+                }
                 if (hook.startsWith("compareAndSet") || hook.startsWith("weakCompareAndSet")) {
                     return "(Ljava/lang/invoke/VarHandle;Ljava/lang/Object;II)Z";
                 }
