@@ -47,6 +47,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
@@ -3002,6 +3003,64 @@ class CorpusIdiomLaneTest {
             }
             if (turn.ticket() == 1) {
                 admissions.overtook();
+            }
+        });
+    }
+
+    /** {@link Admissions} with the count in a volatile field an updater reaches (#1275). */
+    private static final class UpdatedAdmissions {
+        static final AtomicIntegerFieldUpdater<UpdatedAdmissions> ADMITTED =
+                AtomicIntegerFieldUpdater.newUpdater(UpdatedAdmissions.class, "admitted");
+        volatile int admitted;
+        final Admissions handshake = new Admissions();
+    }
+
+    private static final Rounds<UpdatedAdmissions> CAS_UPDATED_ADMISSIONS = new Rounds<>(UpdatedAdmissions::new);
+    private static final Rounds<UpdatedAdmissions> CHECKED_UPDATED_ADMISSIONS = new Rounds<>(UpdatedAdmissions::new);
+
+    /** The compareAndSet loop through an updater: ticket 0's first swap loses and it reads again. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_updaterAdmission_compareAndSetLoop() {
+        correct(() -> {
+            Turn<UpdatedAdmissions> turn = CAS_UPDATED_ADMISSIONS.next();
+            UpdatedAdmissions admissions = turn.shared();
+            if (turn.ticket() == 1) {
+                admissions.handshake.awaitAPeersCheck();
+            }
+            boolean first = true;
+            for (;;) {
+                int now = UpdatedAdmissions.ADMITTED.get(admissions);
+                if (first && turn.ticket() == 0) {
+                    admissions.handshake.letAPeerOvertake();
+                }
+                first = false;
+                if (now >= Admissions.LIMIT || UpdatedAdmissions.ADMITTED.compareAndSet(admissions, now, now + 1)) {
+                    break;
+                }
+            }
+            if (turn.ticket() == 1) {
+                admissions.handshake.overtook();
+            }
+        });
+    }
+
+    /** The check-then-increment through an updater: ticket 1's increment lands between ticket 0's check and its own. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_updaterAdmission_checkThenIncrement() {
+        broken(() -> {
+            Turn<UpdatedAdmissions> turn = CHECKED_UPDATED_ADMISSIONS.next();
+            UpdatedAdmissions admissions = turn.shared();
+            if (turn.ticket() == 1) {
+                admissions.handshake.awaitAPeersCheck();
+            }
+            if (UpdatedAdmissions.ADMITTED.get(admissions) < Admissions.LIMIT) {
+                if (turn.ticket() == 0) {
+                    admissions.handshake.letAPeerOvertake();
+                }
+                UpdatedAdmissions.ADMITTED.incrementAndGet(admissions);
+            }
+            if (turn.ticket() == 1) {
+                admissions.handshake.overtook();
             }
         });
     }

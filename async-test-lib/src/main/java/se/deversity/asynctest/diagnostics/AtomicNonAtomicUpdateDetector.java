@@ -126,11 +126,25 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
      * @since 1.14.1
      */
     public void agentRead(Object atomic) {
-        if (atomic == null) return;
-        AtomicState s = stateFor(atomic, null, "Atomic");
-        s.noteAccess(atomic, false);
+        agentRead(atomic, null, atomic);
+    }
+
+    /**
+     * {@link #agentRead(Object)} for a slot that is not an object of its own: a field reached
+     * through an updater, tracked by {@code key} and named {@code name}, whose receiver's monitor
+     * is the one that can guard it (#1275).
+     *
+     * @param key      the object the slot is tracked by
+     * @param name     the slot's name in a finding; {@code null} names it after {@code key}
+     * @param receiver the object whose field the slot is
+     * @since 1.15.0
+     */
+    public void agentRead(Object key, @Nullable String name, Object receiver) {
+        if (key == null) return;
+        AtomicState s = stateFor(key, name, "Atomic");
+        s.noteAccess(receiver, false);
         s.wovenReads.put(Thread.currentThread().threadId(),
-                new WovenRead(HeldLocks.intersect(null, atomic, true), s.writes.get()));
+                new WovenRead(HeldLocks.intersect(null, receiver, true), s.writes.get()));
     }
 
     /**
@@ -147,16 +161,29 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
      * @since 1.14.1
      */
     public void agentStore(Object atomic) {
-        if (atomic == null) return;
-        AtomicState s = stateFor(atomic, null, "Atomic");
-        s.noteAccess(atomic, true);
+        agentStore(atomic, null, atomic);
+    }
+
+    /**
+     * {@link #agentStore(Object)} for a slot tracked by {@code key}, as
+     * {@link #agentRead(Object, String, Object)} describes (#1275).
+     *
+     * @param key      the object the slot is tracked by
+     * @param name     the slot's name in a finding; {@code null} names it after {@code key}
+     * @param receiver the object whose field the slot is
+     * @since 1.15.0
+     */
+    public void agentStore(Object key, @Nullable String name, Object receiver) {
+        if (key == null) return;
+        AtomicState s = stateFor(key, name, "Atomic");
+        s.noteAccess(receiver, true);
         s.writes.incrementAndGet();
         Thread thread = Thread.currentThread();
         WovenRead atRead = s.wovenReads.remove(thread.threadId());
         if (atRead == null) {
             return;
         }
-        int[] heldThroughout = HeldLocks.intersect(atRead.locks(), atomic, true);
+        int[] heldThroughout = HeldLocks.intersect(atRead.locks(), receiver, true);
         int[] commonToPairs = s.roundPairLocks.updateAndGet(common -> common == null
                 ? heldThroughout : Lockset.intersect(common, heldThroughout));
         boolean firstThisRound = s.roundUpdaters.add(thread.threadId());
@@ -196,8 +223,19 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
      * @since 1.14.1
      */
     public void agentSwap(Object atomic) {
-        if (atomic == null) return;
-        AtomicState s = stateFor(atomic, null, "Atomic");
+        agentSwap(atomic, null);
+    }
+
+    /**
+     * {@link #agentSwap(Object)} for a slot tracked by {@code key} (#1275).
+     *
+     * @param key  the object the slot is tracked by
+     * @param name the slot's name in a finding; {@code null} names it after {@code key}
+     * @since 1.15.0
+     */
+    public void agentSwap(Object key, @Nullable String name) {
+        if (key == null) return;
+        AtomicState s = stateFor(key, name, "Atomic");
         s.writes.incrementAndGet();
         s.wovenReads.remove(Thread.currentThread().threadId());
     }
@@ -216,14 +254,27 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
      * @since 1.14.3
      */
     public void agentIncrement(Object atomic) {
-        if (atomic == null) return;
-        AtomicState s = stateFor(atomic, null, "Atomic");
-        s.noteAccess(atomic, true);
+        agentIncrement(atomic, null, atomic);
+    }
+
+    /**
+     * {@link #agentIncrement(Object)} for a slot tracked by {@code key}, as
+     * {@link #agentRead(Object, String, Object)} describes (#1275).
+     *
+     * @param key      the object the slot is tracked by
+     * @param name     the slot's name in a finding; {@code null} names it after {@code key}
+     * @param receiver the object whose field the slot is
+     * @since 1.15.0
+     */
+    public void agentIncrement(Object key, @Nullable String name, Object receiver) {
+        if (key == null) return;
+        AtomicState s = stateFor(key, name, "Atomic");
+        s.noteAccess(receiver, true);
         Thread thread = Thread.currentThread();
         WovenRead read = s.wovenReads.remove(thread.threadId());
         int writesBefore = s.writes.getAndIncrement();
         if (read == null || writesBefore == read.writesSeen()
-                || HeldLocks.intersect(read.locks(), atomic, true).length > 0) {
+                || HeldLocks.intersect(read.locks(), receiver, true).length > 0) {
             return;
         }
         s.checkThenUpdates.incrementAndGet();

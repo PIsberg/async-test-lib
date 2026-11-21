@@ -783,6 +783,7 @@ public final class TelemetryRegistry {
      */
     public static boolean compareAndSetIntUpdater(AtomicIntegerFieldUpdater<?> updater,
                                                   Object receiver, int expected, int update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(updater));
         ControlledSchedule.point();
         if (expected == 0 && update == 1) {
             SpinLocks.aboutToAcquire(receiver, updater);
@@ -806,6 +807,7 @@ public final class TelemetryRegistry {
     /** Weaves {@code AtomicIntegerFieldUpdater.set}, a release when the holder stores its flag. @param updater the updater @param receiver the owner @param value the value @since 1.12.1 */
     public static void setIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                      int value) {
+        AgentConcurrencyUtilHooks.updaterStored(receiver, SpinLocks.fieldOf(updater));
         ControlledSchedule.point();
         releaseIfSpinLockField(updater, receiver);
         erased(updater).set(receiver, value);
@@ -814,6 +816,7 @@ public final class TelemetryRegistry {
     /** Weaves {@code AtomicIntegerFieldUpdater.lazySet}, a release when the holder stores its flag. @param updater the updater @param receiver the owner @param value the value @since 1.12.1 */
     public static void lazySetIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                          int value) {
+        AgentConcurrencyUtilHooks.updaterStored(receiver, SpinLocks.fieldOf(updater));
         ControlledSchedule.point();
         releaseIfSpinLockField(updater, receiver);
         erased(updater).lazySet(receiver, value);
@@ -1745,6 +1748,7 @@ public final class TelemetryRegistry {
      */
     public static int getAndSetIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                           int value) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(updater));
         ControlledSchedule.point();
         int previous = erased(updater).getAndSet(receiver, value);
         if (value != 1) {
@@ -1764,9 +1768,63 @@ public final class TelemetryRegistry {
      */
     public static int getAndAddIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                           int delta) {
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, SpinLocks.fieldOf(updater));
         ControlledSchedule.point();
         int previous = erased(updater).getAndAdd(receiver, delta);
         if (previous + delta != 1) {
+            releaseIfSpinLockField(updater, receiver);
+        }
+        return previous;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerFieldUpdater.get}, a volatile read and the check half of a
+     * check-then-act on the field, as {@link #getAtomicInteger} is on an atomic (#1275).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is read
+     * @return the field's value
+     * @since 1.15.0
+     */
+    public static int getIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver) {
+        ControlledSchedule.point();
+        AgentConcurrencyUtilHooks.updaterRead(receiver, SpinLocks.fieldOf(updater));
+        return erased(updater).get(receiver);
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerFieldUpdater.incrementAndGet}, the act half of a check-then-act
+     * on the field (#1275); a result other than 1 releases, as {@link #addAndGetIntUpdater}.
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is written
+     * @return the updated value
+     * @since 1.15.0
+     */
+    public static int incrementAndGetIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver) {
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, SpinLocks.fieldOf(updater));
+        ControlledSchedule.point();
+        int current = erased(updater).incrementAndGet(receiver);
+        if (current != 1) {
+            releaseIfSpinLockField(updater, receiver);
+        }
+        return current;
+    }
+
+    /**
+     * Weaves {@code AtomicIntegerFieldUpdater.getAndIncrement}, as
+     * {@link #incrementAndGetIntUpdater} (#1275).
+     *
+     * @param updater  the updater the call site invoked
+     * @param receiver the object whose field is written
+     * @return the previous value
+     * @since 1.15.0
+     */
+    public static int getAndIncrementIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver) {
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, SpinLocks.fieldOf(updater));
+        ControlledSchedule.point();
+        int previous = erased(updater).getAndIncrement(receiver);
+        if (previous + 1 != 1) {
             releaseIfSpinLockField(updater, receiver);
         }
         return previous;
@@ -1783,6 +1841,7 @@ public final class TelemetryRegistry {
      */
     public static int addAndGetIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                           int delta) {
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, SpinLocks.fieldOf(updater));
         ControlledSchedule.point();
         int current = erased(updater).addAndGet(receiver, delta);
         if (current != 1) {
@@ -1801,6 +1860,7 @@ public final class TelemetryRegistry {
      */
     public static int getAndDecrementIntUpdater(AtomicIntegerFieldUpdater<?> updater,
                                                 Object receiver) {
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, SpinLocks.fieldOf(updater));
         ControlledSchedule.point();
         int previous = erased(updater).getAndDecrement(receiver);
         if (previous != 2) {
@@ -1819,6 +1879,7 @@ public final class TelemetryRegistry {
      */
     public static int decrementAndGetIntUpdater(AtomicIntegerFieldUpdater<?> updater,
                                                 Object receiver) {
+        AgentConcurrencyUtilHooks.updaterIncremented(receiver, SpinLocks.fieldOf(updater));
         ControlledSchedule.point();
         int current = erased(updater).decrementAndGet(receiver);
         if (current != 1) {
@@ -1840,6 +1901,7 @@ public final class TelemetryRegistry {
      */
     public static boolean weakCompareAndSetIntUpdater(AtomicIntegerFieldUpdater<?> updater,
                                                       Object receiver, int expected, int update) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(updater));
         ControlledSchedule.point();
         boolean won = erased(updater).weakCompareAndSet(receiver, expected, update);
         if (won && update != 1) {
@@ -2394,6 +2456,7 @@ public final class TelemetryRegistry {
      */
     public static int getAndUpdateIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                              IntUnaryOperator function) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(updater));
         ControlledSchedule.point();
         AtomicIntegerFieldUpdater<Object> target = erased(updater);
         int previous = target.getAndUpdate(receiver, function);
@@ -2414,6 +2477,7 @@ public final class TelemetryRegistry {
      */
     public static int updateAndGetIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver,
                                              IntUnaryOperator function) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(updater));
         ControlledSchedule.point();
         int current = erased(updater).updateAndGet(receiver, function);
         if (current != 1) {
@@ -2436,6 +2500,7 @@ public final class TelemetryRegistry {
     public static int getAndAccumulateIntUpdater(AtomicIntegerFieldUpdater<?> updater,
                                                  Object receiver, int operand,
                                                  IntBinaryOperator function) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(updater));
         ControlledSchedule.point();
         AtomicIntegerFieldUpdater<Object> target = erased(updater);
         int previous = target.getAndAccumulate(receiver, operand, function);
@@ -2458,6 +2523,7 @@ public final class TelemetryRegistry {
     public static int accumulateAndGetIntUpdater(AtomicIntegerFieldUpdater<?> updater,
                                                  Object receiver, int operand,
                                                  IntBinaryOperator function) {
+        AgentConcurrencyUtilHooks.updaterSwapped(receiver, SpinLocks.fieldOf(updater));
         ControlledSchedule.point();
         int current = erased(updater).accumulateAndGet(receiver, operand, function);
         if (current != 1) {

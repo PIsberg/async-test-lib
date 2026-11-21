@@ -65,6 +65,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A check-then-increment through an `AtomicIntegerFieldUpdater` is reported (#1275, part).**
+  `if (UPDATER.get(o) < LIMIT) UPDATER.incrementAndGet(o)` admits past the limit when another
+  thread's update lands between the check and the increment, as the same code on an
+  `AtomicInteger` does, and `AtomicNonAtomicUpdateDetector` reported only the latter: its rule is
+  keyed by the atomic object, and an updater names a field of an owner. With the agent attached,
+  every woven `AtomicIntegerFieldUpdater` call now reaches the rule under a key per object and
+  field (`HappensBefore.fieldKey`), named `DeclaringClass.field` in the finding, and the updater's
+  `get`, `incrementAndGet` and `getAndIncrement`, which were not woven, are. A get and
+  compareAndSet loop stays silent. `AtomicLongFieldUpdater` and `VarHandle` stay open on #1275.
+  Corpus idiom pair `idiom_updaterAdmission_*`, `AtomicNonAtomicUpdateDetectorTest`.
+
 - **An `AtomicLong` publishes through every swap and update form `AtomicInteger` does (#1317,
   part).** With the agent attached, a field published through `AtomicLong.getAndSet`, a won
   `compareAndExchange` or `compareAndExchangeRelease`, a won `weakCompareAndSetRelease`, or

@@ -636,6 +636,23 @@ public final class HappensBefore {
     }
 
     /**
+     * {@return an object that stands for {@code owner}'s field {@code field}: the same one for
+     * every call while {@code owner} lives, and never the same one for another object or field}
+     *
+     * <p>For a detector that tracks a slot reached through an updater or a handle as it tracks an
+     * atomic, by identity (#1275). It is the field's clock, which holds {@code owner} weakly, so
+     * keying by it keeps nothing alive the program dropped.
+     *
+     * @param owner the object the field belongs to
+     * @param field the field's name, as the release hooks name it
+     * @since 1.15.0
+     */
+    @API(status = Status.INTERNAL)
+    public static Object fieldKey(Object owner, String field) {
+        return fieldClock(CLOCKS.get(), owner, field);
+    }
+
+    /**
      * Takes back the calling thread's last {@link #releaseVolatile(Object, String, long)} of
      * {@code owner}'s {@code field}, for a write that released before it stored and then did not
      * store: the lost attempt of an atomic update's compare-and-set loop (#1316).
