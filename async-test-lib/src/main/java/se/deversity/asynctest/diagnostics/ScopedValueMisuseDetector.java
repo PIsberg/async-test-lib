@@ -74,7 +74,7 @@ public class ScopedValueMisuseDetector {
      * binding read as a nested rebind (#1419). The runner calls this once the previous round's
      * workers have finished.
      *
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public void markInvocationStart() {
         activeBindings.clear();

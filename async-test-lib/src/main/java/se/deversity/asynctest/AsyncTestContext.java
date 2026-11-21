@@ -866,7 +866,7 @@ public final class AsyncTestContext {
      * API.
      *
      * @return the started threads still alive, other than the calling one
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public List<Thread> spawnedThreadsAlive() {
         List<Thread> alive = new ArrayList<>();
@@ -899,9 +899,9 @@ public final class AsyncTestContext {
      * element is past the first 256, against the run the calling thread works for, if any
      * (#1262). Called by {@code TelemetryRegistry}; not part of the stable public API.
      *
-     * @since 1.15.0
+     * @since 1.14.4
      */
-    @API(status = Status.INTERNAL, since = "1.15.0")
+    @API(status = Status.INTERNAL, since = "1.14.4")
     public static void arrayAccessUntracked() {
         AsyncTestContext run = agentContext();
         if (run != null) {
@@ -914,9 +914,9 @@ public final class AsyncTestContext {
      * {@code arrays=true} did not record (#1262)} For the runner's report; not part of the stable
      * public API.
      *
-     * @since 1.15.0
+     * @since 1.14.4
      */
-    @API(status = Status.INTERNAL, since = "1.15.0")
+    @API(status = Status.INTERNAL, since = "1.14.4")
     public long untrackedArrayAccesses() {
         return untrackedArrayAccesses.sum();
     }
@@ -932,7 +932,7 @@ public final class AsyncTestContext {
      *
      * @param workerThreadIds     the ids of the run's workers, growing while the run goes on
      * @param otherRunsOverlapped whether another run was in progress at some moment of this one
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public void attributeDeadlocks(java.util.Set<Long> workerThreadIds,
                                    java.util.function.BooleanSupplier otherRunsOverlapped) {
@@ -1065,9 +1065,9 @@ public final class AsyncTestContext {
      * another package, can call it; not part of the stable public API.
      *
      * @return the failures in the order the threads died, each wrapping the thread's own error
-     * @since 1.15.0
+     * @since 1.14.4
      */
-    @API(status = Status.INTERNAL, since = "1.15.0")
+    @API(status = Status.INTERNAL, since = "1.14.4")
     public List<AssertionError> takeBodyThreadAssertions() {
         List<AssertionError> taken = new ArrayList<>();
         AssertionError failure = bodyThreadAssertions.poll();

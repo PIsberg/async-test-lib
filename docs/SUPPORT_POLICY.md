@@ -47,6 +47,11 @@ agent option, `arrays=true`, and detectors that now fire on cases they missed, l
 Upgrading in [its changelog entry](CHANGELOG.md). The owner chose on 2026-11-14 to keep the patch
 number.
 
+**The 1.14.4 exception.** 1.14.4 is a patch release carrying minor content a fourth time: two new
+public overloads on `ScopeConfigurationMisuseDetector`, an `AssertionError` on a thread the test
+body started now failing the test, and detectors that now fire on cases they missed, listed under
+Upgrading in [its changelog entry](CHANGELOG.md). The owner asked for 1.14.4 on 2026-11-21.
+
 **What is not covered.** Anything in a package containing `internal`,
 the exact text of a report or an assertion message, and the `async-test-agent` and
 `async-test-analysis` artifacts' internals. The agent's `-javaagent` contract and the analysis

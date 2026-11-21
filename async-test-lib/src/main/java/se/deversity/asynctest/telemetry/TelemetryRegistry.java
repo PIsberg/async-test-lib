@@ -541,7 +541,7 @@ public final class TelemetryRegistry {
      * Array elements past this index are not recorded (#1250). A dropped access can only miss a
      * race, never invent one, and it keeps the name table and the per-element state bounded.
      */
-    @API(status = Status.INTERNAL, since = "1.15.0")
+    @API(status = Status.INTERNAL, since = "1.14.4")
     public static final int MAX_TRACKED_ARRAY_INDEX = 256;
 
     /** Element kind names, in the order of the array opcodes, then {@code boolean}. */
@@ -857,7 +857,7 @@ public final class TelemetryRegistry {
      * @param updater  the updater the call site invoked
      * @param receiver the object whose field the slot is
      * @return the field's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver) {
         String field = SpinLocks.longFieldOf(updater);
@@ -874,7 +874,7 @@ public final class TelemetryRegistry {
      * @param updater  the updater the call site invoked
      * @param receiver the object whose field the slot is
      * @param value    the value to store
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void setLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver, long value) {
         String field = SpinLocks.longFieldOf(updater);
@@ -890,7 +890,7 @@ public final class TelemetryRegistry {
      * @param updater  the updater the call site invoked
      * @param receiver the object whose field the slot is
      * @param value    the value to store
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void lazySetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver, long value) {
         String field = SpinLocks.longFieldOf(updater);
@@ -908,7 +908,7 @@ public final class TelemetryRegistry {
      * @param expected the value the field must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean compareAndSetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver,
                                                    long expected, long update) {
@@ -929,7 +929,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param value    the value to store
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndSetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver, long value) {
         String field = SpinLocks.longFieldOf(updater);
@@ -948,7 +948,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param delta    the value to add
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndAddLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver, long delta) {
         String field = SpinLocks.longFieldOf(updater);
@@ -964,7 +964,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param delta    the value to add
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long addAndGetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver, long delta) {
         String field = SpinLocks.longFieldOf(updater);
@@ -979,7 +979,7 @@ public final class TelemetryRegistry {
      * @param updater  the updater the call site invoked
      * @param receiver the object whose field the slot is
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndIncrementLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver) {
         String field = SpinLocks.longFieldOf(updater);
@@ -994,7 +994,7 @@ public final class TelemetryRegistry {
      * @param updater  the updater the call site invoked
      * @param receiver the object whose field the slot is
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long incrementAndGetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver) {
         String field = SpinLocks.longFieldOf(updater);
@@ -1009,7 +1009,7 @@ public final class TelemetryRegistry {
      * @param updater  the updater the call site invoked
      * @param receiver the object whose field the slot is
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndDecrementLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver) {
         String field = SpinLocks.longFieldOf(updater);
@@ -1024,7 +1024,7 @@ public final class TelemetryRegistry {
      * @param updater  the updater the call site invoked
      * @param receiver the object whose field the slot is
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long decrementAndGetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver) {
         String field = SpinLocks.longFieldOf(updater);
@@ -1040,7 +1040,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param function the update, applied again after a lost swap as the JDK's own loop does
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndUpdateLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver,
                                      LongUnaryOperator function) {
@@ -1057,7 +1057,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param function the update, applied again after a lost swap as the JDK's own loop does
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long updateAndGetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver,
                                      LongUnaryOperator function) {
@@ -1075,7 +1075,7 @@ public final class TelemetryRegistry {
      * @param operand  the function's second argument
      * @param function the accumulator, applied to the current value and {@code operand}
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndAccumulateLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver,
                                          long operand, LongBinaryOperator function) {
@@ -1094,7 +1094,7 @@ public final class TelemetryRegistry {
      * @param operand  the function's second argument
      * @param function the accumulator, applied to the current value and {@code operand}
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long accumulateAndGetLongUpdater(AtomicLongFieldUpdater<?> updater, Object receiver,
                                          long operand, LongBinaryOperator function) {
@@ -1180,7 +1180,7 @@ public final class TelemetryRegistry {
      * @param handle   the handle the call site invoked
      * @param receiver the object whose field the slot is
      * @return the field's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int getVolatileInt(VarHandle handle, Object receiver) {
         AgentConcurrencyUtilHooks.updaterRead(receiver, SpinLocks.fieldOf(handle));
@@ -1196,7 +1196,7 @@ public final class TelemetryRegistry {
      * @param handle   the handle the call site invoked
      * @param receiver the object whose field the slot is
      * @return the field's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int getAcquireInt(VarHandle handle, Object receiver) {
         AgentConcurrencyUtilHooks.updaterRead(receiver, SpinLocks.fieldOf(handle));
@@ -1261,7 +1261,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @return the element's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int getAtomicIntegerArray(AtomicIntegerArray slots, int index) {
         ControlledSchedule.point();
@@ -1276,7 +1276,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @return the element's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int getAcquireAtomicIntegerArray(AtomicIntegerArray slots, int index) {
         ControlledSchedule.point();
@@ -1291,7 +1291,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @param value    the value to store
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void setAtomicIntegerArray(AtomicIntegerArray slots, int index, int value) {
         ControlledSchedule.point();
@@ -1305,7 +1305,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @param value    the value to store
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void lazySetAtomicIntegerArray(AtomicIntegerArray slots, int index, int value) {
         ControlledSchedule.point();
@@ -1319,7 +1319,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @param value    the value to store
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void setReleaseAtomicIntegerArray(AtomicIntegerArray slots, int index, int value) {
         ControlledSchedule.point();
@@ -1335,7 +1335,7 @@ public final class TelemetryRegistry {
      * @param expected the value the element must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean compareAndSetAtomicIntegerArray(AtomicIntegerArray slots, int index, int expected, int update) {
         ControlledSchedule.point();
@@ -1354,7 +1354,7 @@ public final class TelemetryRegistry {
      * @param expected the value the element must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetVolatileAtomicIntegerArray(AtomicIntegerArray slots, int index, int expected, int update) {
         ControlledSchedule.point();
@@ -1373,7 +1373,7 @@ public final class TelemetryRegistry {
      * @param expected the value the element must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetReleaseAtomicIntegerArray(AtomicIntegerArray slots, int index, int expected, int update) {
         ControlledSchedule.point();
@@ -1392,7 +1392,7 @@ public final class TelemetryRegistry {
      * @param expected the value the element must hold
      * @param update   the value to store
      * @return the witness value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int compareAndExchangeAtomicIntegerArray(AtomicIntegerArray slots, int index, int expected, int update) {
         ControlledSchedule.point();
@@ -1412,7 +1412,7 @@ public final class TelemetryRegistry {
      * @param expected the value the element must hold
      * @param update   the value to store
      * @return the witness value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int compareAndExchangeAcquireAtomicIntegerArray(AtomicIntegerArray slots, int index, int expected, int update) {
         ControlledSchedule.point();
@@ -1429,7 +1429,7 @@ public final class TelemetryRegistry {
      * @param expected the value the element must hold
      * @param update   the value to store
      * @return the witness value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int compareAndExchangeReleaseAtomicIntegerArray(AtomicIntegerArray slots, int index, int expected, int update) {
         ControlledSchedule.point();
@@ -1447,7 +1447,7 @@ public final class TelemetryRegistry {
      * @param index    the element
      * @param value    the value to store
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int getAndSetAtomicIntegerArray(AtomicIntegerArray slots, int index, int value) {
         ControlledSchedule.point();
@@ -1464,7 +1464,7 @@ public final class TelemetryRegistry {
      * @param index    the element
      * @param delta    the value to add
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int getAndAddAtomicIntegerArray(AtomicIntegerArray slots, int index, int delta) {
         ControlledSchedule.point();
@@ -1478,7 +1478,7 @@ public final class TelemetryRegistry {
      * @param index    the element
      * @param delta    the value to add
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int addAndGetAtomicIntegerArray(AtomicIntegerArray slots, int index, int delta) {
         ControlledSchedule.point();
@@ -1491,7 +1491,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int getAndIncrementAtomicIntegerArray(AtomicIntegerArray slots, int index) {
         ControlledSchedule.point();
@@ -1504,7 +1504,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int incrementAndGetAtomicIntegerArray(AtomicIntegerArray slots, int index) {
         ControlledSchedule.point();
@@ -1517,7 +1517,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int getAndDecrementAtomicIntegerArray(AtomicIntegerArray slots, int index) {
         ControlledSchedule.point();
@@ -1530,7 +1530,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int decrementAndGetAtomicIntegerArray(AtomicIntegerArray slots, int index) {
         ControlledSchedule.point();
@@ -1544,7 +1544,7 @@ public final class TelemetryRegistry {
      * @param index    the element
      * @param function the update, applied again after a lost swap as the JDK's own loop does
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int getAndUpdateAtomicIntegerArray(AtomicIntegerArray slots, int index, IntUnaryOperator function) {
         ControlledSchedule.point();
@@ -1558,7 +1558,7 @@ public final class TelemetryRegistry {
      * @param index    the element
      * @param function the update, applied again after a lost swap as the JDK's own loop does
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int updateAndGetAtomicIntegerArray(AtomicIntegerArray slots, int index, IntUnaryOperator function) {
         ControlledSchedule.point();
@@ -1573,7 +1573,7 @@ public final class TelemetryRegistry {
      * @param operand  the function's second argument
      * @param function the accumulator, applied to the current value and {@code operand}
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int getAndAccumulateAtomicIntegerArray(AtomicIntegerArray slots, int index, int operand, IntBinaryOperator function) {
         ControlledSchedule.point();
@@ -1588,7 +1588,7 @@ public final class TelemetryRegistry {
      * @param operand  the function's second argument
      * @param function the accumulator, applied to the current value and {@code operand}
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int accumulateAndGetAtomicIntegerArray(AtomicIntegerArray slots, int index, int operand, IntBinaryOperator function) {
         ControlledSchedule.point();
@@ -1627,7 +1627,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @return the element's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAtomicLongArray(AtomicLongArray slots, int index) {
         ControlledSchedule.point();
@@ -1642,7 +1642,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @return the element's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAcquireAtomicLongArray(AtomicLongArray slots, int index) {
         ControlledSchedule.point();
@@ -1657,7 +1657,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @param value    the value to store
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void setAtomicLongArray(AtomicLongArray slots, int index, long value) {
         ControlledSchedule.point();
@@ -1671,7 +1671,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @param value    the value to store
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void lazySetAtomicLongArray(AtomicLongArray slots, int index, long value) {
         ControlledSchedule.point();
@@ -1685,7 +1685,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @param value    the value to store
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void setReleaseAtomicLongArray(AtomicLongArray slots, int index, long value) {
         ControlledSchedule.point();
@@ -1701,7 +1701,7 @@ public final class TelemetryRegistry {
      * @param expected the value the element must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean compareAndSetAtomicLongArray(AtomicLongArray slots, int index, long expected, long update) {
         ControlledSchedule.point();
@@ -1720,7 +1720,7 @@ public final class TelemetryRegistry {
      * @param expected the value the element must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetVolatileAtomicLongArray(AtomicLongArray slots, int index, long expected, long update) {
         ControlledSchedule.point();
@@ -1739,7 +1739,7 @@ public final class TelemetryRegistry {
      * @param expected the value the element must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetReleaseAtomicLongArray(AtomicLongArray slots, int index, long expected, long update) {
         ControlledSchedule.point();
@@ -1758,7 +1758,7 @@ public final class TelemetryRegistry {
      * @param expected the value the element must hold
      * @param update   the value to store
      * @return the witness value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long compareAndExchangeAtomicLongArray(AtomicLongArray slots, int index, long expected, long update) {
         ControlledSchedule.point();
@@ -1778,7 +1778,7 @@ public final class TelemetryRegistry {
      * @param expected the value the element must hold
      * @param update   the value to store
      * @return the witness value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long compareAndExchangeAcquireAtomicLongArray(AtomicLongArray slots, int index, long expected, long update) {
         ControlledSchedule.point();
@@ -1795,7 +1795,7 @@ public final class TelemetryRegistry {
      * @param expected the value the element must hold
      * @param update   the value to store
      * @return the witness value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long compareAndExchangeReleaseAtomicLongArray(AtomicLongArray slots, int index, long expected, long update) {
         ControlledSchedule.point();
@@ -1813,7 +1813,7 @@ public final class TelemetryRegistry {
      * @param index    the element
      * @param value    the value to store
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndSetAtomicLongArray(AtomicLongArray slots, int index, long value) {
         ControlledSchedule.point();
@@ -1830,7 +1830,7 @@ public final class TelemetryRegistry {
      * @param index    the element
      * @param delta    the value to add
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndAddAtomicLongArray(AtomicLongArray slots, int index, long delta) {
         ControlledSchedule.point();
@@ -1844,7 +1844,7 @@ public final class TelemetryRegistry {
      * @param index    the element
      * @param delta    the value to add
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long addAndGetAtomicLongArray(AtomicLongArray slots, int index, long delta) {
         ControlledSchedule.point();
@@ -1857,7 +1857,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndIncrementAtomicLongArray(AtomicLongArray slots, int index) {
         ControlledSchedule.point();
@@ -1870,7 +1870,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long incrementAndGetAtomicLongArray(AtomicLongArray slots, int index) {
         ControlledSchedule.point();
@@ -1883,7 +1883,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndDecrementAtomicLongArray(AtomicLongArray slots, int index) {
         ControlledSchedule.point();
@@ -1896,7 +1896,7 @@ public final class TelemetryRegistry {
      * @param slots    the array the call site invoked
      * @param index    the element
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long decrementAndGetAtomicLongArray(AtomicLongArray slots, int index) {
         ControlledSchedule.point();
@@ -1910,7 +1910,7 @@ public final class TelemetryRegistry {
      * @param index    the element
      * @param function the update, applied again after a lost swap as the JDK's own loop does
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndUpdateAtomicLongArray(AtomicLongArray slots, int index, LongUnaryOperator function) {
         ControlledSchedule.point();
@@ -1924,7 +1924,7 @@ public final class TelemetryRegistry {
      * @param index    the element
      * @param function the update, applied again after a lost swap as the JDK's own loop does
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long updateAndGetAtomicLongArray(AtomicLongArray slots, int index, LongUnaryOperator function) {
         ControlledSchedule.point();
@@ -1939,7 +1939,7 @@ public final class TelemetryRegistry {
      * @param operand  the function's second argument
      * @param function the accumulator, applied to the current value and {@code operand}
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndAccumulateAtomicLongArray(AtomicLongArray slots, int index, long operand, LongBinaryOperator function) {
         ControlledSchedule.point();
@@ -1954,7 +1954,7 @@ public final class TelemetryRegistry {
      * @param operand  the function's second argument
      * @param function the accumulator, applied to the current value and {@code operand}
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long accumulateAndGetAtomicLongArray(AtomicLongArray slots, int index, long operand, LongBinaryOperator function) {
         ControlledSchedule.point();
@@ -2009,7 +2009,7 @@ public final class TelemetryRegistry {
      * @param handle   the handle the call site invoked
      * @param receiver the object whose field the slot is
      * @return the field's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getVolatileLong(VarHandle handle, Object receiver) {
         AgentConcurrencyUtilHooks.updaterRead(receiver, ReferenceSlots.fieldOf(handle));
@@ -2025,7 +2025,7 @@ public final class TelemetryRegistry {
      * @param handle   the handle the call site invoked
      * @param receiver the object whose field the slot is
      * @return the field's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAcquireLong(VarHandle handle, Object receiver) {
         AgentConcurrencyUtilHooks.updaterRead(receiver, ReferenceSlots.fieldOf(handle));
@@ -2041,7 +2041,7 @@ public final class TelemetryRegistry {
      * @param handle   the handle the call site invoked
      * @param receiver the object whose field the slot is
      * @param value    the value to store
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void setLong(VarHandle handle, Object receiver, long value) {
         AgentConcurrencyUtilHooks.updaterStored(receiver, ReferenceSlots.fieldOf(handle));
@@ -2055,7 +2055,7 @@ public final class TelemetryRegistry {
      * @param handle   the handle the call site invoked
      * @param receiver the object whose field the slot is
      * @param value    the value to store
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void setVolatileLong(VarHandle handle, Object receiver, long value) {
         AgentConcurrencyUtilHooks.updaterStored(receiver, ReferenceSlots.fieldOf(handle));
@@ -2070,7 +2070,7 @@ public final class TelemetryRegistry {
      * @param handle   the handle the call site invoked
      * @param receiver the object whose field the slot is
      * @param value    the value to store
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void setReleaseLong(VarHandle handle, Object receiver, long value) {
         AgentConcurrencyUtilHooks.updaterStored(receiver, ReferenceSlots.fieldOf(handle));
@@ -2085,7 +2085,7 @@ public final class TelemetryRegistry {
      * @param handle   the handle the call site invoked
      * @param receiver the object whose field the slot is
      * @param value    the value to store
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static void setOpaqueLong(VarHandle handle, Object receiver, long value) {
         AgentConcurrencyUtilHooks.updaterStored(receiver, ReferenceSlots.fieldOf(handle));
@@ -2101,7 +2101,7 @@ public final class TelemetryRegistry {
      * @param expected the value the field must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean compareAndSetLong(VarHandle handle, Object receiver, long expected, long update) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2121,7 +2121,7 @@ public final class TelemetryRegistry {
      * @param expected the value the field must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetLong(VarHandle handle, Object receiver, long expected, long update) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2141,7 +2141,7 @@ public final class TelemetryRegistry {
      * @param expected the value the field must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetReleaseLong(VarHandle handle, Object receiver, long expected, long update) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2161,7 +2161,7 @@ public final class TelemetryRegistry {
      * @param expected the value the field must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetPlainLong(VarHandle handle, Object receiver, long expected, long update) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2177,7 +2177,7 @@ public final class TelemetryRegistry {
      * @param expected the value the field must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetAcquireLong(VarHandle handle, Object receiver, long expected, long update) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2193,7 +2193,7 @@ public final class TelemetryRegistry {
      * @param expected the value the field must hold
      * @param update   the value to store
      * @return the witness value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long compareAndExchangeLong(VarHandle handle, Object receiver, long expected, long update) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2214,7 +2214,7 @@ public final class TelemetryRegistry {
      * @param expected the value the field must hold
      * @param update   the value to store
      * @return the witness value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long compareAndExchangeAcquireLong(VarHandle handle, Object receiver, long expected, long update) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2232,7 +2232,7 @@ public final class TelemetryRegistry {
      * @param expected the value the field must hold
      * @param update   the value to store
      * @return the witness value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long compareAndExchangeReleaseLong(VarHandle handle, Object receiver, long expected, long update) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2251,7 +2251,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param value    the value to store
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndSetLong(VarHandle handle, Object receiver, long value) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2269,7 +2269,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param value    the value to store
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndSetAcquireLong(VarHandle handle, Object receiver, long value) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2286,7 +2286,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param value    the value to store
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndSetReleaseLong(VarHandle handle, Object receiver, long value) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2302,7 +2302,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param delta    the value to add
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndAddLong(VarHandle handle, Object receiver, long delta) {
         AgentConcurrencyUtilHooks.updaterIncremented(receiver, ReferenceSlots.fieldOf(handle));
@@ -2320,7 +2320,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param delta    the value to add
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndAddReleaseLong(VarHandle handle, Object receiver, long delta) {
         AgentConcurrencyUtilHooks.updaterIncremented(receiver, ReferenceSlots.fieldOf(handle));
@@ -2338,7 +2338,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param delta    the value to add
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndAddAcquireLong(VarHandle handle, Object receiver, long delta) {
         AgentConcurrencyUtilHooks.updaterIncremented(receiver, ReferenceSlots.fieldOf(handle));
@@ -2353,7 +2353,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param mask     the bits combined with the field's value
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndBitwiseOrLong(VarHandle handle, Object receiver, long mask) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2371,7 +2371,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param mask     the bits combined with the field's value
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndBitwiseOrReleaseLong(VarHandle handle, Object receiver, long mask) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2389,7 +2389,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param mask     the bits combined with the field's value
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndBitwiseOrAcquireLong(VarHandle handle, Object receiver, long mask) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2404,7 +2404,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param mask     the bits combined with the field's value
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndBitwiseAndLong(VarHandle handle, Object receiver, long mask) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2422,7 +2422,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param mask     the bits combined with the field's value
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndBitwiseAndReleaseLong(VarHandle handle, Object receiver, long mask) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2440,7 +2440,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param mask     the bits combined with the field's value
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndBitwiseAndAcquireLong(VarHandle handle, Object receiver, long mask) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2455,7 +2455,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param mask     the bits combined with the field's value
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndBitwiseXorLong(VarHandle handle, Object receiver, long mask) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2473,7 +2473,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param mask     the bits combined with the field's value
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndBitwiseXorReleaseLong(VarHandle handle, Object receiver, long mask) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2491,7 +2491,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field the slot is
      * @param mask     the bits combined with the field's value
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndBitwiseXorAcquireLong(VarHandle handle, Object receiver, long mask) {
         AgentConcurrencyUtilHooks.updaterSwapped(receiver, ReferenceSlots.fieldOf(handle));
@@ -2689,7 +2689,7 @@ public final class TelemetryRegistry {
      *
      * @param flag the flag the call site read
      * @return the flag's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean getAcquireAtomicBoolean(AtomicBoolean flag) {
         ControlledSchedule.point();
@@ -2847,7 +2847,7 @@ public final class TelemetryRegistry {
      *
      * @param count the atomic the call site read
      * @return the atomic's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int getAcquireAtomicInteger(AtomicInteger count) {
         ControlledSchedule.point();
@@ -2862,7 +2862,7 @@ public final class TelemetryRegistry {
      *
      * @param count the atomic the call site read
      * @return the atomic's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int intValueAtomicInteger(AtomicInteger count) {
         return getAtomicInteger(count);
@@ -2873,7 +2873,7 @@ public final class TelemetryRegistry {
      *
      * @param count the atomic the call site read
      * @return the atomic's value as a {@code long}
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long longValueAtomicInteger(AtomicInteger count) {
         return getAtomicInteger(count);
@@ -3004,7 +3004,7 @@ public final class TelemetryRegistry {
      *
      * @param count the atomic the call site read
      * @return the atomic's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAcquireAtomicLong(AtomicLong count) {
         ControlledSchedule.point();
@@ -3019,7 +3019,7 @@ public final class TelemetryRegistry {
      *
      * @param count the atomic the call site read
      * @return the atomic's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long longValueAtomicLong(AtomicLong count) {
         return getAtomicLong(count);
@@ -3030,7 +3030,7 @@ public final class TelemetryRegistry {
      *
      * @param count the atomic the call site read
      * @return the atomic's value narrowed to an {@code int}, as the JDK's own method does
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int intValueAtomicLong(AtomicLong count) {
         return (int) getAtomicLong(count);
@@ -3158,7 +3158,7 @@ public final class TelemetryRegistry {
      * @param count the atomic the call site invoked
      * @param value the value to store
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndSetAtomicLong(AtomicLong count, long value) {
         ControlledSchedule.point();
@@ -3177,7 +3177,7 @@ public final class TelemetryRegistry {
      * @param expected the value it must hold
      * @param update   the value to store
      * @return the witness value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long compareAndExchangeAtomicLong(AtomicLong count, long expected, long update) {
         ControlledSchedule.point();
@@ -3198,7 +3198,7 @@ public final class TelemetryRegistry {
      * @param expected the value it must hold
      * @param update   the value to store
      * @return the witness value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long compareAndExchangeAcquireAtomicLong(AtomicLong count, long expected, long update) {
         ControlledSchedule.point();
@@ -3216,7 +3216,7 @@ public final class TelemetryRegistry {
      * @param expected the value it must hold
      * @param update   the value to store
      * @return the witness value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long compareAndExchangeReleaseAtomicLong(AtomicLong count, long expected, long update) {
         ControlledSchedule.point();
@@ -3236,7 +3236,7 @@ public final class TelemetryRegistry {
      * @param expected the value it must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetAcquireAtomicLong(AtomicLong count, long expected, long update) {
         ControlledSchedule.point();
@@ -3251,7 +3251,7 @@ public final class TelemetryRegistry {
      * @param expected the value it must hold
      * @param update   the value to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetReleaseAtomicLong(AtomicLong count, long expected, long update) {
         ControlledSchedule.point();
@@ -3270,7 +3270,7 @@ public final class TelemetryRegistry {
      * @param count    the atomic the call site invoked
      * @param function the update function, applied again after a lost swap as the JDK's own loop does
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndUpdateAtomicLong(AtomicLong count, LongUnaryOperator function) {
         ControlledSchedule.point();
@@ -3284,7 +3284,7 @@ public final class TelemetryRegistry {
      * @param count    the atomic the call site invoked
      * @param function the update function, applied again after a lost swap as the JDK's own loop does
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long updateAndGetAtomicLong(AtomicLong count, LongUnaryOperator function) {
         ControlledSchedule.point();
@@ -3299,7 +3299,7 @@ public final class TelemetryRegistry {
      * @param operand  the function's second argument
      * @param function the accumulator, applied to the current value and {@code operand}
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long getAndAccumulateAtomicLong(AtomicLong count, long operand, LongBinaryOperator function) {
         ControlledSchedule.point();
@@ -3314,7 +3314,7 @@ public final class TelemetryRegistry {
      * @param operand  the function's second argument
      * @param function the accumulator, applied to the current value and {@code operand}
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static long accumulateAndGetAtomicLong(AtomicLong count, long operand, LongBinaryOperator function) {
         ControlledSchedule.point();
@@ -3576,7 +3576,7 @@ public final class TelemetryRegistry {
      * @param updater  the updater the call site invoked
      * @param receiver the object whose field is read
      * @return the field's value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int getIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver) {
         ControlledSchedule.point();
@@ -3593,7 +3593,7 @@ public final class TelemetryRegistry {
      * @param updater  the updater the call site invoked
      * @param receiver the object whose field is written
      * @return the updated value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int incrementAndGetIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver) {
         AgentConcurrencyUtilHooks.updaterIncremented(receiver, SpinLocks.fieldOf(updater));
@@ -3612,7 +3612,7 @@ public final class TelemetryRegistry {
      * @param updater  the updater the call site invoked
      * @param receiver the object whose field is written
      * @return the previous value
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static int getAndIncrementIntUpdater(AtomicIntegerFieldUpdater<?> updater, Object receiver) {
         AgentConcurrencyUtilHooks.updaterIncremented(receiver, SpinLocks.fieldOf(updater));
@@ -5398,7 +5398,7 @@ public final class TelemetryRegistry {
      * @param index  the element
      * @param update the function applied to the current reference, again after a lost swap
      * @return the reference stored
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object updateAndGetReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                                               UnaryOperator<Object> update) {
@@ -5418,7 +5418,7 @@ public final class TelemetryRegistry {
      * @param index  the element
      * @param update the function applied to the current reference, again after a lost swap
      * @return the reference replaced
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object getAndUpdateReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                                               UnaryOperator<Object> update) {
@@ -5438,7 +5438,7 @@ public final class TelemetryRegistry {
      * @param given       the function's second argument
      * @param accumulator the function applied to the current reference and {@code given}
      * @return the reference stored
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object accumulateAndGetReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                                                   @Nullable Object given,
@@ -5460,7 +5460,7 @@ public final class TelemetryRegistry {
      * @param given       the function's second argument
      * @param accumulator the function applied to the current reference and {@code given}
      * @return the reference replaced
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object getAndAccumulateReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                                                   @Nullable Object given,
@@ -5483,7 +5483,7 @@ public final class TelemetryRegistry {
      * @param expected the reference the element must hold
      * @param update   the reference to store
      * @return {@code expected} when the exchange happened, otherwise what the element held
-     * @since 1.15.0
+     * @since 1.14.4
      */
     @SuppressWarnings("ReferenceEquality") // the element compares by identity
     public static @Nullable Object compareAndExchangeReferenceArray(AtomicReferenceArray<Object> slots, int index,
@@ -5510,7 +5510,7 @@ public final class TelemetryRegistry {
      * @param expected the reference the element must hold
      * @param update   the reference to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetVolatileReferenceArray(AtomicReferenceArray<Object> slots, int index,
                                                                   @Nullable Object expected,
@@ -5527,7 +5527,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field is the slot
      * @param update   the function applied to the current reference, again after a lost swap
      * @return the reference stored
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object updateAndGetReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
                                                                 Object receiver, UnaryOperator<Object> update) {
@@ -5547,7 +5547,7 @@ public final class TelemetryRegistry {
      * @param receiver the object whose field is the slot
      * @param update   the function applied to the current reference, again after a lost swap
      * @return the reference replaced
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object getAndUpdateReferenceUpdater(AtomicReferenceFieldUpdater<Object, Object> updater,
                                                                 Object receiver, UnaryOperator<Object> update) {
@@ -5568,7 +5568,7 @@ public final class TelemetryRegistry {
      * @param given       the function's second argument
      * @param accumulator the function applied to the current reference and {@code given}
      * @return the reference stored
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object accumulateAndGetReferenceUpdater(
             AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
@@ -5591,7 +5591,7 @@ public final class TelemetryRegistry {
      * @param given       the function's second argument
      * @param accumulator the function applied to the current reference and {@code given}
      * @return the reference replaced
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static @Nullable Object getAndAccumulateReferenceUpdater(
             AtomicReferenceFieldUpdater<Object, Object> updater, Object receiver,
@@ -5615,7 +5615,7 @@ public final class TelemetryRegistry {
      * @param expected the reference the field must hold
      * @param update   the reference to store
      * @return {@code expected} when the exchange happened, otherwise what the field held
-     * @since 1.15.0
+     * @since 1.14.4
      */
     @SuppressWarnings("ReferenceEquality") // the field compares by identity
     public static @Nullable Object compareAndExchangeReferenceHandle(VarHandle handle, Object receiver,
@@ -5642,7 +5642,7 @@ public final class TelemetryRegistry {
      * @param expected the reference the field must hold
      * @param update   the reference to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetReferenceHandle(VarHandle handle, Object receiver,
                                                            @Nullable Object expected,
@@ -5657,7 +5657,7 @@ public final class TelemetryRegistry {
      * @param expected the reference the field must hold
      * @param update   the reference to store
      * @return {@code expected} when the exchange happened, otherwise what the field held
-     * @since 1.15.0
+     * @since 1.14.4
      */
     @SuppressWarnings("ReferenceEquality") // the field compares by identity
     public static @Nullable Object compareAndExchangeStaticReferenceHandle(VarHandle handle,
@@ -5681,7 +5681,7 @@ public final class TelemetryRegistry {
      * @param expected the reference the field must hold
      * @param update   the reference to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetStaticReferenceHandle(VarHandle handle,
                                                                  @Nullable Object expected,
@@ -5698,7 +5698,7 @@ public final class TelemetryRegistry {
      * @param expected the reference the element must hold
      * @param update   the reference to store
      * @return {@code expected} when the exchange happened, otherwise what the element held
-     * @since 1.15.0
+     * @since 1.14.4
      */
     @SuppressWarnings("ReferenceEquality") // the element compares by identity
     public static @Nullable Object compareAndExchangeArrayReferenceHandle(VarHandle handle, Object array,
@@ -5724,7 +5724,7 @@ public final class TelemetryRegistry {
      * @param expected the reference the element must hold
      * @param update   the reference to store
      * @return whether the swap happened
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public static boolean weakCompareAndSetArrayReferenceHandle(VarHandle handle, Object array, int index,
                                                                 @Nullable Object expected,

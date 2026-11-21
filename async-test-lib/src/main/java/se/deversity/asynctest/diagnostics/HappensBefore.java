@@ -645,7 +645,7 @@ public final class HappensBefore {
      *
      * @param owner the object the field belongs to
      * @param field the field's name, as the release hooks name it
-     * @since 1.15.0
+     * @since 1.14.4
      */
     @API(status = Status.INTERNAL)
     public static Object fieldKey(Object owner, String field) {
@@ -666,7 +666,7 @@ public final class HappensBefore {
      *
      * @param owner the object the field belongs to; {@code null} is ignored
      * @param field the field's name, as the release named it
-     * @since 1.15.0
+     * @since 1.14.4
      */
     @API(status = Status.INTERNAL)
     @SuppressWarnings("ReferenceEquality") // the same clock object, not an equal one
@@ -695,7 +695,7 @@ public final class HappensBefore {
      *             ignored
      * @return the release, or {@code null} when it changed nothing and there is nothing to take
      *         back
-     * @since 1.15.0
+     * @since 1.14.4
      */
     @API(status = Status.INTERNAL)
     @SuppressWarnings("ReferenceEquality") // the same clock object, not an equal one
@@ -722,7 +722,7 @@ public final class HappensBefore {
      * thread made since has folded this one in, and it stays.
      *
      * @param release what {@link #releaseWithdrawable} returned; {@code null} is ignored
-     * @since 1.15.0
+     * @since 1.14.4
      */
     @API(status = Status.INTERNAL)
     public static void withdraw(@Nullable Withdrawable release) {

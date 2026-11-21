@@ -143,7 +143,7 @@ public class LivelockDetector {
      * then the only signal.
      *
      * @param peer the run's deadlock detector, or {@code null} for none
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public void deferDeadlockedThreadsTo(@Nullable DeadlockDetector peer) {
         deadlocks = peer;

@@ -206,7 +206,7 @@ public final class ScopeConfigurationMisuseDetector {
      *                         lambda set none
      * @param threadFactory    the factory passed to {@code withThreadFactory}, or {@code null}
      * @param owner            the thread opening the scope
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public void recordScopeOpened(String scopeId, @Nullable String requestedName,
                                   @Nullable Duration requestedTimeout,
@@ -258,7 +258,7 @@ public final class ScopeConfigurationMisuseDetector {
      * @param scopeId          the scope's identifier
      * @param effectiveName    the name the scope reports, or {@code null} for none
      * @param effectiveTimeout the deadline the scope actually enforces, or {@code null} for none
-     * @since 1.15.0
+     * @since 1.14.4
      */
     public void recordEffectiveConfiguration(String scopeId, @Nullable String effectiveName,
                                              @Nullable Duration effectiveTimeout) {

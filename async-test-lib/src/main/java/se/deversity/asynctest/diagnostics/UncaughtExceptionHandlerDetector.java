@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Detects threads that are started without a custom {@link Thread.UncaughtExceptionHandler},
  * with no JVM-wide default handler set either, and that subsequently throw an uncaught exception.
  *
- * <p>Fed by the runner since 1.15.0 (#1253), with no recording call: a thread the test body
+ * <p>Fed by the runner since 1.14.4 (#1253), with no recording call: a thread the test body
  * started (constructed on a worker, or, with the agent, started there through a woven
  * {@code Thread.start}) that dies of an uncaught exception other than an {@link AssertionError} is
  * recorded here. An {@code AssertionError} is not a finding: it fails the test, as it would have
