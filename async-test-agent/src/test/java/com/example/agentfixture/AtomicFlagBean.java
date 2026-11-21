@@ -260,6 +260,77 @@ public class AtomicFlagBean {
         }
     }
 
+    // --- The AtomicLong forms the weaver did not substitute (#1317) ---
+
+    public void publishThroughLongGetAndSet() {
+        data = data + 1;
+        total.getAndSet(5L);
+    }
+
+    public void publishThroughLongCompareAndExchange() {
+        data = data + 1;
+        total.compareAndExchange(0L, 3L);
+    }
+
+    public void publishThroughLongCompareAndExchangeRelease() {
+        data = data + 1;
+        total.compareAndExchangeRelease(0L, 3L);
+    }
+
+    public void publishThroughLongWeakCompareAndSetRelease() {
+        data = data + 1;
+        while (!total.weakCompareAndSetRelease(0L, 3L)) {
+            Thread.onSpinWait();
+        }
+    }
+
+    public void publishThroughLongUpdateAndGet() {
+        data = data + 1;
+        total.updateAndGet(t -> t + 3L);
+    }
+
+    public void publishThroughLongGetAndUpdate() {
+        data = data + 1;
+        total.getAndUpdate(t -> t + 3L);
+    }
+
+    public void publishThroughLongAccumulateAndGet() {
+        data = data + 1;
+        total.accumulateAndGet(3L, Long::sum);
+    }
+
+    public void publishThroughLongGetAndAccumulate() {
+        data = data + 1;
+        total.getAndAccumulate(3L, Long::sum);
+    }
+
+    /** Reads the total through the previous value a {@code getAndSet} returns. */
+    public int bumpAfterTotalGetAndSet() {
+        if (total.getAndSet(9L) < 1L) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    /** Reads the total through the witness of an exchange that loses. */
+    public int bumpAfterTotalExchange() {
+        if (total.compareAndExchange(0L, 0L) < 1L) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
+    /** Reads the total through the witness of an acquiring exchange that loses. */
+    public int bumpAfterTotalExchangeAcquire() {
+        if (total.compareAndExchangeAcquire(0L, 0L) < 1L) {
+            return -1;
+        }
+        data = data + 1;
+        return data;
+    }
+
     /** A plain store: no release, so it publishes nothing. */
     public void publishThroughIntSetPlain() {
         data = data + 1;

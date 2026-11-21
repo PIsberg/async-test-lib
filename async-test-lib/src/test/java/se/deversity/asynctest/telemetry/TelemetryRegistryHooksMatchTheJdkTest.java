@@ -314,6 +314,43 @@ class TelemetryRegistryHooksMatchTheJdkTest {
         add("getAcquireAtomicLong", total, TelemetryRegistry::getAcquireAtomicLong, AtomicLong::getAcquire, totalState);
         add("longValueAtomicLong", total, TelemetryRegistry::longValueAtomicLong, AtomicLong::longValue, totalState);
         add("intValueAtomicLong", total, TelemetryRegistry::intValueAtomicLong, AtomicLong::intValue, totalState);
+        long big = (1L << 40) + 5L;
+        add("getAndSetAtomicLong", total, t -> TelemetryRegistry.getAndSetAtomicLong(t, 7L), t -> t.getAndSet(7L),
+                totalState);
+        for (long expected : new long[] {big, 4L}) {
+            String e = "(" + expected + ", 7)";
+            add("compareAndExchangeAtomicLong" + e, total,
+                    t -> TelemetryRegistry.compareAndExchangeAtomicLong(t, expected, 7L),
+                    t -> t.compareAndExchange(expected, 7L), totalState);
+            add("compareAndExchangeAcquireAtomicLong" + e, total,
+                    t -> TelemetryRegistry.compareAndExchangeAcquireAtomicLong(t, expected, 7L),
+                    t -> t.compareAndExchangeAcquire(expected, 7L), totalState);
+            add("compareAndExchangeReleaseAtomicLong" + e, total,
+                    t -> TelemetryRegistry.compareAndExchangeReleaseAtomicLong(t, expected, 7L),
+                    t -> t.compareAndExchangeRelease(expected, 7L), totalState);
+            add("weakCompareAndSetAcquireAtomicLong" + e, total,
+                    t -> expected == big
+                            ? untilWon(() -> TelemetryRegistry.weakCompareAndSetAcquireAtomicLong(t, expected, 7L))
+                            : TelemetryRegistry.weakCompareAndSetAcquireAtomicLong(t, expected, 7L),
+                    t -> expected == big ? untilWon(() -> t.weakCompareAndSetAcquire(expected, 7L))
+                            : t.weakCompareAndSetAcquire(expected, 7L), totalState);
+            add("weakCompareAndSetReleaseAtomicLong" + e, total,
+                    t -> expected == big
+                            ? untilWon(() -> TelemetryRegistry.weakCompareAndSetReleaseAtomicLong(t, expected, 7L))
+                            : TelemetryRegistry.weakCompareAndSetReleaseAtomicLong(t, expected, 7L),
+                    t -> expected == big ? untilWon(() -> t.weakCompareAndSetRelease(expected, 7L))
+                            : t.weakCompareAndSetRelease(expected, 7L), totalState);
+        }
+        add("getAndUpdateAtomicLong", total, t -> TelemetryRegistry.getAndUpdateAtomicLong(t, x -> x * 3),
+                t -> t.getAndUpdate(x -> x * 3), totalState);
+        add("updateAndGetAtomicLong", total, t -> TelemetryRegistry.updateAndGetAtomicLong(t, x -> x * 3),
+                t -> t.updateAndGet(x -> x * 3), totalState);
+        add("getAndAccumulateAtomicLong", total,
+                t -> TelemetryRegistry.getAndAccumulateAtomicLong(t, 2L, (x, y) -> x * 10 + y),
+                t -> t.getAndAccumulate(2L, (x, y) -> x * 10 + y), totalState);
+        add("accumulateAndGetAtomicLong", total,
+                t -> TelemetryRegistry.accumulateAndGetAtomicLong(t, 2L, (x, y) -> x * 10 + y),
+                t -> t.accumulateAndGet(2L, (x, y) -> x * 10 + y), totalState);
         addStore("setAtomicInteger", count, a -> TelemetryRegistry.setAtomicInteger(a, 7), a -> a.set(7), state);
         addStore("lazySetAtomicInteger", count, a -> TelemetryRegistry.lazySetAtomicInteger(a, 7),
                 a -> a.lazySet(7), state);
