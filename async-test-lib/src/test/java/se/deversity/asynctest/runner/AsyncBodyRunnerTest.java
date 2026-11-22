@@ -136,13 +136,13 @@ class AsyncBodyRunnerTest {
 
     /**
      * End-to-end regression coverage for the round-timeout path in
-     * {@code ConcurrencyRunner.runSingleInvocationRound}: both worker threads clear the
+     * {@code ConcurrencyRunner}'s {@code RoundRunner}: both worker threads clear the
      * barrier immediately and then sleep far longer than {@code timeoutMs}, so the round
      * is guaranteed to time out while both are still asleep. Confirms the whole run
      * finishes with both workers interrupted rather than a stranded thread lingering
      * (or the JVM getting stuck on a non-terminating worker).
      *
-     * <p>{@code runSingleInvocationRound} now retains worker {@code Future}s and calls
+     * <p>{@code RoundRunner} now retains worker {@code Future}s and calls
      * {@code cancel(true)} on them as soon as the round's {@code CountDownLatch} times
      * out, rather than relying solely on {@code execute()}'s outer
      * {@code executor.shutdownNow()} to eventually interrupt them. Because

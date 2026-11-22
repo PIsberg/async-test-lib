@@ -33,7 +33,7 @@ a single `LicenseGuard.check(config)` call.
 
 ## Worker latch.countDown() guarantee (1.6.0)
 
-The per-worker code in `runSingleInvocationRound` previously placed the
+The per-worker code, now `ConcurrencyRunner.RoundRunner.runWorker`, previously placed the
 `AsyncTestContext.uninstall()` call and a livelock snapshot, removed since,
 **before** `latch.countDown()` inside a single `finally` block. If either of those
 cleanup calls threw, `countDown()` was skipped and the runner blocked on
@@ -58,7 +58,9 @@ try {
 }
 ```
 
-The cleanup step is guarded so its failure cannot suppress the `countDown()`. The `installed` flag preserves the ThreadLocal install/uninstall symmetry
+The inner `try` now lives in `RoundRunner.runBodyOnce`, which records a body failure instead of
+throwing it; the outer structure above is unchanged. The cleanup step is guarded so its failure
+cannot suppress the `countDown()`. The `installed` flag preserves the ThreadLocal install/uninstall symmetry
 rule from `CLAUDE.md` (only uninstall what was installed).
 
 ---

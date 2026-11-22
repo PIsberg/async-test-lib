@@ -44,6 +44,21 @@ class RoundTimeoutProgressTest {
         assertTrue(timeout.getMessage().contains("Possible deadlock"), timeout.getMessage());
         assertFalse(String.valueOf(timeout.getCause().getMessage()).contains("barrier"),
                 "both workers were asleep in the body: " + timeout.getCause().getMessage());
+        assertFalse(timeout.getMessage().contains("blocked or waiting with no timeout"),
+                "a sleeping worker is TIMED_WAITING and still going somewhere: " + timeout.getMessage());
+    }
+
+    @Test
+    void aRoundWhoseWorkersAllWaitWithNoTimeoutSaysSo() {
+        // Both workers park on a latch nobody opens: WAITING with no timeout, which no budget
+        // would have outlasted (#1393). The 30-second sleep above is the twin that must not say so.
+        java.util.concurrent.CountDownLatch never = new java.util.concurrent.CountDownLatch(1);
+        AssertionError timeout = assertThrows(AssertionError.class, () -> withUnstretchedBudget(() ->
+                AsyncTestRunner.run(config().threads(2).invocations(1).timeoutMs(300).build(),
+                        never::await)));
+
+        assertTrue(timeout.getMessage().contains(
+                "every worker still in the body was blocked or waiting with no timeout"), timeout.getMessage());
     }
 
     @Test
