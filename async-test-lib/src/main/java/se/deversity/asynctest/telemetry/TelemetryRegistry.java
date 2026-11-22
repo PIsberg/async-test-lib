@@ -250,7 +250,7 @@ public final class TelemetryRegistry {
      * guards no write. The question is asked here, on the accessing thread, for the same reason
      * the fingerprint is.
      *
-     * @param receiver          the object the field belongs to, or the declaring class for a
+     * @param owner             the object the field belongs to, or the declaring class for a
      *                          static field, or {@code null} when the weaver had neither
      * @param methodMonitor     the monitor of the enclosing {@code synchronized} method, else
      *                          {@code null}
@@ -264,11 +264,12 @@ public final class TelemetryRegistry {
      *                          class's, or 0 when the weaver could not load the class constant
      * @since 1.9.8
      */
-    public static void recordAccess(@Nullable Object receiver, @Nullable Object methodMonitor,
+    public static void recordAccess(@Nullable Object owner, @Nullable Object methodMonitor,
                                     long threadId, String qualifiedName, boolean isWrite,
                                     boolean volatileField, int constantTag,
                                     boolean afterVolatileRead, boolean staticField) {
         ControlledSchedule.point();
+        Object receiver = staticField ? staticOwner(owner, qualifiedName) : owner;
         if (STOPPED.get()) {
             return;
         }
@@ -303,7 +304,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileStore(@Nullable Object owner, int value, String field) {
-        HappensBefore.releaseVolatile(owner, field, value);
+        HappensBefore.releaseVolatile(staticOwner(owner, field), field, value);
     }
 
     /**
@@ -315,7 +316,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileStore(@Nullable Object owner, long value, String field) {
-        HappensBefore.releaseVolatile(owner, field, value);
+        HappensBefore.releaseVolatile(staticOwner(owner, field), field, value);
     }
 
     /**
@@ -327,7 +328,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileStore(@Nullable Object owner, float value, String field) {
-        HappensBefore.releaseVolatile(owner, field, Float.floatToRawIntBits(value));
+        HappensBefore.releaseVolatile(staticOwner(owner, field), field, Float.floatToRawIntBits(value));
     }
 
     /**
@@ -339,7 +340,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileStore(@Nullable Object owner, double value, String field) {
-        HappensBefore.releaseVolatile(owner, field, Double.doubleToRawLongBits(value));
+        HappensBefore.releaseVolatile(staticOwner(owner, field), field, Double.doubleToRawLongBits(value));
     }
 
     /**
@@ -352,7 +353,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileStore(@Nullable Object owner, @Nullable Object value, String field) {
-        HappensBefore.releaseVolatileReference(owner, field, value);
+        HappensBefore.releaseVolatileReference(staticOwner(owner, field), field, value);
     }
 
     /**
@@ -371,7 +372,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileLoad(@Nullable Object owner, int value, String field) {
-        HappensBefore.acquireVolatile(owner, field, value);
+        HappensBefore.acquireVolatile(staticOwner(owner, field), field, value);
     }
 
     /**
@@ -383,7 +384,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileLoad(@Nullable Object owner, long value, String field) {
-        HappensBefore.acquireVolatile(owner, field, value);
+        HappensBefore.acquireVolatile(staticOwner(owner, field), field, value);
     }
 
     /**
@@ -395,7 +396,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileLoad(@Nullable Object owner, float value, String field) {
-        HappensBefore.acquireVolatile(owner, field, Float.floatToRawIntBits(value));
+        HappensBefore.acquireVolatile(staticOwner(owner, field), field, Float.floatToRawIntBits(value));
     }
 
     /**
@@ -407,7 +408,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileLoad(@Nullable Object owner, double value, String field) {
-        HappensBefore.acquireVolatile(owner, field, Double.doubleToRawLongBits(value));
+        HappensBefore.acquireVolatile(staticOwner(owner, field), field, Double.doubleToRawLongBits(value));
     }
 
     /**
@@ -420,7 +421,7 @@ public final class TelemetryRegistry {
      * @since 1.12.3
      */
     public static void volatileLoad(@Nullable Object owner, @Nullable Object value, String field) {
-        HappensBefore.acquireVolatileReference(owner, field, value);
+        HappensBefore.acquireVolatileReference(staticOwner(owner, field), field, value);
     }
 
     /**
@@ -439,7 +440,7 @@ public final class TelemetryRegistry {
      * known" rather than "not immutable" - the analysis keeps its previous answer there, because
      * absence of evidence is not evidence.
      *
-     * @param receiver          the object the field belongs to, or the declaring class for a
+     * @param owner             the object the field belongs to, or the declaring class for a
      *                          static field, or {@code null} when the weaver had neither
      * @param stored            the reference this write put in the field, or {@code null}
      * @param methodMonitor     the monitor of the enclosing {@code synchronized} method, else
@@ -454,12 +455,13 @@ public final class TelemetryRegistry {
      *                          class's, or 0 when the weaver could not load the class constant
      * @since 1.9.8
      */
-    public static void recordAccess(@Nullable Object receiver, @Nullable Object stored,
+    public static void recordAccess(@Nullable Object owner, @Nullable Object stored,
                                     @Nullable Object methodMonitor,
                                     long threadId, String qualifiedName, boolean isWrite,
                                     boolean volatileField, int constantTag,
                                     boolean afterVolatileRead, boolean staticField) {
         ControlledSchedule.point();
+        Object receiver = staticField ? staticOwner(owner, qualifiedName) : owner;
         if (STOPPED.get()) {
             return;
         }
@@ -516,7 +518,40 @@ public final class TelemetryRegistry {
      * @since 1.14.5
      */
     public static void guardedLoad(@Nullable Object owner, @Nullable Object value, String field) {
-        HappensBefore.acquireGuarded(owner, field, value);
+        HappensBefore.acquireGuarded(staticOwner(owner, field), field, value);
+    }
+
+    /**
+     * {@return the class that declares the static field {@code field}, when {@code owner} is a
+     * subclass the weaver had to name it through; {@code owner} itself otherwise} (#1396)
+     *
+     * <p>The weaver names a static field's owner by its declaring class, except where the woven
+     * class cannot load that class as a constant: a package-private base in another package, reached
+     * through a public subclass. Two call sites naming one field through two subclasses then handed
+     * two owners, so a volatile read through one acquired nothing a write through the other
+     * released. The field identifier always names the declaring class, so the owner is matched to
+     * it here: a name comparison when they agree, a walk up the superclasses when they do not.
+     *
+     * @param owner the owner the hook was handed; anything but a {@code Class} is returned as is
+     * @param field combined {@code declaringClass.field} identifier
+     */
+    static @Nullable Object staticOwner(@Nullable Object owner, String field) {
+        if (!(owner instanceof Class<?> type) || declares(type, field)) {
+            return owner;
+        }
+        for (Class<?> base = type.getSuperclass(); base != null; base = base.getSuperclass()) {
+            if (declares(base, field)) {
+                return base;
+            }
+        }
+        return owner;
+    }
+
+    /** {@return whether {@code field} is qualified by {@code type}'s name, allocation-free} */
+    private static boolean declares(Class<?> type, String field) {
+        String name = type.getName();
+        int length = name.length();
+        return field.length() > length && field.charAt(length) == '.' && field.startsWith(name);
     }
 
     /**

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A static volatile on a package-private base, reached through two public subclasses, is one
+  field (#1396).** Where a woven class cannot load the declaring class as a constant, the agent
+  hands the field's hooks the subclass the call site named; a write through one subclass and a
+  read through another then had two owners, so the read acquired nothing and the data it published
+  read as raced. The library now maps such an owner to the class the field's identifier names.
+  `VolatileEdgeWeavingTest` pins both directions (red before the fix).
+
 ### Added
 
 - **A lost update between coroutines across a suspension is reported (#1007).** With
