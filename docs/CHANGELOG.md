@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **`arrays=true` stays a separate opt-in, now with its measured cost (#1263).** An array-heavy body
+  (800,000 element accesses a run) took about 340 ms with `fields=true` and about 845 ms with
+  `arrays=true` added, roughly 0.6 microseconds per element access, while the corpus agent-pair
+  lane showed no difference (43.9 s against 43.8 s, medians of three) and no changed outcome.
+  `docs/agent/attaching.md` records the numbers and why `fields=true` does not imply it.
+
 ### Maintenance
 
 - **A release is one Maven Central deployment, not two (#1463).** `async-test-maven-plugin` went up
