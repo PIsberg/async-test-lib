@@ -502,8 +502,11 @@ Any other exception that kills such a thread is an `UncaughtExceptionHandlerDete
 `HIGH`, which `failOn` gates like any other. A thread is the body's when a worker constructed it
 (or a thread that was), or, with the agent, when a worker started it through a woven
 `Thread.start` or killed a pool thread with a task it handed over through a woven `execute`. A
-thread that dies after its run's analysis has started is not reported, and without the agent a pool
-kept in a static belongs to the run that first built its thread.
+thread that dies after its run's analysis has started is not reported. Without the agent a pool kept
+in a static belongs to the run that first built its thread, so a later run's task that kills it is
+lost: an `AssertionError` there passes that later test. Nothing but the woven `execute` records
+which run handed a task to a pool, so the answer for a pool shared across `@AsyncTest` methods is
+to keep the agent attached, which is the default (#1378).
 
 For a legacy codebase, record the current findings once and ratchet them down:
 
