@@ -18,7 +18,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * Pins that a round timeout keeps the failures the completed workers already produced.
  *
  * <p><strong>Why this exists.</strong> When {@code latch.await} expired,
- * {@code runSingleInvocationRound} threw its "Invocation round timed out" error before ever
+ * the runner's round code threw its "Invocation round timed out" error before ever
  * looking at the {@code failures} list. A round where some workers threw real assertion
  * errors and the rest hung therefore reported only a thread count — and the thrown failures
  * are usually the diagnosis, because a worker that died before the barrier is the most common

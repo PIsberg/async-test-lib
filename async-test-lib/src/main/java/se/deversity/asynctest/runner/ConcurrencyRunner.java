@@ -338,7 +338,7 @@ public class ConcurrencyRunner {
         // Single choke point where config.timeoutMs becomes the effective budget: every
         // downstream timing value (deadlineNanos below, each round's remainingMs, the
         // CyclicBarrier await in createBarrier, and the CompletionStage wait in
-        // runSingleInvocationRound) is derived from effectiveTimeoutMs, never from
+        // RoundRunner.invokeBody) is derived from effectiveTimeoutMs, never from
         // config.timeoutMs directly, so scaling happens exactly once per execute() call.
         double timeoutMultiplier = resolveTimeoutMultiplier();
         long effectiveTimeoutMs = scaledTimeoutMs(config.timeoutMs, timeoutMultiplier);
@@ -359,6 +359,9 @@ public class ConcurrencyRunner {
         // seed replays the round's interleaving depends on whether any worker escaped it.
         ControlledSchedule.@Nullable Summary lastSchedule = null;
         boolean unpointedLogged = false;
+
+        RoundRunner rounds = new RoundRunner(invocationContext, testMethod, actualThreads, executor,
+                phase1, phase2Context, virtualWorkers, workerThreadIds);
 
         // Set by the pre-round deadline check below, read by the catch block: the error it
         // throws has already been through timeoutError() — listeners notified, thread dump
@@ -454,9 +457,7 @@ public class ConcurrencyRunner {
                     ? ControlledSchedule.open(actualThreads, currentSeed)
                     : null;
                 try {
-                    runSingleInvocationRound(invocationContext, actualThreads,
-                        executor, phase1, phase2Context, remainingMs,
-                        virtualWorkers, workerThreadIds, testMethod, schedule);
+                    rounds.run(remainingMs, schedule);
                 } catch (Throwable t) { // NOPMD - rethrown below; caught only to order teardown
                     roundFailure = t;
                 } finally {
@@ -469,7 +470,7 @@ public class ConcurrencyRunner {
                             announceUnpointedSchedule(testMethod.getName());
                         }
                     }
-                    // Quiesce before teardown when the round failed. runSingleInvocationRound
+                    // Quiesce before teardown when the round failed. RoundRunner.run
                     // throws right after future.cancel(true), and cancellation only requests
                     // interruption: workers can still be unwinding inside the test body. Running
                     // after-hooks then would tear down state a live worker is still touching, and
@@ -1044,7 +1045,7 @@ public class ConcurrencyRunner {
 
     /**
      * Abstraction over CyclicBarrier and SpinContentionBarrier.
-     * Lets runSingleInvocationRound stay barrier-implementation-agnostic.
+     * Lets {@link RoundRunner} stay barrier-implementation-agnostic.
      *
      * <p>Declares the union of checked exceptions from both implementations:
      * {@link InterruptedException} (both), {@link BrokenBarrierException}
@@ -1085,7 +1086,7 @@ public class ConcurrencyRunner {
      * this with (see its class Javadoc — it's a hand-tuned lock-free spin, not
      * something to graft a deadline onto here). Its periodic
      * {@link Thread#interrupted()} check still responds promptly to the
-     * {@code Future.cancel(true)} calls added to {@code runSingleInvocationRound} for
+     * {@code Future.cancel(true)} calls {@link RoundRunner} makes for
      * the same scenario, so stranded spin-barrier workers are still reclaimed at the
      * round-timeout boundary rather than only at the final {@code shutdownNow()}.
      *
@@ -1110,153 +1111,237 @@ public class ConcurrencyRunner {
         return () -> cyclic.await(timeoutMs, TimeUnit.MILLISECONDS);
     }
 
-    private static void runSingleInvocationRound(ReflectiveInvocationContext<Method> context,
-                                                 int threads,
-                                                 ExecutorService executor,
-                                                 Phase1DetectorSet phase1,
-                                                 AsyncTestContext phase2Context,
-                                                 long roundTimeoutMs,
-                                                 boolean useVirtualThreads,
-                                                 @Nullable Set<Long> workerThreadIds,
-                                                 Method method,
-                                                 @Nullable ControlledSchedule schedule) throws Throwable {
+    /**
+     * Runs one test's rounds. Each round submits {@code threads} workers that meet at a start
+     * barrier, run the body once under the run's {@link AsyncTestContext}, and count down a latch
+     * the runner thread waits on for the round's budget.
+     *
+     * <p>Holds what stays the same for every round of one {@link #execute} call; what one round's
+     * workers share lives in a {@link Round}. Every field is final and set before the first
+     * submission, which publishes it to the workers.
+     */
+    private static final class RoundRunner {
+        private final ReflectiveInvocationContext<Method> context;
+        private final Method method;
+        private final int threads;
+        private final ExecutorService executor;
+        private final Phase1DetectorSet phase1;
+        private final AsyncTestContext phase2Context;
+        private final boolean useVirtualThreads;
+        private final @Nullable Set<Long> workerThreadIds;
 
-        ContentionBarrier barrier = createBarrier(threads, roundTimeoutMs, useVirtualThreads);
-        List<Throwable> failures = new CopyOnWriteArrayList<>();
-        CountDownLatch latch = new CountDownLatch(threads);
-        // Workers that got past the start barrier, so a timed-out round can say whether any never
-        // reached the body rather than guessing (#1386).
-        AtomicInteger pastBarrier = new AtomicInteger();
-        // The workers inside the body right now, sampled if the round runs out (#1393).
-        Set<Thread> inBody = ConcurrentHashMap.newKeySet();
-
-        Object target = context.getTarget().orElse(null);
-        Object[] args = context.getArguments().toArray();
-
-        // Futures are retained (not ignored) so a round timeout below can cancel(true)
-        // any worker still stuck, instead of leaving it to linger until execute()'s
-        // outer executor.shutdownNow(). Worker completion itself is still tracked via
-        // the CountDownLatch; exceptions are still caught inside the lambda into
-        // `failures`, so nothing here changes normal (non-timeout) behavior.
-        List<Future<?>> workerFutures = new ArrayList<>(threads);
-        for (int t = 0; t < threads; t++) {
-            // The one identity a worker keeps across rounds when its thread does not (#693).
-            final int workerSlot = t;
-            workerFutures.add(executor.submit(() -> {
-                // latch.countDown() MUST always run, regardless of any failure in
-                // install / test body / uninstall. Without this guarantee
-                // the runner blocks on latch.await() until timeoutMs, turning any
-                // bug in worker cleanup into a fake "deadlock detected" report.
-                // Join the set the telemetry bridge filters on, so accesses this worker makes
-                // are attributed to this run. Done first: a failure below still leaves the id
-                // registered, which only ever means one extra id in a set that dies with the run.
-                if (workerThreadIds != null) {
-                    workerThreadIds.add(Thread.currentThread().threadId());
-                }
-
-                boolean installed = false;
-                try {
-                    AsyncTestContext.install(phase2Context, workerSlot);
-                    installed = true;
-                    try {
-                        barrier.arrive();
-                        pastBarrier.incrementAndGet();
-                        // After the barrier, so every worker joins the schedule; left in a finally,
-                        // so a body that throws hands the round on and clears the thread's slot
-                        // before a pooled thread runs the next round.
-                        if (schedule != null) {
-                            schedule.enter(workerSlot);
-                        }
-                        if (phase1.livelock != null) {
-                            phase1.livelock.workerEnteredBody(Thread.currentThread());
-                        }
-                        inBody.add(Thread.currentThread());
-                        try {
-                            Object result = method.invoke(target, args);
-                            // Async test body support: if the method returns a CompletionStage,
-                            // wait for it to complete (or fail) before counting this worker done.
-                            // Without this, the test would "succeed" the instant invoke() returned,
-                            // long before the async work finished — defeating the whole point of
-                            // running stress tests on async code.
-                            if (result instanceof CompletionStage<?> stage) {
-                                stage.toCompletableFuture()
-                                     .get(roundTimeoutMs, TimeUnit.MILLISECONDS);
-                            }
-                        } finally {
-                            inBody.remove(Thread.currentThread());
-                            if (phase1.livelock != null) {
-                                phase1.livelock.workerLeftBody(Thread.currentThread());
-                            }
-                            if (schedule != null) {
-                                schedule.leave();
-                            }
-                        }
-                    } catch (Throwable ex) {
-                        failures.add(unwrap(ex));
-                        // A worker that failed will never reach the round's rendezvous; release the
-                        // peers waiting there, and any still on their way, instead of letting them
-                        // wait out the round and report a timeout that hides this failure.
-                        phase2Context.breakRendezvous();
-                    }
-                } catch (Throwable installErr) {
-                    failures.add(installErr);
-                } finally {
-                    // Symmetry rule (CLAUDE.md): only uninstall if install succeeded.
-                    // Each cleanup step is independently guarded so one failure can't
-                    // suppress the next.
-                    if (installed) {
-                        try {
-                            AsyncTestContext.uninstall();
-                        } catch (Throwable uninstallErr) {
-                            failures.add(uninstallErr);
-                        }
-                    }
-                    latch.countDown();
-                }
-            }));
+        RoundRunner(ReflectiveInvocationContext<Method> context, Method method, int threads,
+                    ExecutorService executor, Phase1DetectorSet phase1, AsyncTestContext phase2Context,
+                    boolean useVirtualThreads, @Nullable Set<Long> workerThreadIds) {
+            this.context = context;
+            this.method = method;
+            this.threads = threads;
+            this.executor = executor;
+            this.phase1 = phase1;
+            this.phase2Context = phase2Context;
+            this.useVirtualThreads = useVirtualThreads;
+            this.workerThreadIds = workerThreadIds;
         }
 
-        boolean completed = latch.await(roundTimeoutMs, TimeUnit.MILLISECONDS);
-        // An assertion that failed on a thread a worker started is this round's failure (#1253): a
-        // body that joined the thread has seen it die, and the death was recorded before that.
-        failures.addAll(phase2Context.takeBodyThreadAssertions());
-        if (!completed) {
+        /**
+         * Runs one round and returns once every worker has finished without failing.
+         *
+         * @param roundTimeoutMs what is left of the run's budget for this round
+         * @param schedule       the round's controlled schedule, or {@code null} for the OS's
+         * @throws RoundTimeoutError when a worker is still running at the deadline, with the
+         *                           failures of the workers that did finish attached as suppressed
+         * @throws AssertionError    the workers' failures combined, when any failed
+         */
+        void run(long roundTimeoutMs, @Nullable ControlledSchedule schedule) throws InterruptedException {
+            Round round = new Round(createBarrier(threads, roundTimeoutMs, useVirtualThreads), threads,
+                    roundTimeoutMs, schedule, context.getTarget().orElse(null), context.getArguments().toArray());
+            // Futures are retained (not ignored) so a round timeout can cancel(true) any worker
+            // still stuck, instead of leaving it to linger until execute()'s outer
+            // executor.shutdownNow(). Worker completion itself is tracked by the round's latch;
+            // exceptions are caught inside the worker into the round's failures.
+            List<Future<?>> workers = new ArrayList<>(threads);
+            for (int t = 0; t < threads; t++) {
+                // The one identity a worker keeps across rounds when its thread does not (#693).
+                final int workerSlot = t;
+                workers.add(executor.submit(() -> runWorker(workerSlot, round)));
+            }
+            awaitWorkers(round, workers);
+        }
+
+        /**
+         * One worker's turn in a round, on the worker's own thread.
+         *
+         * <p>{@code latch.countDown()} must always run, whatever fails in install, the body or
+         * uninstall. Without that guarantee the runner blocks on {@code latch.await()} until the
+         * round times out, turning any bug in worker cleanup into a fake "deadlock detected" report.
+         */
+        private void runWorker(int workerSlot, Round round) {
+            // Join the set the telemetry bridge filters on, so accesses this worker makes are
+            // attributed to this run. Done first: a failure below still leaves the id registered,
+            // which only ever means one extra id in a set that dies with the run.
+            if (workerThreadIds != null) {
+                workerThreadIds.add(Thread.currentThread().threadId());
+            }
+            boolean installed = false;
+            try {
+                AsyncTestContext.install(phase2Context, workerSlot);
+                installed = true;
+                runBodyOnce(workerSlot, round);
+            } catch (Throwable notRun) { // install failed, or recording a body failure did
+                round.failures.add(notRun);
+            } finally {
+                // Symmetry rule (CLAUDE.md): only uninstall if install succeeded. Each cleanup step
+                // is independently guarded so one failure can't suppress the next.
+                if (installed) {
+                    try {
+                        AsyncTestContext.uninstall();
+                    } catch (Throwable uninstallErr) {
+                        round.failures.add(uninstallErr);
+                    }
+                }
+                round.latch.countDown();
+            }
+        }
+
+        /**
+         * Meets the round's other workers at the start barrier, then runs the body once.
+         *
+         * <p>A failure is recorded, not thrown, and releases the peers waiting at the round's
+         * rendezvous, and any still on their way: a worker that failed will never reach it, and they
+         * would otherwise wait out the round and report a timeout that hides this failure.
+         */
+        private void runBodyOnce(int workerSlot, Round round) {
+            try {
+                round.barrier.arrive();
+                round.pastBarrier.incrementAndGet();
+                // After the barrier, so every worker joins the schedule; left in a finally, so a
+                // body that throws hands the round on and clears the thread's slot before a pooled
+                // thread runs the next round.
+                if (round.schedule != null) {
+                    round.schedule.enter(workerSlot);
+                }
+                if (phase1.livelock != null) {
+                    phase1.livelock.workerEnteredBody(Thread.currentThread());
+                }
+                round.inBody.add(Thread.currentThread());
+                try {
+                    invokeBody(round);
+                } finally {
+                    round.inBody.remove(Thread.currentThread());
+                    if (phase1.livelock != null) {
+                        phase1.livelock.workerLeftBody(Thread.currentThread());
+                    }
+                    if (round.schedule != null) {
+                        round.schedule.leave();
+                    }
+                }
+            } catch (Throwable ex) {
+                round.failures.add(unwrap(ex));
+                phase2Context.breakRendezvous();
+            }
+        }
+
+        /**
+         * Invokes the body, and when it returns a {@link CompletionStage}, waits for the stage
+         * too.
+         *
+         * <p>Without the wait an async body would "succeed" the instant {@code invoke()} returned,
+         * long before the async work finished, which defeats the point of stress-testing async
+         * code.
+         */
+        private void invokeBody(Round round)
+                throws ReflectiveOperationException, InterruptedException, ExecutionException, TimeoutException {
+            Object result = method.invoke(round.target, round.args);
+            if (result instanceof CompletionStage<?> stage) {
+                stage.toCompletableFuture()
+                     .get(round.timeoutMs, TimeUnit.MILLISECONDS);
+            }
+        }
+
+        /** Waits for the round's workers, and throws what the round ends with when it failed. */
+        private void awaitWorkers(Round round, List<Future<?>> workers) throws InterruptedException {
+            boolean completed = round.latch.await(round.timeoutMs, TimeUnit.MILLISECONDS);
+            // An assertion that failed on a thread a worker started is this round's failure (#1253): a
+            // body that joined the thread has seen it die, and the death was recorded before that.
+            round.failures.addAll(phase2Context.takeBodyThreadAssertions());
+            if (!completed) {
+                throw timedOut(round, workers);
+            }
+            if (!round.failures.isEmpty()) {
+                throw buildMultiFailureError(round.failures);
+            }
+        }
+
+        /**
+         * Stops a round that outlived its budget and {@return the error that says how far it got}
+         *
+         * <p>Interrupts any worker still stuck (blocked on a now-broken barrier, or never reached
+         * it) instead of leaving it to run until {@code execute()}'s outer
+         * {@code executor.shutdownNow()}. {@code cancel(true)} on a finished future is a documented
+         * no-op, so this is safe however many workers are still outstanding.
+         */
+        private AssertionError timedOut(Round round, List<Future<?>> workers) {
             // Read before the cancels below: a cancelled worker counts the latch down too, and
             // read after them a hung round reported "2/2 threads completed" (#1386).
-            int finished = threads - (int) latch.getCount();
-            int passedBarrier = pastBarrier.get();
-            // Interrupt any worker still stuck (e.g. blocked on a now-broken barrier, or
-            // never reached it at all) instead of leaving it to run until execute()'s
-            // outer executor.shutdownNow(). cancel(true) on an already-finished future
-            // is a documented no-op, so this is safe regardless of how many of the
-            // `threads` workers are actually still outstanding.
+            int finished = threads - (int) round.latch.getCount();
+            int passedBarrier = round.pastBarrier.get();
             // Say so before interrupting: a body that catches this interrupt and records it has
             // not left its work on its own, and a detector must not read it as though it had (#598).
             phase2Context.markRoundTimedOut();
             // Before the interrupts, so what is sampled is what the bodies were doing.
-            boolean workersParked = everyWorkerParked(inBody);
+            boolean workersParked = everyWorkerParked(round.inBody);
             if (phase1.livelock != null) {
                 phase1.livelock.roundTimedOut();
             }
-            for (Future<?> future : workerFutures) {
-                future.cancel(true);
+            for (Future<?> worker : workers) {
+                worker.cancel(true);
             }
             AssertionError roundTimeout = new RoundTimeoutError(
-                    roundTimeoutMessage(threads, finished, passedBarrier, roundTimeoutMs)
-                            + attachedFailures(failures.size()), workersParked);
-            // The workers that DID finish often carry the diagnosis: a worker that threw
-            // before the barrier is the most common reason its peers never arrived, and
-            // throwing here without them reported only a thread count. `failures` is a
-            // CopyOnWriteArrayList, so cancelled workers appending concurrently race
-            // harmlessly against this snapshot iteration.
-            for (Throwable failure : failures) {
+                    roundTimeoutMessage(threads, finished, passedBarrier, round.timeoutMs)
+                            + attachedFailures(round.failures.size()), workersParked);
+            // The workers that DID finish often carry the diagnosis: a worker that threw before
+            // the barrier is the most common reason its peers never arrived, and throwing without
+            // them reported only a thread count. The failures list is copy-on-write, so cancelled
+            // workers appending concurrently race harmlessly against this snapshot iteration.
+            for (Throwable failure : round.failures) {
                 roundTimeout.addSuppressed(failure);
             }
-            throw roundTimeout;
+            return roundTimeout;
         }
+    }
 
-        if (!failures.isEmpty()) {
-            throw buildMultiFailureError(failures);
+    /**
+     * What one round's workers share: the barrier that releases them together, the latch the
+     * runner thread waits on, the failures they record, and what the runner reads if the round
+     * times out.
+     *
+     * <p>Built on the runner thread before the first submission, which publishes it to the
+     * workers; they touch only its concurrent members.
+     */
+    private static final class Round {
+        final ContentionBarrier barrier;
+        final long timeoutMs;
+        final @Nullable ControlledSchedule schedule;
+        final @Nullable Object target;
+        final Object[] args;
+        final List<Throwable> failures = new CopyOnWriteArrayList<>();
+        final CountDownLatch latch;
+        /**
+         * Workers that got past the start barrier, so a timed-out round can say whether any never
+         * reached the body rather than guessing (#1386).
+         */
+        final AtomicInteger pastBarrier = new AtomicInteger();
+        /** The workers inside the body right now, sampled if the round runs out (#1393). */
+        final Set<Thread> inBody = ConcurrentHashMap.newKeySet();
+
+        Round(ContentionBarrier barrier, int threads, long timeoutMs, @Nullable ControlledSchedule schedule,
+              @Nullable Object target, Object[] args) {
+            this.barrier = barrier;
+            this.latch = new CountDownLatch(threads);
+            this.timeoutMs = timeoutMs;
+            this.schedule = schedule;
+            this.target = target;
+            this.args = args;
         }
     }
 
