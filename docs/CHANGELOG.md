@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **A round is an object now, not a ten-parameter method.** `ConcurrencyRunner`'s round code
+  moved into `RoundRunner` (what is fixed for a run, built once) and `Round` (what one round's
+  workers share), and the worker lambda that captured thirteen variables is three named methods.
+  Statement order is unchanged on every path. A new end-to-end test pins the "every worker still in
+  the body was blocked or waiting with no timeout" headline (#1393), which nothing asserted directly.
+
 - **`ConcurrencyRunner.execute()` reads as its steps (597 to 316 lines).** Setup, the round-start fan-out, the after-hook merge and the cleanup `finally` are
   named methods now, with every log event and the per-step cleanup guards unchanged. One ordering
   moved: the `TelemetryBridge` is activated immediately before the `try` that detaches it, like
