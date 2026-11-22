@@ -29,9 +29,10 @@ On a `v*` tag push, `publish.yml`:
    `waitUntil=uploaded`: **no manual portal action is required**, and nothing stops the
    release once validation passes. `uploaded`, not `published`, because waiting inside
    `mvn deploy` got the job killed mid-poll in 1.7.0 and 1.9.1.
-   Then runs the same `clean deploy -P release` on `async-test-maven-plugin/pom.xml` (#1099): a
-   build of its own outside the reactor, so a second bundle, with sources, javadoc and GPG from
-   its own `release` profile. Its pom is flattened (`flatten-maven-plugin`, `ossrh` mode: no
+   The `release` profile adds `async-test-maven-plugin` (#1099), a build of its own outside the
+   reactor otherwise, as a module, so it goes up in the same bundle as the library: one Central
+   deployment a version, since Central counts deployments against the organization's monthly
+   release limit (#1463). Its pom is flattened (`flatten-maven-plugin`, `ossrh` mode: no
    parent, a literal version) in every build, and e2e-tests.yml installs it without the
    `versions/pom.xml` parent so the flattened pom is what the quick-start fixture resolves.
 4. Signs each JAR and both SBOMs with keyless cosign (Sigstore, via OIDC), producing
@@ -319,11 +320,8 @@ notes `publish.yml` uses; the cosign bundles and provenance of that run are not 
 say so in the notes. If it never publishes, as with 1.13.0, mark the changelog heading `[YANKED]`
 and release the next patch.
 
-**The Maven plugin's deploy failed** after the reactor's bundle was uploaded: the library's version
-is burned as above, but Central never saw the plugin's coordinates, so the plugin alone can go up
-again for the same version. From the tagged commit, with the Central and GPG secrets in the
-environment: `mvn --batch-mode -f async-test-maven-plugin/pom.xml clean deploy -P release`, then
-`.github/scripts/wait-for-central.sh <version>` to confirm all four artifacts.
+The Maven plugin is in the same bundle as the library since #1463, so it is published or refused
+with it; there is no separate plugin deploy to repeat.
 
 **The Gradle Plugin Portal job failed or was skipped**: nothing on Central is affected. Re-run that
 job alone (`gh run rerun <run-id> --job <job-id>`), or publish by hand from the tagged commit with

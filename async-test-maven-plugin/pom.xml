@@ -8,9 +8,10 @@
          async-test:prepare-agent, in place of the dependency:properties execution and the surefire
          argLine the README's quick start used to need, and composing with JaCoCo's prepare-agent the
          same way JaCoCo composes with anything else, through the argLine property. A build of its own,
-         outside the reactor, versioned with the library through versions/pom.xml. publish.yml deploys
-         it to Maven Central with every release, in a bundle of its own after the reactor's (#1099);
-         CI installs it locally for consumer-fixture-langs/quickstart-plugin. -->
+         outside the reactor, versioned with the library through versions/pom.xml. The reactor's release
+         profile adds it as a module, so publish.yml deploys it to Maven Central in the library's own
+         bundle, one deployment a version (#1099, #1463); CI installs it locally for
+         consumer-fixture-langs/quickstart-plugin. -->
     <parent>
         <groupId>se.deversity.async-test-lib</groupId>
         <artifactId>async-test-satellite-versions</artifactId>
@@ -146,9 +147,9 @@
 
     <!-- The same release profile as the reactor's: sources and javadoc jars, GPG signatures, and the
          Central Portal upload through central-publishing-maven-plugin with waitUntil=uploaded.
-         publish.yml runs `mvn -f async-test-maven-plugin/pom.xml clean deploy -P release` after the
-         reactor's deploy and before .github/scripts/wait-for-central.sh, which polls this artifact
-         too. The plugin versions are shared with the reactor pom.xml through versions/pom.xml;
+         In a release this module is part of the reactor's `clean deploy -P release` (the root
+         pom's release profile lists it), so it is bundled with the library and polled by
+         .github/scripts/wait-for-central.sh with it (#1463). The plugin versions are shared with the reactor pom.xml through versions/pom.xml;
          SatelliteVersionsTest holds them equal. -->
     <profiles>
         <profile>

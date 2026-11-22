@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **A release is one Maven Central deployment, not two (#1463).** `async-test-maven-plugin` went up
+  as a bundle of its own after the reactor's, and Central counts every deployment against the
+  organization's monthly release limit, which November 2026 reached. The release profile now adds
+  the plugin to the reactor, so `publish.yml`'s one `clean deploy -P release` bundles all four
+  artifacts. Verified on a locally built `central-bundle.zip`: one bundle with the plugin's jar,
+  sources, javadoc and its flattened pom beside the library's.
+
 - **A release should send Maven Central 84 files instead of 150 (#1391; counted in the issue,
   first confirmed at the next publish).** `central-publishing-maven-plugin`
   now uploads only the MD5 and SHA-1 checksums Central requires, not also SHA-256 and SHA-512, and

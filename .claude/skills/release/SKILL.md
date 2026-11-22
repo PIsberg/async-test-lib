@@ -165,8 +165,8 @@ gh release view "v<version>"
 
 Maven Central takes ~15–30 min to surface the artifact at
 `https://repo1.maven.org/maven2/se/deversity/async-test-lib/async-test-lib/`; the Maven build
-plugin goes up in the same job as a bundle of its own (#1099), and `wait-for-central.sh` waits for
-all four artifacts.
+plugin goes up in the same bundle as the library (#1099, #1463), and `wait-for-central.sh` waits
+for all four artifacts.
 
 The run has a second job, "Publish to the Gradle Plugin Portal", that runs only when the
 `GRADLE_PUBLISH_KEY` and `GRADLE_PUBLISH_SECRET` secrets exist. Read the run summary: a warning

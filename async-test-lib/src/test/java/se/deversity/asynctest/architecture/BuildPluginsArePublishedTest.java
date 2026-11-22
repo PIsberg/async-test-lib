@@ -17,8 +17,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>The plugins were built and tested for two releases without being published, so a user who
  * read about them could apply neither. What this pins is the wiring that a refactor of
- * {@code publish.yml} or of either build file would drop silently: the Maven plugin's deploy sits
- * between the reactor's deploy and the Central wait, so the wait covers it; the wait script names
+ * {@code publish.yml} or of either build file would drop silently: the Maven plugin is a module of
+ * the reactor's release profile, so it goes up in the same Central deployment, before the Central
+ * wait, so the wait covers it (#1463); the wait script names
  * the plugin; the Gradle job needs the publish job and runs {@code publishPlugins}; the Maven
  * plugin's pom flattens away its unpublished parent and carries the Central profile; the Gradle
  * build applies the portal plugin with the metadata the portal refuses to publish without.
@@ -28,16 +29,21 @@ class BuildPluginsArePublishedTest {
     private static final String WAIT_SCRIPT = ".github/scripts/wait-for-central.sh";
 
     @Test
-    @DisplayName("publish.yml deploys the Maven plugin after the reactor and before the Central wait")
-    void mavenPluginIsDeployedBeforeTheCentralWait() throws IOException {
+    @DisplayName("the Maven plugin goes up in the reactor's one Central deployment, before the wait (#1463)")
+    void mavenPluginIsDeployedWithTheReactorBeforeTheCentralWait() throws IOException {
+        String pom = read("pom.xml");
+        String release = pom.substring(pom.indexOf("<id>release</id>"));
+        assertTrue(release.substring(0, release.indexOf("</profile>")).contains("<module>async-test-maven-plugin</module>"),
+                "the reactor's release profile must add async-test-maven-plugin as a module, so the one"
+                        + " central-publishing run bundles it with the library");
         String publish = read(".github/workflows/publish.yml");
+        assertTrue(!publish.contains("-f async-test-maven-plugin/pom.xml clean deploy"),
+                "a deploy of the plugin pom on its own is a second Central deployment, which counts against"
+                        + " the organization's monthly release limit (#1463)");
         int reactorDeploy = publish.indexOf("clean deploy -P release");
-        int pluginDeploy = publish.indexOf("-f async-test-maven-plugin/pom.xml clean deploy -P release");
         int wait = publish.indexOf(WAIT_SCRIPT);
-        assertTrue(reactorDeploy >= 0 && pluginDeploy > reactorDeploy,
-                "publish.yml must deploy async-test-maven-plugin after the reactor's deploy");
-        assertTrue(wait > pluginDeploy,
-                "publish.yml must run " + WAIT_SCRIPT + " after the plugin's deploy, so the wait covers it");
+        assertTrue(reactorDeploy >= 0 && wait > reactorDeploy,
+                "publish.yml must run " + WAIT_SCRIPT + " after the release deploy, so the wait covers it");
         assertTrue(publish.contains("async-test-maven-plugin/target/async-test-maven-plugin-${VERSION}.jar"),
                 "the cosign loop and the GitHub Release must list the plugin's jar");
     }

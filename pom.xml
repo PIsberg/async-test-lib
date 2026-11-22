@@ -586,6 +586,14 @@
     <profiles>
         <profile>
             <id>release</id>
+            <!-- The Maven build plugin joins the reactor for a release only, so the one
+                 central-publishing run bundles it with the library: one Central deployment a
+                 version instead of two. Central counts deployments against the organization's
+                 monthly release limit, which November 2026 reached (#1463). Every other build
+                 keeps it outside the reactor, built against the installed library. -->
+            <modules>
+                <module>async-test-maven-plugin</module>
+            </modules>
             <build>
                 <plugins>
                     <plugin>
