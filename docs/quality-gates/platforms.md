@@ -2,7 +2,7 @@
 
 Part of the [Quality Gates guide](../QUALITY_GATES.md).
 
-## Build with JDK 21, 25 or 26
+## Build with JDK 21, 25, 26 or 27
 
 > **Resolved: the PMD engine is now pinned, and JDK 26 no longer trips the gate.**
 >
@@ -49,8 +49,11 @@ Part of the [Quality Gates guide](../QUALITY_GATES.md).
 
 ## Which operating systems a change is tested on
 
-The `Test Suite` matrix is three JDKs on ubuntu for a pull request, and the same three JDKs
-on ubuntu, windows and macos for a push to `main` and for the nightly schedule.
+The `Test Suite` matrix is four JDKs (21, 25, 26 and 27) on ubuntu for a pull request, and the
+same four JDKs on ubuntu, windows and macos for a push to `main` and for the nightly schedule.
+JDK 27 joined the matrices of `tests.yml`, the e2e consumer fixture and the corpus on 2026-11-22
+(#1410), after its first local failures were fixed in #1432 (JDK 27's thread dump format v2); it
+is added beside 26 rather than replacing it, so 26 keeps its coverage.
 
 The windows and macos legs are `continue-on-error` and always have been, which means they
 could never fail a pull request: they were six jobs of about eighteen minutes that nobody
@@ -63,7 +66,7 @@ What this costs: an OS-specific break is now found after merge rather than befor
 the same exposure the `continue-on-error` flag already accepted, made explicit and cheaper.
 When a change is OS-sensitive, ask for the full matrix on the branch:
 `gh workflow run tests.yml --ref <branch>`. A dispatch is not a pull request, so it runs
-all nine legs.
+all twelve legs.
 
 That leaves a gap for a test whose defect only Windows or macOS produces: no leg that runs it
 can fail. `LicenseValidationCacheDogfoodTest` is one. It guards a temp-file leak that Windows

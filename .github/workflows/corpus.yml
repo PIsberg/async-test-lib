@@ -62,15 +62,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java-version: [ '21', '25', '26' ]
+        java-version: [ '21', '25', '26', '27' ]
 
     steps:
       - name: Harden the runner (Block unexpected outbound calls)
         uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: block
-          # Only the JDKs the runner image already caches are free. 26 is not cached, so
-          # setup-java downloads it from a GitHub release asset, and without this host the
+          # Only the JDKs the runner image already caches are free. 26 and 27 are not cached, so
+          # setup-java downloads them from a GitHub release asset, and without this host the
           # step fails before the eval runs at all.
           allowed-endpoints: >
             agent.api.stepsecurity.io:443
@@ -88,7 +88,7 @@ jobs:
 
       - name: Set up Java
         id: setup-java
-        # JDK 26 is on no runner image yet, so this leg resolves and downloads it from
+        # JDKs 26 and 27 are on no runner image yet, so these legs resolve and download them from
         # api.adoptium.net on every run, while 21 and 25 come from the image cache. The action
         # has no retry of its own, so one DNS blip fails the job before a line of code runs:
         # "Error: Java setup process failed due to: getaddrinfo EAI_AGAIN api.adoptium.net",

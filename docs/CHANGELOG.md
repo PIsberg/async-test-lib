@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Maintenance
+
+- **CI builds and tests on JDK 27 (#1410).** `tests.yml` (the test suite and the build job), the
+  e2e consumer fixture and the corpus now run a `27` leg beside 21, 25 and 26, with the same
+  download-and-retry handling 26 has, since neither is on the runner image. 26 keeps its legs.
+
 ### Fixed
 
 - **An object handed over through a monitor-guarded field no longer reads as raced (#1247).** With

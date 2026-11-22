@@ -13,7 +13,7 @@ Underneath, which legs run depends on the event:
 
 | Leg | Runs on | Notes |
 |---|---|---|
-| Consumer Fixture (JDK 21, 25) | every PR and push | Resolves the built artifact from a local repo and drives it through the public API only, one `@AsyncTest` fixture per `DetectorType` |
+| Consumer Fixture (JDK 21, 25, 26, 27) | every PR and push | Resolves the built artifact from a local repo and drives it through the public API only, one `@AsyncTest` fixture per `DetectorType` |
 | Examples Shard (PR) | PRs that change `examples/**` **or** library sources | See below |
 | Examples Reactor | push to `main`/`develop`, and nightly | All 151 example projects, four shards |
 | Examples on JDK 25 | every PR and push, and nightly | The examples that carry a JDK 24+ profile, which the JDK 21 legs above never activate: example 116's real-`Gatherer` test (#893). Fails if that test did not run |
