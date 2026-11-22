@@ -130,6 +130,7 @@ the order the pieces appear in a run, not alphabetical.
 | [quality-gates/mutation-fuzzing-benchmarks.md](quality-gates/mutation-fuzzing-benchmarks.md) | The PIT mutation gate and JVM-global versus instance state, the Jazzer fuzzing job, and the benchmarking gate |
 | [quality-gates/examples-and-demos.md](quality-gates/examples-and-demos.md) | Running the disabled example demonstrations, and the demo recording |
 | [quality-gates/review-lanes.md](quality-gates/review-lanes.md) | The guardrail jobs and the AI review lanes behind the invariants |
+| [quality-gates/new-code-gate.md](quality-gates/new-code-gate.md) | SonarQube's agentic-AI quality gate, condition by condition, and how SonarQube Cloud is turned on |
 | [architecture/guardrails.md](architecture/guardrails.md) | How the `@AI*` guardrails are generated, the three vibetags config files, and why Gradle needs `-Avibetags.root` |
 | [DEPENDENCIES.md](DEPENDENCIES.md) | Every third-party library, why it is used, and how far it travels toward a consumer's classpath |
 | [WORKFLOW.md](WORKFLOW.md) | Running the load-tests subproject, capturing release baselines, and what `load-tests.yml` runs in CI |
