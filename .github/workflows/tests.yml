@@ -79,6 +79,7 @@ jobs:
             agent.api.stepsecurity.io:443
             api.adoptium.net:443
             api.github.com:443
+            api.sonarcloud.io:443
             cli.codecov.io:443
             codecov.io:443
             github.com:443
@@ -90,6 +91,8 @@ jobs:
             repo.maven.apache.org:443
             repo1.maven.org:443
             results-receiver.actions.githubusercontent.com:443
+            scanner.sonarcloud.io:443
+            sonarcloud.io:443
             storage.googleapis.com:443
             uploader.codecov.io:443
 
@@ -209,6 +212,28 @@ jobs:
           "$py" .github/scripts/duplication_gate.py --self-test
           "$py" .github/scripts/duplication_gate.py --base "origin/$BASE_REF" --max-percent 3 \
             async-test-lib/target/cpd.xml async-test-agent/target/cpd.xml async-test-analysis/target/cpd.xml
+
+      - name: Check whether SonarQube Cloud is configured
+        id: sonar-config
+        if: env.UPLOADS_COVERAGE == 'true'
+        shell: bash
+        env:
+          CONFIGURED: ${{ secrets.SONAR_TOKEN != '' }}
+        run: |
+          echo "configured=$CONFIGURED" >> "$GITHUB_OUTPUT"
+          if [ "$CONFIGURED" != "true" ]; then
+            echo "::notice::SonarQube Cloud analysis skipped: no SONAR_TOKEN secret (docs/quality-gates/new-code-gate.md)."
+          fi
+
+      - name: Analyze with SonarQube Cloud
+        # Sonar posts its own quality gate as a separate check through its GitHub app, so this
+        # step only sends the analysis: an outage there must not fail the library's test leg.
+        if: env.UPLOADS_COVERAGE == 'true' && steps.sonar-config.outputs.configured == 'true'
+        timeout-minutes: 15
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: mvn -B sonar:sonar "-Djacoco.skip=true"
 
   os-sensitive:
     name: OS-Sensitive Tests

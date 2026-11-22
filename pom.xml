@@ -98,6 +98,15 @@
         <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
         <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
         <jacoco-maven-plugin.version>0.8.16</jacoco-maven-plugin.version>
+        <!-- SonarQube Cloud scanner, run by tests.yml on the coverage leg only where the
+             SONAR_TOKEN secret is set (docs/quality-gates/new-code-gate.md). -->
+        <sonar-maven-plugin.version>5.9.0.7382</sonar-maven-plugin.version>
+        <!-- What sonarcloud.io assigns this repository on import; change them here if the import
+             chose other keys. Coverage is the combined library-and-agent report (#1482). -->
+        <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+        <sonar.organization>pisberg</sonar.organization>
+        <sonar.projectKey>PIsberg_async-test-lib</sonar.projectKey>
+        <sonar.coverage.jacoco.xmlReportPaths>${maven.multiModuleProjectDirectory}/async-test-agent/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
         <build-helper-maven-plugin.version>3.8.0</build-helper-maven-plugin.version>
         <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
         <cyclonedx-maven-plugin.version>2.9.3</cyclonedx-maven-plugin.version>
@@ -252,6 +261,17 @@
     </dependencies>
 
     <build>
+        <pluginManagement>
+            <plugins>
+                <!-- Declared so tests.yml can run `mvn sonar:sonar` by prefix, with the version
+                     kept here and bumped by Dependabot like every other plugin. -->
+                <plugin>
+                    <groupId>org.sonarsource.scanner.maven</groupId>
+                    <artifactId>sonar-maven-plugin</artifactId>
+                    <version>${sonar-maven-plugin.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
         <plugins>
             <!-- The Premain-Class manifest lives in async-test-agent; japicmp and pitest live in
                  async-test-lib. Everything below is shared by all three modules. -->
