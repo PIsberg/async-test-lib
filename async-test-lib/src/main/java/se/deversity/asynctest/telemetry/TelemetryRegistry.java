@@ -1,6 +1,7 @@
 package se.deversity.asynctest.telemetry;
 
 import se.deversity.asynctest.AgentConcurrencyUtilHooks;
+import se.deversity.asynctest.AgentCoroutineHooks;
 import org.apiguardian.api.API;
 import org.apiguardian.api.API.Status;
 import se.deversity.asynctest.AgentMonitorHooks;
@@ -281,6 +282,7 @@ public final class TelemetryRegistry {
         BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method, 0,
                 identity == 0 ? null : receiver, HappensBefore.current(), HappensBefore.round());
+        AgentCoroutineHooks.fieldAccessed(receiver, qualifiedName, isWrite);
     }
 
     /**
@@ -488,6 +490,7 @@ public final class TelemetryRegistry {
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method,
                 storedIdentity, identity == 0 ? null : receiver, HappensBefore.current(),
                 HappensBefore.round());
+        AgentCoroutineHooks.fieldAccessed(receiver, qualifiedName, isWrite);
         if (isWrite && !volatileField && stored != null) {
             // A reference stored under a lock is released to a load of it under the same lock
             // (#1247); after the access is published, so the store itself is part of what the

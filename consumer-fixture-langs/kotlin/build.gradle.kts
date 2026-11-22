@@ -37,15 +37,33 @@ val runnerDefaultAttach = tasks.register<Test>("runnerDefaultAttach") {
     filter { includeTestsMatching("com.example.kotlinrunner.RunnerDefaultAttachTest") }
 }
 
+// Field weaving for the coroutine owner model (#1007), in a JVM of its own so every other fixture
+// keeps its agent options. The maven twin is the coroutine-fields surefire execution in
+// kotlin/pom.xml.
+val coroutineFields = tasks.register<Test>("coroutineFields") {
+    description = "Runs KotlinCoroutineStepsTest with the agent weaving fields (#1007)."
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching("se.deversity.asynctest.fixture.KotlinCoroutineStepsTest") }
+    doFirst {
+        jvmArgs(
+            "-javaagent:${asyncTestAgent.singleFile}" +
+                "=includes=com.example.kotlincoroutines;kotlinx.coroutines,fields=true,collections=true"
+        )
+    }
+}
+
 tasks.named<Test>("test") {
     filter {
         excludeTestsMatching("com.example.kotlinrunner.RunnerDefaultAttachTest")
+        excludeTestsMatching("se.deversity.asynctest.fixture.KotlinCoroutineStepsTest")
         // Nested classes are fixtures run through the launcher from the test around them, such as
         // KotlinSuspendAsyncTestFailsTest's suspend body (#1146), not tests of their own. Surefire
         // never selects them (its default excludes **/*$*); Gradle hands every class to JUnit.
         excludeTestsMatching("*$*")
     }
     dependsOn(runnerDefaultAttach)
+    dependsOn(coroutineFields)
     // doFirst so the configuration is resolved when the task runs rather than while the build is
     // being configured. includes= is scoped to the bean package so the two race-condition
     // fixtures next door keep running unwoven; kotlinx.coroutines is woven too, so the start of a

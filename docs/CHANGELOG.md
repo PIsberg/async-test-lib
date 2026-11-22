@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A lost update between coroutines across a suspension is reported (#1007).** With
+  `fields=true`, the agent weaves the one call in kotlin stdlib that runs every coroutine step
+  (`BaseContinuationImpl.resumeWith` calling `invokeSuspend`) and so knows which coroutine each
+  recorded field access is made in. `AtomicityValidator` reports a coroutine that read a field,
+  suspended, and wrote it after another coroutine wrote it in between, the race two coroutines on
+  one `runBlocking` event loop or single-threaded dispatcher make and that every thread-keyed rule
+  saw as one owner. A `Mutex` held across the suspension, and one coroutine updating its own state
+  across dispatcher threads, stay silent. Measured in `consumer-fixture-langs/kotlin` with real
+  kotlinx 1.11: the lost update was unreported before and is reported after, both twins silent.
+
 ### Maintenance
 
 - **CI builds and tests on JDK 27 (#1410).** `tests.yml` (the test suite and the build job), the
