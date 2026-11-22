@@ -536,7 +536,6 @@ public class ConcurrencyRunner {
             reportFailure(t, currentSeed, lastSchedule, phase2Analysis);
             throw unwrap(t);
         } finally {
-            // Each step is guarded on its own: a failure in one must not skip the next.
             BodyThreadFailures.uninstall();
             overlap.exit();
             shutDownWorkers(executor);
