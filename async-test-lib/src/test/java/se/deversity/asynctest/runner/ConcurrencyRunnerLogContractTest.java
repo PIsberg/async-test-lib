@@ -16,6 +16,7 @@ import se.deversity.asynctest.AsyncTestContext;
 import se.deversity.asynctest.FailOn;
 import se.deversity.asynctest.diagnostics.ConditionVariableDetector;
 import se.deversity.asynctest.diagnostics.DeadlockDetector;
+import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import java.util.List;
 import java.util.concurrent.Exchanger;
@@ -655,6 +656,69 @@ class ConcurrencyRunnerLogContractTest {
             } finally {
                 LOCK.unlock();
             }
+        }
+    }
+
+    @Test
+    @DisplayName("agent events on threads no worker started are counted per test at INFO (#500)")
+    void unattributedTelemetryIsAnnouncedPerTest() {
+        // What AsyncTestAgent.premain does when -javaagent is present.
+        TelemetryRegistry.start();
+        try {
+            EngineTestKit.engine("junit-jupiter")
+                .selectors(selectClass(UnattributedTelemetryDummy.class))
+                .execute()
+                .testEvents()
+                .assertStatistics(stats -> stats.succeeded(1));
+        } finally {
+            TelemetryRegistry.stop();
+        }
+
+        List<ILoggingEvent> lines = appender.list.stream()
+            .filter(e -> e.getFormattedMessage().startsWith("runner.telemetry.unattributed"))
+            .toList();
+        assertEquals(1, lines.size(), "one event per test, after the bridge is drained: " + events());
+        assertSame(Level.INFO, lines.get(0).getLevel(), "an observation about this body, so INFO");
+        assertTrue(lines.get(0).getFormattedMessage().startsWith("runner.telemetry.unattributed test=unattributed events="),
+            "the event names the test and counts the events it could not attribute: " + lines.get(0).getFormattedMessage());
+    }
+
+    @Test
+    @DisplayName("array accesses past the tracked bound are counted per test at INFO (#1262)")
+    void untrackedArrayAccessesAreAnnouncedPerTest() {
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(UntrackedArrayDummy.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        List<ILoggingEvent> lines = appender.list.stream()
+            .filter(e -> e.getFormattedMessage().startsWith("runner.telemetry.arrays-untracked"))
+            .toList();
+        assertEquals(1, lines.size(), "one event per test: " + events());
+        assertSame(Level.INFO, lines.get(0).getLevel(), "an observation about this body, so INFO");
+        assertTrue(lines.get(0).getFormattedMessage().startsWith(
+                "runner.telemetry.arrays-untracked test=untracked accesses=2 tracked="
+                    + TelemetryRegistry.MAX_TRACKED_ARRAY_INDEX + " "),
+            "two workers, one write past the bound each: " + lines.get(0).getFormattedMessage());
+    }
+
+    /** Each worker publishes one access as if from a thread no worker started or handed work to. */
+    static class UnattributedTelemetryDummy {
+        @AsyncTest(threads = 2, invocations = 1, includes = DetectorType.ATOMICITY_VIOLATIONS)
+        void unattributed() {
+            TelemetryRegistry.recordAccess(Long.MAX_VALUE, "Elsewhere.field", true);
+        }
+    }
+
+    /** Each worker writes one int element past the first {@code MAX_TRACKED_ARRAY_INDEX}. */
+    static class UntrackedArrayDummy {
+        private static final int IASTORE = 0;
+
+        @AsyncTest(threads = 2, invocations = 1, includes = DetectorType.ATOMICITY_VIOLATIONS)
+        void untracked() {
+            int[] wide = new int[TelemetryRegistry.MAX_TRACKED_ARRAY_INDEX + 1];
+            TelemetryRegistry.arrayWrite(wide, TelemetryRegistry.MAX_TRACKED_ARRAY_INDEX, IASTORE);
         }
     }
 }
