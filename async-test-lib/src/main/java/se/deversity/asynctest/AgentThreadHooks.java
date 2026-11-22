@@ -73,7 +73,7 @@ import se.deversity.vibetags.annotations.AIContract;
  * @since 1.12.3
  */
 @API(status = Status.INTERNAL)
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures of the hooks CollectionAccessWeaver.THREAD_ENTRIES substitutes (threadStart, threadJoin, threadIsAlive, threadSetDaemon, threadStartVirtual and the builder's threadBuilderStart, threadBuilderDaemon, threadBuilderUnstarted and threadBuilderFactory, and threadFactoryNewThread) and of threadConstructed, which ThreadConstructionWeaver inserts after each thread a woven class constructs, and threadTarget, which it inserts before a new Thread(Runnable) or new Thread(Runnable, String), with or without a leading ThreadGroup, or a new Thread(ThreadGroup, Runnable, String, long), and before a direct Thread subclass's super call to one of those, with the target (#1350, #1401), and of interruptSwallowingMethodEntered, which InterruptHandlerWeaver inserts at the start of a method holding an InterruptedException handler that neither rethrows nor restores the flag, are matched at weave time, and threadWeavingInstalled is invoked by name from AsyncTestAgent after the transformer is installed; none of them can change independently of the agent. Every substituting hook must perform the original call on the receiver, or what the JDK does for it (a builder's start is unstarted then start), and propagate what it throws unchanged; threadFactoryNewThread returns what the factory returned, null included. threadConstructed and threadTarget replace nothing and run inside user constructors, so they perform no call and must not throw; interruptSwallowingMethodEntered replaces nothing either, runs on every entry of the method it was inserted into, and must cost one set lookup once a run has seen its locations. threadSetDaemon records the decision only after setDaemon returned, so a call that throws (an already started thread) records nothing.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures of the hooks CollectionAccessWeaver.THREAD_ENTRIES substitutes (threadStart, threadJoin, threadIsAlive, threadSetDaemon, threadStartVirtual and the builder's threadBuilderStart, threadBuilderDaemon, threadBuilderUnstarted and threadBuilderFactory, and threadFactoryNewThread) and of threadConstructed, which ThreadConstructionWeaver inserts after each thread a woven class constructs, and threadTarget, which it inserts before a new Thread(Runnable) or new Thread(Runnable, String), with or without a leading ThreadGroup, or a new Thread(ThreadGroup, Runnable, String, long), and before a direct Thread subclass's super call to one of those, with the target (#1350, #1401), and of inheritThreadLocalsParked and inheritThreadLocalsUnparked, which it inserts around that hand-over for a new Thread(ThreadGroup, Runnable, String, long, boolean) to set the boolean aside and give it back (#1442), and of interruptSwallowingMethodEntered, which InterruptHandlerWeaver inserts at the start of a method holding an InterruptedException handler that neither rethrows nor restores the flag, are matched at weave time, and threadWeavingInstalled is invoked by name from AsyncTestAgent after the transformer is installed; none of them can change independently of the agent. Every substituting hook must perform the original call on the receiver, or what the JDK does for it (a builder's start is unstarted then start), and propagate what it throws unchanged; threadFactoryNewThread returns what the factory returned, null included. threadConstructed, threadTarget and the two inheritThreadLocals hooks replace nothing and run inside user constructors, so they perform no call and must not throw, and inheritThreadLocalsUnparked must return exactly what inheritThreadLocalsParked was given; interruptSwallowingMethodEntered replaces nothing either, runs on every entry of the method it was inserted into, and must cost one set lookup once a run has seen its locations. threadSetDaemon records the decision only after setDaemon returned, so a call that throws (an already started thread) records nothing.")
 public final class AgentThreadHooks {
 
     /** Explicit {@code setDaemon} decisions seen by a woven call site, by thread identity. */
@@ -229,6 +229,37 @@ public final class AgentThreadHooks {
         } else {
             PENDING_TARGET.remove();
         }
+    }
+
+    /** The {@code inheritThreadLocals} argument set aside by {@link #inheritThreadLocalsParked} (#1442). */
+    private static final ThreadLocal<Boolean> PARKED_INHERIT = new ThreadLocal<>();
+
+    /**
+     * Sets aside the {@code inheritThreadLocals} argument of a
+     * {@code new Thread(group, task, name, stackSize, inheritThreadLocals)}, so the woven code can
+     * reach the task beneath it and hand it to {@link #threadTarget} (#1442). The agent inserts this
+     * and {@link #inheritThreadLocalsUnparked} around that hand-over, on the constructing thread,
+     * with nothing in between that constructs another thread. Inserted, not substituted; runs inside
+     * user code, so it must not throw.
+     *
+     * @param inherit the argument the constructor is about to be called with
+     * @since 1.14.5
+     */
+    public static void inheritThreadLocalsParked(boolean inherit) {
+        PARKED_INHERIT.set(Boolean.valueOf(inherit));
+    }
+
+    /**
+     * {@return the {@code inheritThreadLocals} argument {@link #inheritThreadLocalsParked} set
+     * aside, for the constructor the woven code calls next (#1442)}; {@code true}, the JDK's
+     * default, if none was set aside, which the woven code never lets happen
+     *
+     * @since 1.14.5
+     */
+    public static boolean inheritThreadLocalsUnparked() {
+        Boolean parked = PARKED_INHERIT.get();
+        PARKED_INHERIT.remove();
+        return parked == null || parked;
     }
 
     /**

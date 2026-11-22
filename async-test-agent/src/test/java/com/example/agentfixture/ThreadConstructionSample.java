@@ -18,6 +18,17 @@ public class ThreadConstructionSample {
         return new Thread(Thread.currentThread().getThreadGroup(), task, "sized", 256 * 1024L);
     }
 
+    /**
+     * {@code new Thread(group, task, name, stackSize, inheritThreadLocals)} (#1442).
+     *
+     * @param task    what the thread runs
+     * @param inherit whether the thread inherits the constructing thread's inheritable locals
+     * @return the thread, unstarted
+     */
+    public static Thread inAGroupWithAStackSizeInheriting(Runnable task, boolean inherit) {
+        return new Thread(Thread.currentThread().getThreadGroup(), task, "inheriting", 256 * 1024L, inherit);
+    }
+
     /** {@code new Thread(group, task, name)} (#1401). */
     public static Thread inAGroupNamed(Runnable task) {
         return new Thread(Thread.currentThread().getThreadGroup(), task, "grouped");

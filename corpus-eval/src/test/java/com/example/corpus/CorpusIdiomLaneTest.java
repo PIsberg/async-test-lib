@@ -5012,6 +5012,45 @@ class CorpusIdiomLaneTest {
         });
     }
 
+    // --- A FutureTask run by a thread that inherits no thread-locals (#1442) ------------------
+
+    private static final Rounds<Started> STARTED_INHERITING_NOTHING = new Rounds<>(Started::new);
+    private static final Rounds<Started> STARTED_INHERITING_NOTHING_UNAWAITED = new Rounds<>(Started::new);
+
+    /** Starts the round's task on a thread built with inheritThreadLocals = false. */
+    private static void startInheritingNothing(Started started) {
+        new Thread(null, started.task, "inherits-nothing", 0L, false).start();
+    }
+
+    /**
+     * Row 40 with the thread built by the five-argument constructor, the one that takes
+     * {@code inheritThreadLocals}: the task lies five slots deep there, and was not handed over.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_futureTask_runByAThreadInheritingNothing() {
+        correct(() -> {
+            Turn<Started> turn = STARTED_INHERITING_NOTHING.next();
+            if (turn.opensTheRound()) {
+                startInheritingNothing(turn.shared());
+            } else {
+                use(getUnchecked(turn.shared().task).limit);
+            }
+        });
+    }
+
+    /** The same task and thread, with the others reading what the callable writes without the get. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_futureTask_inheritingNothingReadWithoutTheGet() {
+        broken(() -> {
+            Turn<Started> turn = STARTED_INHERITING_NOTHING_UNAWAITED.next();
+            if (turn.opensTheRound()) {
+                startInheritingNothing(turn.shared());
+            } else {
+                use(turn.shared().direct.limit);
+            }
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**

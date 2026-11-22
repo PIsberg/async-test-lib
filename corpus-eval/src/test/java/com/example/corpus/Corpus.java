@@ -7241,6 +7241,21 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same methods with the giver writing the mail again after putting it: "
                             + "that write comes after what the takers acquired",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_futureTask_runByAThreadInheritingNothing", JDK,
+                    "java.util.concurrent.FutureTask",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "row 40 with the thread built by new Thread(group, task, name, stackSize, "
+                            + "false), whose task the agent could not reach under the flag (#1442)"),
+
+            new RecordingSubject("idiom_futureTask_inheritingNothingReadWithoutTheGet", JDK,
+                    "java.util.concurrent.FutureTask",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same task and thread with the others reading what the callable writes "
+                            + "without the get",
                     IssueSeverity.HIGH)
     );
 

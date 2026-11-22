@@ -198,4 +198,15 @@ class AgentThreadHooksTest {
         org.junit.jupiter.api.Assertions.assertSame(built, AgentThreadHooks.runnerOf(task),
                 "the factory's thread runs the task");
     }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("the inheritThreadLocals argument comes back exactly as it was set aside (#1442)")
+    void theInheritanceFlagRoundTrips() {
+        AgentThreadHooks.inheritThreadLocalsParked(false);
+        org.junit.jupiter.api.Assertions.assertFalse(AgentThreadHooks.inheritThreadLocalsUnparked());
+        AgentThreadHooks.inheritThreadLocalsParked(true);
+        org.junit.jupiter.api.Assertions.assertTrue(AgentThreadHooks.inheritThreadLocalsUnparked());
+        org.junit.jupiter.api.Assertions.assertTrue(AgentThreadHooks.inheritThreadLocalsUnparked(),
+                "nothing set aside reads as the JDK's default");
+    }
 }

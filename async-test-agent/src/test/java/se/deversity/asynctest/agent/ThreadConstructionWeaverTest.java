@@ -46,6 +46,20 @@ class ThreadConstructionWeaverTest {
         public static void threadTarget(Object target) {
             TARGETS.add(target);
         }
+
+        private static final ThreadLocal<Boolean> PARKED = new ThreadLocal<>();
+
+        /**
+         * @param inherit the inheritThreadLocals argument, set aside while the target is handed over
+         */
+        public static void inheritThreadLocalsParked(boolean inherit) {
+            PARKED.set(inherit);
+        }
+
+        /** {@return the inheritThreadLocals argument set aside, for the constructor} */
+        public static boolean inheritThreadLocalsUnparked() {
+            return PARKED.get();
+        }
     }
 
     /** A library from before #1350: it marks constructions and takes no targets. */
@@ -196,6 +210,32 @@ class ThreadConstructionWeaverTest {
         assertEquals(List.of(task), TARGETS, "the task, copied out from under the two-slot stack size");
         assertEquals(List.of(sized), CONSTRUCTED, "and the thread is marked as before");
         assertEquals("sized", sized.getName(), "the constructor got its arguments in order");
+    }
+
+    @Test
+    @DisplayName("the Runnable of a new Thread(group, task, name, stackSize, inheritThreadLocals) is handed over (#1442)")
+    void theTargetOfAThreadWithItsInheritanceFlagIsHandedOver() throws Exception {
+        Class<?> sample = woven(ThreadConstructionSample.class);
+        InheritableThreadLocal<String> inherited = new InheritableThreadLocal<>();
+        inherited.set("from the constructing thread");
+        String[] seen = new String[1];
+        Runnable task = () -> seen[0] = inherited.get();
+
+        for (boolean inherit : new boolean[] {true, false}) {
+            TARGETS.clear();
+            CONSTRUCTED.clear();
+            seen[0] = "unset";
+            Thread thread = (Thread) sample.getMethod("inAGroupWithAStackSizeInheriting", Runnable.class,
+                    boolean.class).invoke(null, task, inherit);
+
+            assertEquals(List.of(task), TARGETS, "the task, from under the name, the long and the flag");
+            assertEquals(List.of(thread), CONSTRUCTED, "and the thread is marked as before");
+            assertEquals("inheriting", thread.getName(), "the constructor got its arguments in order");
+            thread.start();
+            thread.join();
+            assertEquals(inherit ? "from the constructing thread" : null, seen[0],
+                    "the constructor got inheritThreadLocals = " + inherit);
+        }
     }
 
     @Test
