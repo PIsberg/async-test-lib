@@ -940,7 +940,8 @@ class TelemetryBridgeTest {
             bridge.onEvent(WORKER_A, "com.example.Ledger.entry", true);
             bridge.onEvent(WORKER_B, "com.example.Ledger.entry", true);
 
-            assertTrue(av.analyzeAtomicity().totcouRaces.stream()
+            // Two writes and no read: an unordered-writes finding since #1300.
+            assertTrue(av.analyzeAtomicity().unorderedWrites.stream()
                             .anyMatch(s -> s.contains("2 threads")),
                     "Events must be attributed to their two originating worker threads");
         }
