@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **`ConcurrencyRunner.execute()` reads as its steps (597 to 316 lines).** Setup, the round-start fan-out, the after-hook merge and the cleanup `finally` are
+  named methods now, with every log event and the per-step cleanup guards unchanged. One ordering
+  moved: the `TelemetryBridge` is activated immediately before the `try` that detaches it, like
+  the JFR stream and the uncaught-exception handler, so a setup failure can no longer leave a
+  finished run's bridge registered as the JVM-wide drain callback. Two new log-contract tests pin
+  `runner.telemetry.unattributed` and `runner.telemetry.arrays-untracked`, which nothing asserted.
+
 - **A release is one Maven Central deployment, not two (#1463).** `async-test-maven-plugin` went up
   as a bundle of its own after the reactor's, and Central counts every deployment against the
   organization's monthly release limit, which November 2026 reached. The release profile now adds
