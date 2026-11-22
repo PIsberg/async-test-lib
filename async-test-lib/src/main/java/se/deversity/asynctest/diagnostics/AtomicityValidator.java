@@ -584,15 +584,14 @@ public class AtomicityValidator {
     private final Map<Object, CoroutineField> coroutineFields =
             java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
 
-    /** Fields already reported as a lost update across a suspension, so each is reported once. */
-    private final Set<String> suspensionLostUpdates = ConcurrentHashMap.newKeySet();
-
     /**
      * One field as coroutines saw it: how many writes it has had, and for each coroutine that
      * touched it, the write count it last saw and the step it saw it in.
      */
     private static final class CoroutineField {
         long version;
+        /** Set once this field's lost update has been reported, so it is reported once. */
+        boolean reported;
         final Map<Object, long[]> seen = new java.util.WeakHashMap<>();
     }
 
@@ -2316,8 +2315,8 @@ public class AtomicityValidator {
             // {write count seen, step seen in}; -1 until this coroutine first touches the field.
             long[] seen = state.seen.computeIfAbsent(coroutine, ignored -> new long[] {-1L, -1L});
             if (isWrite) {
-                if (seen[0] >= 0L && seen[1] != step && seen[0] != state.version
-                        && suspensionLostUpdates.add(fieldName)) {
+                if (seen[0] >= 0L && seen[1] != step && seen[0] != state.version && !state.reported) {
+                    state.reported = true;
                     atomicityViolations.add(String.format(
                             "%s: lost update across a suspension: a coroutine read it, suspended, and"
                                     + " wrote it after another coroutine had written it in between;"
@@ -2336,7 +2335,6 @@ public class AtomicityValidator {
      */
     public void reset() {
         coroutineFields.clear();
-        suspensionLostUpdates.clear();
         activeOperations.clear();
         fieldHistory.clear();
         fieldLocks.clear();
