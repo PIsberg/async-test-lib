@@ -129,6 +129,28 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- One coverage report for the library and the agent together (#1482). The library's
+                 agent hooks are exercised mostly by this module's tests, whose coverage lands in
+                 this module's jacoco.exec and was reported against nothing: CI uploaded only the
+                 library's own report, so agent work read 48% to 77% patch coverage on Codecov.
+                 report-aggregate reads this module's execution data and that of its reactor
+                 dependencies, and reports both modules' classes; tests.yml uploads it. -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>report-aggregate</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report-aggregate</goal>
+                        </goals>
+                        <configuration>
+                            <includeCurrentProject>true</includeCurrentProject>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <!-- Bundle Byte Buddy into the agent jar, relocated. -javaagent: loads this jar on
                  its own: the JVM resolves AsyncTestAgent's method signatures before premain runs,
                  and every 1.7.0-RC jar aborted consumer JVM startup right there

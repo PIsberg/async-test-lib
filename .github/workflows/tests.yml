@@ -143,15 +143,18 @@ jobs:
         if: env.UPLOADS_COVERAGE == 'true'
         shell: bash
         run: |
-          if [ -f ./async-test-lib/target/site/jacoco/jacoco.xml ]; then
-            echo "✓ Coverage file found"
-            wc -c ./async-test-lib/target/site/jacoco/jacoco.xml
+          # The combined library-and-agent report is what Codecov and Sonar read (#1482).
+          if [ -f ./async-test-lib/target/site/jacoco/jacoco.xml ] \
+             && [ -f ./async-test-agent/target/site/jacoco-aggregate/jacoco.xml ]; then
+            echo "✓ Coverage files found"
+            wc -c ./async-test-lib/target/site/jacoco/jacoco.xml ./async-test-agent/target/site/jacoco-aggregate/jacoco.xml
           else
             echo "✗ Coverage file NOT found at ./async-test-lib/target/site/jacoco/jacoco.xml"
             echo "Checking target directory structure:"
             ls -la ./async-test-lib/target/ || echo "target/ directory not found"
             ls -la ./async-test-lib/target/site/ || echo "target/site/ directory not found"
             ls -la ./async-test-lib/target/site/jacoco/ || echo "target/site/jacoco/ directory not found"
+            ls -la ./async-test-agent/target/site/ || echo "async-test-agent/target/site/ directory not found"
             exit 1
           fi
 
@@ -178,7 +181,10 @@ jobs:
         continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
-          files: ./async-test-lib/target/site/jacoco/jacoco.xml
+          # The library and the agent in one report: the agent's tests exercise the library's
+          # agent hooks, and uploading the library's own report alone left that coverage out, so
+          # agent work read 48% to 77% patch coverage (#1482). The analysis module reports itself.
+          files: ./async-test-agent/target/site/jacoco-aggregate/jacoco.xml,./async-test-analysis/target/site/jacoco/jacoco.xml
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: false

@@ -256,6 +256,8 @@ Gradle-built agent.
 
 Coverage is generated automatically when running tests:
 
-- **Maven**: `target/site/jacoco/jacoco.xml`
+- **Maven**: `target/site/jacoco/jacoco.xml` in each module, and after `verify`, the library and the
+  agent combined in `async-test-agent/target/site/jacoco-aggregate/jacoco.xml`, which is what CI uploads
+  (#1482)
 - **Gradle**: `build/reports/jacoco/test/jacocoTestReport.xml`
 
