@@ -1111,7 +1111,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3976.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">PENDING_TARGET: ThreadLoca…</text>
   <text x="3976.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">TASK_RUNNERS: Map&lt;Object,W…</text>
   <text x="3976.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">taskRunnersSeen: boolean</text>
-  <text x="3976.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+2 more)</text>
+  <text x="3976.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
   <line x1="3968.0" y1="275.0" x2="4148.0" y2="275.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="3976.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadWeavingInstalled(): …</text>
   <text x="3976.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isThreadWeavingInstalled()…</text>
@@ -1119,7 +1119,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3976.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">observedUndecidedOrDecided…</text>
   <text x="3976.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">threadConstructed(Thread):…</text>
   <text x="3976.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">willRun(Object, Thread): v…</text>
-  <text x="3976.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+21 more)</text>
+  <text x="3976.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+23 more)</text>
 </g>
 <g id="AsyncAssert">
   <title>AsyncAssert [CLASS]</title>
@@ -3455,7 +3455,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="4450.0" y="4910.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">receiverStates: Map&lt;Intege…</text>
   <text x="4450.0" y="4925.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">generationTakers: Map&lt;Inte…</text>
   <text x="4450.0" y="4940.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">offers: Map&lt;Integer,Offer&gt;</text>
-  <text x="4450.0" y="4955.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+17 more)</text>
+  <text x="4450.0" y="4955.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+16 more)</text>
   <line x1="4442.0" y1="4968.7" x2="4622.0" y2="4968.7" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="4450.0" y="4982.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">guardKey(String, int): Str…</text>
   <text x="4450.0" y="4997.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">instanceOf(Object): int</text>

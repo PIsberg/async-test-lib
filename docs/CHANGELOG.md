@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `FutureTask` run by `new Thread(group, task, name, stackSize, inheritThreadLocals)` is
+  ordered before its `get` (#1442, first part).** The agent hands a new thread's target to the
+  library for every `Thread` constructor taking a `Runnable`, but this one put the task five
+  slots deep, out of reach of a stack instruction, so `AtomicityValidator` reported the callable's
+  writes against the readers that got its result. The woven code now sets the boolean aside
+  through a hook, hands the task over, and takes the boolean back, with no local and no branch.
+  Measured: corpus idiom row `idiom_futureTask_runByAThreadInheritingNothing` reported PROMPT/HIGH
+  before and is silent after; its twin fires. A subclass of an unwoven `Thread` subclass is still
+  not handed over (#1442 stays open for it).
+
 - **A static volatile on a package-private base, reached through two public subclasses, is one
   field (#1396).** Where a woven class cannot load the declaring class as a constant, the agent
   hands the field's hooks the subclass the call site named; a write through one subclass and a

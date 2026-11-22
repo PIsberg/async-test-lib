@@ -52,9 +52,11 @@ import org.jspecify.annotations.Nullable;
  * deeper subclass is handed over by its {@code Thread} ancestor's constructor, when that is woven.
  * A {@code FutureTask} run that way is run by {@code Thread.run} inside the JDK, so the target is
  * the only way the library learns which thread ran it. The constructor that also takes
- * {@code inheritThreadLocals} is left alone: its task sits five slots deep, below what a stack
- * instruction reaches, and copying it would need a local. A library without {@code threadTarget}
- * gets none of these calls.
+ * {@code inheritThreadLocals} puts its task five slots deep, below what a stack instruction
+ * reaches, so the boolean is first handed to {@code inheritThreadLocalsParked(boolean)}, the
+ * stack-size copies hand the task over, and {@code inheritThreadLocalsUnparked()} pushes the
+ * boolean back, with no local and no branch (#1442); a library without those two hooks gets no
+ * call for that constructor. A library without {@code threadTarget} gets none of these calls.
  *
  * <p>All of them insert values and a static call that consumes them, around one instruction and
  * before whatever follows: no branch, no new frame, only {@code maxStack} grows, which
@@ -101,6 +103,16 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
     private static final String SIZED_RUNNABLE_CONSTRUCTOR =
             "(Ljava/lang/ThreadGroup;Ljava/lang/Runnable;Ljava/lang/String;J)V";
 
+    /** The constructor {@code new Thread(group, task, name, stackSize, inheritThreadLocals)} calls (#1442). */
+    private static final String INHERITING_RUNNABLE_CONSTRUCTOR =
+            "(Ljava/lang/ThreadGroup;Ljava/lang/Runnable;Ljava/lang/String;JZ)V";
+
+    /** The hook that takes the {@code inheritThreadLocals} argument aside (#1442). */
+    static final String PARK_HOOK = "inheritThreadLocalsParked";
+
+    /** The hook that gives it back, for the constructor (#1442). */
+    static final String UNPARK_HOOK = "inheritThreadLocalsUnparked";
+
     /** The constructor {@code new Thread(group, task, name)} calls (#1401). */
     private static final String GROUP_NAMED_RUNNABLE_CONSTRUCTOR =
             "(Ljava/lang/ThreadGroup;Ljava/lang/Runnable;Ljava/lang/String;)V";
@@ -111,9 +123,13 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
     /** Whether that class has {@link #TARGET_HOOK}; a library from before #1350 does not. */
     private final boolean takesTargets;
 
-    private ThreadConstructionWeaver(String hookOwner, boolean takesTargets) {
+    /** Whether it also has {@link #PARK_HOOK} and {@link #UNPARK_HOOK}; one from before #1442 does not. */
+    private final boolean parksFlags;
+
+    private ThreadConstructionWeaver(String hookOwner, boolean takesTargets, boolean parksFlags) {
         this.hookOwner = hookOwner;
         this.takesTargets = takesTargets;
+        this.parksFlags = parksFlags;
     }
 
     /**
@@ -132,7 +148,18 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
             throw new IllegalStateException("no hook " + HOOK + "(Thread) on "
                     + threadHooks.getName() + "; agent and library versions disagree", e);
         }
-        return new ThreadConstructionWeaver(Type.getInternalName(threadHooks), hasTargetHook(threadHooks));
+        return new ThreadConstructionWeaver(Type.getInternalName(threadHooks), hasTargetHook(threadHooks),
+                hasParkHooks(threadHooks));
+    }
+
+    private static boolean hasParkHooks(Class<?> threadHooks) {
+        try {
+            threadHooks.getMethod(PARK_HOOK, boolean.class);
+            threadHooks.getMethod(UNPARK_HOOK);
+            return true;
+        } catch (NoSuchMethodException olderLibrary) {
+            return false;
+        }
     }
 
     private static boolean hasTargetHook(Class<?> threadHooks) {
@@ -182,7 +209,7 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
                                              String signature, String[] exceptions) {
                 MethodVisitor delegate =
                         super.visitMethod(access, name, descriptor, signature, exceptions);
-                return new MarkingVisitor(delegate, hookOwner, takesTargets,
+                return new MarkingVisitor(delegate, hookOwner, takesTargets, parksFlags,
                         CONSTRUCTOR.equals(name) ? threadSuperclass : null);
             }
         };
@@ -218,6 +245,9 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
         /** Whether to hand a new thread's target to the hook before its constructor (#1350). */
         private final boolean takesTargets;
 
+        /** Whether the hooks can set the inheritThreadLocals argument aside (#1442). */
+        private final boolean parksFlags;
+
         /** The superclass whose constructor call marks {@code this}, or null for none. */
         private final @Nullable String markThisAfter;
 
@@ -231,10 +261,11 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
         private boolean thisUnmarked;
 
         MarkingVisitor(MethodVisitor delegate, String hookOwner, boolean takesTargets,
-                       @Nullable String markThisAfter) {
+                       boolean parksFlags, @Nullable String markThisAfter) {
             super(Opcodes.ASM9, delegate);
             this.hookOwner = hookOwner;
             this.takesTargets = takesTargets;
+            this.parksFlags = parksFlags;
             this.markThisAfter = markThisAfter;
             this.thisUnmarked = markThisAfter != null;
         }
@@ -310,17 +341,31 @@ final class ThreadConstructionWeaver implements AsmVisitorWrapper {
                 super.visitInsn(Opcodes.DUP2);                // task, name -> task, name, task, name
                 super.visitInsn(Opcodes.POP);                 //            -> task, name, task
             } else if (SIZED_RUNNABLE_CONSTRUCTOR.equals(descriptor)) {
-                // task, name, size(2) -> size, task, name, size -> size, task, name
-                super.visitInsn(Opcodes.DUP2_X2);
-                super.visitInsn(Opcodes.POP2);
-                // size, task, name -> task, name, size, task, name -> task, name, size, task
-                super.visitInsn(Opcodes.DUP2_X2);
-                super.visitInsn(Opcodes.POP);
+                copyTaskFromUnderNameAndSize();
+            } else if (parksFlags && INHERITING_RUNNABLE_CONSTRUCTOR.equals(descriptor)) {
+                // The flag puts the task five slots down, past what DUP2_X2 reaches, so the hooks
+                // hold it while the stack-size shape copies the task, then give it back (#1442).
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, hookOwner, PARK_HOOK, "(Z)V", false);
+                copyTaskFromUnderNameAndSize();
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, hookOwner, TARGET_HOOK, TARGET_HOOK_DESCRIPTOR,
+                        false);
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, hookOwner, UNPARK_HOOK, "()Z", false);
+                return;
             } else {
                 return;
             }
             super.visitMethodInsn(Opcodes.INVOKESTATIC, hookOwner, TARGET_HOOK, TARGET_HOOK_DESCRIPTOR,
                     false);
+        }
+
+        /** Copies the task out from under a name and a two-slot stack size, leaving them in order. */
+        private void copyTaskFromUnderNameAndSize() {
+            // task, name, size(2) -> size, task, name, size -> size, task, name
+            super.visitInsn(Opcodes.DUP2_X2);
+            super.visitInsn(Opcodes.POP2);
+            // size, task, name -> task, name, size, task, name -> task, name, size, task
+            super.visitInsn(Opcodes.DUP2_X2);
+            super.visitInsn(Opcodes.POP);
         }
     }
 }
