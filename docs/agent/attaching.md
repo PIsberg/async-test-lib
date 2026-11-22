@@ -235,6 +235,17 @@ miss a race but never invents one. The run counts those accesses: when there wer
 ends with a "Not checked" line giving it (#1262). The type initializer is not woven. Array instructions are more
 frequent than field instructions in most code, which is why this is a separate opt-in.
 
+What it costs, measured on 2026-11-22 (Windows 11, JDK 27, #1263). A body that bumps slots of a
+shared `long[256]` 2,000 times per execution, 4 threads by 50 rounds, 800,000 element loads and
+stores a run, all detectors on, three JVMs each: about 30 ms a run with the agent off, about 340 ms
+with `fields=true`, and about 845 ms with `fields=true,arrays=true`, so roughly 0.6 microseconds
+more per element access in a loop that does little else. Realistic suites barely notice: the
+corpus agent-pair lane (its pairs over Guava, Jackson, HikariCP and the JDK) ran 43.9 s without and
+43.8 s with `arrays=true` (medians of three), and every pair kept its outcome. So `fields=true` does
+not imply it: the cost falls on exactly the array-heavy hot loops where a user would least expect a
+field option to apply. Skipping arrays that never escape their method would not change that
+picture either, since the costly case is a shared array, which escapes by definition.
+
 **`collections=true`: reaching state a class does not own.**
 
 Field weaving makes a class's own fields observable. It does nothing for a class that keeps its
