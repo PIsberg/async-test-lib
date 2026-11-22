@@ -285,29 +285,10 @@ public class ConcurrencyRunner {
         // constructing disconnected duplicates (see Phase1DetectorSet.from javadoc).
         Phase1DetectorSet phase1 = Phase1DetectorSet.from(config, phase2Context);
 
-        // Attach the agent's only consumer for the duration of this run.
-        //
-        // AsyncTestAgent weaves accessors and publishes every intercepted access to the
-        // telemetry ring buffer; TelemetryRegistry drains that buffer to whatever callback is
-        // registered, and TelemetryBridge is the callback that forwards events into this run's
-        // AtomicityValidator. Nothing registered it, so premain's no-argument start() left the
-        // callback null and the drain handed every event to a discard lambda: with the agent
-        // attached, captured accesses were thrown away and no detector ever saw one.
-        //
-        // The filter is a live set rather than a snapshot because the workers do not exist
-        // yet — the executor creates them per round, and under virtual threads each round
-        // brings new ones — so each worker adds its own id as it starts.
-        //
-        // Gated on isRunning() so this costs nothing when the agent is absent: activate()
-        // would otherwise start the drain thread for a pipeline with no producer. The
-        // registry holds one callback, so two @AsyncTest runs executing concurrently in one
-        // JVM would take it from each other; the per-run filter means the loser under-reports
-        // rather than mis-attributing another run's threads.
-        //
-        // Attach before isRunning() is consulted below, so a user with the agent artifact on the
-        // test classpath (or -Dasynctest.agent=...) gets the pipeline running for this very run
-        // rather than the next one. Self-attach retransforms already-loaded classes, so test classes loaded before
-        // this point are still woven.
+        // Attach the agent before isRunning() is consulted below, so a user with the agent artifact
+        // on the test classpath (or -Dasynctest.agent=...) gets the pipeline running for this very
+        // run rather than the next one. Self-attach retransforms already-loaded classes, so test
+        // classes loaded before this point are still woven.
         @Nullable Class<?> codeUnderTest = CODE_UNDER_TEST.get();
         AgentAutoAttach.attachIfRequested(codeUnderTest != null ? codeUnderTest : invocationContext.getTargetClass());
         AtomicityValidator telemetryTarget = phase2Context.sharedAtomicityValidator();
@@ -325,10 +306,6 @@ public class ConcurrencyRunner {
         @Nullable Set<Long> workerThreadIds = (telemetryRunning || pinningTarget != null || config.detectDeadlocks)
                 ? ConcurrentHashMap.newKeySet()
                 : null;
-        TelemetryBridge telemetryBridge = null;
-        if (telemetryRunning && telemetryTarget != null && workerThreadIds != null) {
-            telemetryBridge = TelemetryBridge.activateWithFilter(telemetryTarget, workerThreadIds::contains);
-        }
 
         announceBlindSpots(config, telemetryTarget != null, virtualWorkers,
                 invocationContext.getExecutable().getName());
@@ -404,6 +381,33 @@ public class ConcurrencyRunner {
                         testMethod.getName())
                 : null;
         phase2Analysis.drainBeforeAnalysis(pinningStream);
+
+        // Attach the agent's only consumer for the duration of this run.
+        //
+        // AsyncTestAgent weaves accessors and publishes every intercepted access to the
+        // telemetry ring buffer; TelemetryRegistry drains that buffer to whatever callback is
+        // registered, and TelemetryBridge is the callback that forwards events into this run's
+        // AtomicityValidator. Nothing registered it, so premain's no-argument start() left the
+        // callback null and the drain handed every event to a discard lambda: with the agent
+        // attached, captured accesses were thrown away and no detector ever saw one.
+        //
+        // The filter is a live set rather than a snapshot because the workers do not exist
+        // yet — the executor creates them per round, and under virtual threads each round
+        // brings new ones — so each worker adds its own id as it starts.
+        //
+        // Gated on isRunning() so this costs nothing when the agent is absent: activate()
+        // would otherwise start the drain thread for a pipeline with no producer. The
+        // registry holds one callback, so two @AsyncTest runs executing concurrently in one
+        // JVM would take it from each other; the per-run filter means the loser under-reports
+        // rather than mis-attributing another run's threads.
+        //
+        // The callback slot is JVM-wide, so the bridge is activated immediately before the try
+        // whose finally detaches it, like the stream above: nothing can throw in between and
+        // leave it registered once this run is over.
+        @Nullable TelemetryBridge telemetryBridge =
+                (telemetryRunning && telemetryTarget != null && workerThreadIds != null)
+                        ? TelemetryBridge.activateWithFilter(telemetryTarget, workerThreadIds::contains)
+                        : null;
 
         // A thread the body starts that dies of an uncaught exception is the run's to report
         // (#1253). Process-wide state, so counted and restored in the finally below; installed
@@ -532,122 +536,20 @@ public class ConcurrencyRunner {
             reportFailure(t, currentSeed, lastSchedule, phase2Analysis);
             throw unwrap(t);
         } finally {
+            // Each step is guarded on its own: a failure in one must not skip the next.
             BodyThreadFailures.uninstall();
             overlap.exit();
-            executor.shutdownNow();
-            try {
-                executor.awaitTermination(1, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-
-            // Drain, then detach — in that order, and after the executor is down.
-            //
-            // close() clears the callback, so anything still sitting in the ring buffer at
-            // that point is discarded on the next drain. analyzeAndGate() runs after this
-            // finally block, so detaching before flushing threw away the accesses from the
-            // last round of every passing test. Shutting the executor down first means there
-            // are no producers left to publish behind the flush.
-            //
-            // Each step is guarded on its own, matching the rule the worker cleanup follows:
-            // a failure in one must not skip the next.
+            shutDownWorkers(executor);
+            // After the executor is down, so no producer is left to publish behind the flush.
             if (telemetryBridge != null) {
-                try {
-                    TelemetryRegistry.flush();
-                } catch (RuntimeException e) {
-                    log.warn("Telemetry flush failed: {}", e.toString(), e);
-                }
-                try {
-                    telemetryBridge.close();
-                } catch (RuntimeException e) {
-                    log.warn("Telemetry bridge detach failed: {}", e.toString(), e);
-                }
-                // Accesses from threads the body handed work to in a way the agent does not see:
-                // a thread started in unwoven code, a task given to a ThreadPoolExecutor's
-                // execute. A woven start, submit, stage or other execute is attributed (#745, #741). The bridge cannot attribute the rest to a
-                // round, so it drops them - and a clean atomicity report then covers the workers
-                // and their woven hand-offs and nothing else. Said at INFO, per test rather than
-                // once per JVM, because it is an observation about this test's body and not a
-                // property of the configuration: the reader has to know which test it applies to
-                // (#500).
-                long unattributed = telemetryBridge.droppedNonWorkerEvents();
-                if (unattributed > 0) {
-                    log.info("runner.telemetry.unattributed test={} events={} "
-                            + "reason=\"the agent captured field accesses on threads that no "
-                            + "worker started or handed a task through a woven call, so they "
-                            + "belong to no round and carry no atomicity evidence\" "
-                            + "hint=\"start threads with Thread.start or submit tasks to a JDK "
-                            + "executor from the @AsyncTest workers, or read a clean atomicity "
-                            + "report as covering the workers only\"",
-                        testMethod.getName(), unattributed);
-                }
+                detachTelemetry(telemetryBridge, testMethod.getName());
             }
-
-            // arrays=true records the first 256 elements of an array; an access past them is
-            // dropped, which can only hide a race (#1262). Said per test at INFO, like the
-            // telemetry line above, because it is about this body; the atomicity report carries
-            // the same count when it has findings to print.
-            long untrackedArrayAccesses = phase2Context.untrackedArrayAccesses();
-            if (untrackedArrayAccesses > 0) {
-                log.info("runner.telemetry.arrays-untracked test={} accesses={} tracked={} "
-                        + "reason=\"arrays=true records the first {} elements of an array, and "
-                        + "these accesses were past them, so no race on those elements is reported\" "
-                        + "hint=\"read a clean atomicity report as covering the first {} elements "
-                        + "of each array only\"",
-                    testMethod.getName(), untrackedArrayAccesses, TelemetryRegistry.MAX_TRACKED_ARRAY_INDEX,
-                    TelemetryRegistry.MAX_TRACKED_ARRAY_INDEX, TelemetryRegistry.MAX_TRACKED_ARRAY_INDEX);
-            }
-
-            // Usually already closed by the analysis on a reporting path; close() is idempotent,
-            // and this call is the one that guarantees the recording ends with the run.
+            announceUntrackedArrayAccesses(phase2Context.untrackedArrayAccesses(), testMethod.getName());
             if (pinningStream != null) {
-                pinningStream.close();
-                // Said per test at INFO for the reason the telemetry line above is: it is about
-                // this body. JFR reports every virtual thread in the JVM, so the count also holds
-                // pins of another test running in parallel, which is why they are not attributed.
-                long unattributedPins = pinningStream.unattributedEvents();
-                if (unattributedPins > 0) {
-                    log.info("runner.pinning.unattributed test={} events={} "
-                            + "reason=\"the JVM reported virtual-thread pins on threads that are not "
-                            + "this run's workers or threads they started through woven code: "
-                            + "threads started in code the agent does not weave, or a test running in "
-                            + "parallel, so they are not this run's findings\" "
-                            + "hint=\"attach the agent with collections=true so threads the body "
-                            + "starts are attributed, or pin in the @AsyncTest workers themselves\"",
-                        testMethod.getName(), unattributedPins);
-                }
-                // DEBUG: a pin inside the agent's transformer, on a class the body defined (#984).
-                if (pinningStream.instrumentationEvents() > 0) {
-                    log.debug("runner.pinning.instrumentation test={} events={}",
-                        testMethod.getName(), pinningStream.instrumentationEvents());
-                }
-                // DEBUG: a JDK lock the JVM contended on while it loaded or initialized a class (#1028).
-                if (pinningStream.criticalSectionEvents() > 0) {
-                    log.debug("runner.pinning.critical-section test={} events={}",
-                        testMethod.getName(), pinningStream.criticalSectionEvents());
-                }
-                // DEBUG: a JDK lock contended under the JVM's own upcall, call-site linkage (#1248).
-                if (pinningStream.vmUpcallEvents() > 0) {
-                    log.debug("runner.pinning.vm-upcall test={} events={}",
-                        testMethod.getName(), pinningStream.vmUpcallEvents());
-                }
-                // DEBUG, not INFO: nearly every run has some, from class loading on first use.
-                if (pinningStream.singleRoundSites() > 0) {
-                    log.debug("runner.pinning.single-round test={} sites={}",
-                        testMethod.getName(), pinningStream.singleRoundSites());
-                }
+                closePinningStream(pinningStream, testMethod.getName());
             }
-
             if (benchmarkRecorder != null) {
-                try {
-                    benchmarkRecorder.complete();
-                } catch (BenchmarkRegressionException e) {
-                    // failOnBenchmarkRegression's verdict, not a cleanup failure: held for the
-                    // success path below, so a body failure or a failOn finding still outranks it.
-                    benchmarkRegression = e;
-                } catch (Exception e) {
-                    log.warn("Benchmark completion failed: {}", e.toString(), e);
-                }
+                benchmarkRegression = completeBenchmark(benchmarkRecorder);
             }
         }
 
@@ -2102,6 +2004,143 @@ public class ConcurrencyRunner {
     }
 
     // ---- Per-invocation lifecycle helpers ----
+
+    /** Stops the round's workers, waiting up to a second for them to end. */
+    private static void shutDownWorkers(ExecutorService executor) {
+        executor.shutdownNow();
+        try {
+            executor.awaitTermination(1, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Drains the telemetry ring into the run, then detaches the bridge, then says how many events
+     * it could not attribute to a worker.
+     *
+     * <p>Drain, then detach, in that order: {@code close()} clears the callback, so anything still
+     * sitting in the ring buffer at that point is discarded on the next drain.
+     * {@code analyzeAndGate()} runs after the cleanup, so detaching before flushing threw away the
+     * accesses from the last round of every passing test. Each step is guarded on its own, so a
+     * failed flush still detaches.
+     *
+     * <p>The unattributed events are accesses from threads the body handed work to in a way the
+     * agent does not see: a thread started in unwoven code, a task given to a
+     * {@code ThreadPoolExecutor}'s {@code execute}. A woven start, submit, stage or other execute is
+     * attributed (#745, #741). The bridge cannot attribute the rest to a round, so it drops them,
+     * and a clean atomicity report then covers the workers and their woven hand-offs and nothing
+     * else. Said at INFO, per test rather than once per JVM, because it is an observation about
+     * this test's body and not a property of the configuration: the reader has to know which test
+     * it applies to (#500).
+     */
+    private static void detachTelemetry(TelemetryBridge telemetryBridge, String testName) {
+        try {
+            TelemetryRegistry.flush();
+        } catch (RuntimeException e) {
+            log.warn("Telemetry flush failed: {}", e.toString(), e);
+        }
+        try {
+            telemetryBridge.close();
+        } catch (RuntimeException e) {
+            log.warn("Telemetry bridge detach failed: {}", e.toString(), e);
+        }
+        long unattributed = telemetryBridge.droppedNonWorkerEvents();
+        if (unattributed > 0) {
+            log.info("runner.telemetry.unattributed test={} events={} "
+                    + "reason=\"the agent captured field accesses on threads that no "
+                    + "worker started or handed a task through a woven call, so they "
+                    + "belong to no round and carry no atomicity evidence\" "
+                    + "hint=\"start threads with Thread.start or submit tasks to a JDK "
+                    + "executor from the @AsyncTest workers, or read a clean atomicity "
+                    + "report as covering the workers only\"",
+                testName, unattributed);
+        }
+    }
+
+    /**
+     * Says, per test at INFO, how many array element accesses {@code arrays=true} did not record.
+     *
+     * <p>{@code arrays=true} records the first {@value TelemetryRegistry#MAX_TRACKED_ARRAY_INDEX}
+     * elements of an array; an access past them is dropped, which can only hide a race (#1262).
+     * Per test, like {@code runner.telemetry.unattributed}, because it is about this body; the
+     * atomicity report carries the same count when it has findings to print.
+     */
+    private static void announceUntrackedArrayAccesses(long untrackedArrayAccesses, String testName) {
+        if (untrackedArrayAccesses > 0) {
+            log.info("runner.telemetry.arrays-untracked test={} accesses={} tracked={} "
+                    + "reason=\"arrays=true records the first {} elements of an array, and "
+                    + "these accesses were past them, so no race on those elements is reported\" "
+                    + "hint=\"read a clean atomicity report as covering the first {} elements "
+                    + "of each array only\"",
+                testName, untrackedArrayAccesses, TelemetryRegistry.MAX_TRACKED_ARRAY_INDEX,
+                TelemetryRegistry.MAX_TRACKED_ARRAY_INDEX, TelemetryRegistry.MAX_TRACKED_ARRAY_INDEX);
+        }
+    }
+
+    /**
+     * Ends the run's JFR pinning recording and says what it saw that is not this run's finding.
+     *
+     * <p>Usually already closed by the analysis on a reporting path; {@code close()} is idempotent,
+     * and this call is the one that guarantees the recording ends with the run. The unattributed
+     * count is said per test at INFO because it is about this body: JFR reports every virtual
+     * thread in the JVM, so the count also holds pins of another test running in parallel, which
+     * is why they are not attributed. The rest are DEBUG diagnostics of the feed itself.
+     */
+    private static void closePinningStream(JfrPinningStream pinningStream, String testName) {
+        pinningStream.close();
+        long unattributedPins = pinningStream.unattributedEvents();
+        if (unattributedPins > 0) {
+            log.info("runner.pinning.unattributed test={} events={} "
+                    + "reason=\"the JVM reported virtual-thread pins on threads that are not "
+                    + "this run's workers or threads they started through woven code: "
+                    + "threads started in code the agent does not weave, or a test running in "
+                    + "parallel, so they are not this run's findings\" "
+                    + "hint=\"attach the agent with collections=true so threads the body "
+                    + "starts are attributed, or pin in the @AsyncTest workers themselves\"",
+                testName, unattributedPins);
+        }
+        // A pin inside the agent's transformer, on a class the body defined (#984).
+        if (pinningStream.instrumentationEvents() > 0) {
+            log.debug("runner.pinning.instrumentation test={} events={}",
+                testName, pinningStream.instrumentationEvents());
+        }
+        // A JDK lock the JVM contended on while it loaded or initialized a class (#1028).
+        if (pinningStream.criticalSectionEvents() > 0) {
+            log.debug("runner.pinning.critical-section test={} events={}",
+                testName, pinningStream.criticalSectionEvents());
+        }
+        // A JDK lock contended under the JVM's own upcall, call-site linkage (#1248).
+        if (pinningStream.vmUpcallEvents() > 0) {
+            log.debug("runner.pinning.vm-upcall test={} events={}",
+                testName, pinningStream.vmUpcallEvents());
+        }
+        // DEBUG, not INFO: nearly every run has some, from class loading on first use.
+        if (pinningStream.singleRoundSites() > 0) {
+            log.debug("runner.pinning.single-round test={} sites={}",
+                testName, pinningStream.singleRoundSites());
+        }
+    }
+
+    /**
+     * Completes the benchmark and {@return the regression {@code failOnBenchmarkRegression}
+     * found, or {@code null}}
+     *
+     * <p>A regression is a verdict, not a cleanup failure: {@link #execute} throws it only on the
+     * success path, after the gate, so a body failure or a {@code failOn} finding still outranks
+     * it. Any other failure to complete is logged and does not fail the run.
+     */
+    private static @Nullable BenchmarkRegressionException completeBenchmark(BenchmarkRecorder benchmarkRecorder) {
+        try {
+            benchmarkRecorder.complete();
+        } catch (BenchmarkRegressionException e) {
+            return e;
+        } catch (Exception e) {
+            log.warn("Benchmark completion failed: {}", e.toString(), e);
+        }
+        return null;
+    }
+
 
     /**
      * Tells every round-scoped detector that a round begins, before its workers exist.
