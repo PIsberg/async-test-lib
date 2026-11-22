@@ -865,7 +865,8 @@ final class FieldAccessWeaver {
          * nothing; the same split made one static field look like two objects to the race
          * detectors (#1362). A package-private declaring class in another package cannot be loaded
          * with {@code LDC} from here, which would throw {@code IllegalAccessError}, so there the
-         * instruction's owner is kept, as before.
+         * instruction's owner is kept, and {@code TelemetryRegistry.staticOwner} maps it back to the
+         * class the field's identifier names (#1396).
          */
         private String staticOwner(String owner, String name) {
             return staticOwners.computeIfAbsent(owner + '.' + name, key -> {

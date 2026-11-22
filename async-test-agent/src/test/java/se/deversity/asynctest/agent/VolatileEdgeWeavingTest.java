@@ -116,6 +116,32 @@ class VolatileEdgeWeavingTest {
                 "no volatile read orders this update after the writer's. Findings were: " + findings);
     }
 
+    @Test
+    @DisplayName("a static volatile of a hidden base named through two public subclasses is one field (#1396)")
+    void aHiddenBaseStaticIsOneFieldThroughEitherSubclass() throws InterruptedException {
+        com.example.agentfixture.HiddenFlagPublication bean = new com.example.agentfixture.HiddenFlagPublication();
+        int[] read = new int[1];
+        List<String> findings = findings(bean::publish, () -> read[0] = bean.bumpAfterFlag());
+
+        assertEquals(2, read[0], "the reader saw the flag and updated the payload, or nothing was measured");
+        assertFalse(findings.stream().anyMatch(f -> f.contains("payload")),
+                "the writer set HiddenBase.flag through VisibleSub and the reader through OtherVisibleSub: one "
+                        + "field, so the update of payload is ordered after the write. Findings were: "
+                        + findings);
+    }
+
+    @Test
+    @DisplayName("the same update with no read of the hidden flag keeps its finding (#1396)")
+    void anUpdateThatReadNoHiddenFlagIsStillARace() throws InterruptedException {
+        com.example.agentfixture.HiddenFlagPublication bean = new com.example.agentfixture.HiddenFlagPublication();
+        int[] read = new int[1];
+        List<String> findings = findings(bean::publish, () -> read[0] = bean.bumpWithoutFlag());
+
+        assertEquals(2, read[0], "the reader updated the payload after the writer, or nothing was measured");
+        assertTrue(findings.stream().anyMatch(f -> f.contains("payload")),
+                "no volatile read orders this update after the writer's. Findings were: " + findings);
+    }
+
     /** Runs the writer to completion, then the reader, on two workers the model does not order. */
     private static List<String> findings(Runnable writer, Runnable reader) throws InterruptedException {
         AtomicityValidator validator = new AtomicityValidator();
