@@ -435,29 +435,7 @@ public class ConcurrencyRunner {
                     benchmarkStart = benchmarkRecorder.recordInvocationStart();
                 }
 
-                // Round-epoch happens-before: the previous round's workers all finished
-                // before latch.await returned, and this thread's submissions start the
-                // next round, so rounds are totally ordered through the runner thread.
-                // Flushing telemetry first attributes agent-captured accesses still in
-                // the ring to the round that produced them (no-op without the agent);
-                // the epoch bumps then let the record-based detectors refuse to pair
-                // accesses from different rounds — those pairs cannot race.
-                TelemetryRegistry.flush();
-                if (phase1.visibility != null) {
-                    phase1.visibility.markInvocationStart();
-                }
-                if (phase1.race != null) {
-                    phase1.race.markInvocationStart();
-                }
-                if (phase1.atomicity != null) {
-                    phase1.atomicity.markInvocationStart();
-                }
-                phase2Context.markInvocationStart();
-                // Before this round's workers start: the stream reports only a site that pinned
-                // in two rounds, and the workers already started are the earlier rounds'.
-                if (pinningStream != null) {
-                    pinningStream.markRound();
-                }
+                markRoundStart(phase1, phase2Context, pinningStream);
                 // Before the workers exist, so every one of them sees this round's rendezvous.
                 phase2Context.openRendezvousForRound(actualThreads, remainingMs);
                 AsyncTestListenerRegistry.fireInvocationStarted(i, actualThreads);
@@ -465,19 +443,6 @@ public class ConcurrencyRunner {
                 log.debug("runner.round.start test={} round={} seed={} remainingMs={}",
                     testMethod.getName(), i, currentSeed, remainingMs);
                 invokeLifecycleMethods(testInstance, beforeInvocationMethods);
-                // The after-hooks deliberately do NOT run in a bare finally.
-                //
-                // Java only auto-suppresses in try-with-resources: when a finally block throws,
-                // the in-flight exception is discarded outright. So a teardown hook that failed
-                // used to replace the round's RoundTimeoutError — taking its thread dump and its
-                // suppressed per-worker causes with it, and leaving the user a message about a
-                // teardown method instead. That fired precisely when the diagnosis mattered most,
-                // because after-hooks typically reset the state a timed-out round corrupted, so a
-                // corrupt round and a throwing hook are correlated, not independent.
-                //
-                // Recording the hook failure as suppressed on the original keeps both: the
-                // caller still sees the round failure it needs to act on, with the teardown
-                // failure attached underneath.
                 Throwable roundFailure = null;
                 // Opened immediately before the try whose finally closes it, so nothing can throw
                 // in between and leave the JVM-wide open count raised for every later hook call.
@@ -494,19 +459,10 @@ public class ConcurrencyRunner {
                     // First, so a worker of a timed-out round still waiting for a turn is released
                     // before the quiesce below waits for it to stop.
                     if (schedule != null) {
-                        schedule.close();
-                        lastSchedule = schedule.summary();
-                        log.debug("runner.schedule.round test={} round={} seed={} steps={} switches={} "
-                                + "escapes={} fallbacks={}", testMethod.getName(), i, currentSeed,
-                            lastSchedule.steps(), lastSchedule.switches(), lastSchedule.escapes(),
-                            lastSchedule.fallbacks());
+                        lastSchedule = closeSchedule(schedule, testMethod.getName(), i, currentSeed);
                         if (lastSchedule.steps() == 0 && !unpointedLogged) {
                             unpointedLogged = true;
-                            log.info("runner.schedule.unpointed test={} reason=\"no worker reached a "
-                                    + "scheduling point, so the controlled schedule ran each body whole "
-                                    + "and interleaved nothing\" hint=\"run with the agent's fields=true or "
-                                    + "collections=true, or call AsyncTestContext.schedulePoint() "
-                                    + "where a worker may be interrupted\"", testMethod.getName());
+                            announceUnpointedSchedule(testMethod.getName());
                         }
                     }
                     // Quiesce before teardown when the round failed. runSingleInvocationRound
@@ -518,15 +474,7 @@ public class ConcurrencyRunner {
                     if (roundFailure != null) {
                         quiesceWorkers(executor, testMethod);
                     }
-                    try {
-                        invokeLifecycleMethods(testInstance, afterInvocationMethods);
-                    } catch (Throwable hookFailure) { // NOPMD - broad: any hook failure, same policy
-                        if (roundFailure == null) {
-                            roundFailure = hookFailure;
-                        } else {
-                            roundFailure.addSuppressed(hookFailure);
-                        }
-                    }
+                    roundFailure = runAfterHooks(testInstance, afterInvocationMethods, roundFailure);
                 }
                 if (roundFailure != null) {
                     throw roundFailure;
@@ -2154,6 +2102,88 @@ public class ConcurrencyRunner {
     }
 
     // ---- Per-invocation lifecycle helpers ----
+
+    /**
+     * Tells every round-scoped detector that a round begins, before its workers exist.
+     *
+     * <p>Round-epoch happens-before: the previous round's workers all finished before
+     * {@code latch.await} returned, and the runner thread's submissions start the next round, so
+     * rounds are totally ordered through the runner thread. Flushing telemetry first attributes
+     * agent-captured accesses still in the ring to the round that produced them (a no-op without
+     * the agent); the epoch bumps then let the record-based detectors refuse to pair accesses from
+     * different rounds, which cannot race. {@code RoundStartFanOutIsCompleteTest} reads the calls
+     * below by their receivers, so they keep these parameter names.
+     */
+    private static void markRoundStart(Phase1DetectorSet phase1, AsyncTestContext phase2Context,
+                                       @Nullable JfrPinningStream pinningStream) {
+        TelemetryRegistry.flush();
+        if (phase1.visibility != null) {
+            phase1.visibility.markInvocationStart();
+        }
+        if (phase1.race != null) {
+            phase1.race.markInvocationStart();
+        }
+        if (phase1.atomicity != null) {
+            phase1.atomicity.markInvocationStart();
+        }
+        phase2Context.markInvocationStart();
+        // Before this round's workers start: the stream reports only a site that pinned
+        // in two rounds, and the workers already started are the earlier rounds'.
+        if (pinningStream != null) {
+            pinningStream.markRound();
+        }
+    }
+
+    /**
+     * Closes a round's controlled schedule, releasing any worker still waiting for a turn, and
+     * {@return its summary, which the failure report reads to say whether the seed replays}
+     */
+    private static ControlledSchedule.Summary closeSchedule(ControlledSchedule schedule, String testName,
+                                                            int round, long seed) {
+        schedule.close();
+        ControlledSchedule.Summary summary = schedule.summary();
+        log.debug("runner.schedule.round test={} round={} seed={} steps={} switches={} "
+                + "escapes={} fallbacks={}", testName, round, seed,
+            summary.steps(), summary.switches(), summary.escapes(),
+            summary.fallbacks());
+        return summary;
+    }
+
+    /** Says once per run, at INFO, that a controlled schedule had no point to interleave at. */
+    private static void announceUnpointedSchedule(String testName) {
+        log.info("runner.schedule.unpointed test={} reason=\"no worker reached a "
+                + "scheduling point, so the controlled schedule ran each body whole "
+                + "and interleaved nothing\" hint=\"run with the agent's fields=true or "
+                + "collections=true, or call AsyncTestContext.schedulePoint() "
+                + "where a worker may be interrupted\"", testName);
+    }
+
+    /**
+     * Runs the round's {@code @AfterEachInvocation} hooks and {@return the failure the round
+     * ends with: {@code roundFailure} with a hook failure attached as suppressed, the hook
+     * failure when the round itself passed, or {@code null}}
+     *
+     * <p>The after-hooks deliberately do not run in a bare {@code finally}. Java only
+     * auto-suppresses in try-with-resources: when a {@code finally} block throws, the in-flight
+     * exception is discarded outright. So a teardown hook that failed used to replace the round's
+     * {@code RoundTimeoutError}, taking its thread dump and its suppressed per-worker causes with
+     * it and leaving the user a message about a teardown method instead. That fired precisely when
+     * the diagnosis mattered most, because after-hooks typically reset the state a timed-out round
+     * corrupted, so a corrupt round and a throwing hook are correlated, not independent.
+     */
+    private static @Nullable Throwable runAfterHooks(@Nullable Object testInstance, List<Method> hooks,
+                                                     @Nullable Throwable roundFailure) {
+        try {
+            invokeLifecycleMethods(testInstance, hooks);
+        } catch (Throwable hookFailure) { // NOPMD - broad: any hook failure, same policy
+            if (roundFailure == null) {
+                return hookFailure;
+            }
+            roundFailure.addSuppressed(hookFailure);
+        }
+        return roundFailure;
+    }
+
 
     /**
      * Discovers the {@code @BeforeEachInvocation} / {@code @AfterEachInvocation} hooks of
