@@ -124,7 +124,7 @@ the order the pieces appear in a run, not alphabetical.
 | [BUILDING.md](BUILDING.md) | Building from source with Maven and Gradle |
 | [QUALITY_GATES.md](QUALITY_GATES.md) | What must stay green — static analysis, coverage, mutation testing, japicmp, and the build quirks behind them. Hub for the rows below |
 | [quality-gates/test-suite.md](quality-gates/test-suite.md) | Test conventions and the license guard |
-| [quality-gates/platforms.md](quality-gates/platforms.md) | Building on JDK 21, 25 or 26, and which operating systems a change is tested on |
+| [quality-gates/platforms.md](quality-gates/platforms.md) | Building on JDK 21, 25, 26 or 27, and which operating systems a change is tested on |
 | [quality-gates/static-analysis.md](quality-gates/static-analysis.md) | find-sec-bugs, NullAway, the other promoted checks, and the API gates |
 | [quality-gates/ci-coverage.md](quality-gates/ci-coverage.md) | What the E2E check actually covers, and what a docs-only change runs |
 | [quality-gates/mutation-fuzzing-benchmarks.md](quality-gates/mutation-fuzzing-benchmarks.md) | The PIT mutation gate and JVM-global versus instance state, the Jazzer fuzzing job, and the benchmarking gate |

@@ -45,7 +45,7 @@ mvn install -DskipTests -Djacoco.skip=true # the static gate chain CI runs first
 ```
 
 Run locally without a license key with `-Dlicense.mock.mode=true`. Maven is canonical, Gradle is
-derived; CI builds on JDK 21, 25 and 26. The reasoning and the traps: [docs/BUILDING.md](docs/BUILDING.md).
+derived; CI builds on JDK 21, 25, 26 and 27. The reasoning and the traps: [docs/BUILDING.md](docs/BUILDING.md).
 
 ## Guardrails
 

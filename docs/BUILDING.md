@@ -82,10 +82,10 @@ after a `cd` or under `working-directory:`. Maven finds `.mvn` by walking up fro
 directory, not from the `-f` argument, so `mvn -f examples/pom.xml` from the root still inherits
 it but a step that moves first does not.
 
-**CI builds on JDK 21, 25 and 26.** The JDK 26 static-analysis blocker is gone — `pmd.version` is
+**CI builds on JDK 21, 25, 26 and 27.** The JDK 26 static-analysis blocker is gone — `pmd.version` is
 now pinned to 7.28.0 (7.26.0 was the first to report 0 `LooseCoupling` violations where 7.17.0 reported 243), and the
-test suite runs on 26 in `tests.yml` and the e2e consumer fixture. See
-[docs/quality-gates/platforms.md](quality-gates/platforms.md#build-with-jdk-21-25-or-26) for what was measured.
+test suite runs on 26 and 27 in `tests.yml`, the e2e consumer fixture and the corpus. See
+[docs/quality-gates/platforms.md](quality-gates/platforms.md#build-with-jdk-21-25-26-or-27) for what was measured.
 
 `forkEvery = 1` means each test class gets its own JVM. Nested classes matching `*$*` are excluded
 from direct discovery — they run only via JUnit's `EngineTestKit` in meta-tests such as
