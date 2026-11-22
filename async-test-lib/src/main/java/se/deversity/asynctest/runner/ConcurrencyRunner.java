@@ -258,30 +258,17 @@ public class ConcurrencyRunner {
         // a ConcurrentHashMap hit after the first invocation per JVM.
         LicenseGuard.check(config);
 
-        // Determine actual thread count (stress mode overrides threads param). Computed
-        // before the benchmark recorder so the recorder can label baselines with the
-        // thread count actually used, not the possibly-overridden config.threads.
-        final int actualThreads;
-        if (config.virtualThreadStressMode != null && !"OFF".equals(config.virtualThreadStressMode)) {
-            actualThreads = VirtualThreadStressConfig.StressLevel
-                .valueOf(config.virtualThreadStressMode).threadCount;
-        } else {
-            actualThreads = config.threads;
-        }
+        // Before the benchmark recorder, so its baselines carry the thread count actually used.
+        final int actualThreads = threadCountFor(config);
         // A controlled schedule runs one worker at a time, so virtual workers buy it nothing, and
         // on JDK 21 a virtual worker the schedule parks inside synchronized pins its carrier: with
         // enough of them the worker granted the next turn has no carrier left to run on.
         final boolean virtualWorkers = config.useVirtualThreads && !config.controlledSchedule;
 
-        // Benchmarking setup
-        BenchmarkRecorder benchmarkRecorder = null;
+        @Nullable BenchmarkRecorder benchmarkRecorder = config.enableBenchmarking
+                ? newBenchmarkRecorder(invocationContext, config, actualThreads)
+                : null;
         @Nullable BenchmarkRegressionException benchmarkRegression = null;
-        if (config.enableBenchmarking) {
-            Object testInstance = invocationContext.getTarget().orElse(null);
-            String testClass = testInstance != null ? testInstance.getClass().getName() : "unknown";
-            String testMethod = displayNameOf(invocationContext.getExecutable());
-            benchmarkRecorder = new BenchmarkRecorder(config, testClass, testMethod, actualThreads);
-        }
 
         // Phase 2 context — shared across all threads for this test run
         AsyncTestContext phase2Context = new AsyncTestContext(config);
@@ -343,95 +330,12 @@ public class ConcurrencyRunner {
             telemetryBridge = TelemetryBridge.activateWithFilter(telemetryTarget, workerThreadIds::contains);
         }
 
-        // The atomicity detector is enabled but the agent's telemetry pipeline is not
-        // running: nothing auto-records field accesses, so the validator only sees what
-        // the test body records explicitly. Said once per JVM (the latch above), at INFO:
-        // this silent gap is the most common reason a bare @AsyncTest detects less than
-        // its detector count suggests, and the user it affects does not have DEBUG on.
-        if (telemetryTarget != null && !TelemetryRegistry.isRunning()
-                && AGENT_ABSENCE_LOGGED.compareAndSet(false, true)) {
-            log.info("runner.agent.absent test={} detector=AtomicityValidator "
-                    + "hint=\"field accesses are not auto-recorded; start the test JVM with "
-                    + "-javaagent:async-test-agent-<version>.jar (the README quick start has the "
-                    + "build snippet), or record accesses explicitly via AsyncTestContext\"",
+        announceBlindSpots(config, telemetryTarget != null, virtualWorkers,
                 invocationContext.getExecutable().getName());
-        }
 
-        // The daemon-hygiene detector is enabled, and every thread the body creates inherits the
-        // daemon flag of a worker that is daemon in either thread mode — so the detector's rule
-        // ("skip anything that was already daemon") has nothing left to judge for those threads.
-        // Not conditioned on useVirtualThreads any more: that was the documented way to make the
-        // detector work until the platform workers became daemon too (#479), and announcing it
-        // only for virtual threads left the user who followed that advice with silence. Said
-        // once per JVM, at INFO, for the same reason as runner.agent.absent above: the user
-        // this affects does not have DEBUG on, and silence here reads as a clean bill of health.
-        // With Thread.setDaemon woven the detector judges the decision rather than the flag
-        // (#731), so the limitation this announces does not hold and saying it would be wrong.
-        if (config.detectDaemonThreadHygiene
-                && !AgentThreadHooks.isThreadWeavingInstalled()
-                && DAEMON_HYGIENE_INERT_LOGGED.compareAndSet(false, true)) {
-            log.info("runner.detector.inert test={} detector=DaemonThreadHygieneDetector "
-                    + "reason=\"the runner's workers are daemon threads in both thread modes "
-                    + "(#479) and a thread inherits the daemon flag of the thread that created "
-                    + "it, so a thread the body constructs is already daemon, and this detector "
-                    + "only reports non-daemon threads\" hint=\"attach the agent with "
-                    + "collections=true, which sees Thread.start and setDaemon, or record a "
-                    + "thread whose factory "
-                    + "sets the flag itself, such as Executors.defaultThreadFactory() or any JDK "
-                    + "thread pool, or one created outside the body; otherwise read the report as "
-                    + "'not observed' rather than 'clean'\"",
-                invocationContext.getExecutable().getName());
-        }
+        validateMemoryModelIfRequested();
 
-        // The deadlock detector is enabled, the runner is on virtual threads, and this JVM
-        // cannot answer the question for them: findDeadlockedThreads() reports platform threads
-        // and the JSON thread dump does not name monitors here either. Said once per JVM at INFO,
-        // for the same reason as the two announcements above: a clean deadlock report is the most
-        // reassuring output this library produces, and here it is not evidence of anything.
-        //
-        // The capability check is what keeps this honest in both directions. On a JDK whose dump
-        // does name monitors the detector reads the cycle out of it (issue #367) and nothing is
-        // announced, because nothing is inert.
-        if (config.detectDeadlocks && virtualWorkers
-                && !DeadlockDetector.canSeeVirtualThreadDeadlocks()
-                && DEADLOCK_INERT_LOGGED.compareAndSet(false, true)) {
-            log.info("runner.detector.inert test={} detector=DeadlockDetector "
-                    + "reason=\"findDeadlockedThreads() reports platform threads, and this "
-                    + "JVM's thread dump does not name monitors either, so a cycle between the "
-                    + "virtual workers cannot be seen here\" hint=\"set "
-                    + "@AsyncTest(useVirtualThreads = false) on the test whose deadlock is "
-                    + "between the runner's own threads, or read a clean report as 'not "
-                    + "observed' rather than 'no deadlock'\"",
-                invocationContext.getExecutable().getName());
-        }
-
-        // Validating the JVM's own memory model is opt-in, and off by default.
-        //
-        // It cost every test method ~70ms of sleeps and seven platform threads to check axioms
-        // the JLS already guarantees, so on a working JVM it cannot find anything true. What it
-        // could find was something false: the checks below wait a fixed interval instead of
-        // joining, so a loaded CI runner that does not schedule the writer in time produced
-        // "JMM validation of test framework failed" at WARN — which this project's logging
-        // contract reserves for "a human must act" — on precisely the machines where somebody is
-        // already hunting a flaky concurrency failure. Kept behind a flag because it is genuinely
-        // useful when bringing the library up on an unfamiliar JVM or an emulated architecture.
-        if (Boolean.getBoolean("asynctest.validate.jmm")) {
-            MemoryModelValidator jmmValidator = new MemoryModelValidator();
-            MemoryModelValidator.ValidationResult jmmResult = jmmValidator.validate();
-            if (!jmmResult.isValid()) {
-                log.warn("JMM validation of test framework failed: {}", jmmResult);
-            } else {
-                log.debug("runner.jmm ok=true");
-            }
-        }
-
-        // Workers carry the async-test-worker- prefix so thread dumps, deadlock reports
-        // and the quiesce stack dump read as the harness's own workers instead of
-        // anonymous pool-N-thread-M entries.
-        ExecutorService executor = virtualWorkers
-            ? Executors.newThreadPerTaskExecutor(namedWorkerFactory(Thread.ofVirtual().factory()))
-            : Executors.newFixedThreadPool(actualThreads,
-                namedWorkerFactory(Executors.defaultThreadFactory()));
+        ExecutorService executor = newWorkerExecutor(virtualWorkers, actualThreads);
 
         // setAccessible once per test, not once per invocation round
         Method testMethod = invocationContext.getExecutable();
@@ -460,38 +364,12 @@ public class ConcurrencyRunner {
         // runSingleInvocationRound) is derived from effectiveTimeoutMs, never from
         // config.timeoutMs directly, so scaling happens exactly once per execute() call.
         double timeoutMultiplier = resolveTimeoutMultiplier();
-        long effectiveTimeoutMs = (timeoutMultiplier == 1.0)
-            ? config.timeoutMs
-            : Math.max(1L, Math.round(config.timeoutMs * timeoutMultiplier));
+        long effectiveTimeoutMs = scaledTimeoutMs(config.timeoutMs, timeoutMultiplier);
 
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(effectiveTimeoutMs);
 
-        // One event carrying every value that decides how this test runs. When a test behaves
-        // differently on CI than locally, this line is the difference: the multiplier, the
-        // thread count actually used (stress mode overrides the annotation) and whether the
-        // executor is virtual are all resolved here and nowhere else. The selection is here too:
-        // since 1.13.0 the same bare annotation runs 12 detectors where it ran 146 (#956).
-        if (log.isDebugEnabled()) {
-            log.debug("runner.config test={} threads={} invocations={} timeoutMs={} "
-                    + "multiplier={} effectiveTimeoutMs={} virtualThreads={} stressMode={} "
-                    + "replaySeed={} schedule={} benchmarking={} detectors={} selection={}",
-                testMethod.getName(), actualThreads, config.invocations, config.timeoutMs,
-                timeoutMultiplier, effectiveTimeoutMs, virtualWorkers,
-                config.virtualThreadStressMode, config.replaySeed,
-                config.controlledSchedule ? "controlled" : "os", config.enableBenchmarking,
-                config.enabledDetectors().size(), selectionLabel(config.enabledDetectors()));
-        }
-        // The same selection at INFO, once per JVM (the latch above), and only when it left
-        // detectors out: a passing run is otherwise silent about how many looked (#956).
-        if (!PARTIAL_SELECTION_LOGGED.get()
-                && config.enabledDetectors().size() < DetectorType.values().length
-                && PARTIAL_SELECTION_LOGGED.compareAndSet(false, true)) {
-            log.info("runner.selection.partial test={} detectors={} of={} selection={} "
-                    + "hint=\"not every detector ran; -Dasync-test.detectAll=true runs all of them "
-                    + "for one build without editing an annotation\"",
-                testMethod.getName(), config.enabledDetectors().size(),
-                DetectorType.values().length, selectionLabel(config.enabledDetectors()));
-        }
+        narrateRunConfig(config, testMethod.getName(), actualThreads, virtualWorkers,
+                timeoutMultiplier, effectiveTimeoutMs);
 
         // Replay-seed source: explicit @AsyncTest(replaySeed=N) makes every
         // round use N; default 0 generates a fresh seed per round so failures
@@ -837,6 +715,194 @@ public class ConcurrencyRunner {
         }
         if (benchmarkRegression != null) {
             throw benchmarkRegression;
+        }
+    }
+
+    /**
+     * {@return how many workers each round runs: the stress level's count when virtual-thread
+     * stress mode is on, which overrides {@code threads}, otherwise {@code config.threads}}
+     *
+     * @param config the run's configuration
+     */
+    private static int threadCountFor(AsyncTestConfig config) {
+        if (config.virtualThreadStressMode != null && !"OFF".equals(config.virtualThreadStressMode)) {
+            return VirtualThreadStressConfig.StressLevel
+                .valueOf(config.virtualThreadStressMode).threadCount;
+        }
+        return config.threads;
+    }
+
+    /**
+     * {@return a recorder labelled with the test's class, its display name and the thread count
+     * actually used, which is not {@code config.threads} under stress mode}
+     */
+    private static BenchmarkRecorder newBenchmarkRecorder(ReflectiveInvocationContext<Method> invocationContext,
+                                                          AsyncTestConfig config, int actualThreads) {
+        Object testInstance = invocationContext.getTarget().orElse(null);
+        String testClass = testInstance != null ? testInstance.getClass().getName() : "unknown";
+        String testMethod = displayNameOf(invocationContext.getExecutable());
+        return new BenchmarkRecorder(config, testClass, testMethod, actualThreads);
+    }
+
+    /**
+     * Says, once per JVM each and at INFO, when an enabled detector is going to see less than its
+     * name promises in this JVM.
+     *
+     * <p>INFO rather than DEBUG because the user each one affects does not have DEBUG on, and a
+     * clean report from a detector that could not look reads as a clean bill of health. Each latch
+     * is process-wide, so a suite of tests with the same gap hears about it once.
+     *
+     * @param config         the run's configuration
+     * @param atomicityOn    whether the run has an atomicity validator to feed
+     * @param virtualWorkers whether the round's workers are virtual threads
+     * @param testName       the test method's name, for {@code test=}
+     */
+    private static void announceBlindSpots(AsyncTestConfig config, boolean atomicityOn,
+                                           boolean virtualWorkers, String testName) {
+        // The atomicity detector is enabled but the agent's telemetry pipeline is not
+        // running: nothing auto-records field accesses, so the validator only sees what
+        // the test body records explicitly. This silent gap is the most common reason a bare
+        // @AsyncTest detects less than its detector count suggests.
+        if (atomicityOn && !TelemetryRegistry.isRunning()
+                && AGENT_ABSENCE_LOGGED.compareAndSet(false, true)) {
+            log.info("runner.agent.absent test={} detector=AtomicityValidator "
+                    + "hint=\"field accesses are not auto-recorded; start the test JVM with "
+                    + "-javaagent:async-test-agent-<version>.jar (the README quick start has the "
+                    + "build snippet), or record accesses explicitly via AsyncTestContext\"",
+                testName);
+        }
+
+        // The daemon-hygiene detector is enabled, and every thread the body creates inherits the
+        // daemon flag of a worker that is daemon in either thread mode — so the detector's rule
+        // ("skip anything that was already daemon") has nothing left to judge for those threads.
+        // Not conditioned on useVirtualThreads any more: that was the documented way to make the
+        // detector work until the platform workers became daemon too (#479), and announcing it
+        // only for virtual threads left the user who followed that advice with silence.
+        // With Thread.setDaemon woven the detector judges the decision rather than the flag
+        // (#731), so the limitation this announces does not hold and saying it would be wrong.
+        if (config.detectDaemonThreadHygiene
+                && !AgentThreadHooks.isThreadWeavingInstalled()
+                && DAEMON_HYGIENE_INERT_LOGGED.compareAndSet(false, true)) {
+            log.info("runner.detector.inert test={} detector=DaemonThreadHygieneDetector "
+                    + "reason=\"the runner's workers are daemon threads in both thread modes "
+                    + "(#479) and a thread inherits the daemon flag of the thread that created "
+                    + "it, so a thread the body constructs is already daemon, and this detector "
+                    + "only reports non-daemon threads\" hint=\"attach the agent with "
+                    + "collections=true, which sees Thread.start and setDaemon, or record a "
+                    + "thread whose factory "
+                    + "sets the flag itself, such as Executors.defaultThreadFactory() or any JDK "
+                    + "thread pool, or one created outside the body; otherwise read the report as "
+                    + "'not observed' rather than 'clean'\"",
+                testName);
+        }
+
+        // The deadlock detector is enabled, the runner is on virtual threads, and this JVM
+        // cannot answer the question for them: findDeadlockedThreads() reports platform threads
+        // and the JSON thread dump does not name monitors here either. A clean deadlock report is
+        // the most reassuring output this library produces, and here it is not evidence of
+        // anything.
+        //
+        // The capability check is what keeps this honest in both directions. On a JDK whose dump
+        // does name monitors the detector reads the cycle out of it (issue #367) and nothing is
+        // announced, because nothing is inert.
+        if (config.detectDeadlocks && virtualWorkers
+                && !DeadlockDetector.canSeeVirtualThreadDeadlocks()
+                && DEADLOCK_INERT_LOGGED.compareAndSet(false, true)) {
+            log.info("runner.detector.inert test={} detector=DeadlockDetector "
+                    + "reason=\"findDeadlockedThreads() reports platform threads, and this "
+                    + "JVM's thread dump does not name monitors either, so a cycle between the "
+                    + "virtual workers cannot be seen here\" hint=\"set "
+                    + "@AsyncTest(useVirtualThreads = false) on the test whose deadlock is "
+                    + "between the runner's own threads, or read a clean report as 'not "
+                    + "observed' rather than 'no deadlock'\"",
+                testName);
+        }
+    }
+
+    /**
+     * Validates the JVM's own memory model when {@code -Dasynctest.validate.jmm=true}; off by
+     * default.
+     *
+     * <p>It cost every test method ~70ms of sleeps and seven platform threads to check axioms
+     * the JLS already guarantees, so on a working JVM it cannot find anything true. What it
+     * could find was something false: the checks wait a fixed interval instead of joining, so a
+     * loaded CI runner that does not schedule the writer in time produced "JMM validation of
+     * test framework failed" at WARN — which this project's logging contract reserves for "a
+     * human must act" — on precisely the machines where somebody is already hunting a flaky
+     * concurrency failure. Kept behind a flag because it is genuinely useful when bringing the
+     * library up on an unfamiliar JVM or an emulated architecture.
+     */
+    private static void validateMemoryModelIfRequested() {
+        if (!Boolean.getBoolean("asynctest.validate.jmm")) {
+            return;
+        }
+        MemoryModelValidator.ValidationResult jmmResult = new MemoryModelValidator().validate();
+        if (!jmmResult.isValid()) {
+            log.warn("JMM validation of test framework failed: {}", jmmResult);
+        } else {
+            log.debug("runner.jmm ok=true");
+        }
+    }
+
+    /**
+     * {@return the executor the rounds submit their workers to: one virtual thread per task, or
+     * a fixed pool of {@code actualThreads} platform threads}
+     *
+     * <p>Workers carry the {@code async-test-worker-} prefix so thread dumps, deadlock reports
+     * and the quiesce stack dump read as the harness's own workers instead of anonymous
+     * {@code pool-N-thread-M} entries. Neither executor starts a thread before the first
+     * submission, so one that is never used holds nothing.
+     */
+    private static ExecutorService newWorkerExecutor(boolean virtualWorkers, int actualThreads) {
+        return virtualWorkers
+            ? Executors.newThreadPerTaskExecutor(namedWorkerFactory(Thread.ofVirtual().factory()))
+            : Executors.newFixedThreadPool(actualThreads,
+                namedWorkerFactory(Executors.defaultThreadFactory()));
+    }
+
+    /**
+     * {@return {@code timeoutMs} scaled by {@code multiplier}, never below one millisecond, or
+     * {@code timeoutMs} itself when the multiplier is exactly {@code 1.0}}
+     */
+    private static long scaledTimeoutMs(long timeoutMs, double multiplier) {
+        return (multiplier == 1.0)
+            ? timeoutMs
+            : Math.max(1L, Math.round(timeoutMs * multiplier));
+    }
+
+    /**
+     * Logs {@code runner.config}, the one event carrying every value that decides how this test
+     * runs, and, once per JVM at INFO, {@code runner.selection.partial} when the selection left
+     * detectors out.
+     *
+     * <p>When a test behaves differently on CI than locally, {@code runner.config} is the
+     * difference: the multiplier, the thread count actually used (stress mode overrides the
+     * annotation) and whether the executor is virtual are all resolved in {@link #execute} and
+     * nowhere else. The selection is there too: since 1.13.0 the same bare annotation runs 12
+     * detectors where it ran 146 (#956), and a passing run is otherwise silent about how many
+     * looked.
+     */
+    private static void narrateRunConfig(AsyncTestConfig config, String testName, int actualThreads,
+                                         boolean virtualWorkers, double timeoutMultiplier,
+                                         long effectiveTimeoutMs) {
+        if (log.isDebugEnabled()) {
+            log.debug("runner.config test={} threads={} invocations={} timeoutMs={} "
+                    + "multiplier={} effectiveTimeoutMs={} virtualThreads={} stressMode={} "
+                    + "replaySeed={} schedule={} benchmarking={} detectors={} selection={}",
+                testName, actualThreads, config.invocations, config.timeoutMs,
+                timeoutMultiplier, effectiveTimeoutMs, virtualWorkers,
+                config.virtualThreadStressMode, config.replaySeed,
+                config.controlledSchedule ? "controlled" : "os", config.enableBenchmarking,
+                config.enabledDetectors().size(), selectionLabel(config.enabledDetectors()));
+        }
+        if (!PARTIAL_SELECTION_LOGGED.get()
+                && config.enabledDetectors().size() < DetectorType.values().length
+                && PARTIAL_SELECTION_LOGGED.compareAndSet(false, true)) {
+            log.info("runner.selection.partial test={} detectors={} of={} selection={} "
+                    + "hint=\"not every detector ran; -Dasync-test.detectAll=true runs all of them "
+                    + "for one build without editing an annotation\"",
+                testName, config.enabledDetectors().size(),
+                DetectorType.values().length, selectionLabel(config.enabledDetectors()));
         }
     }
 
