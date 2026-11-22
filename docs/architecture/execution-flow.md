@@ -113,7 +113,11 @@ takes nothing. With the agent, a thread a worker starts through a woven `Thread.
 its run through `agentContext()`, including one constructed under a run whose analysis has
 started, and a pool thread killed by a task handed over through a woven
 `execute` belongs to the run that handed the task over: the hand-off wrapper marks the pool thread
-with that run and the throwable, matched by identity when the thread dies.
+with that run and the throwable, matched by identity when the thread dies. Without the agent nothing
+records the hand-off, so a pool thread kept in a static stays with the run whose worker built it,
+and a later run's task that kills it is attributed to that earlier run and dropped. Guessing the
+run in progress instead would blame a test running in parallel; attaching the agent, the default,
+is the supported answer (#1378).
 
 **Replay seeds.** Failures print a `replaySeed` that reproduces the failing round's randomness when
 pasted into `@AsyncTest(replaySeed = N)`. The default `0` draws a fresh seed per round; a non-zero

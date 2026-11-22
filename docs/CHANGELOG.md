@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- A pool kept in a static and shared across `@AsyncTest` methods needs the agent for a later
+  run's uncaught failure on its thread to reach that run: without it the death is attributed to the
+  run that built the thread and dropped. The README's fail-gates section and
+  `docs/architecture/execution-flow.md` now say so and name the agent as the answer (#1378).
+
 ## [1.14.4] - 2026-11-21
 
 ### Upgrading
