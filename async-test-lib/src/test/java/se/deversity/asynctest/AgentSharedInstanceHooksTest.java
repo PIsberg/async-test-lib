@@ -355,7 +355,16 @@ class AgentSharedInstanceHooksTest {
     void iterators() {
         AsyncTestContext shared = newContext();
         java.util.Iterator<Integer> one = new java.util.ArrayList<>(java.util.Collections.nCopies(64, 1)).iterator();
-        onTwoThreads(shared, true, () -> iterateEverything(one));
+        // Steps only: two threads racing remove() as well can leave the cursor equal to the
+        // shrunken size, and a hasNext that answers false is deliberately not recorded, so one
+        // thread recorded nothing on a loaded runner (JDK 26 leg of #1475).
+        onTwoThreads(shared, true, () -> {
+            for (int step = 0; step < 4; step++) {
+                if (AgentSharedInstanceHooks.iteratorHasNext(one)) {
+                    AgentSharedInstanceHooks.iteratorNext(one);
+                }
+            }
+        });
         assertTrue(with(shared, () -> AsyncTestContext.sharedIteratorDetector().analyze().hasIssues()),
                 "one iterator driven by two threads holds one cursor between them");
 
