@@ -139,6 +139,36 @@ class CorpusGatesTest {
     }
 
     @Test
+    @DisplayName("#1480: events published before the window opened are not credited to it")
+    void eventsFromBeforeTheWindowAreNotCounted() throws InterruptedException {
+        boolean startedHere = !TelemetryRegistry.isRunning();
+        if (startedHere) {
+            TelemetryRegistry.start();
+        }
+        try {
+            Thread earlier = new Thread(() -> {
+                long id = Thread.currentThread().threadId();
+                for (int i = 0; i < 50; i++) {
+                    TelemetryRegistry.recordAccess(id, "BeforeTheWindow.field", true);
+                }
+            }, "before-the-window");
+            earlier.start();
+            earlier.join(5_000);
+            // Still buffered when the window opens: on CI the window read events=0 while crediting
+            // main with 21 to 511 events the last subjects had published before it (#1485).
+            com.example.corpus.unwoven.QuietWindowPublishers publishers =
+                    com.example.corpus.unwoven.QuietWindowPublishers.listen();
+            String seen = publishers.stop();
+            assertFalse(seen.contains("(id " + earlier.threadId() + ")"),
+                    "events published before listen() belong to no window: " + seen);
+        } finally {
+            if (startedHere) {
+                TelemetryRegistry.stop();
+            }
+        }
+    }
+
+    @Test
     @DisplayName("#1480: every lane that attaches the agent excludes the unwoven harness package")
     void everyAgentLineExcludesTheUnwovenPackage() throws java.io.IOException {
         String pom = java.nio.file.Files.readString(java.nio.file.Path.of("pom.xml"));

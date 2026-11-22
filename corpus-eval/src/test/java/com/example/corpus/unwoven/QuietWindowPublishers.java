@@ -33,8 +33,13 @@ public final class QuietWindowPublishers implements TelemetryEventBuffer.DrainCa
     private QuietWindowPublishers() {
     }
 
-    /** {@return a counter registered as the drain callback from now on} */
+    /**
+     * {@return a counter registered as the drain callback from now on} Drains the buffer first, so
+     * events the last subjects published before the window are not credited to it: without the
+     * drain, CI read events=0 beside "main=511" (#1485).
+     */
     public static QuietWindowPublishers listen() {
+        TelemetryRegistry.flush();
         QuietWindowPublishers publishers = new QuietWindowPublishers();
         TelemetryRegistry.setCallback(publishers);
         return publishers;
