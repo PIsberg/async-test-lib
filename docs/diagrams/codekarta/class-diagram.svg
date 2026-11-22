@@ -973,7 +973,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3176.0" y="168.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">keylessCheck(Map&lt;Object,Ob…</text>
   <text x="3176.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">actHalf(Map&lt;Object,Object&gt;…</text>
   <text x="3176.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">synchronizedWrapper(Object…</text>
-  <text x="3176.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+157 more)</text>
+  <text x="3176.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+166 more)</text>
 </g>
 <g id="AgentConcurrencyUtilHooks">
   <title>AgentConcurrencyUtilHooks [CLASS]</title>
@@ -994,7 +994,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquire(Semaphore): void</text>
   <text x="3376.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">tryAcquire(Semaphore): boo…</text>
   <text x="3376.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">futureTaskRun(FutureTask&lt;O…</text>
-  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+432 more)</text>
+  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+438 more)</text>
 </g>
 <g id="AgentConstructionHooks">
   <title>AgentConstructionHooks [CLASS]</title>
@@ -1063,7 +1063,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3576.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">format(DateFormat, Date): …</text>
   <text x="3576.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">parse(DateFormat, String):…</text>
   <text x="3576.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">parse(DateFormat, String, …</text>
-  <text x="3576.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+159 more)</text>
+  <text x="3576.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+201 more)</text>
 </g>
 <g id="AgentSleepHooks">
   <title>AgentSleepHooks [CLASS]</title>
@@ -1206,7 +1206,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3576.0" y="306.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">LENT: ThreadLocal&lt;AsyncTes…</text>
   <text x="3576.0" y="321.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registry: DetectorRegistry</text>
   <text x="3576.0" y="336.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharingScope: SelfGuard.Sc…</text>
-  <text x="3576.0" y="351.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+156 more)</text>
+  <text x="3576.0" y="351.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+157 more)</text>
   <line x1="3568.0" y1="365.0" x2="3748.0" y2="365.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="3576.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedVisibilityMonitor():…</text>
   <text x="3576.0" y="393.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedLivelockDetector(): …</text>
@@ -1214,7 +1214,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3576.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedThreadLocalMonitor()…</text>
   <text x="3576.0" y="438.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedBusyWaitDetector(): …</text>
   <text x="3576.0" y="453.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sharedAtomicityValidator()…</text>
-  <text x="3576.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+250 more)</text>
+  <text x="3576.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+252 more)</text>
 </g>
 <g id="DetectorRegistry">
   <title>DetectorRegistry [CLASS]</title>
@@ -1417,13 +1417,13 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <line x1="4242.0" y1="3050.7" x2="4422.0" y2="3050.7" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="4250.0" y="3064.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
   <line x1="4242.0" y1="3077.7" x2="4422.0" y2="3077.7" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="4250.0" y="3091.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">newState(Object, String): …</text>
-  <text x="4250.0" y="3106.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerSemaphore(Semaphor…</text>
-  <text x="4250.0" y="3121.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAcquire(Semaphore, S…</text>
-  <text x="4250.0" y="3136.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordRelease(Semaphore, S…</text>
-  <text x="4250.0" y="3151.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordHelperAcquire(Semaph…</text>
-  <text x="4250.0" y="3166.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordHelperRelease(Semaph…</text>
-  <text x="4250.0" y="3181.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <text x="4250.0" y="3091.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">permitsOf(SemaphoreState):…</text>
+  <text x="4250.0" y="3106.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">returnedTwice(SemaphoreSta…</text>
+  <text x="4250.0" y="3121.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">newState(Object, String): …</text>
+  <text x="4250.0" y="3136.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerSemaphore(Semaphor…</text>
+  <text x="4250.0" y="3151.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAcquire(Semaphore, S…</text>
+  <text x="4250.0" y="3166.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordRelease(Semaphore, S…</text>
+  <text x="4250.0" y="3181.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
 </g>
 <g id="CompletableFutureExceptionDetector">
   <title>CompletableFutureExceptionDetector [CLASS]</title>
@@ -2042,7 +2042,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="4250.0" y="4460.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordInsert(StringBuilder…</text>
   <text x="4250.0" y="4475.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordDelete(StringBuilder…</text>
   <text x="4250.0" y="4490.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordReplace(StringBuilde…</text>
-  <text x="4250.0" y="4505.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+8 more)</text>
+  <text x="4250.0" y="4505.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+11 more)</text>
 </g>
 <g id="StructuredConcurrencyMisuseDetector">
   <title>StructuredConcurrencyMisuseDetector [CLASS]</title>
@@ -2318,8 +2318,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="4250.0" y="4292.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordSet(Object, String, …</text>
   <text x="4250.0" y="4307.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCas(Object, String, …</text>
   <text x="4250.0" y="4322.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">agentRead(Object): void</text>
-  <text x="4250.0" y="4337.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">agentStore(Object): void</text>
-  <text x="4250.0" y="4352.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+5 more)</text>
+  <text x="4250.0" y="4337.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">agentRead(Object, String, …</text>
+  <text x="4250.0" y="4352.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+9 more)</text>
 </g>
 <g id="SynchronizedCollectionIterationDetector">
   <title>SynchronizedCollectionIterationDetector [CLASS]</title>
@@ -3928,7 +3928,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="4200.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">releaseVolatile(Object, St…</text>
   <text x="4200.0" y="438.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">releaseVolatileReference(O…</text>
   <text x="4200.0" y="453.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">releaseVolatile(Object, St…</text>
-  <text x="4200.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+29 more)</text>
+  <text x="4200.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+37 more)</text>
 </g>
 <g id="HeldLocks">
   <title>HeldLocks [CLASS]</title>
@@ -4540,7 +4540,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="1928.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DISPLAY_NAME: ThreadLocal&lt;…</text>
   <text x="1928.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">PENDING_TEARDOWN: ThreadLo…</text>
   <text x="1928.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">AGENT_ABSENCE_LOGGED: java…</text>
-  <text x="1928.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+14 more)</text>
+  <text x="1928.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+15 more)</text>
   <line x1="1920.0" y1="185.0" x2="2100.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="1928.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">displayNameOf(Method): Str…</text>
   <text x="1928.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">execute(ReflectiveInvocati…</text>
@@ -4548,7 +4548,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="1928.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">resolveTimeoutMultiplier()…</text>
   <text x="1928.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyzeAndGate(AsyncTestCo…</text>
   <text x="1928.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">reportAndGate(AsyncTestCon…</text>
-  <text x="1928.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+32 more)</text>
+  <text x="1928.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+33 more)</text>
 </g>
 <g id="LicenseGuard">
   <title>LicenseGuard [CLASS]</title>
@@ -4737,16 +4737,16 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="680.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">SPIN_FIELDS: Set&lt;String&gt;</text>
   <text x="680.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">LOCKS: Map&lt;Key,Lock&gt;</text>
   <text x="680.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">NEXT_SWEEP: AtomicInteger</text>
-  <text x="680.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">UPDATER_IMPL: String</text>
-  <text x="680.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+5 more)</text>
+  <text x="680.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">LONG_UPDATER_IMPL: String</text>
+  <text x="680.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+6 more)</text>
   <line x1="672.0" y1="275.0" x2="852.0" y2="275.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="680.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">bound(Object, String): void</text>
   <text x="680.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">isSpinField(String): boole…</text>
   <text x="680.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">anySpinField(): boolean</text>
   <text x="680.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldOf(VarHandle): String</text>
   <text x="680.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">fieldOf(AtomicIntegerField…</text>
-  <text x="680.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">describe(AtomicIntegerFiel…</text>
-  <text x="680.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+18 more)</text>
+  <text x="680.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">longFieldOf(AtomicLongFiel…</text>
+  <text x="680.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+19 more)</text>
 </g>
 <g id="TelemetryBridge">
   <title>TelemetryBridge [CLASS]</title>
@@ -4801,7 +4801,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="680.0" y="306.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">RUNNING: AtomicBoolean</text>
   <text x="680.0" y="321.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">STOPPED: AtomicBoolean</text>
   <text x="680.0" y="336.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">drainCallback: TelemetryEv…</text>
-  <text x="680.0" y="351.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+21 more)</text>
+  <text x="680.0" y="351.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+25 more)</text>
   <line x1="672.0" y1="365.0" x2="852.0" y2="365.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="680.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(long, String,…</text>
   <text x="680.0" y="393.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(long, String,…</text>
@@ -4809,7 +4809,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="680.0" y="423.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(int, long, St…</text>
   <text x="680.0" y="438.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(int, long, St…</text>
   <text x="680.0" y="453.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAccess(Object, Objec…</text>
-  <text x="680.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+228 more)</text>
+  <text x="680.0" y="468.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+378 more)</text>
 </g>
 <g id="UnwrappingTaskQueue">
   <title>UnwrappingTaskQueue [CLASS]</title>
