@@ -19,6 +19,7 @@ import java.util.BitSet;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -5047,6 +5048,36 @@ class CorpusIdiomLaneTest {
                 startInheritingNothing(turn.shared());
             } else {
                 use(turn.shared().direct.limit);
+            }
+        });
+    }
+
+    // --- An Iterator shared by every thread (#1309) ---------------------------------------------
+
+    private static final List<Integer> SIX = List.of(1, 2, 3, 4, 5, 6);
+    private static final Rounds<Iterator<Integer>> SHARED_ITERATORS = new Rounds<>(SIX::iterator);
+
+    /** Every thread walks the list with an iterator of its own, the for-each a reader writes. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_iterator_onePerThread() {
+        correct(() -> {
+            for (int value : SIX) {
+                use(value);
+            }
+        });
+    }
+
+    /** Every thread takes the next element from one iterator per round, which has one cursor. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_iterator_sharedByEveryThread() {
+        broken(() -> {
+            Iterator<Integer> shared = SHARED_ITERATORS.next().shared();
+            try {
+                if (shared.hasNext()) {
+                    use(shared.next());
+                }
+            } catch (java.util.NoSuchElementException overtaken) {
+                use(0); // the check-then-act this row is about, when another thread took the last one
             }
         });
     }

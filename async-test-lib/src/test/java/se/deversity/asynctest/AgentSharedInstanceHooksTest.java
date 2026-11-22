@@ -350,6 +350,53 @@ class AgentSharedInstanceHooksTest {
                 "one tokenizer and one break iterator per thread, through the same hooks, is correct code");
     }
 
+    @Test
+    @DisplayName("an Iterator two threads drive through the hooks is reported; one each is not (#1309)")
+    void iterators() {
+        AsyncTestContext shared = newContext();
+        java.util.Iterator<Integer> one = new java.util.ArrayList<>(java.util.Collections.nCopies(64, 1)).iterator();
+        onTwoThreads(shared, true, () -> iterateEverything(one));
+        assertTrue(with(shared, () -> AsyncTestContext.sharedIteratorDetector().analyze().hasIssues()),
+                "one iterator driven by two threads holds one cursor between them");
+
+        AsyncTestContext confined = newContext();
+        onTwoThreads(confined, false, () -> assertEquals(62, iterateEverything(
+                        new java.util.ArrayList<>(java.util.Collections.nCopies(64, 1)).iterator()),
+                "every iterator hook delegated: two elements taken, one of them removed"));
+        assertFalse(with(confined, () -> AsyncTestContext.sharedIteratorDetector().analyze().hasIssues()),
+                "one iterator per thread, through the same hooks, is correct code");
+    }
+
+    @Test
+    @DisplayName("one empty iterator every thread asks hasNext of is not reported: it has no cursor (#1309)")
+    void aSharedEmptyIteratorIsNoFinding() {
+        AsyncTestContext shared = newContext();
+        java.util.Iterator<Object> empty = java.util.Collections.emptyIterator();
+        onTwoThreads(shared, false, () -> assertFalse(AgentSharedInstanceHooks.iteratorHasNext(empty)));
+        assertFalse(with(shared, () -> AsyncTestContext.sharedIteratorDetector().analyze().hasIssues()),
+                "Collections.emptyIterator() is one stateless instance for every caller, as Jackson's and"
+                        + " Guava's empty iterators are");
+    }
+
+    /** Every Iterator hook once, on {@code values}; returns how many elements were left to take. */
+    private static int iterateEverything(java.util.Iterator<Integer> values) {
+        quietly(() -> {
+            if (AgentSharedInstanceHooks.iteratorHasNext(values)) {
+                AgentSharedInstanceHooks.iteratorNext(values);
+                AgentSharedInstanceHooks.iteratorRemove(values);
+            }
+            if (AgentSharedInstanceHooks.iteratorHasNext(values)) {
+                AgentSharedInstanceHooks.iteratorNext(values);
+            }
+        });
+        int left = 0;
+        while (values.hasNext()) {
+            values.next();
+            left++;
+        }
+        return left;
+    }
+
     /** Every StringTokenizer hook once, on {@code tokens}; returns how many tokens were left. */
     private static int tokenizeEverything(java.util.StringTokenizer tokens) {
         if (AgentSharedInstanceHooks.tokenizerHasMoreTokens(tokens)) {
@@ -599,7 +646,7 @@ class AgentSharedInstanceHooksTest {
                 .filter(m -> Modifier.isStatic(m.getModifiers()))
                 .filter(m -> m.getDeclaringClass() == AgentSharedInstanceHooks.class)
                 .count();
-        assertEquals(185, hooks,
+        assertEquals(188, hooks,
                 "the shared-instance hooks and the calls in this class are one list, written by "
                         + "hand because each family needs its own receiver and arguments. If this "
                         + "count moved, the new hook belongs in the family test above, or it is "

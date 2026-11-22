@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One `Iterator` stepped by several threads is reported (#1309).** With the agent
+  (`collections=true`), `Iterator.hasNext`, `next` and `remove` in woven classes, every for-each
+  included, record on `SharedIteratorDetector`, as `StringTokenizer` already did. A `hasNext`
+  that answers `false` is not recorded: Jackson, Guava and `Collections.emptyIterator()` hand one
+  stateless empty iterator to every caller, which the corpus reported at VERDICT until this rule.
+  Cost, measured by `IteratorHookAllocationTest`: about 1.1 KB per woven for-each for the
+  iterator's detector state, nothing per element. Corpus idiom pair: the shared iterator was silent
+  before and fires at VERDICT/HIGH; one per thread stays silent.
 - **A `FutureTask` run by `new Thread(group, task, name, stackSize, inheritThreadLocals)` is
   ordered before its `get` (#1442, first part).** The agent hands a new thread's target to the
   library for every `Thread` constructor taking a `Runnable`, but this one put the task five
