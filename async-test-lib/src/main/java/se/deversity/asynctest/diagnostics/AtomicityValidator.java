@@ -577,6 +577,24 @@ public class AtomicityValidator {
      */
     private final Queue<String> atomicityViolations = new ConcurrentLinkedQueue<>();
 
+    /**
+     * What coroutines did to each field the agent saw them touch (#1007), keyed by the field's
+     * key from {@code HappensBefore.fieldKey}, weakly, so a field of a collected object goes too.
+     */
+    private final Map<Object, CoroutineField> coroutineFields =
+            java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
+    /**
+     * One field as coroutines saw it: how many writes it has had, and for each coroutine that
+     * touched it, the write count it last saw and the step it saw it in.
+     */
+    private static final class CoroutineField {
+        long version;
+        /** Set once this field's lost update has been reported, so it is reported once. */
+        boolean reported;
+        final Map<Object, long[]> seen = new java.util.WeakHashMap<>();
+    }
+
     /** Set by the run before analysis: array accesses it could not record (#1262). */
     private volatile long untrackedArrayAccesses;
 
@@ -2264,9 +2282,59 @@ public class AtomicityValidator {
         return Thread.currentThread().threadId() + ":" + operationName;
     }
     /**
+     * Records a field access made inside a coroutine step, which the agent's coroutine-step hook
+     * tells apart from the thread it runs on (#1007).
+     *
+     * <p>Reports a lost update across a suspension: the coroutine read the field in one step,
+     * suspended, and writes it in a later step after another coroutine wrote it in between. Every
+     * rule keyed by thread misses it when both coroutines run on one thread, which is what a
+     * {@code runBlocking} event loop or a single-threaded dispatcher does. The interleaving was
+     * observed, not predicted: a coroutine holding a {@code Mutex} across its suspension keeps the
+     * other writer out, and nothing is reported. A read and a write in the same step are left to
+     * the thread-based rules, since no other coroutine can run on the thread in between.
+     *
+     * @param field     what identifies this field of this object, compared by identity and held
+     *                  weakly
+     * @param fieldName the field's qualified name, for the report
+     * @param coroutine the coroutine making the access, compared by identity and held weakly
+     * @param step      the coroutine step the access is made in, a new value after each resumption
+     * @param isWrite   whether the access writes the field
+     * @since 1.14.5
+     */
+    @API(status = Status.INTERNAL, since = "1.14.5")
+    public void recordCoroutineAccess(Object field, String fieldName, Object coroutine, long step,
+                                      boolean isWrite) {
+        if (!enabled) {
+            return;
+        }
+        CoroutineField state;
+        synchronized (coroutineFields) {
+            state = coroutineFields.computeIfAbsent(field, ignored -> new CoroutineField());
+        }
+        synchronized (state) {
+            // {write count seen, step seen in}; -1 until this coroutine first touches the field.
+            long[] seen = state.seen.computeIfAbsent(coroutine, ignored -> new long[] {-1L, -1L});
+            if (isWrite) {
+                if (seen[0] >= 0L && seen[1] != step && seen[0] != state.version && !state.reported) {
+                    state.reported = true;
+                    atomicityViolations.add(String.format(
+                            "%s: lost update across a suspension: a coroutine read it, suspended, and"
+                                    + " wrote it after another coroutine had written it in between;"
+                                    + " hold a Mutex across the suspension or update it atomically",
+                            fieldName));
+                }
+                state.version++;
+            }
+            seen[0] = state.version;
+            seen[1] = step;
+        }
+    }
+
+    /**
      * Clears recorded the observation so this instance can be reused for the next run.
      */
     public void reset() {
+        coroutineFields.clear();
         activeOperations.clear();
         fieldHistory.clear();
         fieldLocks.clear();

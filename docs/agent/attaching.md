@@ -143,7 +143,18 @@ call too: an object stored into a field under a lock and loaded from the same fi
 object under the same lock is a hand-off, ordered like a queue element, because the reader has the
 object only because the store put it there
 ([#1247](https://github.com/PIsberg/async-test-lib/issues/1247)). A method that takes no monitor
-pays nothing for it. A `long` or `double` takes
+pays nothing for it.
+
+With `fields=true` the agent also weaves one call in kotlin stdlib, whatever `includes=` says:
+`BaseContinuationImpl.resumeWith` calls `invokeSuspend` to run every step of every coroutine,
+and that call goes through a library hook that marks which coroutine the thread is running for the
+step's length. `AtomicityValidator` then reports a lost update between two coroutines that share
+one thread, a read, a suspension and a write after another coroutine's write
+([#1007](https://github.com/PIsberg/async-test-lib/issues/1007)). The coroutines' own code must be in
+`includes=` for its field accesses to be recorded, and kotlinx.coroutines too when they run on
+its dispatchers, whose threads are handed to the run through kotlinx's woven `execute`. Skipped
+where kotlin stdlib sits in a named module, since the hook opens a protected method to make the
+call. A `long` or `double` takes
 the two-slot copy instructions rather than `DUP` and `SWAP`; `WideOperandWeavingTest` weaves a class
 with every field width, volatile and plain, static and instance, through the full
 `fields=true,collections=true` chain and checks that it verifies and computes what the unwoven class

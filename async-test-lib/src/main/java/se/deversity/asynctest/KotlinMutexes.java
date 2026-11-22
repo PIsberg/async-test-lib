@@ -447,7 +447,7 @@ final class KotlinMutexes {
         }
     }
 
-    private static @Nullable JobReader jobReader(@Nullable ClassLoader loader, Class<?> continuation) {
+    static @Nullable JobReader jobReader(@Nullable ClassLoader loader, Class<?> continuation) {
         try {
             MethodHandles.Lookup lookup = MethodHandles.publicLookup();
             Class<?> context = Class.forName(CONTEXT, false, loader);

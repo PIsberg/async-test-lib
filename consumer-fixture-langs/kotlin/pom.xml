@@ -83,6 +83,7 @@
                     <!-- Needs a JVM with no agent started: it proves the runner's default attach. -->
                     <excludes>
                         <exclude>**/RunnerDefaultAttachTest.class</exclude>
+                        <exclude>**/KotlinCoroutineStepsTest.class</exclude>
                     </excludes>
                 </configuration>
                 <executions>
@@ -95,6 +96,19 @@
                         <configuration>
                             <argLine combine.self="override"></argLine>
                             <test>RunnerDefaultAttachTest</test>
+                        </configuration>
+                    </execution>
+                    <!-- Field weaving for the coroutine owner model (#1007): a coroutine's own
+                         steps across dispatcher threads, and two coroutines racing across
+                         suspensions. fields=true only here, so the fixtures above keep their
+                         agent options. -->
+                    <execution>
+                        <id>coroutine-fields</id>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <argLine combine.self="override">-javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=includes=com.example.kotlincoroutines;kotlinx.coroutines,fields=true,collections=true</argLine>
+                            <excludes combine.self="override"/>
+                            <test>KotlinCoroutineStepsTest</test>
                         </configuration>
                     </execution>
                 </executions>
