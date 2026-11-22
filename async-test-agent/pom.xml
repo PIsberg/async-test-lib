@@ -134,14 +134,18 @@
                  this module's jacoco.exec and was reported against nothing: CI uploaded only the
                  library's own report, so agent work read 48% to 77% patch coverage on Codecov.
                  report-aggregate reads this module's execution data and that of its reactor
-                 dependencies, and reports both modules' classes; tests.yml uploads it. -->
+                 dependencies, and reports both modules' classes; tests.yml uploads it.
+                 Bound to prepare-package, after the tests and before the shade below: shade writes
+                 its dependency-reduced pom to target/, which moves this project's basedir there, and
+                 an aggregate run after it looked for target/target/*.exec and silently reported the
+                 library's data alone. -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <executions>
                     <execution>
                         <id>report-aggregate</id>
-                        <phase>verify</phase>
+                        <phase>prepare-package</phase>
                         <goals>
                             <goal>report-aggregate</goal>
                         </goals>

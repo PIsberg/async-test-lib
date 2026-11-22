@@ -84,6 +84,30 @@ class CoverageRunsWhereItIsUploadedTest {
         }
     }
 
+    /** The phases that run before {@code package}, where the agent's shade step moves its basedir. */
+    private static final List<String> BEFORE_PACKAGE = List.of("validate", "initialize", "generate-sources",
+            "process-sources", "generate-resources", "process-resources", "compile", "process-classes",
+            "generate-test-sources", "process-test-sources", "generate-test-resources",
+            "process-test-resources", "test-compile", "process-test-classes", "test", "prepare-package");
+
+    @Test
+    @DisplayName("#1482: the uploaded report is the library-and-agent aggregate, built before shade")
+    void theAggregateIsUploadedAndBuiltBeforeShadeMovesTheBasedir() {
+        assertTrue(stepBody("Upload coverage to Codecov")
+                        .contains("./async-test-agent/target/site/jacoco-aggregate/jacoco.xml"),
+                "Codecov must receive the aggregate report: the library's own report leaves out the "
+                        + "coverage the agent's tests give the library's agent hooks (#1482)");
+        String pom = readFile("async-test-agent/pom.xml");
+        int execution = pom.indexOf("<id>report-aggregate</id>");
+        assertTrue(execution >= 0, "async-test-agent/pom.xml must run JaCoCo's report-aggregate (#1482)");
+        int phaseStart = pom.indexOf("<phase>", execution) + "<phase>".length();
+        String phase = pom.substring(phaseStart, pom.indexOf("</phase>", phaseStart)).trim();
+        assertTrue(BEFORE_PACKAGE.contains(phase),
+                "report-aggregate is bound to '" + phase + "', but it must run before package: shade "
+                        + "writes its dependency-reduced pom to target/, which moves the basedir, and an "
+                        + "aggregate after it reads the library's data alone and reports the agent at 0%");
+    }
+
     /** {@return the lines of the step named {@code name}, up to the next step} */
     private static String stepBody(String name) {
         String workflow = read();
@@ -94,7 +118,11 @@ class CoverageRunsWhereItIsUploadedTest {
     }
 
     private static String read() {
-        Path path = repoRoot().resolve(WORKFLOW);
+        return readFile(WORKFLOW);
+    }
+
+    private static String readFile(String relative) {
+        Path path = repoRoot().resolve(relative);
         try {
             return Files.readString(path, StandardCharsets.UTF_8);
         } catch (IOException e) {
