@@ -689,6 +689,12 @@ final class CollectionAccessWeaver {
             Entry.call(java.util.StringJoiner.class, "length", "joinerLength"),
             // A StringTokenizer and a BreakIterator each hold a cursor every call moves or reads,
             // like an iterator, and neither has a thread-safe subclass in the JDK (#1322).
+            // One Iterator advanced by several threads: hasNext and next read and move one cursor,
+            // whatever collection is behind it (#1309). Every for-each in a woven class compiles
+            // to these two calls, so the hooks keep no state per call once the iterator has one.
+            Entry.call(java.util.Iterator.class, "hasNext", "iteratorHasNext"),
+            Entry.call(java.util.Iterator.class, "next", "iteratorNext"),
+            Entry.call(java.util.Iterator.class, "remove", "iteratorRemove"),
             Entry.call(java.util.StringTokenizer.class, "hasMoreTokens", "tokenizerHasMoreTokens"),
             Entry.call(java.util.StringTokenizer.class, "nextToken", "tokenizerNextToken"),
             Entry.call(java.util.StringTokenizer.class, "nextToken", "tokenizerNextToken", String.class),

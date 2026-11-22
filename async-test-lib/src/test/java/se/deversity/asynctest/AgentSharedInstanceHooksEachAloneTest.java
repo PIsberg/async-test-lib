@@ -129,6 +129,9 @@ class AgentSharedInstanceHooksEachAloneTest {
         if (type == java.util.StringTokenizer.class) {
             return new java.util.StringTokenizer("a b c d e f g h i j k l m n o p");
         }
+        if (type == java.util.Iterator.class) {
+            return new java.util.ArrayList<>(java.util.Collections.nCopies(64, 1)).iterator();
+        }
         if (type == java.text.BreakIterator.class) {
             java.text.BreakIterator words = java.text.BreakIterator.getWordInstance(Locale.ROOT);
             words.setText("one two three four");
@@ -300,7 +303,8 @@ class AgentSharedInstanceHooksEachAloneTest {
             if (receiver instanceof Calendar) {
                 return AsyncTestContext.calendarDetector().analyze().hasIssues();
             }
-            if (receiver instanceof java.util.StringTokenizer || receiver instanceof java.text.BreakIterator) {
+            if (receiver instanceof java.util.StringTokenizer || receiver instanceof java.text.BreakIterator
+                    || receiver instanceof java.util.Iterator) {
                 return AsyncTestContext.sharedIteratorDetector().analyze().hasIssues();
             }
             if (receiver instanceof StringBuilder || receiver instanceof java.util.StringJoiner) {

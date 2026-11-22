@@ -7256,6 +7256,20 @@ final class Corpus {
                     RecordingSubject.Expectation.MUST_FIRE,
                     "the same task and thread with the others reading what the callable writes "
                             + "without the get",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_iterator_onePerThread", JDK,
+                    "java.util.Iterator",
+                    DetectorType.SHARED_ITERATOR, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "every thread walks one immutable list with a for-each, an iterator of its own"),
+
+            new RecordingSubject("idiom_iterator_sharedByEveryThread", JDK,
+                    "java.util.Iterator",
+                    DetectorType.SHARED_ITERATOR, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "every thread checks hasNext and takes next from one iterator per round, one "
+                            + "cursor between them (#1309)",
                     IssueSeverity.HIGH)
     );
 

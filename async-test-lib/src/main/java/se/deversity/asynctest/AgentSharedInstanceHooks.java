@@ -1,5 +1,6 @@
 package se.deversity.asynctest;
 
+import org.jspecify.annotations.Nullable;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.io.IOException;
@@ -1093,6 +1094,54 @@ public final class AgentSharedInstanceHooks {
         ControlledSchedule.point();
         recordCursor(receiver, "getText");
         return receiver.getText();
+    }
+
+    /**
+     * Weaves {@code Iterator.hasNext()}: a read of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector once it has answered {@code true} (#1309). One that answers
+     * {@code false} is not recorded: a stateless empty iterator is shared by design.
+     *
+     * @param receiver the iterator
+     * @return what the original call returns
+     * @since 1.14.5
+     */
+    public static boolean iteratorHasNext(java.util.Iterator<?> receiver) {
+        ControlledSchedule.point();
+        boolean more = receiver.hasNext();
+        // Recorded only when there was something left: an empty iterator has no cursor to share,
+        // and libraries hand one stateless empty instance to every caller, Collections.emptyIterator()
+        // and Jackson's and Guava's own, which the corpus showed as six threads on one Iterator.
+        if (more) {
+            recordCursor(receiver, "hasNext");
+        }
+        return more;
+    }
+
+    /**
+     * Weaves {@code Iterator.next()}: a step of the instance's cursor, recorded on the
+     * {@code SHARED_ITERATOR} detector before it runs (#1309).
+     *
+     * @param receiver the iterator
+     * @return what the original call returns
+     * @since 1.14.5
+     */
+    public static @Nullable Object iteratorNext(java.util.Iterator<?> receiver) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "next");
+        return receiver.next();
+    }
+
+    /**
+     * Weaves {@code Iterator.remove()}: a step of the instance's cursor that also changes the
+     * collection behind it, recorded on the {@code SHARED_ITERATOR} detector before it runs (#1309).
+     *
+     * @param receiver the iterator
+     * @since 1.14.5
+     */
+    public static void iteratorRemove(java.util.Iterator<?> receiver) {
+        ControlledSchedule.point();
+        recordCursor(receiver, "remove");
+        receiver.remove();
     }
 
     private static void recordCursor(Object receiver, String operation) {

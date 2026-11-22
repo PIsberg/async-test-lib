@@ -1080,7 +1080,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3576.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">format(DateFormat, Date): …</text>
   <text x="3576.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">parse(DateFormat, String):…</text>
   <text x="3576.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">parse(DateFormat, String, …</text>
-  <text x="3576.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+201 more)</text>
+  <text x="3576.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+204 more)</text>
 </g>
 <g id="AgentSleepHooks">
   <title>AgentSleepHooks [CLASS]</title>
