@@ -65,6 +65,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A round's `@AfterEachInvocation` hooks run when its `@BeforeEachInvocation` hook throws
+  (#1477).** The before-hooks ran ahead of the round's failure handling, so their exception skipped
+  the after-hooks, and a before-hook that opened a resource and then failed left it open, against
+  `@AfterEachInvocation`'s own javadoc and JUnit's `@AfterEach` rule. The round now fails with the
+  before-hook's exception, starts no worker, and runs its after-hooks. Both annotations' javadoc
+  also stops saying a hook "must be non-private": private hooks always ran (#1478).
+
 - **One `Iterator` stepped by several threads is reported (#1309).** With the agent
   (`collections=true`), `Iterator.hasNext`, `next` and `remove` in woven classes, every for-each
   included, record on `SharedIteratorDetector`, as `StringTokenizer` already did. A `hasNext`
