@@ -23,7 +23,7 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
  * <p>The listener contract for findings ({@code onDetectorReport}, {@code onStructuredReport})
  * is pinned by {@code DetectorReportKeyTest}; the failure event was not: PIT's 2026-08-31
  * baseline showed "removed call to AsyncTestListenerRegistry::fireTestFailed" in
- * {@code ConcurrencyRunner.analyzeAndGate} surviving, so a CI dashboard or IDE integration
+ * {@code RunReporter.analyzeAndGate} surviving, so a CI dashboard or IDE integration
  * listening for failures would silently stop hearing about them.
  */
 @E2E

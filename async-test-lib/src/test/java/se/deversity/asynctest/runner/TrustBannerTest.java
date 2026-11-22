@@ -76,6 +76,6 @@ class TrustBannerTest {
     }
 
     private static String trustBanner(List<Grade> grades) {
-        return ConcurrencyRunner.trustBanner(DETECTOR, grades);
+        return RunReporter.trustBanner(DETECTOR, grades);
     }
 }
