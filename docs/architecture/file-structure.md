@@ -23,7 +23,8 @@ src/main/java/se/deversity/asynctest/
 │   ├── AsyncTestInvocationInterceptor.java  # Interceptor (threadCount override since 1.6.0)
 │   └── InvalidAsyncTestListener.java # Fails discovery of an @AsyncTest JUnit would skip (#1119, #1146, #1149)
 ├── runner/
-│   ├── ConcurrencyRunner.java        # Main execution engine
+│   ├── ConcurrencyRunner.java        # Main execution engine: setup, rounds, cleanup
+│   ├── RunReporter.java              # What a run reports: detector reports, trust banner, failOn gate, failure and timeout errors
 │   └── LicenseGuard.java             # NEW in 1.6.0 — process-wide license cache
 ├── diagnostics/                      # 149 detector implementations
 │   ├── Phase1DetectorSet.java        # Phase 1 detector group
