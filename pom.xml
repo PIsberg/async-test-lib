@@ -430,6 +430,22 @@
                             <goal>makeAggregateBom</goal>
                         </goals>
                     </execution>
+                    <!-- The same SBOM as XML, written to target/bom.xml for publish.yml to sign and
+                         attach to the GitHub release, and not attached to the deployment: each
+                         attached file goes to Maven Central with its signature and checksums, and
+                         Central's monthly file limit is shared by every project of the
+                         organization (#1391). -->
+                    <execution>
+                        <id>cyclonedx-xml</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>makeAggregateBom</goal>
+                        </goals>
+                        <configuration>
+                            <outputFormat>xml</outputFormat>
+                            <skipAttach>true</skipAttach>
+                        </configuration>
+                    </execution>
                 </executions>
                 <configuration>
                     <projectType>library</projectType>
@@ -440,12 +456,14 @@
                     <includeRuntimeScope>true</includeRuntimeScope>
                     <includeSystemScope>true</includeSystemScope>
                     <includeTestScope>false</includeTestScope>
-                    <!-- "all" writes both target/bom.xml and target/bom.json. Both are attached to
-                         the GitHub release and signed by publish.yml, which referenced bom.json from
-                         the start while this said "xml": the JSON was silently skipped by the
-                         `if [ -f ]` guard there for every release up to and including v1.11.2.
-                         Consumers that ingest an SBOM (Dependency-Track, grype, trivy) read JSON. -->
-                    <outputFormat>all</outputFormat>
+                    <!-- JSON, attached to the deployment and so published to Central with the
+                         jars: consumers that ingest an SBOM (Dependency-Track, grype, trivy) read
+                         JSON. The cyclonedx-xml execution above writes the XML beside it, and
+                         publish.yml signs and attaches both to the GitHub release; it referenced
+                         bom.json from the start while this said "xml", so the JSON was silently
+                         skipped by its `if [ -f ]` guard for every release up to v1.11.2. "all"
+                         would attach both formats to the deployment as well (#1391). -->
+                    <outputFormat>json</outputFormat>
                     <outputName>bom</outputName>
                 </configuration>
             </plugin>
@@ -598,6 +616,10 @@
                         <version>${central-publishing-maven-plugin.version}</version>
                         <extensions>true</extensions>
                         <configuration>
+                            <!-- MD5 and SHA-1 only: the SHA-256 and SHA-512 this plugin adds by default are
+                                 optional for Central and count against the organization's monthly file
+                                 limit, which refused 1.14.4 (#1391). -->
+                            <checksums>required</checksums>
                             <!-- Matches <server id="central"> in settings.xml / setup-java action -->
                             <publishingServerId>central</publishingServerId>
                             <!-- Automatically release after validation (no manual portal action needed) -->

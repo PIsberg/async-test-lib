@@ -99,7 +99,7 @@ jobs:
         # Same invocation as sbom.yml. skipNotDeployed=false is required because
         # cyclonedx-maven-plugin 2.9+ otherwise skips the goal whenever maven.deploy.skip
         # is effectively true, which would leave no target/bom.xml to sign and attach below.
-        run: mvn -B org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom -Dcyclonedx.skipNotDeployed=false
+        run: mvn -B org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom@cyclonedx-xml -Dcyclonedx.skipNotDeployed=false
 
       - name: Verify the SBOM
         # The released BOM is this one, not sbom.yml's, so the same check runs here. A file that

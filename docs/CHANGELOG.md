@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Maintenance
+
+- **A release should send Maven Central 84 files instead of 150 (#1391; counted in the issue,
+  first confirmed at the next publish).** `central-publishing-maven-plugin`
+  now uploads only the MD5 and SHA-1 checksums Central requires, not also SHA-256 and SHA-512, and
+  only the JSON SBOM is attached to the deployment (the XML is still generated, signed and attached
+  to the GitHub release). Central's monthly file and release limits are shared by every project of
+  the organization, and 1.14.4 was refused once they were reached. `CentralPublishingBudgetTest`
+  pins both settings.
+
 ### Changed
 
 - **Blind writes are reported as what they are (#1300).** A plain field several threads write in

@@ -235,15 +235,18 @@ testImplementation("se.deversity.async-test-lib:async-test-lib:1.14.4")
 ## Artifact Integrity
 
 ### Checksums
-Each artifact includes:
-- **SHA-1** checksum (legacy)
-- **SHA-256** checksum (recommended)
-- **MD5** checksum (legacy)
+Each artifact on Maven Central carries the two checksums Central requires:
+- **SHA-1** checksum
+- **MD5** checksum
 
-Users can verify:
+SHA-256 and SHA-512 files are not uploaded (#1391): Central lists them as optional, and every file
+counts against the organization's monthly Central limit. For a stronger check than MD5 or SHA-1,
+verify the GPG signature below, or the cosign signature published with each GitHub release
+([RELEASE.md](RELEASE.md)).
+
 ```bash
-sha256sum async-test-lib-1.9.1.jar
-# Verify against published checksum
+sha1sum async-test-lib-1.9.1.jar
+# Compare with async-test-lib-1.9.1.jar.sha1 from Maven Central
 ```
 
 ### Cryptographic Signing

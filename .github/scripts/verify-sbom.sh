@@ -39,7 +39,7 @@ fail() {
 }
 
 for file in "$XML" "$JSON"; do
-  [ -f "$file" ] || fail "$file was not generated (cyclonedx outputFormat must be 'all')"
+  [ -f "$file" ] || fail "$file was not generated (the json execution and the cyclonedx-xml execution in pom.xml must both run)"
   [ -s "$file" ] || fail "$file is empty"
 done
 
