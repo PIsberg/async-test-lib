@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An object handed over through a monitor-guarded field no longer reads as raced (#1247).** With
+  `fields=true`, a reference stored into a field under an exclusive lock and loaded from the same
+  field of the same object under the same lock, returning that very object, is now a
+  happens-before edge, so a receiver that uses the object's plain fields outside the monitor is
+  ordered after what the giver wrote before the store. `AtomicityValidator` reported that shape
+  at `PROMPT`/`HIGH`. The load is observed in a `synchronized` method or after a
+  `synchronized` block has begun in its method; a load under no lock or another lock, a store
+  under a read lock, and a write of the object after the hand-off still report. Owner decision
+  2026-11-22. Measured in the corpus idiom lane: both new correct rows reported before the fix
+  and are silent after it, and both broken twins fire.
+
 ### Documentation
 
 - A pool kept in a static and shared across `@AsyncTest` methods needs the agent for a later

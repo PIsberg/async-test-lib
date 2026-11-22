@@ -772,6 +772,14 @@ final class FieldAccessWeaver {
         private final String classInternalName;
         private final boolean classConstantsUsable;
 
+        /**
+         * Whether a {@code MONITORENTER} has been visited in this method, so a plain reference
+         * load from here on may be made under a monitor and gets the guarded-load call (#1247).
+         * Instruction order, not control flow: a load a loop branches back to from inside a block
+         * is missed, which loses an edge and never adds one.
+         */
+        private boolean monitorEnteredInThisMethod;
+
         FieldAccessMethodVisitor(MethodVisitor delegate, boolean weaveFieldInstructions,
                                  TypePool typePool, boolean constructor,
                                  boolean methodSynchronized, boolean methodStatic,
@@ -943,6 +951,9 @@ final class FieldAccessWeaver {
                         "(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)V", false);
             }
             monitorFieldStep = opcode == Opcodes.DUP && monitorFieldStep == 2 ? 3 : 0;
+            if (opcode == Opcodes.MONITORENTER) {
+                monitorEnteredInThisMethod = true;
+            }
             if (opcode == Opcodes.MONITORENTER || opcode == Opcodes.MONITOREXIT) {
                 String hook = opcode == Opcodes.MONITORENTER ? "monitorEntered" : "monitorExited";
                 super.visitInsn(Opcodes.DUP);
@@ -1851,6 +1862,7 @@ final class FieldAccessWeaver {
             // every other instance. javac writes captured fields there in every inner class.
             boolean constructionWrite = write && !isStaticAccess && insideConstructor;
             boolean volatileLoad = false;
+            boolean guardedLoad = false;
             if (weaveFieldInstructions && shouldWeave(owner) && !constructionWrite
                     && (isStaticAccess || !thisIsUninitialised)) {
                 boolean isWrite = write;
@@ -1878,9 +1890,14 @@ final class FieldAccessWeaver {
                 if (isWrite && !isStatic) {
                     restoreReceiverBelowValue(descriptor);
                 }
+                // A plain reference load where a monitor may be held: the acquire half of a guarded
+                // hand-off (#1247). Only in a synchronized method or after a MONITORENTER in this
+                // method, so a method that takes no monitor pays nothing.
+                guardedLoad = !isVolatile && !isWrite && isReference(descriptor)
+                        && (methodSynchronized || monitorEnteredInThisMethod);
                 if (isVolatile && isWrite) {
                     emitVolatileStore(hookOwner, isStatic, descriptor, identifier);
-                } else if (isVolatile && !isStatic) {
+                } else if ((isVolatile || guardedLoad) && !isStatic) {
                     // A copy of the receiver waits under the load, for the call after it (#742).
                     super.visitInsn(Opcodes.DUP);
                 }
@@ -1899,7 +1916,9 @@ final class FieldAccessWeaver {
             // else (#1416).
             noteConstant(null);
             if (volatileLoad) {
-                emitVolatileLoad(hookOwner, isStaticAccess, descriptor, identifier);
+                emitVolatileLoad(hookOwner, isStaticAccess, descriptor, identifier, "volatileLoad");
+            } else if (guardedLoad) {
+                emitVolatileLoad(hookOwner, isStaticAccess, descriptor, identifier, "guardedLoad");
             }
         }
 
@@ -1965,7 +1984,9 @@ final class FieldAccessWeaver {
 
         /**
          * Hands a volatile read's value to {@code TelemetryRegistry.volatileLoad} just after the
-         * load, which is where the read acquires what the write it saw published (#742, #804).
+         * load, which is where the read acquires what the write it saw published (#742, #804), or
+         * a plain reference load's to {@code guardedLoad}, which acquires what a store of that
+         * object under a lock the reader holds published (#1247): {@code hook} names which.
          *
          * <p>Stack-neutral and branch-free: an instance load left the receiver copied by the
          * {@code DUP} before it under the loaded value, which is moved beneath the pair and copied;
@@ -1973,7 +1994,7 @@ final class FieldAccessWeaver {
          * identifier, and leaves exactly the loaded value.
          */
         private void emitVolatileLoad(String owner, boolean isStatic, String descriptor,
-                                      String identifier) {
+                                      String identifier, String hook) {
             boolean wide = isCategoryTwo(descriptor);
             if (isStatic) {
                 super.visitInsn(wide ? Opcodes.DUP2 : Opcodes.DUP); // v -> v, v
@@ -1988,7 +2009,7 @@ final class FieldAccessWeaver {
                 super.visitInsn(wide ? Opcodes.DUP2_X1 : Opcodes.DUP_X1); // obj, v -> v, obj, v
             }
             super.visitLdcInsn(identifier);
-            super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, "volatileLoad",
+            super.visitMethodInsn(Opcodes.INVOKESTATIC, REGISTRY, hook,
                     "(Ljava/lang/Object;" + volatileHookValue(descriptor) + "Ljava/lang/String;)V",
                     false);
         }

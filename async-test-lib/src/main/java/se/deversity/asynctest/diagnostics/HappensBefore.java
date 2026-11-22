@@ -105,12 +105,20 @@ import org.jspecify.annotations.Nullable;
  *       a read between a won swap and its release acquires nothing. An arithmetic update
  *       releases the value it is about to store, so one that loses to a concurrent update
  *       and retries has, until its own store, published to a reader of the winner's value.
+ *   <li>Since #1247, with {@code fields=true}: a plain reference stored into a field under an
+ *       exclusive lock, and a load of the same field of the same object under the same lock that
+ *       returned that very object ({@link #releaseGuarded}, {@link #acquireGuarded}). The load
+ *       is observed in a {@code synchronized} method, or after a {@code synchronized} block has
+ *       begun in its method.
  * </ul>
  *
  * <p>Plain lock and monitor hand-offs are deliberately not edges. The detectors judge lock
  * discipline with a lockset, which asks whether the accesses <em>could</em> race under another
  * schedule; ordering them by the one schedule the run happened to take would trade that
- * prediction for a coincidence.
+ * prediction for a coincidence. The one exception is an object handed over through a guarded
+ * field (#1247): a reader that loaded it under the lock it was stored under has it only because
+ * the store put it there, so the order is carried by the value in every schedule, as a queue
+ * element's is.
  *
  * <h2>Limits</h2>
  *
@@ -167,6 +175,12 @@ import org.jspecify.annotations.Nullable;
  *       so its {@code close}, which waits for nothing, and its {@code awaitTermination} order
  *       nothing, and neither does a {@code close} reached through {@code AutoCloseable} rather
  *       than {@code ExecutorService} (#1266).
+ *   <li>A guarded hand-off (#1247) is found among the last four guarded stores of that field
+ *       under that lock, as a volatile read is among four releases; a lock guarding the same
+ *       field of many owners can push the store a load returned out of that window, which leaves
+ *       the load with nothing. The owner is compared by identity hash. A load the weaver does not
+ *       see as guarded, in a helper called from inside a {@code synchronized} block of another
+ *       method, or under a {@code java.util.concurrent} lock, takes nothing either.
  *   <li>A {@code Phaser} phase is keyed by the root phaser and the phase number, for the last
  *       four phases of each root: a party that arrived and waits on a phase more than three
  *       behind the root's finds nothing to acquire and keeps its finding. A phase read before
@@ -484,6 +498,112 @@ public final class HappensBefore {
             }
         }
         acquireStamp(me, published);
+    }
+
+    /**
+     * The release half of a plain reference store made under an exclusive lock (#1247): what the
+     * calling thread did so far is published to a load of the same field of the same object made
+     * under the same lock that returns this very object.
+     *
+     * <p>A reader holding that object has it only because this store put it there, so in every
+     * schedule in which the reader has the object at all, this critical section preceded the
+     * load's. That is what makes this an edge where a monitor hand-off in general is not: the
+     * order is carried by the value, not by the one schedule the run took. A store under no
+     * lock, or under a read lock, publishes nothing. One release per exclusive lock held, keyed by
+     * the lock and the field, with the owner and the object in the value, so a load of the same
+     * object through another owner, another field or another lock takes nothing.
+     *
+     * <p>Call it after the store's access was recorded and before the store, from the hook that
+     * sees the stored reference. Allocates a small record per lock held when the release changes
+     * what was published, and nothing when no lock is held.
+     *
+     * @param owner  the object the field belongs to, the declaring class for a static field;
+     *               {@code null} is ignored
+     * @param field  the field's name, qualified as the agent names it
+     * @param stored the object stored; {@code null} publishes nothing
+     * @since 1.14.5
+     */
+    @API(status = Status.INTERNAL)
+    public static void releaseGuarded(@Nullable Object owner, String field,
+                                      @Nullable Object stored) {
+        if (owner == null || stored == null) {
+            return;
+        }
+        int depth = HeldLocks.depth();
+        long value = guardedValue(owner, stored);
+        for (int i = 0; i < depth; i++) {
+            Object lock = HeldLocks.heldFromTop(i);
+            if (lock != null && !HeldLocks.sharedFromTop(i)) {
+                releaseVolatile(lock, field, value, true, stored, true);
+            }
+        }
+    }
+
+    /**
+     * The acquire half of {@link #releaseGuarded}: a plain reference load made under an exclusive
+     * lock that returned {@code loaded} receives what a store of that object into the same field
+     * of the same owner, made under the same lock, published (#1247).
+     *
+     * <p>Call it right after the load. A load under no lock, of {@code null}, or of an object no
+     * guarded store published, takes nothing, and allocates nothing.
+     *
+     * @param owner  the object the field belongs to, the declaring class for a static field;
+     *               {@code null} is ignored
+     * @param field  the field's name, qualified as the agent names it
+     * @param loaded the object the load returned
+     * @since 1.14.5
+     */
+    @API(status = Status.INTERNAL)
+    public static void acquireGuarded(@Nullable Object owner, String field,
+                                      @Nullable Object loaded) {
+        if (owner == null || loaded == null) {
+            return;
+        }
+        int depth = HeldLocks.depth();
+        if (depth == 0) {
+            return;
+        }
+        long value = guardedValue(owner, loaded);
+        ThreadClock me = CLOCKS.get();
+        for (int i = 0; i < depth; i++) {
+            Object lock = HeldLocks.heldFromTop(i);
+            if (lock == null || HeldLocks.sharedFromTop(i)) {
+                continue;
+            }
+            FieldClock clock = existingFieldClock(me, lock, field);
+            if (clock != null) {
+                acquireStamp(me, clock.publishedBy(value, loaded, true));
+            }
+        }
+    }
+
+    /**
+     * {@return the value a guarded release records: the owner's identity hash above the stored
+     * object's}, so one lock and field shared by several owners keep their stores apart. The
+     * object itself is still compared by identity; only the owner is compared by hash.
+     */
+    private static long guardedValue(Object owner, Object object) {
+        return ((long) System.identityHashCode(owner) << 32)
+                | (System.identityHashCode(object) & 0xFFFF_FFFFL);
+    }
+
+    /**
+     * {@return the clock of {@code owner}'s {@code field} when something has been released to it,
+     * {@code null} otherwise}: {@link #fieldClock} without creating one, for a load that has
+     * nothing to learn from a field nobody released.
+     */
+    private static @Nullable FieldClock existingFieldClock(ThreadClock me, Object owner,
+                                                           String field) {
+        FieldClock[] cache = me.fieldClocks;
+        if (cache != null) {
+            for (FieldClock clock : cache) {
+                if (clock != null && clock.is(owner, field)) {
+                    return clock;
+                }
+            }
+        }
+        SyncClock sync = SYNC.get(new IdentityKey.Weak(owner, null));
+        return sync == null ? null : sync.find(field);
     }
 
     /**

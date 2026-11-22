@@ -4888,6 +4888,130 @@ class CorpusIdiomLaneTest {
         broken(() -> use(SHARED_MESSAGE.format(new Object[] {"cart", 3}).length()));
     }
 
+    // --- An object handed over through a monitor-guarded field (#1247) ------------------------
+
+    private static final class Mail {
+        int body;
+    }
+
+    private static final class GuardedBox {
+        final Object lock = new Object();
+        Mail mail;
+        final Mail prepared = new Mail();
+
+        /** Stores the mail under the box's own monitor, waking the takers. */
+        synchronized void put(Mail filled) {
+            mail = filled;
+            notifyAll();
+        }
+
+        /** Waits under the box's own monitor for the mail and takes it there. */
+        synchronized Mail take() throws InterruptedException {
+            while (mail == null) {
+                wait();
+            }
+            return mail;
+        }
+    }
+
+    private static final Rounds<GuardedBox> GUARDED_HAND_OFFS = new Rounds<>(GuardedBox::new);
+    private static final Rounds<GuardedBox> UNGUARDED_TAKES = new Rounds<>(GuardedBox::new);
+    private static final Rounds<GuardedBox> METHOD_HAND_OFFS = new Rounds<>(GuardedBox::new);
+    private static final Rounds<GuardedBox> WRITTEN_AFTER_HAND_OFF = new Rounds<>(GuardedBox::new);
+
+    /** Hands the round's prepared mail over under the box's lock, waking the takers. */
+    private static void handOver(GuardedBox box, int ticket) {
+        box.prepared.body = ticket + 1;
+        synchronized (box.lock) {
+            box.mail = box.prepared;
+            box.lock.notifyAll();
+        }
+    }
+
+    /** Waits under the box's lock for the mail and takes it there. */
+    private static Mail takeUnderTheLock(GuardedBox box) throws InterruptedException {
+        synchronized (box.lock) {
+            while (box.mail == null) {
+                box.lock.wait();
+            }
+            return box.mail;
+        }
+    }
+
+    /**
+     * The round's first thread fills a mail and stores it in a field under the box's lock; the
+     * others wait under that lock, take it there, and read it outside the monitor. A taker has the
+     * mail only because the store put it there, so the store's critical section precedes the
+     * take's in every schedule in which the taker holds it.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_guardedHandOff_receiverUsesItOutsideTheMonitor() {
+        correct(() -> {
+            Turn<GuardedBox> turn = GUARDED_HAND_OFFS.next();
+            GuardedBox box = turn.shared();
+            if (turn.opensTheRound()) {
+                handOver(box, turn.ticket());
+            } else {
+                use(takeUnderTheLock(box).body);
+            }
+        });
+    }
+
+    /** The same hand-off, with the takers reading the field without the lock. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_guardedHandOff_takerSkipsTheMonitor() {
+        broken(() -> {
+            Turn<GuardedBox> turn = UNGUARDED_TAKES.next();
+            GuardedBox box = turn.shared();
+            if (turn.opensTheRound()) {
+                handOver(box, turn.ticket());
+            } else {
+                Mail mail = box.mail;
+                for (int spins = 0; mail == null && spins < SPIN_LIMIT; spins++) {
+                    Thread.onSpinWait();
+                    mail = box.mail;
+                }
+                if (mail != null) {
+                    use(mail.body);
+                }
+            }
+        });
+    }
+
+    /**
+     * The same hand-off through synchronized put and take methods of the box, the commoner
+     * spelling: both hold the box's own monitor.
+     */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_guardedHandOff_throughSynchronizedMethods() {
+        correct(() -> {
+            Turn<GuardedBox> turn = METHOD_HAND_OFFS.next();
+            GuardedBox box = turn.shared();
+            if (turn.opensTheRound()) {
+                box.prepared.body = turn.ticket() + 1;
+                box.put(box.prepared);
+            } else {
+                use(box.take().body);
+            }
+        });
+    }
+
+    /** The same methods, with the giver writing the mail again after handing it over. */
+    @AsyncTest(threads = THREADS, invocations = INVOCATIONS, timeoutMs = 20_000, detectAll = true)
+    void idiom_guardedHandOff_giverWritesAfterTheHandOff() {
+        broken(() -> {
+            Turn<GuardedBox> turn = WRITTEN_AFTER_HAND_OFF.next();
+            GuardedBox box = turn.shared();
+            if (turn.opensTheRound()) {
+                box.prepared.body = turn.ticket() + 1;
+                box.put(box.prepared);
+                box.prepared.body = turn.ticket() + 2;
+            } else {
+                use(box.take().body);
+            }
+        });
+    }
+
     // --- Harness -----------------------------------------------------------------------------
 
     /**
