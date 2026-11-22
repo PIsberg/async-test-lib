@@ -95,7 +95,11 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      
+        with:
+          # The coverage leg measures new code against the pull request's base (the duplication
+          # gate below, and SonarQube Cloud), which needs the history back to the merge base.
+          fetch-depth: ${{ env.UPLOADS_COVERAGE == 'true' && '0' || '1' }}
+
       - name: Set up Java
         id: setup-java
         # JDKs 26 and 27 are on no runner image yet, so these legs resolve and download them from
@@ -190,6 +194,21 @@ jobs:
           fail_ci_if_error: false
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Check duplication on new code
+        # SonarQube's "duplication on new code is at most 3%" condition, measured here from the
+        # CPD report each module's verify writes and the lines the pull request adds under
+        # src/main/java (docs/quality-gates/new-code-gate.md). Pull requests only: a push has no
+        # base to tell new code from old.
+        if: env.UPLOADS_COVERAGE == 'true' && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          py=$(command -v python3 || command -v python)
+          "$py" .github/scripts/duplication_gate.py --self-test
+          "$py" .github/scripts/duplication_gate.py --base "origin/$BASE_REF" --max-percent 3 \
+            async-test-lib/target/cpd.xml async-test-agent/target/cpd.xml async-test-analysis/target/cpd.xml
 
   os-sensitive:
     name: OS-Sensitive Tests

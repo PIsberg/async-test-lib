@@ -508,6 +508,20 @@
                             <goal>check</goal>
                         </goals>
                     </execution>
+                    <!-- Duplication report for the new-code gate. Report only: CPD writes
+                         target/cpd.xml and .github/scripts/duplication_gate.py decides, on the
+                         lines a pull request adds (docs/quality-gates/new-code-gate.md). -->
+                    <execution>
+                        <id>cpd-report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>cpd</goal>
+                        </goals>
+                        <configuration>
+                            <minimumTokens>100</minimumTokens>
+                            <format>xml</format>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
             <!-- SpotBugs static analysis — main sources only -->
