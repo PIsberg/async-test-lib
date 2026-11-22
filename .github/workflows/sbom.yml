@@ -73,12 +73,14 @@ jobs:
         # otherwise skips the goal whenever maven.deploy.skip is effectively true,
         # leaving no target/bom.xml for the artifact upload below. The bom attached
         # to GitHub releases is produced and cosign-signed by publish.yml at tag time.
-        run: mvn -B org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom -Dcyclonedx.skipNotDeployed=false
+        run: mvn -B org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom@cyclonedx-xml -Dcyclonedx.skipNotDeployed=false
 
       - name: Verify the SBOM
         # upload-artifact only warns on a path that does not exist, so a missing or collapsed BOM
         # used to leave this job green. bom.json was absent for exactly that reason until the
-        # plugin's outputFormat was corrected to "all".
+        # plugin's outputFormat was corrected. The plugin-level format is JSON, the one attached
+        # to the deployment; bom.xml comes from the cyclonedx-xml execution, which a bare goal
+        # invocation does not run, hence the second goal@id above (#1391).
         run: .github/scripts/verify-sbom.sh target
 
       - name: Upload SBOM artifact

@@ -74,6 +74,18 @@ class CentralPublishingBudgetTest {
                 + " publish.yml signs and attaches to the GitHub release and verify-sbom.sh requires");
     }
 
+    @Test
+    @DisplayName("each workflow that generates the SBOM by goal also runs the XML execution")
+    void workflowsInvokingTheGoalAlsoWriteTheXml() throws Exception {
+        for (String workflow : List.of(".github/workflows/sbom.yml", ".github/workflows/publish.yml")) {
+            String text = Files.readString(repoRoot().resolve(workflow));
+            assertTrue(text.contains("makeAggregateBom@cyclonedx-xml"),
+                    workflow + " calls the goal directly, which runs only the plugin-level (JSON)"
+                            + " configuration; without makeAggregateBom@cyclonedx-xml there is no"
+                            + " target/bom.xml for verify-sbom.sh and the GitHub release");
+        }
+    }
+
     private static List<Element> plugins(String pom, String artifactId) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
