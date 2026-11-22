@@ -1645,9 +1645,18 @@ public class AtomicityValidator {
                         note
                     ));
                 }
-                if (threads.size() > 1 && hasWrite && sawUnguarded) {
+                if (threads.size() > 1 && hasWrite && sawUnguarded && hasRead) {
                     report.add(report.totcouRaces, "toctouWindow", String.format(
                         "%s: state changed between check/use windows on %d threads%s",
+                        entry.getKey(),
+                        threads.size(),
+                        note
+                    ));
+                } else if (threads.size() > 1 && hasWrite && sawUnguarded) {
+                    // Nothing read the field, so there is no check to have gone stale; the stores
+                    // themselves are what is unordered (#1300).
+                    report.add(report.unorderedWrites, "unorderedWrites", String.format(
+                        "%s: written by %d threads with no lock and no order between the stores%s",
                         entry.getKey(),
                         threads.size(),
                         note
@@ -2379,6 +2388,14 @@ public class AtomicityValidator {
          */
         public final Set<String> unorderedPublications = new HashSet<>();
         /**
+         * Plain fields several threads write in one round with no lock and no happens-before edge
+         * between the stores, and nobody reads: which store survives is a race, but with no read
+         * there is no check/use window, which is where {@link #totcouRaces} used to put them (#1300).
+         *
+         * @since 1.14.5
+         */
+        public final Set<String> unorderedWrites = new HashSet<>();
+        /**
          * The same findings as {@link Violation}s, each {@code HIGH}: the severity the text has
          * always resolved to, stated where the {@code failOn} gate reads first.
          */
@@ -2405,7 +2422,8 @@ public class AtomicityValidator {
             return !checkThenActViolations.isEmpty()
                 || !unsafeFieldAccesses.isEmpty()
                 || !totcouRaces.isEmpty()
-                || !unorderedPublications.isEmpty();
+                || !unorderedPublications.isEmpty()
+                || !unorderedWrites.isEmpty();
         }
 
         @Override
@@ -2431,6 +2449,12 @@ public class AtomicityValidator {
                 sb.append("\nTOCTOU windows:\n");
                 for (String race : totcouRaces) {
                     sb.append("  - ").append(race).append('\n');
+                }
+            }
+            if (!unorderedWrites.isEmpty()) {
+                sb.append("\nUnordered writes:\n");
+                for (String writes : unorderedWrites) {
+                    sb.append("  - ").append(writes).append('\n');
                 }
             }
             if (!unorderedPublications.isEmpty()) {

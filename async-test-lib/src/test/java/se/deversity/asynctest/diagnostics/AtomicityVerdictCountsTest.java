@@ -91,8 +91,15 @@ class AtomicityVerdictCountsTest {
         validator.recordFieldAccessUnderLocks(FIELD, null, true, 101L, 0L);
         validator.recordFieldAccessUnderLocks(FIELD, null, true, 202L, 0L);
 
-        assertTrue(validator.analyzeAtomicity().hasIssues(), "no volatile, no order between the writes");
+        AtomicityValidator.AtomicityReport report = validator.analyzeAtomicity();
+        assertTrue(report.hasIssues(), "no volatile, no order between the writes");
         assertEquals(Map.of("reported", 1), validator.verdictCounts(FIELD));
+        // Said as what it is (#1300): nothing was read, so there is no check and no use.
+        assertEquals(java.util.Set.of(FIELD + ": written by 2 threads with no lock and no order between"
+                + " the stores"), report.unorderedWrites, report.toString());
+        assertTrue(report.totcouRaces.isEmpty(), "no check/use window without a read: " + report);
+        assertTrue(report.toString().contains("Unordered writes:"), report.toString());
+        assertEquals("unorderedWrites", report.structuredViolations.get(0).attributes().get("kind"));
     }
 
     @Test

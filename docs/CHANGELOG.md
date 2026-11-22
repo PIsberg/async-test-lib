@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Blind writes are reported as what they are (#1300).** A plain field several threads write in
+  one round with no lock and no order between the stores, and nobody reads, is now listed under
+  `AtomicityValidator`'s new "Unordered writes" section (`AtomicityReport.unorderedWrites`,
+  structured kind `unorderedWrites`) instead of as a "check/use window" in `totcouRaces`: with
+  no read there is no check and no use. The finding and its severity are unchanged; a field that is
+  also read keeps its TOCTOU line.
+
 ### Fixed
 
 - **A `FutureTask` run by `new Thread(group, task, name, stackSize, inheritThreadLocals)` is
