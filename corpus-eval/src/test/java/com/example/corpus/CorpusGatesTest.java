@@ -114,7 +114,8 @@ class CorpusGatesTest {
             TelemetryRegistry.start();
         }
         try {
-            CorpusGates.WindowPublishers publishers = CorpusGates.WindowPublishers.listen();
+            com.example.corpus.unwoven.QuietWindowPublishers publishers =
+                    com.example.corpus.unwoven.QuietWindowPublishers.listen();
             Thread publisher = new Thread(() -> {
                 long id = Thread.currentThread().threadId();
                 for (int i = 0; i < 3; i++) {
@@ -126,11 +127,34 @@ class CorpusGatesTest {
             String seen = publishers.stop();
             assertTrue(seen.contains("(id " + publisher.threadId() + ")=3"),
                     "the three events the probe published must be credited to its thread id: " + seen);
+            assertFalse(seen.contains("async-test-telemetry-drain"),
+                    "the drain thread published while counting: the counter is being woven, and each "
+                            + "event it counts publishes another (16,356 of 16,369 on #1485's first run). "
+                            + "It must stay in a package every lane excludes: " + seen);
         } finally {
             if (startedHere) {
                 TelemetryRegistry.stop();
             }
         }
+    }
+
+    @Test
+    @DisplayName("#1480: every lane that attaches the agent excludes the unwoven harness package")
+    void everyAgentLineExcludesTheUnwovenPackage() throws java.io.IOException {
+        String pom = java.nio.file.Files.readString(java.nio.file.Path.of("pom.xml"));
+        java.util.regex.Matcher agentArgs = java.util.regex.Pattern
+                .compile("(?:async-test-agent:jar\\}=|<asynctest\\.agent>)([^<\\s]*)").matcher(pom);
+        int lanes = 0;
+        while (agentArgs.find()) {
+            if ("off".equals(agentArgs.group(1))) {
+                continue; // the agent-off lanes attach nothing, so there is nothing to weave
+            }
+            lanes++;
+            assertTrue(agentArgs.group(1).contains(com.example.corpus.unwoven.QuietWindowPublishers.UNWOVEN_PREFIX),
+                    "an agent line without excludes=..." + com.example.corpus.unwoven.QuietWindowPublishers.UNWOVEN_PREFIX
+                            + " weaves the quiet-window counter, which then feeds itself: " + agentArgs.group(1));
+        }
+        assertTrue(lanes >= 4, "found " + lanes + " agent lines in corpus-eval/pom.xml; the scan is reading nothing");
     }
 
     @Test

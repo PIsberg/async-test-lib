@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import se.deversity.asynctest.AsyncTest;
@@ -19,8 +18,6 @@ import se.deversity.asynctest.diagnostics.DetectorFeed;
 import se.deversity.asynctest.diagnostics.DetectorTrust;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.TrustTier;
-import se.deversity.asynctest.telemetry.TelemetryEventBuffer;
-import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -1226,53 +1223,6 @@ final class CorpusGates {
     /** {@return whether a RUNNABLE thread is really sitting in a native method, such as a blocking read} */
     static boolean blockedInNativeCode(StackTraceElement[] stack) {
         return stack.length > 0 && stack[0].isNativeMethod();
-    }
-
-    /**
-     * Counts the telemetry events each thread publishes while it listens, so a tripped quiet window
-     * names the threads that published rather than the ones that happened to be runnable (#1480).
-     *
-     * <p>Registered as the registry's drain callback for the window only. Between subjects no run
-     * holds the slot (each run's bridge releases it), and {@link #stop()} releases this one with
-     * {@code clearCallbackIf}, so it cannot take a registration away from anything else.
-     */
-    static final class WindowPublishers implements TelemetryEventBuffer.DrainCallback {
-
-        private final Map<Long, Integer> byThread = new ConcurrentHashMap<>();
-
-        private WindowPublishers() {
-        }
-
-        /** {@return a counter registered as the drain callback from now on} */
-        static WindowPublishers listen() {
-            WindowPublishers publishers = new WindowPublishers();
-            TelemetryRegistry.setCallback(publishers);
-            return publishers;
-        }
-
-        @Override
-        public void onEvent(long threadId, String targetField, boolean isWrite) {
-            byThread.merge(threadId, 1, Integer::sum);
-        }
-
-        /**
-         * Drains what is still buffered, stops listening, and {@return each publishing thread with
-         * its event count, busiest first}, as {@code {name (id N)=count, ...}}; a thread that has
-         * ended by then is named "ended thread"
-         */
-        String stop() {
-            TelemetryRegistry.flush();
-            TelemetryRegistry.clearCallbackIf(this);
-            Map<Long, String> names = new java.util.HashMap<>();
-            for (Thread thread : Thread.getAllStackTraces().keySet()) {
-                names.put(thread.threadId(), thread.getName());
-            }
-            return byThread.entrySet().stream()
-                    .sorted(Map.Entry.<Long, Integer>comparingByValue().reversed())
-                    .map(e -> names.getOrDefault(e.getKey(), "ended thread") + " (id " + e.getKey() + ")="
-                            + e.getValue())
-                    .collect(Collectors.joining(", ", "{", "}"));
-        }
     }
 
     private static boolean isPlatformFrame(String className) {

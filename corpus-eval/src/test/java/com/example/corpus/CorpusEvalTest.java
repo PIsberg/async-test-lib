@@ -250,7 +250,8 @@ class CorpusEvalTest {
     @AfterAll
     static void reportAndGate() throws InterruptedException {
         // Who publishes during the window, so a trip names them instead of guessing (#1480).
-        CorpusGates.WindowPublishers publishers = CorpusGates.WindowPublishers.listen();
+        com.example.corpus.unwoven.QuietWindowPublishers publishers =
+                com.example.corpus.unwoven.QuietWindowPublishers.listen();
         long quietFrom = se.deversity.asynctest.telemetry.TelemetryRegistry.publishedEvents();
         Thread.sleep(QUIET_WINDOW_MS);
         long quietTo = se.deversity.asynctest.telemetry.TelemetryRegistry.publishedEvents();
