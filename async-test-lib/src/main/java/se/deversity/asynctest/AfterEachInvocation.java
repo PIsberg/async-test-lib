@@ -22,8 +22,10 @@ import java.lang.annotation.Target;
  * only if it carries this annotation itself. When both levels contribute hooks,
  * subclass hooks run before superclass hooks.
  *
- * <p>The method must be non-private and take no arguments. If it throws, the
- * exception is reported alongside any thread failures from the same round.
+ * <p>The method must take no arguments and return {@code void}; any access level works,
+ * {@code private} included. It also runs when the round's {@link BeforeEachInvocation} hook
+ * threw. If it throws, the exception is reported alongside any thread failures from the same
+ * round.
  *
  * <pre>{@code
  * class CounterTest {

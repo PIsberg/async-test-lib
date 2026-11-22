@@ -23,7 +23,10 @@ import java.lang.annotation.Target;
  * superclass hooks run before subclass hooks.
  *
  * <p>The method is called on the main test thread, before any worker threads are
- * launched for that round. It must be non-private and take no arguments.
+ * launched for that round. It must take no arguments and return {@code void}; any access level
+ * works, {@code private} included. If it throws, the round fails with that exception, no worker
+ * starts, the hooks declared after it do not run, and the round's {@link AfterEachInvocation}
+ * hooks still do, as JUnit runs {@code @AfterEach} after a failing {@code @BeforeEach}.
  *
  * <pre>{@code
  * class CounterTest {
