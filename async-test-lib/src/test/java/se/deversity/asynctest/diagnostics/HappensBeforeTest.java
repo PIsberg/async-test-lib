@@ -555,4 +555,75 @@ class HappensBeforeTest {
         assertFalse(HappensBefore.publishesElements(new java.util.HashMap<>()));
         assertFalse(HappensBefore.publishesElements(null));
     }
+    /**
+     * A guarded store of {@code mail} into {@code owner}'s field under {@code storeLock}, then on a
+     * second thread a load of {@code loadedOwner}'s field under {@code loadLock} returning
+     * {@code loaded}: whether the writer's access before the store is ordered before the reader's
+     * access after the load (#1247).
+     */
+    private static boolean guardedHandOff(Object owner, Object storeLock, boolean sharedStore,
+                                          Object mail, Object loadedOwner,
+                                          @Nullable Object loadLock, Object loaded)
+            throws InterruptedException {
+        Recorded writer = onNewThread(() -> { }, true, () -> {
+            HeldLocks.acquired(storeLock, sharedStore);
+            HappensBefore.releaseGuarded(owner, "com.example.Box.mail", mail);
+            HeldLocks.released(storeLock, sharedStore);
+        });
+        Recorded reader = onNewThread(() -> {
+            HeldLocks.acquired(loadLock);
+            HappensBefore.acquireGuarded(loadedOwner, "com.example.Box.mail", loaded);
+            HeldLocks.released(loadLock);
+        }, false, () -> { });
+        return ordered(writer, reader);
+    }
+
+    @Test
+    @DisplayName("an object stored and loaded under one lock orders the store before the load (#1247)")
+    void aGuardedHandOffOrders() throws InterruptedException {
+        Object box = new Object();
+        Object lock = new Object();
+        Object mail = new Object();
+
+        assertTrue(guardedHandOff(box, lock, false, mail, box, lock, mail),
+                "the reader loaded, under the lock the writer stored it under, the very object "
+                        + "the writer stored");
+    }
+
+    @Test
+    @DisplayName("the same load under another lock, or none, orders nothing")
+    void aGuardedHandOffNeedsTheSameLock() throws InterruptedException {
+        Object box = new Object();
+        Object lock = new Object();
+        Object mail = new Object();
+
+        assertFalse(guardedHandOff(box, lock, false, mail, box, new Object(), mail),
+                "the writer never held the reader's lock");
+        assertFalse(guardedHandOff(box, lock, false, mail, box, null, mail),
+                "a load under no lock is the racy read itself");
+    }
+
+    @Test
+    @DisplayName("a store under a read lock publishes nothing")
+    void aSharedStoreIsNoHandOff() throws InterruptedException {
+        Object box = new Object();
+        Object lock = new Object();
+        Object mail = new Object();
+
+        assertFalse(guardedHandOff(box, lock, true, mail, box, lock, mail),
+                "a read lock excludes no other holder of it, so the store's section precedes nothing");
+    }
+
+    @Test
+    @DisplayName("another object, or the same object through another owner, takes nothing")
+    void aGuardedHandOffIsOfOneObjectThroughOneOwner() throws InterruptedException {
+        Object box = new Object();
+        Object lock = new Object();
+        Object mail = new Object();
+
+        assertFalse(guardedHandOff(box, lock, false, mail, box, lock, new Object()),
+                "the reader loaded an object the writer did not store");
+        assertFalse(guardedHandOff(box, lock, false, mail, new Object(), lock, mail),
+                "the reader loaded the field of another owner, which this store did not write");
+    }
 }

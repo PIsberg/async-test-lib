@@ -488,6 +488,32 @@ public final class TelemetryRegistry {
                 volatileField, constantTag, identity, afterVolatileRead, ownMonitor, method,
                 storedIdentity, identity == 0 ? null : receiver, HappensBefore.current(),
                 HappensBefore.round());
+        if (isWrite && !volatileField && stored != null) {
+            // A reference stored under a lock is released to a load of it under the same lock
+            // (#1247); after the access is published, so the store itself is part of what the
+            // release hands over, and before the store instruction, which follows this call.
+            HappensBefore.releaseGuarded(receiver, qualifiedName, stored);
+        }
+    }
+
+    /**
+     * The acquire half of a guarded hand-off, called by woven code right after a plain reference
+     * field load made in a {@code synchronized} method, or after a {@code synchronized} block has
+     * begun in its method, with the reference it returned (#1247).
+     *
+     * <p>When the calling thread holds a lock the object was stored into this field under, by a
+     * store of the same field of the same object, it receives what that store published: the
+     * reader has the object only because the store put it there. A load under no lock returns at
+     * once and allocates nothing.
+     *
+     * @param owner the object the field belongs to, the declaring class for a static field, or
+     *              {@code null} when the weaver had neither; {@code null} records nothing
+     * @param value the reference the load returned
+     * @param field combined {@code declaringClass.field} identifier
+     * @since 1.14.5
+     */
+    public static void guardedLoad(@Nullable Object owner, @Nullable Object value, String field) {
+        HappensBefore.acquireGuarded(owner, field, value);
     }
 
     /**

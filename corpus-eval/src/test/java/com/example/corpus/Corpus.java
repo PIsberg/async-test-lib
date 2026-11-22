@@ -7210,6 +7210,37 @@ final class Corpus {
                     "one static MessageFormat formats on every thread. Its javadoc states that "
                             + "message formats are not synchronized, and it formats a number "
                             + "argument through a NumberFormat it owns (#1319)",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_guardedHandOff_receiverUsesItOutsideTheMonitor", JDK,
+                    IDIOM_LANE + "GuardedBox",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "one thread fills a mail and stores it in a field under a lock; the others "
+                            + "take it under the same lock and read it outside the monitor. A "
+                            + "taker has the mail only because the store put it there (#1247)"),
+
+            new RecordingSubject("idiom_guardedHandOff_takerSkipsTheMonitor", JDK,
+                    IDIOM_LANE + "GuardedBox",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same hand-off with the takers reading the field without the lock: the "
+                            + "racy read of the reference orders nothing",
+                    IssueSeverity.HIGH),
+
+            new RecordingSubject("idiom_guardedHandOff_throughSynchronizedMethods", JDK,
+                    IDIOM_LANE + "GuardedBox",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_STAY_SILENT,
+                    "the same hand-off through synchronized put and take methods of the box, "
+                            + "both holding its own monitor (#1247)"),
+
+            new RecordingSubject("idiom_guardedHandOff_giverWritesAfterTheHandOff", JDK,
+                    IDIOM_LANE + "GuardedBox",
+                    DetectorType.ATOMICITY_VIOLATIONS, Contract.NOT_THREAD_SAFE,
+                    RecordingSubject.Expectation.MUST_FIRE,
+                    "the same methods with the giver writing the mail again after putting it: "
+                            + "that write comes after what the takers acquired",
                     IssueSeverity.HIGH)
     );
 

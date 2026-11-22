@@ -137,7 +137,13 @@ common shape of a real race — it is why the README's own counter example repor
 this option existed. `fields=true` instruments the instruction stream instead, inserting a
 stack-neutral, branch-free observation call before each field instruction, and for a volatile field
 a second one that hands the value to the happens-before model: just before a store, and just after
-a load ([#742](https://github.com/PIsberg/async-test-lib/issues/742)). A `long` or `double` takes
+a load ([#742](https://github.com/PIsberg/async-test-lib/issues/742)). A plain reference load in a
+`synchronized` method, or after a `synchronized` block has begun in its method, gets that second
+call too: an object stored into a field under a lock and loaded from the same field of the same
+object under the same lock is a hand-off, ordered like a queue element, because the reader has the
+object only because the store put it there
+([#1247](https://github.com/PIsberg/async-test-lib/issues/1247)). A method that takes no monitor
+pays nothing for it. A `long` or `double` takes
 the two-slot copy instructions rather than `DUP` and `SWAP`; `WideOperandWeavingTest` weaves a class
 with every field width, volatile and plain, static and instance, through the full
 `fields=true,collections=true` chain and checks that it verifies and computes what the unwoven class
