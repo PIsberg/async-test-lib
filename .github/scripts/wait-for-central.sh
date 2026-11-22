@@ -25,8 +25,9 @@ TIMEOUT=${CENTRAL_WAIT_SECONDS:-3600}
 INTERVAL=${CENTRAL_POLL_SECONDS:-60}
 BASE=https://repo1.maven.org/maven2/se/deversity/async-test-lib
 
-# The three reactor modules, and the Maven build plugin publish.yml deploys in a bundle of its own
-# right after them (#1099). Its jar sits under the same <module>/target pattern.
+# The three reactor modules and the Maven build plugin, which the release profile adds to the
+# reactor so all four go up in one Central deployment (#1099, #1463). Its jar sits under the same
+# <module>/target pattern.
 pending=(async-test-lib async-test-agent async-test-analysis async-test-maven-plugin)
 deadline=$((SECONDS + TIMEOUT))
 while :; do
