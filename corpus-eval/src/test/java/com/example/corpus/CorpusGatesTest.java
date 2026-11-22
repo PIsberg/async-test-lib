@@ -12,8 +12,10 @@ import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.diagnostics.DetectorFeed;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.TrustTier;
+import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -87,6 +89,47 @@ class CorpusGatesTest {
         } finally {
             busy.interrupt();
             busy.join(1_000);
+        }
+    }
+
+    @Test
+    @DisplayName("#1480: a RUNNABLE thread whose top frame is native is not named as running")
+    void aThreadBlockedInNativeCodeIsNotNamed() {
+        // Line number -2 is how a StackTraceElement says "native method".
+        StackTraceElement nativeRead = new StackTraceElement("sun.nio.ch.FileDispatcherImpl", "read0", null, -2);
+        StackTraceElement caller = new StackTraceElement("org.apache.maven.surefire.api.util.internal.Channels$3",
+                "readImpl", "Channels.java", 120);
+        assertTrue(CorpusGates.blockedInNativeCode(new StackTraceElement[] {nativeRead, caller}),
+                "Surefire's command reader blocked on stdin reports RUNNABLE and publishes nothing (#1480)");
+        assertFalse(CorpusGates.blockedInNativeCode(new StackTraceElement[] {caller}),
+                "a thread running Java code is still sampled");
+        assertFalse(CorpusGates.blockedInNativeCode(new StackTraceElement[0]));
+    }
+
+    @Test
+    @DisplayName("#1480: the quiet window names the thread that published, with its event count")
+    void theWindowNamesTheThreadThatPublished() throws InterruptedException {
+        boolean startedHere = !TelemetryRegistry.isRunning();
+        if (startedHere) {
+            TelemetryRegistry.start();
+        }
+        try {
+            CorpusGates.WindowPublishers publishers = CorpusGates.WindowPublishers.listen();
+            Thread publisher = new Thread(() -> {
+                long id = Thread.currentThread().threadId();
+                for (int i = 0; i < 3; i++) {
+                    TelemetryRegistry.recordAccess(id, "QuietWindowProbe.field", true);
+                }
+            }, "publisher-probe");
+            publisher.start();
+            publisher.join(5_000);
+            String seen = publishers.stop();
+            assertTrue(seen.contains("(id " + publisher.threadId() + ")=3"),
+                    "the three events the probe published must be credited to its thread id: " + seen);
+        } finally {
+            if (startedHere) {
+                TelemetryRegistry.stop();
+            }
         }
     }
 

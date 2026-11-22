@@ -249,9 +249,12 @@ class CorpusEvalTest {
 
     @AfterAll
     static void reportAndGate() throws InterruptedException {
+        // Who publishes during the window, so a trip names them instead of guessing (#1480).
+        CorpusGates.WindowPublishers publishers = CorpusGates.WindowPublishers.listen();
         long quietFrom = se.deversity.asynctest.telemetry.TelemetryRegistry.publishedEvents();
         Thread.sleep(QUIET_WINDOW_MS);
         long quietTo = se.deversity.asynctest.telemetry.TelemetryRegistry.publishedEvents();
+        String publishedBy = publishers.stop();
         CorpusRecorder.uninstall();
         CorpusLane lane = CorpusLane.current();
         Path report = CorpusReport.write(
@@ -262,9 +265,13 @@ class CorpusEvalTest {
         CorpusGates.check(CorpusRecorder.findings(), CorpusRecorder.crashes(), lane);
         // Printed on every run, green or red, so the CI log shows how much headroom the gate had.
         System.out.println("corpus.quiet_window events=" + (quietTo - quietFrom)
-                + " allowance=" + CorpusGates.QUIET_WINDOW_ALLOWANCE + " window_ms=" + QUIET_WINDOW_MS);
+                + " allowance=" + CorpusGates.QUIET_WINDOW_ALLOWANCE + " window_ms=" + QUIET_WINDOW_MS
+                + " published_by=" + publishedBy);
         String whoWasRunning = quietTo - quietFrom > CorpusGates.QUIET_WINDOW_ALLOWANCE
-                ? CorpusGates.threadsInsideNonPlatformCode(100, 2) : "";
+                ? "Threads that published during the window, with event counts: " + publishedBy
+                        + ". Runnable threads seen outside platform code right after it, with sample "
+                        + "counts: " + CorpusGates.threadsInsideNonPlatformCode(100, 2)
+                : "";
         CorpusGates.nothingPublishesAfterTheLastSubject(quietFrom, quietTo, QUIET_WINDOW_MS,
                 whoWasRunning);
     }
