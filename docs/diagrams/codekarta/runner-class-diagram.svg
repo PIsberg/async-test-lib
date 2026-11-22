@@ -88,7 +88,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="232.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">newBenchmarkRecorder(Refle…</text>
   <text x="232.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">announceBlindSpots(AsyncTe…</text>
   <text x="232.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">validateMemoryModelIfReque…</text>
-  <text x="232.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+49 more)</text>
+  <text x="232.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+48 more)</text>
 </g>
 <g id="LicenseGuard">
   <title>LicenseGuard [CLASS]</title>
