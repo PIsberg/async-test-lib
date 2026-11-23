@@ -65,24 +65,29 @@ public class LockOrderValidator {
     /** Edge records the cycle search may visit in one analysis before it stops looking. */
     private static final int CYCLE_SEARCH_BUDGET = 200_000;
 
-    private static final Guard NO_GUARD = new Guard(new IdentityKey[0]);
+    private static final Guard NO_GUARD = new Guard(new IdentityKey[0], new boolean[0]);
 
     /**
      * The locks a thread held, besides the two of an edge, while it made that edge: the Goodlock
      * guard set. Two edges made under guards that exclude each other cannot be in progress at once,
-     * because one thread must leave its guard before the other can enter.
+     * because one thread must leave its guard before the other can enter. A lock both guards hold
+     * shared, a read lock, excludes nothing: two readers hold it at once (#1496).
      */
     private static final class Guard {
         final IdentityKey[] locks;
+        /** Per lock, whether it was held shared. */
+        final boolean[] shared;
 
-        Guard(IdentityKey[] locks) {
+        Guard(IdentityKey[] locks, boolean[] shared) {
             this.locks = locks;
+            this.shared = shared;
         }
 
         /** {@return whether a thread holding this guard keeps out one holding {@code other}} */
         boolean excludes(Guard other) {
-            for (IdentityKey key : locks) {
-                if (containsReferent(other.locks, key.referent())) {
+            for (int i = 0; i < locks.length; i++) {
+                int there = indexOfReferent(other.locks, locks[i].referent());
+                if (there >= 0 && !(shared[i] && other.shared[there])) {
                     return true;
                 }
             }
@@ -144,6 +149,8 @@ public class LockOrderValidator {
         private int[] holdCounts = new int[8];
         /** Whether the hold must be re-confirmed with {@link Thread#holdsLock} before use. */
         private boolean[] confirm = new boolean[8];
+        /** Whether the hold is shared, a read lock, which other threads' shared holds overlap (#1496). */
+        private boolean[] shared = new boolean[8];
         private int size;
         private int confirmed;
         /**
@@ -205,13 +212,15 @@ public class LockOrderValidator {
             return Thread.holdsLock(lock);
         }
 
-        void acquire(Object lock, boolean blocking, boolean confirmHold) {
+        void acquire(Object lock, boolean blocking, boolean confirmHold, boolean sharedHold) {
             dropStaleHolds();
             int index = indexOf(lock);
             if (index >= 0) {
-                // Re-entering a held lock cannot block, so nothing is nested by it.
+                // Re-entering a held lock cannot block, so nothing is nested by it. A writer that
+                // also reads keeps its hold exclusive.
                 holdCounts[index]++;
                 markConfirm(index, confirmHold);
+                shared[index] &= sharedHold;
                 return;
             }
             IdentityKey key = null;
@@ -223,7 +232,7 @@ public class LockOrderValidator {
                     key = recordEdge(held, lock, key);
                 }
             }
-            push(lock, key, confirmHold);
+            push(lock, key, confirmHold, sharedHold);
         }
 
         private IdentityKey recordEdge(int held, Object lock, @Nullable IdentityKey known) {
@@ -266,7 +275,11 @@ public class LockOrderValidator {
                 return false;
             }
             for (int i = 0; i < size; i++) {
-                if (i != skip && !containsReferent(guard.locks, heldLocks[i])) {
+                if (i == skip) {
+                    continue;
+                }
+                int there = indexOfReferent(guard.locks, heldLocks[i]);
+                if (there < 0 || guard.shared[there] != shared[i]) {
                     return false;
                 }
             }
@@ -278,28 +291,32 @@ public class LockOrderValidator {
                 return NO_GUARD;
             }
             IdentityKey[] locks = new IdentityKey[size - 1];
+            boolean[] modes = new boolean[size - 1];
             int at = 0;
             for (int i = 0; i < size; i++) {
                 if (i != skip) {
                     locks[at] = keyAt(i);
+                    modes[at] = shared[i];
                     at++;
                 }
             }
-            return new Guard(locks);
+            return new Guard(locks, modes);
         }
 
-        private void push(Object lock, @Nullable IdentityKey key, boolean confirmHold) {
+        private void push(Object lock, @Nullable IdentityKey key, boolean confirmHold, boolean sharedHold) {
             if (size == heldLocks.length) {
                 int grown = size * 2;
                 heldLocks = java.util.Arrays.copyOf(heldLocks, grown);
                 heldKeys = java.util.Arrays.copyOf(heldKeys, grown);
                 holdCounts = java.util.Arrays.copyOf(holdCounts, grown);
                 confirm = java.util.Arrays.copyOf(confirm, grown);
+                shared = java.util.Arrays.copyOf(shared, grown);
             }
             heldLocks[size] = lock;
             heldKeys[size] = key;
             holdCounts[size] = 1;
             confirm[size] = false;
+            shared[size] = sharedHold;
             size++;
             markConfirm(size - 1, confirmHold);
         }
@@ -348,21 +365,23 @@ public class LockOrderValidator {
             System.arraycopy(heldKeys, index + 1, heldKeys, index, tail);
             System.arraycopy(holdCounts, index + 1, holdCounts, index, tail);
             System.arraycopy(confirm, index + 1, confirm, index, tail);
+            System.arraycopy(shared, index + 1, shared, index, tail);
             size--;
             heldLocks[size] = null;
             heldKeys[size] = null;
             confirm[size] = false;
+            shared[size] = false;
         }
     }
 
     @SuppressWarnings({"ReferenceEquality", "PMD.CompareObjectsWithEquals"}) // locks are tracked by identity
-    private static boolean containsReferent(IdentityKey[] keys, Object lock) {
-        for (IdentityKey key : keys) {
-            if (key.referent() == lock) {
-                return true;
+    private static int indexOfReferent(IdentityKey[] keys, Object lock) {
+        for (int i = 0; i < keys.length; i++) {
+            if (keys[i].referent() == lock) {
+                return i;
             }
         }
-        return false;
+        return -1;
     }
 
     /**
@@ -419,10 +438,28 @@ public class LockOrderValidator {
      * @since 1.14.3
      */
     public void recordLockAcquisition(Object lock, boolean blocking) {
+        recordLockAcquisition(lock, blocking, false);
+    }
+
+    /**
+     * Record a lock acquisition, saying whether the hold is shared.
+     *
+     * <p>A shared hold, a {@code ReentrantReadWriteLock}'s read lock, does not keep out another
+     * thread's shared hold of the same lock, so two edges each made while reading it can still be
+     * in progress at once and deadlock. It does keep out a writer. Before #1496 every hold counted
+     * as exclusive, so two readers' inverted nesting under one read lock was never reported.
+     *
+     * @param lock     the lock being recorded, tracked by identity rather than equality; for a
+     *                 read-write lock's view, its owner, so the read and write sides are one lock
+     * @param blocking whether the acquisition could have waited for another thread
+     * @param shared   whether the hold admits other threads' shared holds at the same time
+     * @since 1.14.5
+     */
+    public void recordLockAcquisition(Object lock, boolean blocking, boolean shared) {
         if (!enabled || lock == null) return;
         LockSequence sequence = sequence();
         synchronized (sequence) {
-            sequence.acquire(lock, blocking, false);
+            sequence.acquire(lock, blocking, false, shared);
         }
     }
 
@@ -438,7 +475,7 @@ public class LockOrderValidator {
         if (!enabled || monitor == null) return;
         LockSequence sequence = sequence();
         synchronized (sequence) {
-            sequence.acquire(monitor, true, true);
+            sequence.acquire(monitor, true, true, false);
         }
     }
 
@@ -532,7 +569,7 @@ public class LockOrderValidator {
         if (!enabled || monitor == null || holds <= 0) return;
         LockSequence sequence = sequence();
         synchronized (sequence) {
-            sequence.acquire(monitor, true, true);
+            sequence.acquire(monitor, true, true, false);
             sequence.setHolds(monitor, holds);
         }
     }

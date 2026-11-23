@@ -628,4 +628,42 @@ class LockOrderValidatorTest {
         assertEquals(1, report.inconsistentOrderings.size(),
                 "outer was held when inner was taken after the wait, so the two orders invert: " + report);
     }
+
+    // ---- #1496: a read lock is shared, so it does not order two readers -------------------------
+
+    @Test
+    void twoReadersOfOneLockDoNotKeepEachOthersInversionApart() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        ReentrantReadWriteLock readWrite = new ReentrantReadWriteLock();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> underReadWrite(validator, readWrite, true, a, b));
+        onNewThread(() -> underReadWrite(validator, readWrite, true, b, a));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertEquals(1, report.inconsistentOrderings.size(),
+                "both threads can hold the read lock at once and deadlock on a and b: " + report);
+    }
+
+    @Test
+    void aReaderAndAWriterOfOneLockDoKeepEachOtherOut() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        ReentrantReadWriteLock readWrite = new ReentrantReadWriteLock();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> underReadWrite(validator, readWrite, true, a, b));
+        onNewThread(() -> underReadWrite(validator, readWrite, false, b, a));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertFalse(report.hasIssues(), "a writer excludes every reader, so the two orders never overlap: "
+                + report);
+    }
+
+    /** Nests {@code locks} under {@code readWrite}, held for reading or for writing. */
+    private static void underReadWrite(LockOrderValidator validator, ReentrantReadWriteLock readWrite,
+                                       boolean reading, Object... locks) {
+        validator.recordLockAcquisition(readWrite, true, reading); // the owner, as the agent passes it
+        nest(validator, locks);
+        validator.recordLockRelease(readWrite);
+    }
 }
