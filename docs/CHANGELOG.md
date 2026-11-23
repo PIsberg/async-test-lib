@@ -125,6 +125,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   again (#1494).** The weaver drops the value its hook returns where the call site declared no
   result, and dropped a two-slot `long` with a one-slot `POP`, so such a class failed verification
   with `VerifyError: Bad type on operand stack` as it loaded. It now uses `POP2` for a `long`.
+- **A controlled round no longer hangs on a task or thread that escaped, and a timed `Future.get` keeps
+  its timeout (#1495, part 2).** A worker waiting for an adopted task or child was held until that
+  slot was done, and one that escaped (a task its executor never started, a child blocked before its
+  first point) is never done inside the schedule, so the round hung until it timed out. The worker
+  now follows it out. And a timed `get` waited for the task like an untimed one, so on every seed
+  a get that should have timed out returned the value; it is now a plain scheduling point.
 
 - **A round's `@AfterEachInvocation` hooks run when its `@BeforeEachInvocation` hook throws
   (#1477).** The before-hooks ran ahead of the round's failure handling, so their exception skipped
