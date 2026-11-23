@@ -32,6 +32,8 @@ class ControlledScheduleInterruptTest {
 
     private static final long WAIT_SECONDS = 3;
     private static final int POINTS = ControlledSchedule.SPIN_LIMIT + 200;
+    /** How long to look for worker 1's wake between polls, which come every millisecond. */
+    private static final long POLL_SYNC_NANOS = TimeUnit.MILLISECONDS.toNanos(50);
 
     /** What one run saw: where worker 1 first got the round, how long it took, whether it was aimed. */
     private record Run(int handedOverAt, long tookMs, boolean aimed, int fallbacks, String summary, String why) {
@@ -44,7 +46,11 @@ class ControlledScheduleInterruptTest {
     }
 
     private static void awaitState(Thread thread, java.util.function.BooleanSupplier condition) {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(WAIT_SECONDS);
+        awaitState(thread, condition, TimeUnit.SECONDS.toNanos(WAIT_SECONDS));
+    }
+
+    private static void awaitState(Thread thread, java.util.function.BooleanSupplier condition, long nanos) {
+        long deadline = System.nanoTime() + nanos;
         while (!condition.getAsBoolean() && System.nanoTime() < deadline) {
             Thread.onSpinWait();
         }
@@ -107,6 +113,7 @@ class ControlledScheduleInterruptTest {
         }, "second-worker");
         long started = System.nanoTime();
         boolean aimed = false;
+        // (reset once the aimed interrupt is in place, so only the schedule's own time is judged)
         String why = "";
         try {
             second.start();
@@ -115,8 +122,10 @@ class ControlledScheduleInterruptTest {
                 awaitState(first, atAim::get);
                 // Worker 1 wakes every millisecond to watch, and a wake that finds the lock held
                 // queues it too early. Start right after it parks again, with a whole poll to spare.
-                awaitState(second, () -> second.getState() != Thread.State.TIMED_WAITING);
-                awaitState(second, () -> second.getState() == Thread.State.TIMED_WAITING);
+                // A wake is brief and a slow runner can miss it: then this attempt is spoilt, not
+                // the run, and the poll check below sends it round again.
+                awaitState(second, () -> second.getState() != Thread.State.TIMED_WAITING, POLL_SYNC_NANOS);
+                awaitState(second, () -> second.getState() == Thread.State.TIMED_WAITING, POLL_SYNC_NANOS);
                 lock.lock();
                 try {
                     go.set(true);
@@ -133,6 +142,8 @@ class ControlledScheduleInterruptTest {
                     }
                 } finally {
                     lock.unlock();
+                    // The schedule is on its own from here; the aiming above is the test's time.
+                    started = System.nanoTime();
                 }
             }
             done.await(WAIT_SECONDS * 3, TimeUnit.SECONDS);
