@@ -72,7 +72,7 @@ import java.util.concurrent.atomic.LongAdder;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedMemorySegmentRaceDetectorTest.java"
 )
-public final class SharedMemorySegmentRaceDetector extends AbstractInstanceDetector<SharedMemorySegmentRaceDetector.SegmentState> {
+public final class SharedMemorySegmentRaceDetector extends AbstractInstanceDetector<SharedMemorySegmentRaceDetector.SegmentState> implements RoundScoped {
 
     /**
      * Per-segment cap on retained access records. Beyond this the detector counts drops instead
@@ -114,6 +114,7 @@ public final class SharedMemorySegmentRaceDetector extends AbstractInstanceDetec
      *
      * @since 1.11.2
      */
+    @Override
     public void markInvocationStart() {
         invocationEpoch.incrementAndGet();
     }

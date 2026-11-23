@@ -39,7 +39,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * mon.recordIterationStarted(list, Thread.currentThread(), false);
  * }</pre>
  */
-public class SynchronizedCollectionIterationDetector extends AbstractInstanceDetector<SynchronizedCollectionIterationDetector.WrapperInfo> {
+public class SynchronizedCollectionIterationDetector extends AbstractInstanceDetector<SynchronizedCollectionIterationDetector.WrapperInfo> implements RoundScoped {
 
     static final class WrapperInfo {
         final String name;
@@ -251,6 +251,7 @@ public class SynchronizedCollectionIterationDetector extends AbstractInstanceDet
      *
      * @since 1.14.1
      */
+    @Override
     public void markInvocationStart() {
         for (WrapperInfo state : states()) {
             state.absentChecks.clear();

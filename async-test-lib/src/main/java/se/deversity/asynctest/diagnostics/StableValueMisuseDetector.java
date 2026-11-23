@@ -77,7 +77,7 @@ import org.jspecify.annotations.Nullable;
  *
  * @since 1.7.0
  */
-public class StableValueMisuseDetector {
+public class StableValueMisuseDetector implements RoundScoped {
 
     /** Above this many distinct threads racing one holder, we warn about wasted supplier work. */
     private static final int SET_CONTENTION_THRESHOLD = 3;
@@ -143,6 +143,7 @@ public class StableValueMisuseDetector {
      *
      * @since 1.11.2
      */
+    @Override
     public void markInvocationStart() {
         activeSuppliers.clear();
         // The holder state is per object, and a name is all the detector has. A test that

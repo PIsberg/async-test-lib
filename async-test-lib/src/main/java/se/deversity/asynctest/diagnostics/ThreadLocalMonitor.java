@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Monitors ThreadLocal lifecycle usage to detect leaks and poor cleanup.
  */
-public class ThreadLocalMonitor {
+public class ThreadLocalMonitor implements RoundScoped {
 
     /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
     private final UnnamedLabels unnamedLabels = new UnnamedLabels();
@@ -235,6 +235,7 @@ public class ThreadLocalMonitor {
      *
      * @since 1.10.0
      */
+    @Override
     public void markInvocationStart() {
         for (ThreadLocalState state : states()) {
             state.foldRound();

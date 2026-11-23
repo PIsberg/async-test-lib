@@ -73,7 +73,7 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/FinalFieldMutationDetectorTest.java"
 )
-public class FinalFieldMutationDetector {
+public class FinalFieldMutationDetector implements RoundScoped {
 
     private static final class State {
         final AtomicInteger mutations = new AtomicInteger(0);
@@ -98,6 +98,7 @@ public class FinalFieldMutationDetector {
      *
      * @since 1.12.3
      */
+    @Override
     public void markInvocationStart() {
         invocationEpoch.incrementAndGet();
     }

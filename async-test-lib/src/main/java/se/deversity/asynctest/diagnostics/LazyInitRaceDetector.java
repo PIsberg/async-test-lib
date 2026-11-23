@@ -66,7 +66,7 @@ import org.apiguardian.api.API.Status;
  * }
  * }</pre>
  */
-public class LazyInitRaceDetector {
+public class LazyInitRaceDetector implements RoundScoped {
 
     private static final class FieldState {
         final String fieldId;
@@ -205,6 +205,7 @@ public class LazyInitRaceDetector {
      * @since 1.12.3
      */
     @API(status = Status.EXPERIMENTAL)
+    @Override
     public void markInvocationStart() {
         for (FieldState state : fields.values()) {
             state.closeRound();

@@ -37,7 +37,7 @@ import org.jspecify.annotations.Nullable;
  * mon.recordSet(counter, "counter", Thread.currentThread());
  * }</pre>
  */
-public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<AtomicNonAtomicUpdateDetector.AtomicState> {
+public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<AtomicNonAtomicUpdateDetector.AtomicState> implements RoundScoped {
 
     /** How many per-thread lines one atomic's woven findings keep; the count stays exact. */
     private static final int MAX_WOVEN_DETAILS = 8;
@@ -291,6 +291,7 @@ public class AtomicNonAtomicUpdateDetector extends AbstractInstanceDetector<Atom
      *
      * @since 1.11.2
      */
+    @Override
     public void markInvocationStart() {
         for (AtomicState s : states()) {
             s.pendingGetByThread.clear();

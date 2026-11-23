@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Detects spin loops that perform excessive work before yielding or blocking.
  */
-public class BusyWaitDetector {
+public class BusyWaitDetector implements RoundScoped {
 
     private static final long SPIN_THRESHOLD_ITERATIONS = 10_000;
 
@@ -70,6 +70,7 @@ public class BusyWaitDetector {
      *
      * @since 1.11.2
      */
+    @Override
     public void markInvocationStart() {
         for (ThreadActivity activity : threadActivities.values()) {
             synchronized (activity) {

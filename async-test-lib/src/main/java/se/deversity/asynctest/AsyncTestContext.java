@@ -5,6 +5,7 @@ import org.apiguardian.api.API.Status;
 
 import org.jspecify.annotations.Nullable;
 import se.deversity.asynctest.diagnostics.ABAProblemDetector;
+import se.deversity.asynctest.diagnostics.RoundScoped;
 import se.deversity.asynctest.diagnostics.AtomicNonAtomicUpdateDetector;
 import se.deversity.asynctest.diagnostics.AtomicityValidator;
 import se.deversity.asynctest.diagnostics.BlockingQueueDetector;
@@ -1220,128 +1221,13 @@ public final class AsyncTestContext {
         // Every lock-aware detector (the Shared* family and the others built on SelfGuard) judges
         // sharing within one round; this is the round boundary they read.
         sharingScope.markInvocationStart();
-        if (sharedCollectionDetector != null) {
-            sharedCollectionDetector.markInvocationStart();
-        }
-        if (registry.threadLocalMonitor != null) {
-            registry.threadLocalMonitor.markInvocationStart();
-        }
-        if (registry.synchronizedCollectionIterationDetector != null) {
-            registry.synchronizedCollectionIterationDetector.markInvocationStart();
-        }
-        if (registry.atomicNonAtomicUpdateDetector != null) {
-            registry.atomicNonAtomicUpdateDetector.markInvocationStart();
-        }
-        if (registry.busyWaitDetector != null) {
-            registry.busyWaitDetector.markInvocationStart();
-        }
-        if (registry.sharedMemorySegmentRaceDetector != null) {
-            registry.sharedMemorySegmentRaceDetector.markInvocationStart();
-        }
-        if (completableFutureCancellationPropagationDetector != null) {
-            completableFutureCancellationPropagationDetector.markInvocationStart();
-        }
-        if (registry.lockDowngradeDetector != null) {
-            registry.lockDowngradeDetector.markInvocationStart();
-        }
-        // Optimistic reads and failed validations a pooled worker left open; the next round's
-        // lock acquisition on the same thread must not read as their fallback (#588).
-        if (stampedLockDetector != null) {
-            stampedLockDetector.markInvocationStart();
-        }
-        // An await a pooled worker recorded and never exited belongs to its round; its await in
-        // the next round is a new wait, not the same one (#593).
-        if (conditionVariableDetector != null) {
-            conditionVariableDetector.markInvocationStart();
-        }
-        // In-flight computations a thrown supplier or mapping function abandoned. Worker threads
-        // are pooled, so without this the stale entry follows the thread into the next round and
-        // reads as reentrancy or as recursion there (#498).
-        if (lazyConstantMisuseDetector != null) {
-            lazyConstantMisuseDetector.markInvocationStart();
-        }
-        // An integration a pooled worker opened and never exited belongs to its round; another
-        // thread entering the same gatherer state next round is not an overlap with it (#846).
-        if (gathererConcurrencyMisuseDetector != null) {
-            gathererConcurrencyMisuseDetector.markInvocationStart();
-        }
-        if (lazyCollectionMisuseDetector != null) {
-            lazyCollectionMisuseDetector.markInvocationStart();
-        }
-        if (stableValueMisuseDetector != null) {
-            stableValueMisuseDetector.markInvocationStart();
-        }
-        if (concurrentMapComputeRecursionDetector != null) {
-            concurrentMapComputeRecursionDetector.markInvocationStart();
-        }
-        // A predicate check confirms only a wait from its own round; a pooled worker's check in
-        // the next round is that round's own test before its wait, not a re-test (#635).
-        if (missedSignalDetector != null) {
-            missedSignalDetector.markInvocationStart();
-        }
-        // A woven back-edge confirms only a wakeup from its own round (#1255).
-        if (spuriousWakeupHazardDetector != null) {
-            spuriousWakeupHazardDetector.markInvocationStart();
-        }
-        // An unsignalled wait return is excused only by a second wait from the same thread; a
-        // pooled worker's wait in the next round is a fresh body execution, not that re-check (#590).
-        if (wakeupDetector != null) {
-            wakeupDetector.markInvocationStart();
-        }
-        // Two threads count as sharing a subject only inside one round: with virtual threads each
-        // body execution has a fresh thread id, so ids gathered across rounds that never overlap
-        // would read as sharing, and the same body on one pooled platform thread would not.
-        if (sharedSecureRandomDetector != null) {
-            sharedSecureRandomDetector.markInvocationStart();
-        }
-        if (highContentionAtomicDetector != null) {
-            highContentionAtomicDetector.markInvocationStart();
-        }
-        if (recordMutableComponentLeakDetector != null) {
-            recordMutableComponentLeakDetector.markInvocationStart();
-        }
-        if (finalFieldMutationDetector != null) {
-            finalFieldMutationDetector.markInvocationStart();
-        }
-        if (lambdaLostUpdateDetector != null) {
-            lambdaLostUpdateDetector.markInvocationStart();
-        }
-        if (lazyInitRaceDetector != null) {
-            lazyInitRaceDetector.markInvocationStart();
-        }
-        // A change recorded after a compare-and-set can still be an A-B-A that it missed, until
-        // the round ends; a later round's changes came after it (#779).
-        if (abaProblemDetector != null) {
-            abaProblemDetector.markInvocationStart();
-        }
-        // A pooled worker's seek slot would otherwise hold its channel until that worker seeks
-        // again, if it ever does (#831).
-        if (fileChannelPositionRaceDetector != null) {
-            fileChannelPositionRaceDetector.markInvocationStart();
-        }
-        // A task body that threw before its exit would otherwise keep a pooled worker inside a
-        // ForkJoinTask for the rest of the run (#940).
-        if (forkJoinTaskBlockingDetector != null) {
-            forkJoinTaskBlockingDetector.markInvocationStart();
-        }
-        // Likewise a CompletableFuture callback that threw before its exit, on a reused pool
-        // thread (#941).
-        if (cfBlockingCallbackDetector != null) {
-            cfBlockingCallbackDetector.markInvocationStart();
-        }
-        // A monitor a throwing body never released, a pending VarHandle read, and a blocking
-        // section that never ended each belong to the round that recorded them (#964).
-        if (nestedMonitorLockoutDetector != null) {
-            nestedMonitorLockoutDetector.markInvocationStart();
-        }
-        if (scopedValueMisuseDetector != null) {
-            scopedValueMisuseDetector.markInvocationStart();
-        }
-        if (varHandleNonAtomicUpdateDetector != null) {
-            varHandleNonAtomicUpdateDetector.markInvocationStart();
-        }
-        if (virtualThreadCarrierExhaustionDetector != null) {
-            virtualThreadCarrierExhaustionDetector.markInvocationStart();
+        // Every detector of this run whose evidence belongs to one round closes it here. Each
+        // says why on its own markInvocationStart; implementing RoundScoped is the registration,
+        // so there is no list here for a new detector to be left off (#698).
+        for (Object detector : registry.instances().values()) {
+            if (detector instanceof RoundScoped roundScoped) {
+                roundScoped.markInvocationStart();
+            }
         }
     }
 

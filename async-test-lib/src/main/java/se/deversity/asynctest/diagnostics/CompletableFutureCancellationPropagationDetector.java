@@ -94,7 +94,7 @@ import java.util.concurrent.atomic.AtomicLong;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureCancellationPropagationDetectorTest.java"
 )
-public final class CompletableFutureCancellationPropagationDetector {
+public final class CompletableFutureCancellationPropagationDetector implements RoundScoped {
 
     /** The two kinds of stage event; only a completion after a cancel is a finding. */
     private static final String STARTED   = "started";
@@ -243,6 +243,7 @@ public final class CompletableFutureCancellationPropagationDetector {
      *
      * @since 1.11.2
      */
+    @Override
     public void markInvocationStart() {
         invocationEpoch.incrementAndGet();
     }

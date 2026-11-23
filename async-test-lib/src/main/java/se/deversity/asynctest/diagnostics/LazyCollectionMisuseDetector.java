@@ -104,7 +104,7 @@ import java.util.concurrent.atomic.AtomicInteger;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/LazyCollectionMisuseDetectorTest.java"
 )
-public final class LazyCollectionMisuseDetector {
+public final class LazyCollectionMisuseDetector implements RoundScoped {
 
     /**
      * Distinct threads waiting on one element at which the wait counts as a convoy.
@@ -223,6 +223,7 @@ public final class LazyCollectionMisuseDetector {
      *
      * @since 1.11.2
      */
+    @Override
     public void markInvocationStart() {
         inFlight.clear();
         // Element state is per collection object, and a name and key are all the detector has.

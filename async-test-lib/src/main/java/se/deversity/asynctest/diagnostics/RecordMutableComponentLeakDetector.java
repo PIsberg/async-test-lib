@@ -69,7 +69,7 @@ import java.util.concurrent.atomic.LongAdder;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/RecordMutableComponentLeakDetectorTest.java"
 )
-public final class RecordMutableComponentLeakDetector extends AbstractInstanceDetector<RecordMutableComponentLeakDetector.State> {
+public final class RecordMutableComponentLeakDetector extends AbstractInstanceDetector<RecordMutableComponentLeakDetector.State> implements RoundScoped {
 
     /** Cap on tracked record instances, so a test allocating in a loop cannot exhaust the heap. */
     static final int MAX_INSTANCES = 512;
@@ -129,6 +129,7 @@ public final class RecordMutableComponentLeakDetector extends AbstractInstanceDe
      *
      * @since 1.12.3
      */
+    @Override
     public void markInvocationStart() {
         invocationEpoch.incrementAndGet();
     }

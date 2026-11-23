@@ -67,7 +67,7 @@ import org.jspecify.annotations.Nullable;
  * acquisition recorded but released through a path that was not recorded, followed on the same lock
  * by a recorded release of a hold that was never recorded, reads as a repeated release.
  */
-public class StampedLockDetector {
+public class StampedLockDetector implements RoundScoped {
 
     private final Map<StampedLock, LockInfo> lockRegistry = new ConcurrentHashMap<>();
     /**
@@ -254,6 +254,7 @@ public class StampedLockDetector {
      *
      * @since 1.12.1
      */
+    @Override
     public void markInvocationStart() {
         inFlight.entrySet().removeIf(entry -> {
             entry.getValue().seal();

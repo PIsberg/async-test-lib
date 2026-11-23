@@ -83,7 +83,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * @since 1.7.0
  */
-public class GathererConcurrencyMisuseDetector {
+public class GathererConcurrencyMisuseDetector implements RoundScoped {
 
     /**
      * Past this many tracked state objects the ownership map is cleared. A state object only has
@@ -330,6 +330,7 @@ public class GathererConcurrencyMisuseDetector {
      *
      * @since 1.12.4
      */
+    @Override
     public void markInvocationStart() {
         for (GathererInfo info : gatherers.values()) {
             info.inIntegration.clear();

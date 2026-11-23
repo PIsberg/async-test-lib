@@ -38,7 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SpuriousWakeupDetectorTest.java"
 )
-public final class SpuriousWakeupDetector extends AbstractInstanceDetector<SpuriousWakeupDetector.State> {
+public final class SpuriousWakeupDetector extends AbstractInstanceDetector<SpuriousWakeupDetector.State> implements RoundScoped {
 
     static final class State {
         final String monitorName;
@@ -85,6 +85,7 @@ public final class SpuriousWakeupDetector extends AbstractInstanceDetector<Spuri
      *
      * @since 1.14.3
      */
+    @Override
     public void markInvocationStart() {
         long epoch = invocationEpoch.incrementAndGet();
         if (woken.isEmpty()) {

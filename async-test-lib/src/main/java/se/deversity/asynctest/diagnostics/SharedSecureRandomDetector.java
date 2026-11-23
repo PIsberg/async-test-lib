@@ -56,7 +56,7 @@ import java.util.concurrent.atomic.AtomicLong;
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/SharedSecureRandomDetectorTest.java"
 )
 @AISecure(aspect = "cryptography (RNG quality)")
-public final class SharedSecureRandomDetector extends AbstractInstanceDetector<SharedSecureRandomDetector.State> {
+public final class SharedSecureRandomDetector extends AbstractInstanceDetector<SharedSecureRandomDetector.State> implements RoundScoped {
 
     static final class State {
         final String label;
@@ -95,6 +95,7 @@ public final class SharedSecureRandomDetector extends AbstractInstanceDetector<S
      *
      * @since 1.12.3
      */
+    @Override
     public void markInvocationStart() {
         invocationEpoch.incrementAndGet();
     }

@@ -66,7 +66,7 @@ import java.util.concurrent.atomic.LongAdder;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/HighContentionAtomicDetectorTest.java"
 )
-public final class HighContentionAtomicDetector extends AbstractInstanceDetector<HighContentionAtomicDetector.State> {
+public final class HighContentionAtomicDetector extends AbstractInstanceDetector<HighContentionAtomicDetector.State> implements RoundScoped {
 
     /** Default total-attempt count above which an instance becomes eligible for a finding. */
     public static final long DEFAULT_ATTEMPT_THRESHOLD = 1000L;
@@ -159,6 +159,7 @@ public final class HighContentionAtomicDetector extends AbstractInstanceDetector
      *
      * @since 1.12.3
      */
+    @Override
     public void markInvocationStart() {
         invocationEpoch.incrementAndGet();
     }

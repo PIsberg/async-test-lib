@@ -49,7 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * @since 0.7.0
  */
-public class VirtualThreadCarrierExhaustionDetector {
+public class VirtualThreadCarrierExhaustionDetector implements RoundScoped {
 
     private final int carrierCount;
 
@@ -163,6 +163,7 @@ public class VirtualThreadCarrierExhaustionDetector {
      *
      * @since 1.13.1
      */
+    @Override
     public void markInvocationStart() {
         activeBlocksByThread.clear();
         concurrentlyBlocked.set(0);

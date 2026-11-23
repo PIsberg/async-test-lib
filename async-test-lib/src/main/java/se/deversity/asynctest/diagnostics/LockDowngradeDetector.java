@@ -86,7 +86,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * }
  * }</pre>
  */
-public class LockDowngradeDetector extends AbstractInstanceDetector<LockDowngradeDetector.LockState> {
+public class LockDowngradeDetector extends AbstractInstanceDetector<LockDowngradeDetector.LockState> implements RoundScoped {
 
     /**
      * Per-thread hold counters. A single "R or W" marker cannot represent the
@@ -339,6 +339,7 @@ public class LockDowngradeDetector extends AbstractInstanceDetector<LockDowngrad
      *
      * @since 1.11.2
      */
+    @Override
     public void markInvocationStart() {
         invocationEpoch.incrementAndGet();
     }

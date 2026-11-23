@@ -53,7 +53,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * @since 0.7.0
  */
-public class ScopedValueMisuseDetector {
+public class ScopedValueMisuseDetector implements RoundScoped {
 
     private static final int HIGH_BINDING_COUNT_THRESHOLD = 8;
 
@@ -76,6 +76,7 @@ public class ScopedValueMisuseDetector {
      *
      * @since 1.14.4
      */
+    @Override
     public void markInvocationStart() {
         activeBindings.clear();
     }
