@@ -154,16 +154,32 @@ public class LockOrderValidator {
             return key;
         }
 
-        /** Drops the method-monitor holds this thread no longer has: an exception left the method. */
+        /**
+         * Drops the confirmed holds this thread no longer has: an exception left a synchronized
+         * method, whose exit is not seen. A hold taken back after a wait is confirmed too, and may be
+         * a {@code ReentrantLock} or {@code ReentrantReadWriteLock} reacquired by
+         * {@code Condition.await()}, which {@link Thread#holdsLock} cannot see (#1496).
+         */
         void dropStaleHolds() {
             if (confirmed == 0) {
                 return;
             }
             for (int i = size - 1; i >= 0; i--) {
-                if (confirm[i] && !Thread.holdsLock(heldLocks[i])) {
+                if (confirm[i] && !heldByCurrentThread(heldLocks[i])) {
                     removeAt(i);
                 }
             }
+        }
+
+        /** {@return whether the calling thread holds {@code lock}, asked the way its type answers} */
+        private static boolean heldByCurrentThread(Object lock) {
+            if (lock instanceof ReentrantLock reentrant) {
+                return reentrant.isHeldByCurrentThread();
+            }
+            if (lock instanceof ReentrantReadWriteLock readWrite) {
+                return readWrite.isWriteLockedByCurrentThread() || readWrite.getReadHoldCount() > 0;
+            }
+            return Thread.holdsLock(lock);
         }
 
         void acquire(Object lock, boolean blocking, boolean confirmHold) {
