@@ -83,6 +83,9 @@ public class LockLeakDetector {
     }
 
     private final Map<IdentityKey, LockState> locks = new ConcurrentHashMap<>();
+
+    /** A hold longer than this is reported as a deadlock precursor; a threshold, so graded a prompt. */
+    private static final long EXCESSIVE_HOLD_MS = 5000;
     private volatile boolean enabled = true;
 
     /**
@@ -213,106 +216,114 @@ public class LockLeakDetector {
     public LockLeakReport analyze() {
         LockLeakReport report = new LockLeakReport();
         report.enabled = enabled;
-        Set<Thread> platformThreads = null;
-
+        PlatformThreads platformThreads = new PlatformThreads();
         for (Map.Entry<IdentityKey, LockState> entry : locks.entrySet()) {
-            LockState state = entry.getValue();
-            int acquires = state.acquireCount.get();
-            int releases = state.releaseCount.get();
-            boolean leaked = acquires > releases;
-            // The lock is asked only about a leak the counts already show, so a confirmation can
-            // raise a finding's grade and never make one.
-            String confirmed = null;
-            if ((leaked || state.currentlyHeld) && entry.getKey().referent() instanceof ReentrantLock lock) {
-                if (platformThreads == null) {
-                    platformThreads = Thread.getAllStackTraces().keySet();
-                }
-                confirmed = confirmedHold(lock, state.holder, platformThreads, state.threads);
-            }
+            analyzeLock(entry.getKey().referent(), entry.getValue(), platformThreads, report);
+        }
+        addStructuredViolations(report);
+        return DetectorFailurePolicy.checkedReport(this, report);
+    }
 
-            // Check for lock leaks (more acquires than releases)
-            if (leaked) {
-                String leak = String.format(
+    /**
+     * The live platform threads, listed at most once per analysis and only when a lock needs them:
+     * {@link Thread#getAllStackTraces()} walks every stack in the JVM.
+     */
+    private static final class PlatformThreads {
+        private @Nullable Set<Thread> threads;
+
+        Set<Thread> get() {
+            if (threads == null) {
+                threads = Thread.getAllStackTraces().keySet();
+            }
+            return threads;
+        }
+    }
+
+    /** Adds what one lock's record shows to {@code report}: each check below is independent. */
+    private static void analyzeLock(@Nullable Object lock, LockState state, PlatformThreads platformThreads,
+                                    LockLeakReport report) {
+        int acquires = state.acquireCount.get();
+        int releases = state.releaseCount.get();
+        boolean leaked = acquires > releases;
+        // The lock is asked only about a leak the counts already show, so a confirmation can
+        // raise a finding's grade and never make one.
+        String confirmed = (leaked || state.currentlyHeld) && lock instanceof ReentrantLock reentrant
+                ? confirmedHold(reentrant, state.holder, platformThreads.get(), state.threads)
+                : null;
+
+        if (leaked) {
+            report.lockLeaks.add(withConfirmation(report, String.format(
                     "%s: acquired %d times but released only %d times (%d potential leaks)",
-                    state.name, acquires, releases, acquires - releases);
-                report.lockLeaks.add(confirmed == null ? leak : leak + confirmed);
-                if (confirmed != null) {
-                    report.observed.add(leak + confirmed);
-                }
-            }
-
-            // Check for currently held locks at analysis time
-            if (state.currentlyHeld) {
-                long holdTimeMs = state.lastAcquireTime != null
-                    ? System.currentTimeMillis() - state.lastAcquireTime
-                    : 0;
-                String held = String.format(
-                    "%s: lock is currently held (last acquired %dms ago)",
-                    state.name, holdTimeMs);
-                report.heldLocks.add(confirmed == null ? held : held + confirmed);
-                if (confirmed != null) {
-                    report.observed.add(held + confirmed);
-                }
-            }
-
-            // A hold of a thread the run handed work to (#1339), when the lock confirms it.
-            if (!leaked && !state.currentlyHeld && entry.getKey().referent() instanceof ReentrantLock lock) {
-                for (Map.Entry<Thread, AtomicInteger> hold : state.helperHolds.entrySet()) {
-                    if (hold.getValue().get() <= 0) {
-                        continue;
-                    }
-                    if (platformThreads == null) {
-                        platformThreads = Thread.getAllStackTraces().keySet();
-                    }
-                    String byLock = confirmedHold(lock, hold.getKey(), platformThreads, state.threads);
-                    if (byLock != null) {
-                        String leak = String.format(
-                            "%s: acquired by a thread the test started and never released", state.name)
-                            + byLock;
-                        report.lockLeaks.add(leak);
-                        report.observed.add(leak);
-                        break;
-                    }
-                }
-            }
-
-            // Check for excessive hold times
-            if (state.maxHoldTimeMs.get() > 5000) { // More than 5 seconds
-                report.excessiveHoldTimes.add(String.format(
+                    state.name, acquires, releases, acquires - releases), confirmed));
+        }
+        if (state.currentlyHeld) {
+            Long lastAcquire = state.lastAcquireTime;
+            long holdTimeMs = lastAcquire != null ? System.currentTimeMillis() - lastAcquire : 0;
+            report.heldLocks.add(withConfirmation(report, String.format(
+                    "%s: lock is currently held (last acquired %dms ago)", state.name, holdTimeMs), confirmed));
+        }
+        if (!leaked && !state.currentlyHeld && lock instanceof ReentrantLock reentrant) {
+            reportHelperHold(reentrant, state, platformThreads, report);
+        }
+        if (state.maxHoldTimeMs.get() > EXCESSIVE_HOLD_MS) {
+            report.excessiveHoldTimes.add(String.format(
                     "%s: lock held for up to %dms (potential deadlock precursor)",
                     state.name, state.maxHoldTimeMs.get()));
-            }
-
-            // Track thread participation
-            if (!state.acquiringThreads.isEmpty()) {
-                report.threadActivity.add(String.format(
+        }
+        if (!state.acquiringThreads.isEmpty()) {
+            report.threadActivity.add(String.format(
                     "%s: %d threads acquired, %d threads released, max hold: %dms",
-                    state.name,
-                    state.acquiringThreads.size(),
-                    state.releasingThreads.size(),
+                    state.name, state.acquiringThreads.size(), state.releasingThreads.size(),
                     state.maxHoldTimeMs.get()));
-            }
         }
+    }
 
-        if (report.hasIssues()) {
-            // The severity the failOn gate read from this text before #801: a marker in it,
-            // else the value DetectorDefaultSeverity declared for the detector.
-            IssueSeverity severity = IssueSeverity.markedIn(report.toString())
-                    .orElse(IssueSeverity.CRITICAL);
-            for (String finding : report.lockLeaks) {
-                report.structuredViolations.add(new Violation("LockLeaks", severity,
-                        finding, List.of(), Map.of(), Instant.now()));
+    /**
+     * {@return {@code finding} with the lock's confirmation appended, which also marks it observed in
+     * {@code report}, or {@code finding} as recorded when the lock did not confirm it}
+     */
+    private static String withConfirmation(LockLeakReport report, String finding, @Nullable String confirmed) {
+        if (confirmed == null) {
+            return finding;
+        }
+        report.observed.add(finding + confirmed);
+        return finding + confirmed;
+    }
+
+    /**
+     * Reports the first hold of a thread the run handed work to (#1339) that the lock confirms. An
+     * unconfirmed one may still be released by a helper that is working, and is not the run's to judge.
+     */
+    private static void reportHelperHold(ReentrantLock lock, LockState state, PlatformThreads platformThreads,
+                                         LockLeakReport report) {
+        for (Map.Entry<Thread, AtomicInteger> hold : state.helperHolds.entrySet()) {
+            if (hold.getValue().get() <= 0) {
+                continue;
             }
-            for (String finding : report.heldLocks) {
-                report.structuredViolations.add(new Violation("LockLeaks", severity,
-                        finding, List.of(), Map.of(), Instant.now()));
+            String byLock = confirmedHold(lock, hold.getKey(), platformThreads.get(), state.threads);
+            if (byLock != null) {
+                String leak = withConfirmation(report, String.format(
+                        "%s: acquired by a thread the test started and never released", state.name), byLock);
+                report.lockLeaks.add(leak);
+                return;
             }
-            for (String finding : report.excessiveHoldTimes) {
+        }
+    }
+
+    /** One {@link Violation} per finding the gate reads: leaks, held locks, then long holds. */
+    private static void addStructuredViolations(LockLeakReport report) {
+        if (!report.hasIssues()) {
+            return;
+        }
+        // The severity the failOn gate read from this text before #801: a marker in it,
+        // else the value DetectorDefaultSeverity declared for the detector.
+        IssueSeverity severity = IssueSeverity.markedIn(report.toString()).orElse(IssueSeverity.CRITICAL);
+        for (List<String> findings : List.of(report.lockLeaks, report.heldLocks, report.excessiveHoldTimes)) {
+            for (String finding : findings) {
                 report.structuredViolations.add(new Violation("LockLeaks", severity,
                         finding, List.of(), Map.of(), Instant.now()));
             }
         }
-        return DetectorFailurePolicy.checkedReport(this, report);
     }
 
     /**
