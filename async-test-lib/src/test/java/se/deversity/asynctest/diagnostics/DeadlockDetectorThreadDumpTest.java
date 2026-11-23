@@ -59,6 +59,9 @@ class DeadlockDetectorThreadDumpTest {
             assertTrue(dump.contains("dump-probe-waiter (WAITING)"), dump);
             assertTrue(dump.indexOf("No circular deadlocks detected")
                     < dump.indexOf("dump-probe-waiter (WAITING)"), "listed after the verdict: " + dump);
+            // #1491: the dump said CRITICAL "threads are deadlocked" before asking whether any were.
+            assertTrue(!dump.contains("Application threads are deadlocked"),
+                    "a timeout with no deadlock must not open by claiming one: " + dump);
         } finally {
             waiter.interrupt();
             waiter.join(5_000);
@@ -91,6 +94,8 @@ class DeadlockDetectorThreadDumpTest {
             assertTrue(dump.contains("=== DETAILED DEADLOCKED THREAD INFOS ==="), dump);
             assertTrue(dump.contains("Waiting for lock: ") && dump.contains("Lock held by: Thread-"), dump);
             assertTrue(!dump.contains("No circular deadlocks detected"), dump);
+            assertTrue(dump.contains("Application threads are deadlocked"),
+                    "a real cycle still opens with the CRITICAL deadlock line (#1491): " + dump);
         } finally {
             a.interrupt();
             b.interrupt();

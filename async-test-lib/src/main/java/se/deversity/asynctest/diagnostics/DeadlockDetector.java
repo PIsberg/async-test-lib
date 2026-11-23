@@ -195,10 +195,17 @@ public class DeadlockDetector {
         System.err.println("=======================================================\n");
 
         ThreadInfo[] threadInfos = threadMXBean.dumpAllThreads(true, true);
+        long[] deadlockedThreads = threadMXBean.findDeadlockedThreads();
+        boolean deadlocked = deadlockedThreads != null && deadlockedThreads.length > 0;
 
-        System.err.println(IssueSeverity.CRITICAL.format() + ": Application threads are deadlocked");
-        System.err.println("Impact: " + IssueSeverity.CRITICAL.getDescription());
-        System.err.println();
+        // Only a cycle the JVM reports is a deadlock. Said before asking, the CRITICAL line opened
+        // every timeout's dump, a slow but correct body included, and contradicted both the
+        // run's own timeout headline and the "no circular deadlocks" verdict below it (#1491).
+        if (deadlocked) {
+            System.err.println(IssueSeverity.CRITICAL.format() + ": Application threads are deadlocked");
+            System.err.println("Impact: " + IssueSeverity.CRITICAL.getDescription());
+            System.err.println();
+        }
 
         System.err.println("=== RAW THREAD DUMP ===\n");
         for (ThreadInfo threadInfo : threadInfos) {
@@ -206,8 +213,7 @@ public class DeadlockDetector {
         }
 
         System.err.println("\n=== LOCK ANALYSIS ===\n");
-        long[] deadlockedThreads = threadMXBean.findDeadlockedThreads();
-        if (deadlockedThreads != null && deadlockedThreads.length > 0) {
+        if (deadlocked) {
             printDeadlock(deadlockedThreads, threadInfos);
         } else {
             printTimeoutWithoutDeadlock(threadInfos);
