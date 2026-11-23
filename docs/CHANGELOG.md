@@ -121,6 +121,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   nothing (a missed inversion). And every hold counted as exclusive, so two readers' inverted
   nesting under one `readLock()` was suppressed. Holds are now confirmed by their type and carry
   a mode; a reader still keeps out a writer. New `recordLockAcquisition(lock, blocking, shared)`.
+- **A class using a `long` `VarHandle` read-modify-write as a statement loads under `fields=true`
+  again (#1494).** The weaver drops the value its hook returns where the call site declared no
+  result, and dropped a two-slot `long` with a one-slot `POP`, so such a class failed verification
+  with `VerifyError: Bad type on operand stack` as it loaded. It now uses `POP2` for a `long`.
 
 - **A round's `@AfterEachInvocation` hooks run when its `@BeforeEachInvocation` hook throws
   (#1477).** The before-hooks ran ahead of the round's failure handling, so their exception skipped
