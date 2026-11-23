@@ -174,6 +174,12 @@ public final class ControlledSchedule {
     private int running = -1;
     private boolean acknowledged;
     private long acknowledgedAt;
+    /**
+     * The lock the last grant recorded a hold of for the worker it picked, its pending acquire, or
+     * {@code null}: given back when that worker is interrupted before it takes the turn (#1495).
+     * Bookkeeping only; no grant reads it.
+     */
+    private @Nullable Object grantedHold;
     private long lastProgress = System.nanoTime();
     private int last = -1;
     private int streak;
@@ -1015,13 +1021,7 @@ public final class ControlledSchedule {
         worker.inside = true;
         lock.lock();
         try {
-            int[] owner = owners.get(held);
-            if (owner != null && owner[0] == worker.slot) {
-                owner[1]--;
-                if (owner[1] <= 0) {
-                    owners.remove(held);
-                }
-            }
+            dropHold(worker.slot, held);
         } finally {
             lock.unlock();
             worker.inside = false;
@@ -1105,6 +1105,17 @@ public final class ControlledSchedule {
         return held instanceof Lock || Thread.holdsLock(held);
     }
 
+    /** Records one hold of {@code held} by {@code slot} fewer, if it has one. Lock held. */
+    private void dropHold(int slot, Object held) {
+        int[] owner = owners.get(held);
+        if (owner != null && owner[0] == slot) {
+            owner[1]--;
+            if (owner[1] <= 0) {
+                owners.remove(held);
+            }
+        }
+    }
+
     /** Records one more hold of {@code held} by {@code slot}. Lock held. */
     private void take(int slot, Object held) {
         int[] owner = owners.get(held);
@@ -1175,11 +1186,13 @@ public final class ControlledSchedule {
         }
         running = best;
         acknowledged = false;
+        grantedHold = null;
         if (best >= 0) {
             Object wanted = pending[best];
             if (wanted != null) {
                 if (canProceed(best)) {
                     take(best, wanted);
+                    grantedHold = wanted;
                 }
                 pending[best] = null;
             }
@@ -1211,10 +1224,25 @@ public final class ControlledSchedule {
                 // that may never come, and keep the interrupt for the body to see.
                 Thread.currentThread().interrupt();
                 worker.free = true;
-                status[worker.slot] = Status.ESCAPED;
-                pending[worker.slot] = null;
-                joining[worker.slot] = -1;
+                int slot = worker.slot;
+                status[slot] = Status.ESCAPED;
+                pending[slot] = null;
+                joining[slot] = -1;
                 escapes++;
+                if (running == slot) {
+                    // grant() handed this worker the round in the instant the interrupt ended its
+                    // wait, so it will never take the turn: give back the hold the grant took for its
+                    // pending acquire, which a free worker's acquireAbandoned would not, and hand the
+                    // round on. Left with it, the round stayed here, since watch() does not move a
+                    // turn that was never acknowledged (#1495).
+                    if (grantedHold != null) {
+                        dropHold(slot, grantedHold);
+                    }
+                    running = -1;
+                    if (!anyOutside()) {
+                        grant();
+                    }
+                }
                 return;
             }
         }
