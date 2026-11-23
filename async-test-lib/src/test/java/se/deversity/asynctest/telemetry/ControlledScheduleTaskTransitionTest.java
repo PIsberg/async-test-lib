@@ -167,4 +167,70 @@ class ControlledScheduleTaskTransitionTest {
             schedule.close();
         }
     }
+
+    @Test
+    void aPoolThreadAdoptedInAnEarlierRoundJoinsTheNextRoundsTask() throws Exception {
+        // A pool thread built in woven code during round 1 is adopted there and joins at its first
+        // point, which sets its CURRENT. Adopted threads never leave(), and a closed schedule did not
+        // clear it, so in round 2 the same thread's taskStarting read the stale CURRENT as "already
+        // in a round", the caller-runs case, marked the task's slot done at once and ran it
+        // uncontrolled, while round 2 reported no escape (#1495).
+        CountDownLatch joinedFirstRound = new CountDownLatch(1);
+        CountDownLatch nextJob = new CountDownLatch(1);
+        AtomicReference<Object> secondAdoption = new AtomicReference<>();
+        AtomicReference<Object> started = new AtomicReference<>("not run");
+        CountDownLatch taskRan = new CountDownLatch(1);
+        Thread pool = new Thread(() -> {
+            ControlledSchedule.point(); // its first point: joins round 1 as the adopted child
+            joinedFirstRound.countDown();
+            try {
+                nextJob.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            Object begun = ControlledSchedule.taskStarting(secondAdoption.get());
+            started.set(begun);
+            ControlledSchedule.point();
+            ControlledSchedule.taskEnded(begun);
+            taskRan.countDown();
+        }, "reused-pool-thread");
+
+        ControlledSchedule first = ControlledSchedule.open(1, 7L);
+        Thread firstWorker = new Thread(() -> {
+            first.enter(0);
+            ControlledSchedule.starting(pool);
+            pool.start();
+            try {
+                joinedFirstRound.await(WAIT_SECONDS, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            first.leave();
+        }, "first-round-worker");
+        firstWorker.start();
+        firstWorker.join(TimeUnit.SECONDS.toMillis(WAIT_SECONDS));
+        first.close();
+
+        ControlledSchedule second = ControlledSchedule.open(1, 7L);
+        try {
+            Thread secondWorker = new Thread(() -> {
+                second.enter(0);
+                secondAdoption.set(ControlledSchedule.submitting());
+                nextJob.countDown();
+                ControlledSchedule.awaitingTask(secondAdoption.get());
+                second.leave();
+            }, "second-round-worker");
+            secondWorker.start();
+            assertTrue(taskRan.await(WAIT_SECONDS, TimeUnit.SECONDS), "the task never ran");
+            secondWorker.join(TimeUnit.SECONDS.toMillis(WAIT_SECONDS));
+
+            assertTrue(started.get() != null, "the reused pool thread's task never joined round 2: its CURRENT"
+                    + " from the closed round 1 made it look like a caller-runs thread, " + second.summary());
+        } finally {
+            nextJob.countDown();
+            second.close();
+            pool.join(TimeUnit.SECONDS.toMillis(WAIT_SECONDS));
+        }
+    }
 }

@@ -97,6 +97,23 @@ public final class ControlledSchedule {
     /** The calling thread's place in the round it joined, between {@link #enter} and {@link #leave}. */
     private static final ThreadLocal<Worker> CURRENT = new ThreadLocal<>();
 
+    /**
+     * {@return the calling thread's worker, or {@code null} when it has none or its round has closed}
+     * A thread adopted into a round never calls {@link #leave}, so a pool thread a woven thread
+     * factory built in one round still carried that round's worker into the next: its
+     * taskStarting took it for a thread already in a round, a caller-runs one, marked the new task
+     * done at once and ran it uncontrolled, while the round reported no escape (#1495). A worker of a
+     * closed round is cleared here, so every entry point sees the thread as outside any round.
+     */
+    private static @Nullable Worker current() {
+        Worker worker = CURRENT.get();
+        if (worker != null && worker.schedule.closed) {
+            CURRENT.remove();
+            return null;
+        }
+        return worker;
+    }
+
     /** Threads started by a controlled round's workers, before their first point: thread to round. */
     private static final Map<Thread, Adoption> ADOPTED = new ConcurrentHashMap<>();
 
@@ -187,7 +204,8 @@ public final class ControlledSchedule {
     private int switches;
     private int escapes;
     private int fallbacks;
-    private boolean closed;
+    /** Volatile: {@link #current} reads it outside the lock, on any thread. */
+    private volatile boolean closed;
 
     private ControlledSchedule(int workers, long seed) {
         this.seed = seed;
@@ -249,7 +267,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null) {
             joinIfAdopted();
             return;
@@ -271,7 +289,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return false;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside || worker.free) {
             return false;
         }
@@ -281,7 +299,7 @@ public final class ControlledSchedule {
 
     /** Brings a worker that {@link #stepOutside stepped outside} back, and waits for its turn. */
     public static void rejoin() {
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside || worker.free) {
             return;
         }
@@ -306,7 +324,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside || worker.free) {
             return;
         }
@@ -325,7 +343,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return null;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside || worker.free) {
             return null;
         }
@@ -345,7 +363,7 @@ public final class ControlledSchedule {
         if (!(adoption instanceof Adoption task)) {
             return null;
         }
-        if (CURRENT.get() != null) {
+        if (current() != null) {
             task.schedule().taskDone(task.slot());
             return null;
         }
@@ -398,7 +416,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null) {
             joinIfAdopted();
             return;
@@ -424,7 +442,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null) {
             joinIfAdopted();
             return;
@@ -446,10 +464,10 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null) {
             joinIfAdopted();
-            worker = CURRENT.get();
+            worker = current();
             if (worker == null) {
                 return;
             }
@@ -471,7 +489,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside) {
             return;
         }
@@ -488,7 +506,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside) {
             return;
         }
@@ -508,7 +526,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside || worker.free) {
             return;
         }
@@ -527,7 +545,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return 0;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside) {
             return 0;
         }
@@ -549,7 +567,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return null;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside) {
             return null;
         }
@@ -567,7 +585,7 @@ public final class ControlledSchedule {
         if (holds <= 0 || OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside) {
             return;
         }
