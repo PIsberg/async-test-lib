@@ -240,7 +240,8 @@ one that still fails, per worker, with the seed that reproduces it: often two op
 dozens. To try every small scenario instead of the ones a seed draws, call
 `HISTORY.assertLinearizableForAllScenarios(spec, workers, operationsPerWorker)` from a plain test
 or `@AfterAll`: it runs each, smallest first, under a controlled schedule and several seeds, and
-fails on the first with no linearization. The design and its limits are in
+fails on the first that has no linearization, whose run throws (a crash, a timeout, a licence
+denial) or that the search cannot decide. A scenario one worker runs alone is checked once. The design and its limits are in
 [analysis/linearizability-checking.md](analysis/linearizability-checking.md#the-smallest-failing-scenario-1025).
 
 To make a failed check a finding instead of an assertion, verify the history when you build it:
