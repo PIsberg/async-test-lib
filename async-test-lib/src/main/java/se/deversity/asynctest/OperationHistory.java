@@ -458,8 +458,11 @@ public final class OperationHistory<S> {
      * @param workers             how many workers run at once, at least 1
      * @param operationsPerWorker the longest sequence a worker runs, at least 1
      * @return what the search covered, for the test's log: every scenario was linearizable
-     * @throws AssertionError            for the first scenario with no linearization, listing it
-     *                                   per worker with the seed that reproduces it
+     * @throws AssertionError            for the first scenario that fails, listing it per worker with
+     *                                   the seed that reproduces it: one with no linearization, one
+     *                                   whose run threw (the object crashed or hung, or the licence
+     *                                   gate refused the run), or one the search could not decide.
+     *                                   A scenario one worker runs alone is checked too, once (#1493)
      * @throws IllegalArgumentException  when the space takes more than {@value #MAX_ENUMERATION_RUNS}
      *                                   runs: a search that stopped part way would read as a pass it
      *                                   is not
@@ -598,24 +601,57 @@ public final class OperationHistory<S> {
     }
 
     /**
-     * Runs {@code replay} under each of {@value #SCHEDULES_PER_SCENARIO} seeds and throws for the
-     * first whose round {@code check} finds not linearizable, naming the scenario and the seed.
+     * Runs {@code replay} under each of {@value #SCHEDULES_PER_SCENARIO} seeds, or once when one
+     * worker runs it alone, and throws for the first run that fails, naming the scenario and the seed.
+     *
+     * <p>A scenario fails when its round is not linearizable, when the run throws (the object crashed
+     * or hung, or the licence gate refused the run), and when the search cannot decide the round. All
+     * three passed before #1493, read as "not the failure" the way {@link #replayFailure} reads them for
+     * {@link #shrink}, which is looking for one particular failure; this search vouches for the whole
+     * space. One worker alone has one interleaving, but its results must still be the spec's.
      */
     private void checkScenario(Map<Integer, List<Drawn>> replay, List<Declared<S>> choices,
                                Consumer<RoundLog> check) {
-        if (replay.size() < 2) {
-            return; // one worker alone is sequential, and a sequential run is linearizable
+        if (replay.isEmpty()) {
+            return;
         }
         Map<Integer, List<Drawn>> renumbered = new java.util.TreeMap<>();
         replay.values().forEach(steps -> renumbered.put(renumbered.size(), steps));
-        for (long seed = 1; seed <= SCHEDULES_PER_SCENARIO; seed++) {
-            NotLinearizable failure = replayFailure(renumbered, seed, false, check);
+        long schedules = renumbered.size() == 1 ? 1 : SCHEDULES_PER_SCENARIO;
+        for (long seed = 1; seed <= schedules; seed++) {
+            ScenarioFailure failure = scenarioFailure(renumbered, seed, check);
             if (failure != null) {
-                throw new AssertionError("An enumerated scenario is not linearizable, under replaySeed = " + seed
-                        + "L, searching smallest first:" + describeScenario(replay, choices) + "\n\n"
-                        + failure.getMessage(), failure);
+                Throwable cause = failure.cause();
+                throw new AssertionError("An enumerated scenario " + failure.verdict() + ", under replaySeed = "
+                        + seed + "L, searching smallest first:" + describeScenario(replay, choices) + "\n\n"
+                        + (cause.getMessage() != null ? cause.getMessage() : cause.toString()), cause);
             }
         }
+    }
+
+    /** How an enumerated scenario's run failed, and what it failed with. */
+    private record ScenarioFailure(String verdict, Throwable cause) {
+    }
+
+    /** {@return how the one run of {@code replay} under {@code seed} failed, or {@code null} when it passed} */
+    private @Nullable ScenarioFailure scenarioFailure(Map<Integer, List<Drawn>> replay, long seed,
+                                                      Consumer<RoundLog> check) {
+        OperationHistory<S> probe;
+        try {
+            probe = runProbe(replay, seed, false);
+        } catch (Throwable runFailed) { // NOPMD - whatever ends the run is the scenario's failure (#1493)
+            return new ScenarioFailure("failed to run", runFailed);
+        }
+        for (RoundLog log : probe.rounds.values()) {
+            try {
+                check.accept(log);
+            } catch (NotLinearizable fails) {
+                return new ScenarioFailure("is not linearizable", fails);
+            } catch (AssertionError undecided) {
+                return new ScenarioFailure("could not be checked", undecided);
+            }
+        }
+        return null;
     }
 
     /** {@return one line per worker of {@code replay}, listing its operations with their arguments} */
