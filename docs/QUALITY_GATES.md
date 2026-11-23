@@ -18,3 +18,4 @@ Each gate lives in its own file under [`quality-gates/`](quality-gates/). Read t
 | [mutation-fuzzing-benchmarks.md](quality-gates/mutation-fuzzing-benchmarks.md) | The PIT mutation gate and JVM-global versus instance state, the Jazzer fuzzing job, and the benchmarking gate |
 | [examples-and-demos.md](quality-gates/examples-and-demos.md) | Running the disabled example demonstrations, and the demo recording |
 | [review-lanes.md](quality-gates/review-lanes.md) | The guardrail jobs and the AI review lanes behind the invariants |
+| [new-code-gate.md](quality-gates/new-code-gate.md) | SonarQube's agentic-AI quality gate, condition by condition: coverage and duplication on new code, dependency risk, and the optional SonarQube Cloud analysis |

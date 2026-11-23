@@ -51,6 +51,9 @@ jobs:
       - name: 'Dependency Review'
         uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
         with:
-          fail-on-severity: high
+          # Low, not high: SonarQube's agentic quality gate refuses any new dependency risk of
+          # severity Low or above, and an agent adds dependencies faster than anyone reads advisories
+          # (docs/quality-gates/new-code-gate.md).
+          fail-on-severity: low
           deny-licenses: GPL-3.0
           comment-summary-in-pr: always

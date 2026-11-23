@@ -79,6 +79,7 @@ jobs:
             agent.api.stepsecurity.io:443
             api.adoptium.net:443
             api.github.com:443
+            api.sonarcloud.io:443
             cli.codecov.io:443
             codecov.io:443
             github.com:443
@@ -90,12 +91,18 @@ jobs:
             repo.maven.apache.org:443
             repo1.maven.org:443
             results-receiver.actions.githubusercontent.com:443
+            scanner.sonarcloud.io:443
+            sonarcloud.io:443
             storage.googleapis.com:443
             uploader.codecov.io:443
 
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      
+        with:
+          # The coverage leg measures new code against the pull request's base (the duplication
+          # gate below, and SonarQube Cloud), which needs the history back to the merge base.
+          fetch-depth: ${{ env.UPLOADS_COVERAGE == 'true' && '0' || '1' }}
+
       - name: Set up Java
         id: setup-java
         # JDKs 26 and 27 are on no runner image yet, so these legs resolve and download them from
@@ -143,15 +150,18 @@ jobs:
         if: env.UPLOADS_COVERAGE == 'true'
         shell: bash
         run: |
-          if [ -f ./async-test-lib/target/site/jacoco/jacoco.xml ]; then
-            echo "✓ Coverage file found"
-            wc -c ./async-test-lib/target/site/jacoco/jacoco.xml
+          # The combined library-and-agent report is what Codecov and Sonar read (#1482).
+          if [ -f ./async-test-lib/target/site/jacoco/jacoco.xml ] \
+             && [ -f ./async-test-agent/target/site/jacoco-aggregate/jacoco.xml ]; then
+            echo "✓ Coverage files found"
+            wc -c ./async-test-lib/target/site/jacoco/jacoco.xml ./async-test-agent/target/site/jacoco-aggregate/jacoco.xml
           else
             echo "✗ Coverage file NOT found at ./async-test-lib/target/site/jacoco/jacoco.xml"
             echo "Checking target directory structure:"
             ls -la ./async-test-lib/target/ || echo "target/ directory not found"
             ls -la ./async-test-lib/target/site/ || echo "target/site/ directory not found"
             ls -la ./async-test-lib/target/site/jacoco/ || echo "target/site/jacoco/ directory not found"
+            ls -la ./async-test-agent/target/site/ || echo "async-test-agent/target/site/ directory not found"
             exit 1
           fi
 
@@ -178,12 +188,52 @@ jobs:
         continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
-          files: ./async-test-lib/target/site/jacoco/jacoco.xml
+          # The library and the agent in one report: the agent's tests exercise the library's
+          # agent hooks, and uploading the library's own report alone left that coverage out, so
+          # agent work read 48% to 77% patch coverage (#1482). The analysis module reports itself.
+          files: ./async-test-agent/target/site/jacoco-aggregate/jacoco.xml,./async-test-analysis/target/site/jacoco/jacoco.xml
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: false
           verbose: true
           token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Check duplication on new code
+        # SonarQube's "duplication on new code is at most 3%" condition, measured here from the
+        # CPD report each module's verify writes and the lines the pull request adds under
+        # src/main/java (docs/quality-gates/new-code-gate.md). Pull requests only: a push has no
+        # base to tell new code from old.
+        if: env.UPLOADS_COVERAGE == 'true' && github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          py=$(command -v python3 || command -v python)
+          "$py" .github/scripts/duplication_gate.py --self-test
+          "$py" .github/scripts/duplication_gate.py --base "origin/$BASE_REF" --max-percent 3 \
+            async-test-lib/target/cpd.xml async-test-agent/target/cpd.xml async-test-analysis/target/cpd.xml
+
+      - name: Check whether SonarQube Cloud is configured
+        id: sonar-config
+        if: env.UPLOADS_COVERAGE == 'true'
+        shell: bash
+        env:
+          CONFIGURED: ${{ secrets.SONAR_TOKEN != '' }}
+        run: |
+          echo "configured=$CONFIGURED" >> "$GITHUB_OUTPUT"
+          if [ "$CONFIGURED" != "true" ]; then
+            echo "::notice::SonarQube Cloud analysis skipped: no SONAR_TOKEN secret (docs/quality-gates/new-code-gate.md)."
+          fi
+
+      - name: Analyze with SonarQube Cloud
+        # Sonar posts its own quality gate as a separate check through its GitHub app, so this
+        # step only sends the analysis: an outage there must not fail the library's test leg.
+        if: env.UPLOADS_COVERAGE == 'true' && steps.sonar-config.outputs.configured == 'true'
+        timeout-minutes: 15
+        continue-on-error: true
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: mvn -B sonar:sonar "-Djacoco.skip=true"
 
   os-sensitive:
     name: OS-Sensitive Tests

@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **Pull requests are held to SonarQube's agentic-AI quality gate (#1482).** New code must be at
+  least 80% covered (Codecov's `patch` status, now blocking) and at most 3% duplicated
+  (`.github/scripts/duplication_gate.py` over PMD CPD's report), and `dependency-review` refuses a
+  new dependency risk of severity Low, not only High. Coverage is now measured over the library and
+  the agent together: the agent's tests exercise the library's agent hooks, and that coverage never
+  reached Codecov, so agent pull requests read 48% to 77%. SonarQube Cloud analysis is wired in and
+  runs once the `SONAR_TOKEN` secret exists. [quality-gates/new-code-gate.md](quality-gates/new-code-gate.md)
+  maps each condition to its gate.
+
 - **A round is an object now, not a ten-parameter method.** `ConcurrencyRunner`'s round code
   moved into `RoundRunner` (what is fixed for a run, built once) and `Round` (what one round's
   workers share), and the worker lambda that captured thirteen variables is three named methods.

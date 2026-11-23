@@ -11,11 +11,13 @@ coverage:
         target: auto
         threshold: 1%
         informational: true
+    # New code, the condition SonarQube's agentic-AI quality gate sets: at least 80% of the lines
+    # a pull request adds are covered (docs/quality-gates/new-code-gate.md). Measured against the
+    # combined library-and-agent report since #1482; before it, agent work read as untested.
     patch:
       default:
-        target: auto
-        threshold: 1%
-        informational: true
+        target: 80%
+        informational: false
 
 parsers:
   gcov:
