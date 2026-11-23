@@ -4822,7 +4822,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="680.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">rejoin(): void</text>
   <text x="680.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">joinIfAdopted(): void</text>
   <text x="680.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">starting(Thread): void</text>
-  <text x="680.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+43 more)</text>
+  <text x="680.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+44 more)</text>
 </g>
 <g id="ReferenceSlots">
   <title>ReferenceSlots [CLASS]</title>
