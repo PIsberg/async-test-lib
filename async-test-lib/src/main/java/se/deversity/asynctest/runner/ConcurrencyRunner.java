@@ -449,15 +449,19 @@ public class ConcurrencyRunner {
                 long roundStartNanos = System.nanoTime();
                 log.debug("runner.round.start test={} round={} seed={} remainingMs={}",
                     testMethod.getName(), i, currentSeed, remainingMs);
-                invokeLifecycleMethods(testInstance, beforeInvocationMethods);
-                Throwable roundFailure = null;
+                // A failing before-hook fails the round but still gets its after-hooks, as JUnit
+                // runs @AfterEach after a failing @BeforeEach: a hook that opened something before it
+                // threw is cleaned up (#1477). The workers never start for that round.
+                Throwable roundFailure = runBeforeHooks(testInstance, beforeInvocationMethods);
                 // Opened immediately before the try whose finally closes it, so nothing can throw
                 // in between and leave the JVM-wide open count raised for every later hook call.
-                @Nullable ControlledSchedule schedule = config.controlledSchedule
+                @Nullable ControlledSchedule schedule = config.controlledSchedule && roundFailure == null
                     ? ControlledSchedule.open(actualThreads, currentSeed)
                     : null;
                 try {
-                    rounds.run(remainingMs, schedule);
+                    if (roundFailure == null) {
+                        rounds.run(remainingMs, schedule);
+                    }
                 } catch (Throwable t) { // NOPMD - rethrown below; caught only to order teardown
                     roundFailure = t;
                 } finally {
@@ -2279,6 +2283,19 @@ public class ConcurrencyRunner {
                 + "and interleaved nothing\" hint=\"run with the agent's fields=true or "
                 + "collections=true, or call AsyncTestContext.schedulePoint() "
                 + "where a worker may be interrupted\"", testName);
+    }
+
+    /**
+     * Runs the round's {@code @BeforeEachInvocation} hooks and {@return the first hook failure, or
+     * {@code null}} The hooks after a failing one do not run, as with JUnit's {@code @BeforeEach}.
+     */
+    private static @Nullable Throwable runBeforeHooks(@Nullable Object testInstance, List<Method> hooks) {
+        try {
+            invokeLifecycleMethods(testInstance, hooks);
+            return null;
+        } catch (Throwable hookFailure) { // NOPMD - broad: any hook failure ends the round, as before
+            return hookFailure;
+        }
     }
 
     /**

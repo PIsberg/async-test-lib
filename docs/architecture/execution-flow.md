@@ -94,7 +94,8 @@ the runner throws a timeout error enriched with `DeadlockDetector.printThreadDum
 nothing else installs contexts. `uninstall()` is idempotent (extra uninstalls are safe no-ops) and
 the runner relies on that in its outermost `finally`. A leaked ThreadLocal propagates stale detector
 state across invocations, causing false positives or missed detections. `@BeforeEachInvocation` /
-`@AfterEachInvocation` hooks are discovered once per test and invoked around every round.
+`@AfterEachInvocation` hooks are discovered once per test and invoked around every round; a round's
+after-hooks run even when its before-hook threw, which fails the round before any worker starts (#1477).
 
 **Threads the body starts (#1253).** `install` also marks the worker in an inheritable
 thread-local, `BodyThreadFailures`, so every thread a worker constructs belongs to the run, with or

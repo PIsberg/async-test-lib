@@ -317,4 +317,89 @@ class PerInvocationLifecycleTest {
         assertEquals(0, events.failed().count(),
             testClass.getSimpleName() + " must pass, but failed with: " + failures);
     }
+
+    // ---- a before-hook that throws still gets its round's after-hooks (#1477) ----
+
+    static final AtomicInteger AFTER_CALLS_WHEN_BEFORE_FAILS = new AtomicInteger();
+
+    static class BeforeHookFails {
+
+        @BeforeEachInvocation
+        void setUpFails() {
+            throw new IllegalStateException("setup blew up");
+        }
+
+        @AfterEachInvocation
+        void tearDown() {
+            AFTER_CALLS_WHEN_BEFORE_FAILS.incrementAndGet();
+        }
+
+        @AsyncTest(threads = 2, invocations = 3, timeoutMs = 5_000, useVirtualThreads = false)
+        void body() {
+            // never reached: the round fails in its before-hook
+        }
+    }
+
+    /**
+     * {@code @AfterEachInvocation} promises to run "even if the round produced failures, so it can
+     * be used for resource cleanup", and JUnit runs {@code @AfterEach} after a failing
+     * {@code @BeforeEach}. A before-hook that opened something and then threw used to leave it open:
+     * the hook ran before the round's try, so its exception skipped the after-hooks (#1477).
+     */
+    @Test
+    void anAfterHookStillRunsWhenTheBeforeHookThrows() {
+        AFTER_CALLS_WHEN_BEFORE_FAILS.set(0);
+        Events events = EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(BeforeHookFails.class))
+            .execute()
+            .testEvents();
+
+        assertEquals(1, events.failed().count(), "the @AsyncTest must still fail");
+        Throwable surfaced = events.failed().stream()
+            .findFirst()
+            .orElseThrow()
+            .getRequiredPayload(org.junit.platform.engine.TestExecutionResult.class)
+            .getThrowable()
+            .orElseThrow();
+        assertTrue(String.valueOf(surfaced).contains("setup blew up"),
+            "the before-hook's failure is the one the user sees: " + surfaced);
+        assertEquals(1, AFTER_CALLS_WHEN_BEFORE_FAILS.get(),
+            "the run stops at the round whose before-hook failed, and that round's after-hook still "
+                + "runs once to clean up (#1477)");
+    }
+
+    // ---- hooks of any access level run, private included (#1478) ----
+
+    static final AtomicInteger PRIVATE_HOOK_CALLS = new AtomicInteger();
+
+    static class PrivateHooks {
+
+        @BeforeEachInvocation
+        private void before() {
+            PRIVATE_HOOK_CALLS.incrementAndGet();
+        }
+
+        @AfterEachInvocation
+        private void after() {
+            PRIVATE_HOOK_CALLS.incrementAndGet();
+        }
+
+        @AsyncTest(threads = 2, invocations = 2, timeoutMs = 5_000, useVirtualThreads = false)
+        void body() {
+            // the hooks are the subject
+        }
+    }
+
+    /** The javadoc of both annotations used to say a hook "must be non-private"; private ones run (#1478). */
+    @Test
+    void privateHooksRunEveryRound() {
+        PRIVATE_HOOK_CALLS.set(0);
+        EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(PrivateHooks.class))
+            .execute()
+            .testEvents()
+            .assertStatistics(stats -> stats.succeeded(1));
+
+        assertEquals(4, PRIVATE_HOOK_CALLS.get(), "a private before- and after-hook, each once per round, two rounds");
+    }
 }
