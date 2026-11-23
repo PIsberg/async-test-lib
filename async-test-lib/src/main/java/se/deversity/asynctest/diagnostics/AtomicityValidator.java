@@ -1444,230 +1444,341 @@ public class AtomicityValidator implements RoundScoped {
         for (Map.Entry<String, List<FieldAccessRecord>> entry : fieldHistory.entrySet()) {
             Map<String, Integer> fieldVerdicts =
                     verdicts.computeIfAbsent(entry.getKey(), ignored -> new HashMap<>());
+            new FieldAnalysis(entry.getKey(), entry.getValue(), fieldVerdicts, report).judgeEveryRound();
+        }
+
+        lastVerdicts = verdicts;
+        return DetectorFailurePolicy.checkedReport(this, report);
+    }
+
+    /** What one round's accesses add up to, before any rule judges them. */
+    private record RoundShape(Set<Long> threads, boolean hasRead, boolean hasWrite, boolean anyOwnerKnown) {
+
+        static RoundShape of(List<FieldAccessRecord> round) {
+            Set<Long> threads = new HashSet<>();
+            boolean hasRead = false;
+            boolean hasWrite = false;
+            boolean anyOwnerKnown = false;
+            for (FieldAccessRecord access : round) {
+                threads.add(access.threadId);
+                hasRead |= !access.write;
+                hasWrite |= access.write;
+                anyOwnerKnown |= access.ownerKnown;
+            }
+            return new RoundShape(threads, hasRead, hasWrite, anyOwnerKnown);
+        }
+
+        boolean manyThreads() {
+            return threads.size() > 1;
+        }
+    }
+
+    /**
+     * One field's analysis: its records split by receiver and by round, then each round judged and
+     * reported.
+     *
+     * <p>A round is judged by the lock rule first, then by the per-receiver excuses, then by the
+     * happens-before ordering, then by the volatile rules, in that order; the first that holds
+     * names the round's verdict (#1133) and every one of them only ever removes a finding. A round
+     * none of them excuses is reported.
+     */
+    private final class FieldAnalysis {
+
+        private final String field;
+        private final Map<String, Integer> verdicts;
+        private final AtomicityReport report;
+        /** The field's records, contested exclusivity withdrawn, in recorded order. */
+        private final List<FieldAccessRecord> records;
+        /**
+         * Each receiver's own records, in recorded order. Every per-instance question below reads
+         * only its receiver's records, and asking it of the whole history made a field with many
+         * receivers (the elements of a list a parallel stream walks) cost records times receivers:
+         * minutes of analysis for a run that took a second.
+         */
+        private final Map<Long, List<FieldAccessRecord>> ofInstance = new HashMap<>();
+        /** Receivers whose construction accesses are a corroborated hand-off (#312). */
+        private final Map<Long, Boolean> corroborated = new HashMap<>();
+        /**
+         * Per-instance excuses (#311, #312, #313), computed at most once per instance and only when
+         * the lockset alone would have reported. All need ordered history, which the per-round
+         * groups no longer carry. The value names the excuse that held, or is empty when none did.
+         */
+        private final Map<Long, String> excusedInstances = new HashMap<>();
+
+        FieldAnalysis(String field, List<FieldAccessRecord> history, Map<String, Integer> verdicts,
+                      AtomicityReport report) {
+            this.field = field;
+            this.verdicts = verdicts;
+            this.report = report;
             // Copy under the list's lock, then analyze per invocation round: rounds are
             // ordered by the runner (worker latch, then the next round's submissions), so
             // only same-round accesses can lack a happens-before edge. Without round marks
             // (standalone use) every record is in epoch 0 and behavior is unchanged.
             List<FieldAccessRecord> snapshot;
-            synchronized (entry.getValue()) {
-                snapshot = new ArrayList<>(entry.getValue());
+            synchronized (history) {
+                snapshot = new ArrayList<>(history);
             }
-            List<FieldAccessRecord> copy = withdrawExclusivityFromContestedGenerations(snapshot);
-            // Split by instance before anything else. Two threads touching the same field of two
-            // different objects share nothing, and merging them is how a per-call object reads as
-            // contended. Identity 0 means "not known", which keeps every pre-agent caller's
-            // accesses in one group exactly as before, except that an owner-aware access carries
-            // its owner's instance and is grouped by it (#750).
-            //
-            // Construction accesses (#312) leave the contention stats only when the excuse is
-            // corroborated: the receiver's post-publication accesses must span more than one
-            // harness-ordered round. A builder that wrote and a second thread that read once,
-            // all inside one round, is exactly what a two-thread race over an inconsistent
-            // lockset looks like, and it keeps reporting; a receiver built once and then read
-            // round after round is the hand-off the rule exists for.
-            // Each receiver's own records, in recorded order. Every per-instance question below
-            // reads only its receiver's records, and asking it of the whole history made a field
-            // with many receivers (the elements of a list a parallel stream walks) cost records
-            // times receivers: minutes of analysis for a run that took a second.
-            Map<Long, List<FieldAccessRecord>> ofInstance = new HashMap<>();
-            for (FieldAccessRecord access : copy) {
-                ofInstance.computeIfAbsent(access.instanceKey, ignored -> new ArrayList<>())
-                        .add(access);
+            this.records = withdrawExclusivityFromContestedGenerations(snapshot);
+        }
+
+        void judgeEveryRound() {
+            groupByReceiver();
+            for (List<FieldAccessRecord> round : rounds().values()) {
+                judge(round);
             }
-            Map<Long, Boolean> corroborated = new HashMap<>();
-            for (FieldAccessRecord access : copy) {
+        }
+
+        /**
+         * Splits the records by receiver and decides which receivers' construction accesses are a
+         * corroborated hand-off.
+         *
+         * <p>Construction accesses (#312) leave the contention stats only when the excuse is
+         * corroborated: the receiver's post-publication accesses must span more than one
+         * harness-ordered round. A builder that wrote and a second thread that read once, all inside
+         * one round, is exactly what a two-thread race over an inconsistent lockset looks like, and
+         * it keeps reporting; a receiver built once and then read round after round is the hand-off
+         * the rule exists for.
+         */
+        private void groupByReceiver() {
+            for (FieldAccessRecord access : records) {
+                ofInstance.computeIfAbsent(access.instanceKey, ignored -> new ArrayList<>()).add(access);
+            }
+            for (FieldAccessRecord access : records) {
                 if (access.exclusivePhase) {
                     corroborated.computeIfAbsent(access.instanceKey,
-                            instance -> spansLaterRounds(
-                                    ofInstance.getOrDefault(instance, List.of()), instance));
+                            instance -> spansLaterRounds(ofInstance.getOrDefault(instance, List.of()), instance));
                 }
             }
+        }
+
+        /**
+         * {@return the records grouped by round, receiver identity and instance} Split by instance
+         * before anything else: two threads touching the same field of two different objects share
+         * nothing, and merging them is how a per-call object reads as contended. Identity 0 means
+         * "not known", which keeps every pre-agent caller's accesses in one group exactly as before,
+         * except that an owner-aware access carries its owner's instance and is grouped by it
+         * (#750). A corroborated construction access is counted and left out.
+         */
+        private Map<AccessGroup, List<FieldAccessRecord>> rounds() {
             Map<AccessGroup, List<FieldAccessRecord>> byEpoch = new HashMap<>();
-            for (FieldAccessRecord access : copy) {
+            for (FieldAccessRecord access : records) {
                 if (access.exclusivePhase
                         && Boolean.TRUE.equals(corroborated.get(access.instanceKey))) {
-                    fieldVerdicts.merge("constructionDropped", 1, Integer::sum);
+                    verdicts.merge("constructionDropped", 1, Integer::sum);
                     continue;
                 }
                 byEpoch.computeIfAbsent(
                         new AccessGroup(access.epoch, access.identity, access.instance),
                         ignored -> new ArrayList<>()).add(access);
             }
-
-            // Per-instance excuses (#311, #312, #313), computed at most once per instance and
-            // only when the lockset alone would have reported. All need ordered history, which
-            // the per-round groups no longer carry.
-            // The value names the excuse that held, or is empty when none did.
-            Map<Long, String> excusedInstances = new HashMap<>();
-
-            for (List<FieldAccessRecord> roundAccesses : byEpoch.values()) {
-                Set<Long> threads = new HashSet<>();
-                boolean hasRead = false;
-                boolean hasWrite = false;
-                boolean anyOwnerKnown = false;
-                for (FieldAccessRecord access : roundAccesses) {
-                    threads.add(access.threadId);
-                    hasRead |= !access.write;
-                    hasWrite |= access.write;
-                    anyOwnerKnown |= access.ownerKnown;
-                }
-                // The streamed lockset spans the field's whole run, which makes it a cheap first
-                // answer and a wrong last one: a different lock in each round empties it, although
-                // the harness orders the rounds and each one was consistently locked. So once it
-                // has collapsed, this round's own accesses decide. A round that raced still has an
-                // empty intersection of its own and still reports. Accesses recorded without an
-                // owner or a fingerprint collapse both, so every caller that predates
-                // recordFieldAccessOn keeps the behaviour it had.
-                int groupIdentity = roundAccesses.isEmpty() ? 0 : roundAccesses.get(0).identity;
-                long groupInstance = roundAccesses.isEmpty() ? 0L : roundAccesses.get(0).instanceKey;
-                FieldGuard locks = fieldLocks.get(guardKey(entry.getKey(), groupIdentity));
-                // Safe publication is not an unguarded access. A volatile field whose every write
-                // held the same lock is double-checked locking, where the reads take no lock on
-                // purpose and the JMM makes that correct. Without this the idiom reports as a
-                // check-then-act violation on every correct implementation of it, which is what
-                // commons-lang's LazyInitializer and Guava's memoizing supplier both are.
-                // The same conditions in the same order as one conjunction, each named so that a
-                // silent round can say which one held (#1133).
-                String verdict = null;
-                if (locks != null) {
-                    if (!locks.sawUnguardedAccess()) {
-                        verdict = "lockset";
-                    } else if (!noLockCoveredTheRound(roundAccesses)) {
-                        verdict = "lockCoveredTheRound";
-                    } else if (locks.isSafePublication(roundAccesses)) {
-                        verdict = "safePublication";
-                    } else if (locks.writesOnlyOneConstant()) {
-                        verdict = "oneConstant";
-                    }
-                }
-                boolean sawUnguarded = verdict == null;
-                // The constant-write excuse answers atomicity only (#1053): a flag every write sets
-                // to one constant cannot lose an update, but a thread that only reads it, with no
-                // lock and no edge in between, may never see the write. Judged on a known receiver
-                // only, a woven static field's being its declaring class: identity 0 pools unrelated
-                // objects recorded without one. Any volatile
-                // bit rules it out, the declared kind and the bridge's safely-published mark on a
-                // read that followed a volatile read of the same object alike: either reader sees
-                // the write, and a constant rewritten beside it changes nothing it can observe.
-                boolean unguardedConstantFlag = locks != null && groupIdentity != 0
-                        && locks.writesOnlyOneConstant() && !locks.isVolatileField()
-                        && locks.sawUnguardedAccess() && noLockCoveredTheRound(roundAccesses)
-                        && !locks.isSafePublication(roundAccesses);
-                // The per-instance excuses need a group that is one object's accesses. Identity 0
-                // normally is not: it is the "not known" bucket, where every pre-agent caller's
-                // accesses pool together, and excusing a pool of unrelated receivers because the
-                // pool settled would be unsound. A static field is the exception (#337). Its
-                // identity is 0 by construction rather than by ignorance - there is no receiver
-                // to hash, so the declaring class stands in - and the group really is one field
-                // of one class. What tells the two apart in the record is the stored value: only
-                // the weaver reports a non-zero stored identity, and for an identity-0 group only
-                // a static reference store can carry one. A pre-agent caller, an older agent, a
-                // primitive or a shape the weaver cannot reach all report 0 and keep exactly the
-                // answer they had.
-                if (sawUnguarded && locks != null
-                        && (groupIdentity != 0 || carriesPublishedValueEvidence(copy))) {
-                    FieldGuard guard = locks;
-                    boolean handOff = Boolean.TRUE.equals(corroborated.get(groupInstance));
-                    String excuse = excusedInstances.computeIfAbsent(groupInstance, instance -> {
-                        List<FieldAccessRecord> own = ofInstance.getOrDefault(instance, List.of());
-                        if (handOff && postShareAccessesShareALock(own, instance)) {
-                            return "postShareLock";
-                        }
-                        if (hintReadsConfirmedUnderTheWriteLock(own, instance, guard, handOff)) {
-                            return "hintReadsConfirmed";
-                        }
-                        if (settledSingleCheckCache(own, instance, guard, handOff)) {
-                            return "settledCache";
-                        }
-                        return everyOwnershipGenerationAgreesOnALock(own, instance)
-                                ? "ownershipGenerationsAgree" : "";
-                    });
-                    if (!excuse.isEmpty()) {
-                        sawUnguarded = false;
-                        verdict = excuse;
-                    }
-                }
-                // Ordered by the shared happens-before model: every conflicting pair in this group
-                // has an edge the lockset cannot see, a queue or map hand-off, a volatile
-                // publication, a start or a join. Like the lock rule this judges each pair, not
-                // the interleaving of a compound operation, and like every excuse here it only
-                // ever removes a finding: a group whose accesses carry no stamps is not ordered.
-                if (sawUnguarded && threads.size() > 1) {
-                    if (HappensBefore.everyConflictOrdered(roundAccesses, true)) {
-                        sawUnguarded = false;
-                        verdict = "happensBefore";
-                    } else if (everyConflictOrderedOrLocked(roundAccesses)) {
-                        sawUnguarded = false;
-                        verdict = "orderedOrLocked";
-                    }
-                }
-                // A volatile field written by one thread in the round: that thread's
-                // read-then-write cannot lose an update, and the other threads' reads of a
-                // volatile are synchronization rather than data races, which is how
-                // RaceConditionDetector judges the same field. Two writers keep the finding,
-                // which is what keeps volatile count++ reportable.
-                if (sawUnguarded && locks != null && locks.hasVolatileWrites()
-                        && writerThreads(roundAccesses) == 1) {
-                    sawUnguarded = false;
-                    verdict = "volatileSingleWriter";
-                }
-                // A volatile field the round only wrote (#1296): a blind store makes no check, so
-                // there is no window for another thread to change the state in, and nothing to
-                // lose but the order of the stores, which a volatile defines. A plain field keeps
-                // its finding: its writes are unordered, whatever the line is called.
-                if (sawUnguarded && !hasRead && locks != null && locks.hasVolatileWrites()) {
-                    sawUnguarded = false;
-                    verdict = "volatileBlindWrites";
-                }
-                String decided = threads.size() <= 1 ? "oneThread"
-                        : !hasWrite ? "noWrite"
-                        : sawUnguarded ? "reported"
-                        : verdict;
-                fieldVerdicts.merge(decided, 1, Integer::sum);
-                // Only claim to have looked at locks when an owner was actually supplied.
-                String note = anyOwnerKnown ? SelfGuard.REPORT_NOTE : "";
-
-                if (unguardedConstantFlag && aReaderThatNeverWrote(roundAccesses)
-                        && !HappensBefore.everyConflictOrdered(roundAccesses, true)) {
-                    report.add(report.unorderedPublications, "unorderedPublication", String.format(
-                        "%s: set to one constant by one thread and read by another with no lock and no"
-                                + " happens-before edge between them, so the reader may never see the"
-                                + " write; declare it volatile%s",
-                        entry.getKey(),
-                        note
-                    ));
-                }
-
-                if (threads.size() > 1 && hasRead && hasWrite && sawUnguarded) {
-                    report.add(report.unsafeFieldAccesses, "unsafeCompoundAccess", String.format(
-                        "%s: mixed read/write compound access across %d threads%s",
-                        entry.getKey(),
-                        threads.size(),
-                        note
-                    ));
-                }
-                if (threads.size() > 1 && hasWrite && sawUnguarded && hasRead) {
-                    report.add(report.totcouRaces, "toctouWindow", String.format(
-                        "%s: state changed between check/use windows on %d threads%s",
-                        entry.getKey(),
-                        threads.size(),
-                        note
-                    ));
-                } else if (threads.size() > 1 && hasWrite && sawUnguarded) {
-                    // Nothing read the field, so there is no check to have gone stale; the stores
-                    // themselves are what is unordered (#1300).
-                    report.add(report.unorderedWrites, "unorderedWrites", String.format(
-                        "%s: written by %d threads with no lock and no order between the stores%s",
-                        entry.getKey(),
-                        threads.size(),
-                        note
-                    ));
-                }
-            }
+            return byEpoch;
         }
 
-        lastVerdicts = verdicts;
-        return DetectorFailurePolicy.checkedReport(this, report);
+        private void judge(List<FieldAccessRecord> round) {
+            RoundShape shape = RoundShape.of(round);
+            int groupIdentity = round.isEmpty() ? 0 : round.get(0).identity;
+            long groupInstance = round.isEmpty() ? 0L : round.get(0).instanceKey;
+            FieldGuard locks = fieldLocks.get(guardKey(field, groupIdentity));
+            String verdict = lockVerdict(locks, round);
+            boolean unguardedConstantFlag = isUnguardedConstantFlag(locks, groupIdentity, round);
+            if (verdict == null) {
+                verdict = instanceExcuse(locks, groupIdentity, groupInstance);
+            }
+            if (verdict == null && shape.manyThreads()) {
+                verdict = orderingExcuse(round);
+            }
+            if (verdict == null) {
+                verdict = volatileExcuse(locks, round, shape);
+            }
+            boolean sawUnguarded = verdict == null;
+            String decided = !shape.manyThreads() ? "oneThread"
+                    : !shape.hasWrite() ? "noWrite"
+                    : sawUnguarded ? "reported"
+                    : verdict;
+            verdicts.merge(decided, 1, Integer::sum);
+            reportRound(round, shape, sawUnguarded, unguardedConstantFlag);
+        }
+
+        /**
+         * {@return the lock rule's verdict, or {@code null} when it saw an unguarded access}
+         *
+         * <p>The streamed lockset spans the field's whole run, which makes it a cheap first answer
+         * and a wrong last one: a different lock in each round empties it, although the harness
+         * orders the rounds and each one was consistently locked. So once it has collapsed, this
+         * round's own accesses decide. A round that raced still has an empty intersection of its own
+         * and still reports. Accesses recorded without an owner or a fingerprint collapse both, so
+         * every caller that predates recordFieldAccessOn keeps the behaviour it had.
+         *
+         * <p>Safe publication is not an unguarded access. A volatile field whose every write held
+         * the same lock is double-checked locking, where the reads take no lock on purpose and the
+         * JMM makes that correct. Without this the idiom reports as a check-then-act violation on
+         * every correct implementation of it, which is what commons-lang's LazyInitializer and
+         * Guava's memoizing supplier both are. The same conditions in the same order as one
+         * conjunction, each named so that a silent round can say which one held (#1133).
+         */
+        private @Nullable String lockVerdict(@Nullable FieldGuard locks, List<FieldAccessRecord> round) {
+            if (locks == null) {
+                return null;
+            }
+            if (!locks.sawUnguardedAccess()) {
+                return "lockset";
+            }
+            if (!noLockCoveredTheRound(round)) {
+                return "lockCoveredTheRound";
+            }
+            if (locks.isSafePublication(round)) {
+                return "safePublication";
+            }
+            if (locks.writesOnlyOneConstant()) {
+                return "oneConstant";
+            }
+            return null;
+        }
+
+        /**
+         * {@return whether the round is a flag set to one constant with no lock and no safe
+         * publication}
+         *
+         * <p>The constant-write excuse answers atomicity only (#1053): a flag every write sets to
+         * one constant cannot lose an update, but a thread that only reads it, with no lock and no
+         * edge in between, may never see the write. Judged on a known receiver only, a woven static
+         * field's being its declaring class: identity 0 pools unrelated objects recorded without
+         * one. Any volatile bit rules it out, the declared kind and the bridge's safely-published
+         * mark on a read that followed a volatile read of the same object alike: either reader sees
+         * the write, and a constant rewritten beside it changes nothing it can observe.
+         */
+        private boolean isUnguardedConstantFlag(@Nullable FieldGuard locks, int groupIdentity,
+                                                List<FieldAccessRecord> round) {
+            return locks != null && groupIdentity != 0
+                    && locks.writesOnlyOneConstant() && !locks.isVolatileField()
+                    && locks.sawUnguardedAccess() && noLockCoveredTheRound(round)
+                    && !locks.isSafePublication(round);
+        }
+
+        /**
+         * {@return the per-receiver excuse that holds for this round's receiver, or {@code null}}
+         *
+         * <p>The per-instance excuses need a group that is one object's accesses. Identity 0
+         * normally is not: it is the "not known" bucket, where every pre-agent caller's accesses
+         * pool together, and excusing a pool of unrelated receivers because the pool settled would
+         * be unsound. A static field is the exception (#337). Its identity is 0 by construction
+         * rather than by ignorance - there is no receiver to hash, so the declaring class stands in
+         * - and the group really is one field of one class. What tells the two apart in the record
+         * is the stored value: only the weaver reports a non-zero stored identity, and for an
+         * identity-0 group only a static reference store can carry one. A pre-agent caller, an
+         * older agent, a primitive or a shape the weaver cannot reach all report 0 and keep exactly
+         * the answer they had.
+         */
+        private @Nullable String instanceExcuse(@Nullable FieldGuard locks, int groupIdentity, long groupInstance) {
+            if (locks == null || (groupIdentity == 0 && !carriesPublishedValueEvidence(records))) {
+                return null;
+            }
+            FieldGuard guard = locks;
+            boolean handOff = Boolean.TRUE.equals(corroborated.get(groupInstance));
+            String excuse = excusedInstances.computeIfAbsent(groupInstance, instance -> {
+                List<FieldAccessRecord> own = ofInstance.getOrDefault(instance, List.of());
+                if (handOff && postShareAccessesShareALock(own, instance)) {
+                    return "postShareLock";
+                }
+                if (hintReadsConfirmedUnderTheWriteLock(own, instance, guard, handOff)) {
+                    return "hintReadsConfirmed";
+                }
+                if (settledSingleCheckCache(own, instance, guard, handOff)) {
+                    return "settledCache";
+                }
+                return everyOwnershipGenerationAgreesOnALock(own, instance)
+                        ? "ownershipGenerationsAgree" : "";
+            });
+            return excuse.isEmpty() ? null : excuse;
+        }
+
+        /**
+         * {@return the ordering excuse for a round of several threads, or {@code null}}
+         *
+         * <p>Ordered by the shared happens-before model: every conflicting pair in this group has
+         * an edge the lockset cannot see, a queue or map hand-off, a volatile publication, a start
+         * or a join. Like the lock rule this judges each pair, not the interleaving of a compound
+         * operation, and like every excuse here it only ever removes a finding: a group whose
+         * accesses carry no stamps is not ordered.
+         */
+        private @Nullable String orderingExcuse(List<FieldAccessRecord> round) {
+            if (HappensBefore.everyConflictOrdered(round, true)) {
+                return "happensBefore";
+            }
+            if (everyConflictOrderedOrLocked(round)) {
+                return "orderedOrLocked";
+            }
+            return null;
+        }
+
+        /**
+         * {@return the volatile excuse, or {@code null}}
+         *
+         * <p>A volatile field written by one thread in the round: that thread's read-then-write
+         * cannot lose an update, and the other threads' reads of a volatile are synchronization
+         * rather than data races, which is how RaceConditionDetector judges the same field. Two
+         * writers keep the finding, which is what keeps volatile count++ reportable.
+         *
+         * <p>A volatile field the round only wrote (#1296): a blind store makes no check, so there
+         * is no window for another thread to change the state in, and nothing to lose but the
+         * order of the stores, which a volatile defines. A plain field keeps its finding: its writes
+         * are unordered, whatever the line is called.
+         */
+        private @Nullable String volatileExcuse(@Nullable FieldGuard locks, List<FieldAccessRecord> round,
+                                                RoundShape shape) {
+            if (locks == null || !locks.hasVolatileWrites()) {
+                return null;
+            }
+            if (writerThreads(round) == 1) {
+                return "volatileSingleWriter";
+            }
+            if (!shape.hasRead()) {
+                return "volatileBlindWrites";
+            }
+            return null;
+        }
+
+        private void reportRound(List<FieldAccessRecord> round, RoundShape shape, boolean sawUnguarded,
+                                 boolean unguardedConstantFlag) {
+            // Only claim to have looked at locks when an owner was actually supplied.
+            String note = shape.anyOwnerKnown() ? SelfGuard.REPORT_NOTE : "";
+
+            if (unguardedConstantFlag && aReaderThatNeverWrote(round)
+                    && !HappensBefore.everyConflictOrdered(round, true)) {
+                report.add(report.unorderedPublications, "unorderedPublication", String.format(
+                    "%s: set to one constant by one thread and read by another with no lock and no"
+                            + " happens-before edge between them, so the reader may never see the"
+                            + " write; declare it volatile%s",
+                    field,
+                    note
+                ));
+            }
+
+            boolean unguardedWrites = shape.manyThreads() && shape.hasWrite() && sawUnguarded;
+            if (unguardedWrites && shape.hasRead()) {
+                report.add(report.unsafeFieldAccesses, "unsafeCompoundAccess", String.format(
+                    "%s: mixed read/write compound access across %d threads%s",
+                    field,
+                    shape.threads().size(),
+                    note
+                ));
+                report.add(report.totcouRaces, "toctouWindow", String.format(
+                    "%s: state changed between check/use windows on %d threads%s",
+                    field,
+                    shape.threads().size(),
+                    note
+                ));
+            } else if (unguardedWrites) {
+                // Nothing read the field, so there is no check to have gone stale; the stores
+                // themselves are what is unordered (#1300).
+                report.add(report.unorderedWrites, "unorderedWrites", String.format(
+                    "%s: written by %d threads with no lock and no order between the stores%s",
+                    field,
+                    shape.threads().size(),
+                    note
+                ));
+            }
+        }
     }
 
     /** {@return whether some thread in the round read the field and never wrote it} */

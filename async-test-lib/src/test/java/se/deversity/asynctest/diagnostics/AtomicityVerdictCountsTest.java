@@ -103,6 +103,44 @@ class AtomicityVerdictCountsTest {
     }
 
     @Test
+    @DisplayName("a group that only reads is counted as noWrite, not as cleared by a rule")
+    void readOnlyGroupIsNoWrite() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.recordFieldAccessUnderLocks(FIELD, null, false, 101L, 0L);
+        validator.recordFieldAccessUnderLocks(FIELD, null, false, 202L, 0L);
+
+        assertTrue(!validator.analyzeAtomicity().hasIssues(), "premise: reads alone cannot lose an update");
+        assertEquals(Map.of("noWrite", 1), validator.verdictCounts(FIELD));
+    }
+
+    @Test
+    @DisplayName("a different lock in each round empties the run's lockset; each round's own lock still clears it")
+    void eachRoundCoveredByItsOwnLock() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.markInvocationStart();
+        validator.recordFieldAccessUnderLocks(FIELD, null, true, 101L, LOCK);
+        validator.recordFieldAccessUnderLocks(FIELD, null, true, 202L, LOCK);
+        validator.markInvocationStart();
+        validator.recordFieldAccessUnderLocks(FIELD, null, true, 101L, LOCK + 1);
+        validator.recordFieldAccessUnderLocks(FIELD, null, true, 202L, LOCK + 1);
+
+        assertTrue(!validator.analyzeAtomicity().hasIssues(), "premise: the harness orders the rounds");
+        assertEquals(Map.of("lockCoveredTheRound", 2), validator.verdictCounts(FIELD));
+    }
+
+    @Test
+    @DisplayName("the first rule that clears a group names it: the lockset before the volatile rules")
+    void theLocksetIsAskedBeforeTheVolatileRules() {
+        AtomicityValidator validator = new AtomicityValidator();
+        validator.recordFieldAccessUnderLocks(FIELD, null, true, 101L, LOCK, true);
+        validator.recordFieldAccessUnderLocks(FIELD, null, false, 202L, LOCK, true);
+
+        assertTrue(!validator.analyzeAtomicity().hasIssues(), "premise: the group is silent");
+        assertEquals(Map.of("lockset", 1), validator.verdictCounts(FIELD),
+                "a volatile single writer under one lock is cleared by the lockset, the rule asked first");
+    }
+
+    @Test
     @DisplayName("groups are counted per round, a one-thread round under its own key")
     void countsPerRound() {
         AtomicityValidator validator = new AtomicityValidator();

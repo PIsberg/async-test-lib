@@ -87,7 +87,10 @@ class LibraryStateIsKeyedByIdentityTest {
      * fails.
      */
     private static final Map<String, String> DELIBERATE = Map.ofEntries(
-            Map.entry("AtomicityValidator.java#analyzeAtomicity", OWNERSHIP),
+            // The per-field analysis (FieldAnalysis): one method of it used to hold all three.
+            Map.entry("AtomicityValidator.java#groupByReceiver", OWNERSHIP),
+            Map.entry("AtomicityValidator.java#rounds", OWNERSHIP),
+            Map.entry("AtomicityValidator.java#judge", OWNERSHIP),
             Map.entry("AtomicityValidator.java#record", OWNERSHIP),
             Map.entry("AtomicityValidator.java#everyPublishedValueWentQuiet", OWNERSHIP),
             Map.entry("AtomicityValidator.java#withdrawExclusivityFromContestedGenerations", OWNERSHIP),
