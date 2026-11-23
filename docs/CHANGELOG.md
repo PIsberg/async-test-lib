@@ -136,6 +136,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it left the round with a worker that never took it, so its peers stalled until that worker's body
   ended, for good when the body waited on a peer, and kept a lock hold the worker never took. The
   turn is now handed on and the hold given back.
+- **A pool thread reused across controlled rounds runs each round's tasks under that round's
+  schedule (#1495, part 3).** An adopted thread never leaves its round, so a pool thread a woven
+  thread factory built in one round carried that round's worker into the next, took itself for a
+  caller-runs thread there, and ran the task uncontrolled while the round counted no escape.
 
 - **A round's `@AfterEachInvocation` hooks run when its `@BeforeEachInvocation` hook throws
   (#1477).** The before-hooks ran ahead of the round's failure handling, so their exception skipped
