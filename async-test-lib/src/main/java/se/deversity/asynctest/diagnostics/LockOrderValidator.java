@@ -65,7 +65,30 @@ public class LockOrderValidator {
     /** Edge records the cycle search may visit in one analysis before it stops looking. */
     private static final int CYCLE_SEARCH_BUDGET = 200_000;
 
-    private static final IdentityKey[] NO_GUARD = new IdentityKey[0];
+    private static final Guard NO_GUARD = new Guard(new IdentityKey[0]);
+
+    /**
+     * The locks a thread held, besides the two of an edge, while it made that edge: the Goodlock
+     * guard set. Two edges made under guards that exclude each other cannot be in progress at once,
+     * because one thread must leave its guard before the other can enter.
+     */
+    private static final class Guard {
+        final IdentityKey[] locks;
+
+        Guard(IdentityKey[] locks) {
+            this.locks = locks;
+        }
+
+        /** {@return whether a thread holding this guard keeps out one holding {@code other}} */
+        boolean excludes(Guard other) {
+            for (IdentityKey key : locks) {
+                if (containsReferent(other.locks, key.referent())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
 
     /**
      * One lock acquired while another was already held: {@code from} nests {@code to}.
@@ -85,23 +108,23 @@ public class LockOrderValidator {
     /** One thread's record of one edge: which thread made it, holding what else. */
     private static final class EdgeRecord {
         final long threadId;
-        final IdentityKey[] guard;
+        final Guard guard;
 
-        EdgeRecord(long threadId, IdentityKey[] guard) {
+        EdgeRecord(long threadId, Guard guard) {
             this.threadId = threadId;
             this.guard = guard;
         }
 
         /** Whether this edge and {@code other} could be in progress at once. */
         boolean concurrentWith(EdgeRecord other) {
-            return threadId != other.threadId && disjoint(guard, other.guard);
+            return threadId != other.threadId && !guard.excludes(other.guard);
         }
     }
 
     /** The guard sets one thread made one edge under. Guarded by the owning sequence's monitor. */
     private static final class EdgeGuards {
         final IdentityKey to;
-        final List<IdentityKey[]> guards = new ArrayList<>(2);
+        final List<Guard> guards = new ArrayList<>(2);
 
         EdgeGuards(IdentityKey to) {
             this.to = to;
@@ -224,7 +247,7 @@ public class LockOrderValidator {
 
         /** Adds the locks held now, other than {@code skip}, as a guard set of the edge. */
         private void recordGuard(EdgeGuards edge, int skip) {
-            List<IdentityKey[]> guards = edge.guards;
+            List<Guard> guards = edge.guards;
             for (int i = 0; i < guards.size(); i++) { // NOPMD ForLoopCanBeForeach - no Iterator on the record path
                 if (isGuardNow(guards.get(i), skip)) {
                     return;
@@ -238,31 +261,31 @@ public class LockOrderValidator {
         }
 
         @SuppressWarnings({"ReferenceEquality", "PMD.CompareObjectsWithEquals"}) // locks are tracked by identity
-        private boolean isGuardNow(IdentityKey[] guard, int skip) {
-            if (guard.length != size - 1) {
+        private boolean isGuardNow(Guard guard, int skip) {
+            if (guard.locks.length != size - 1) {
                 return false;
             }
             for (int i = 0; i < size; i++) {
-                if (i != skip && !containsReferent(guard, heldLocks[i])) {
+                if (i != skip && !containsReferent(guard.locks, heldLocks[i])) {
                     return false;
                 }
             }
             return true;
         }
 
-        private IdentityKey[] guardNow(int skip) {
+        private Guard guardNow(int skip) {
             if (size == 1) {
                 return NO_GUARD;
             }
-            IdentityKey[] guard = new IdentityKey[size - 1];
+            IdentityKey[] locks = new IdentityKey[size - 1];
             int at = 0;
             for (int i = 0; i < size; i++) {
                 if (i != skip) {
-                    guard[at] = keyAt(i);
+                    locks[at] = keyAt(i);
                     at++;
                 }
             }
-            return guard;
+            return new Guard(locks);
         }
 
         private void push(Object lock, @Nullable IdentityKey key, boolean confirmHold) {
@@ -340,15 +363,6 @@ public class LockOrderValidator {
             }
         }
         return false;
-    }
-
-    private static boolean disjoint(IdentityKey[] first, IdentityKey[] second) {
-        for (IdentityKey key : first) {
-            if (containsReferent(second, key.referent())) {
-                return false;
-            }
-        }
-        return true;
     }
 
     /**
@@ -532,7 +546,7 @@ public class LockOrderValidator {
                     for (EdgeGuards edge : out.getValue().values()) {
                         List<EdgeRecord> list = records.computeIfAbsent(
                                 new LockEdge(out.getKey(), edge.to), k -> new ArrayList<>());
-                        for (IdentityKey[] guard : edge.guards) {
+                        for (Guard guard : edge.guards) {
                             list.add(new EdgeRecord(sequence.threadId, guard));
                         }
                     }
