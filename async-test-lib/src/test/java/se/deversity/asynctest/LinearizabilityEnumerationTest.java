@@ -87,4 +87,50 @@ class LinearizabilityEnumerationTest {
                 () -> history.assertLinearizableForAllScenarios(bucketSpec, 2, 1, 16));
         assertTrue(e.getMessage().contains("is not linearizable"), e.getMessage());
     }
+
+    // ---- #1493: what used to pass without being checked ------------------------------------------
+
+    @Test
+    void aScenarioWhoseRunThrowsFailsNamingTheScenario() {
+        OperationHistory<AtomicInteger> history = OperationHistory.of(AtomicInteger::new)
+                .operation("boom", random -> null, (counter, arg) -> {
+                    throw new IllegalStateException("the subject crashed");
+                });
+        AssertionError e = assertThrows(AssertionError.class,
+                () -> history.assertLinearizableForAllScenarios(COUNTER, 2, 1));
+        assertTrue(e.getMessage().contains("failed to run") && e.getMessage().contains(": boom()"),
+                "the scenario is named: " + e.getMessage());
+        assertTrue(causes(e).contains("the subject crashed"),
+                "a crash is the scenario's failure, not a pass: " + causes(e));
+    }
+
+    @Test
+    void aSingleWorkerThatDisagreesWithTheSpecFails() {
+        OperationHistory<AtomicInteger> history = OperationHistory.of(AtomicInteger::new)
+                .operation("increment", random -> null, (counter, arg) -> counter.addAndGet(2));
+        AssertionError e = assertThrows(AssertionError.class,
+                () -> history.assertLinearizableForAllScenarios(COUNTER, 1, 1),
+                "one worker alone is sequential, but its results must still match the spec");
+        assertTrue(e.getMessage().contains("is not linearizable"), e.getMessage());
+    }
+
+    @Test
+    void aScenarioTheSearchCannotCheckFailsRatherThanPasses() {
+        // 65 operations on one worker: more than one search takes, the same AssertionError path an
+        // undecided search takes, reached here without a million-state search.
+        OperationHistory<AtomicInteger> history = OperationHistory.of(AtomicInteger::new)
+                .operation("increment", random -> null, (counter, arg) -> counter.incrementAndGet());
+        AssertionError e = assertThrows(AssertionError.class,
+                () -> history.assertLinearizableForAllScenarios(COUNTER, 1, 65));
+        assertTrue(causes(e).contains("one search takes at most"), causes(e));
+    }
+
+    /** {@return the messages of {@code e} and every cause under it, one per line} */
+    private static String causes(Throwable e) {
+        StringBuilder sb = new StringBuilder();
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            sb.append(t).append('\n');
+        }
+        return sb.toString();
+    }
 }

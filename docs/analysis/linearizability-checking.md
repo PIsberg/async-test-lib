@@ -226,8 +226,14 @@ and an idle third worker in every attempt changed which interleavings a seed rea
 overload with `argumentDrawsPerScenario`) enumerates instead of
 drawing: every sequence of up to `operationsPerWorker` declared operations on each of `workers`
 workers, smallest total first, each run as one round on a probe history with a controlled schedule
-under seeds 1 to 32. It throws for the first scenario with no linearization, listed per worker
-with its seed, and returns a line saying what it covered when every scenario passed. An
+under seeds 1 to 32. It throws for the first scenario that fails, listed per worker with its seed:
+one with no linearization ("is not linearizable"), one whose run threw ("failed to run": the object
+crashed or hung, or the licence gate refused the run) and one the search could not decide ("could
+not be checked"). Before #1493 the last two passed, read the way shrinking reads them, as "not the
+failure being looked for", and a scenario only one worker runs was skipped as sequential, so
+`workers = 1` checked nothing. One worker alone has one interleaving, so such a scenario now runs
+once, and its results must still be the spec's. It returns a line saying what it covered when every
+scenario passed. An
 operation's argument is drawn once per worker and position from a fixed seed, so the space is the
 order of the operations, not their arguments. A space that takes more than 20,000 runs is refused
 with `IllegalArgumentException` rather than searched part way, because a search that stopped early
@@ -235,7 +241,8 @@ would read as a pass it is not. Two operations on two workers of up to two each 
 
 `LinearizabilityEnumerationTest` covers it: for the read, point, write counter with a `get` declared
 before `increment`, the scenario found is one increment on each worker, the smallest that can
-fail; an `AtomicInteger` passes all 49; four workers of up to six operations each is refused.
+fail; an `AtomicInteger` passes all 49; four workers of up to six operations each is refused; an operation that throws, a lone worker whose
+result the spec disagrees with, and a 65-operation round each fail (#1493).
 Skipping every scenario turns the first test red.
 
 ## Limits

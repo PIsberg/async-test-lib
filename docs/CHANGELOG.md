@@ -108,6 +108,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   overwrote the outer acquire's start time, so a lock held for seconds across a re-entry read
   `max hold: 0ms` and never drew the long-hold finding. A hold is now timed from the outermost
   acquire to the release that ends it. `analyze()` is also split into one lock's checks.
+- **`OperationHistory.assertLinearizableForAllScenarios` no longer passes what it did not check
+  (#1493).** A scenario whose run threw (the object crashed or hung, or the licence gate refused
+  the run) and one the search could not decide both counted as linearizable, and a scenario only
+  one worker runs was skipped, so `workers = 1` checked nothing. Each now fails, naming the
+  scenario and its seed; a lone worker's scenario runs once. The enumeration is also split into its
+  steps.
 
 - **A round's `@AfterEachInvocation` hooks run when its `@BeforeEachInvocation` hook throws
   (#1477).** The before-hooks ran ahead of the round's failure handling, so their exception skipped

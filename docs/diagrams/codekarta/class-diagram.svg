@@ -4465,7 +4465,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3776.0" y="513.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">run(String, Object, Runnab…</text>
   <text x="3776.0" y="528.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">operation(String, Function…</text>
   <text x="3776.0" y="543.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">generate(int): void</text>
-  <text x="3776.0" y="558.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+22 more)</text>
+  <text x="3776.0" y="558.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+29 more)</text>
 </g>
 <g id="Preset">
   <title>Preset [CLASS]</title>
