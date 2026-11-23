@@ -136,13 +136,13 @@ class ConcurrencyRunnerLogContractTest {
     @Test
     @DisplayName("the replay line says what the seed replays")
     void theReplayLineSaysWhatTheSeedReplays() {
-        String plain = ConcurrencyRunner.replayHint(5L, null);
+        String plain = RunReporter.replayHint(5L, null);
         assertTrue(plain.contains("replaySeed=5L") && plain.contains("random choices")
             && plain.contains("controlledSchedule = true"), plain);
-        String exact = ConcurrencyRunner.replayHint(5L,
+        String exact = RunReporter.replayHint(5L,
             new se.deversity.asynctest.telemetry.ControlledSchedule.Summary(5L, 8, 3, 0));
         assertTrue(exact.contains("replay this interleaving"), exact);
-        String escaped = ConcurrencyRunner.replayHint(5L,
+        String escaped = RunReporter.replayHint(5L,
             new se.deversity.asynctest.telemetry.ControlledSchedule.Summary(5L, 8, 3, 2));
         assertTrue(escaped.contains("2 time(s)") && escaped.contains("may interleave differently"), escaped);
     }
@@ -437,7 +437,7 @@ class ConcurrencyRunnerLogContractTest {
             .assertStatistics(stats -> stats.succeeded(1));
 
         List<String> notes = events().stream().filter(m -> m.startsWith("runner.detector.note")).toList();
-        assertEquals(ConcurrencyRunner.NOTE_EVENTS_PER_DETECTOR, notes.size(),
+        assertEquals(RunReporter.NOTE_EVENTS_PER_DETECTOR, notes.size(),
             "five undecided slots, but this is somebody else's build log: the cap, not five. Got: "
                 + events());
         assertTrue(notes.stream().allMatch(m -> m.contains("notes=5")),

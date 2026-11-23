@@ -42,7 +42,7 @@ class ConsoleReportRenderingTest {
 
     @AfterEach
     void clearProperty() {
-        System.clearProperty(ConcurrencyRunner.FULL_REPORT_PROPERTY);
+        System.clearProperty(RunReporter.FULL_REPORT_PROPERTY);
     }
 
     @Test
@@ -52,7 +52,7 @@ class ConsoleReportRenderingTest {
         String err = run(PromptOnlyDummy.class, heard);
 
         assertTrue(err.contains("RecordMutableComponentLeakDetector trust=PROMPT findings=1"), err);
-        assertTrue(err.contains("-D" + ConcurrencyRunner.FULL_REPORT_PROPERTY + "=true"),
+        assertTrue(err.contains("-D" + RunReporter.FULL_REPORT_PROPERTY + "=true"),
                 "the folded line must say how to see the report in full: " + err);
         assertFalse(err.contains(PROMPT_REPORT_BODY), "the prompt report must not print in full: " + err);
         assertTrue(heard.getOrDefault("RecordMutableComponentLeakDetector", "").contains(PROMPT_REPORT_BODY),
@@ -84,7 +84,7 @@ class ConsoleReportRenderingTest {
     @Test
     @DisplayName("-Dasync-test.report.full=true prints prompt-grade blocks in full again")
     void propertyRestoresFullPrinting() {
-        System.setProperty(ConcurrencyRunner.FULL_REPORT_PROPERTY, "true");
+        System.setProperty(RunReporter.FULL_REPORT_PROPERTY, "true");
         String err = run(PromptOnlyDummy.class, new ConcurrentHashMap<>());
 
         assertTrue(err.contains(PROMPT_REPORT_BODY), err);

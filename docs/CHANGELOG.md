@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs once the `SONAR_TOKEN` secret exists. [quality-gates/new-code-gate.md](quality-gates/new-code-gate.md)
   maps each condition to its gate.
 
+- **What a run reports is its own class: `RunReporter` (2,396 to 1,897 lines in
+  `ConcurrencyRunner`).** The detector reports, the trust banner and console folding, the `failOn`
+  gate on a passing run, and the report and error a failing or timed-out run ends with moved out
+  of the execution engine unchanged, 464 lines with `Phase2Analysis`. Every `runner.*` log event
+  still goes to the `ConcurrencyRunner` logger, which builds configure by name.
+
 - **A round is an object now, not a ten-parameter method.** `ConcurrencyRunner`'s round code
   moved into `RoundRunner` (what is fixed for a run, built once) and `Round` (what one round's
   workers share), and the worker lambda that captured thirteen variables is three named methods.

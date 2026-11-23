@@ -89,11 +89,22 @@ class AsyncTestInvocationInterceptor {
 
 class ConcurrencyRunner {
   +static execute(InvocationContext, AsyncTestConfig): void
-  -runSingleInvocationRound(Context, int, Executor, LivelockDetector, AsyncTestContext, long, Method): void
-  -printPhase1Reports(...): void
-  -printPhase2Reports(AsyncTestContext): void
+  +static afterTeardown(): void
   -findLifecycleMethods(Object, Class): List<Method>
   -invokeLifecycleMethods(Object, List<Method>): void
+}
+
+class "ConcurrencyRunner.RoundRunner" as RoundRunner {
+  ~run(long roundTimeoutMs, ControlledSchedule): void
+  -runWorker(int, Round): void
+  -runBodyOnce(int, Round): void
+}
+
+class RunReporter {
+  ~static analyzeAndGate(AsyncTestConfig, Method, Phase2Analysis): void
+  ~static reportFailure(Throwable, long, Summary, Phase2Analysis): void
+  ~static timeoutError(long, AssertionError, Phase2Analysis, boolean, RunProgress): AssertionError
+  -printPhase2Reports(Phase2Analysis): void
 }
 
 class AsyncTestContext {
@@ -306,6 +317,8 @@ ConcurrencyRunner --> AsyncTestContext : "Creates & installs"
 ConcurrencyRunner --> DetectorRegistry : "Creates"
 ConcurrencyRunner --> Phase1DetectorSet : "Creates from config"
 ConcurrencyRunner --> AsyncTestListenerRegistry : "Fires events"
+ConcurrencyRunner --> RoundRunner : "Runs each round through"
+ConcurrencyRunner --> RunReporter : "Reports and gates through"
 AsyncTestConfig --> AsyncTest : "Built from"
 AsyncTestConfig --> DetectorType : "Uses excludes"
 AsyncTestContext --> DetectorRegistry : "Delegates to"

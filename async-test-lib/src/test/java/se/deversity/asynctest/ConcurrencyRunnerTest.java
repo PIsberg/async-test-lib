@@ -705,13 +705,14 @@ class ConcurrencyRunnerTest {
         AsyncTestContext ctx = new AsyncTestContext(cfg);
 
         Class<?> phase2AnalysisClass = null;
-        for (Class<?> nested : RUNNER_CLASS.getDeclaredClasses()) {
+        // Reached by name: RunReporter is package-private to the runner package.
+        for (Class<?> nested : Class.forName("se.deversity.asynctest.runner.RunReporter").getDeclaredClasses()) {
             if (nested.getSimpleName().equals("Phase2Analysis")) {
                 phase2AnalysisClass = nested;
                 break;
             }
         }
-        assertNotNull(phase2AnalysisClass, "ConcurrencyRunner must declare a Phase2Analysis nested type");
+        assertNotNull(phase2AnalysisClass, "RunReporter must declare a Phase2Analysis nested type");
 
         Constructor<?> ctor = phase2AnalysisClass.getDeclaredConstructor(AsyncTestContext.class, String.class);
         ctor.setAccessible(true);
