@@ -48,13 +48,26 @@ public class LockLeakDetector {
     /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
     private final UnnamedLabels unnamedLabels = new UnnamedLabels();
 
+    /**
+     * One thread's hold of one lock, kept at depth zero between holds so the record path allocates
+     * only on a thread's first acquire. Touched only by that thread, so it needs no synchronization.
+     */
+    private static final class Hold {
+        long since;
+        int depth;
+    }
+
     private static class LockState {
         final String name;
         final AtomicInteger acquireCount = new AtomicInteger(0);
         final AtomicInteger releaseCount = new AtomicInteger(0);
         final Set<Long> acquiringThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> releasingThreads = ConcurrentHashMap.newKeySet();
-        final Map<Long, Long> threadAcquireTime = new ConcurrentHashMap<>();
+        /**
+         * Each thread's current hold, timed from its outermost acquire to the release that ends it,
+         * so a re-entered lock is timed as one hold rather than as its innermost section (#1505).
+         */
+        final Map<Long, Hold> threadHolds = new ConcurrentHashMap<>();
         final AtomicInteger maxHoldTimeMs = new AtomicInteger(0);
         volatile boolean currentlyHeld = false;
         volatile @Nullable Long lastAcquireTime = null;
@@ -131,7 +144,15 @@ public class LockLeakDetector {
         }
         long now = System.currentTimeMillis();
         state.lastAcquireTime = now;
-        state.threadAcquireTime.put(Thread.currentThread().threadId(), now);
+        long threadId = Thread.currentThread().threadId();
+        Hold hold = state.threadHolds.get(threadId);
+        if (hold == null) {
+            hold = state.threadHolds.computeIfAbsent(threadId, ignored -> new Hold());
+        }
+        if (hold.depth == 0) {
+            hold.since = now;
+        }
+        hold.depth++;
     }
 
     /**
@@ -157,11 +178,15 @@ public class LockLeakDetector {
         state.threads.add(Thread.currentThread());
         state.currentlyHeld = false;
 
-        // Calculate hold time
-        Long acquireTime = state.threadAcquireTime.remove(Thread.currentThread().threadId());
-        if (acquireTime != null) {
-            int holdTimeMs = (int) (System.currentTimeMillis() - acquireTime);
-            state.maxHoldTimeMs.updateAndGet(max -> Math.max(max, holdTimeMs));
+        // Time the hold when this release ends it; an inner release of a re-entered lock does not.
+        long threadId = Thread.currentThread().threadId();
+        Hold hold = state.threadHolds.get(threadId);
+        if (hold != null && hold.depth > 0) {
+            hold.depth--;
+            if (hold.depth == 0) {
+                int holdTimeMs = (int) (System.currentTimeMillis() - hold.since);
+                state.maxHoldTimeMs.updateAndGet(max -> Math.max(max, holdTimeMs));
+            }
         }
     }
 

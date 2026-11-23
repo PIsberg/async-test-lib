@@ -689,4 +689,26 @@ public class LockLeakDetectorTest {
             assertEquals(IssueSeverity.CRITICAL, violation.severity(), violation.toString());
         }
     }
+
+    @Test
+    void aReenteredHoldIsTimedFromTheOuterAcquireToTheOuterRelease() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        lock.lock();
+        detector.recordLockAcquired(lock, "reentered");
+        Thread.sleep(300);
+        lock.lock();
+        detector.recordLockAcquired(lock, "reentered");
+        lock.unlock();
+        detector.recordLockReleased(lock, "reentered");
+        lock.unlock();
+        detector.recordLockReleased(lock, "reentered");
+
+        // #1505: the inner acquire overwrote the outer one's start and the inner release consumed
+        // it, so the 300 ms the lock was held read as the inner section's 0 ms.
+        String activity = detector.analyze().threadActivity.get(0);
+        java.util.regex.Matcher maxHold = java.util.regex.Pattern.compile("max hold: (\\d+)ms").matcher(activity);
+        assertTrue(maxHold.find(), activity);
+        assertTrue(Long.parseLong(maxHold.group(1)) >= 300, "the outer hold is the one timed: " + activity);
+    }
 }
