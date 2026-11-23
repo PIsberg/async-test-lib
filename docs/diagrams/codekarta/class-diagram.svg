@@ -4814,7 +4814,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="680.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">SPIN_LIMIT: int</text>
   <text x="680.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">OPEN: AtomicInteger</text>
   <text x="680.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">CURRENT: ThreadLocal&lt;Worke…</text>
-  <text x="680.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+29 more)</text>
+  <text x="680.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+30 more)</text>
   <line x1="672.0" y1="185.0" x2="852.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="680.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">open(int, long): Controlle…</text>
   <text x="680.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">point(): void</text>
@@ -4822,7 +4822,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="680.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">rejoin(): void</text>
   <text x="680.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">joinIfAdopted(): void</text>
   <text x="680.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">starting(Thread): void</text>
-  <text x="680.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+44 more)</text>
+  <text x="680.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+45 more)</text>
 </g>
 <g id="ReferenceSlots">
   <title>ReferenceSlots [CLASS]</title>
