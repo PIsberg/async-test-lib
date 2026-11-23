@@ -182,7 +182,9 @@ public class DeadlockDetector {
         }
     }
     /**
-     * Prints thread dump to the report output.
+     * Prints the thread dump a timed-out run shows: every thread's stack, then a lock analysis that
+     * draws each deadlock cycle the JVM reports and, when it reports none, lists the threads that
+     * were blocked or waiting.
      */
     public static void printThreadDump() {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
@@ -192,113 +194,137 @@ public class DeadlockDetector {
         System.err.println("   ENHANCED THREAD DUMP WITH LOCK ANALYSIS");
         System.err.println("=======================================================\n");
 
-        // Get detailed thread info with locks
         ThreadInfo[] threadInfos = threadMXBean.dumpAllThreads(true, true);
+        long[] deadlockedThreads = threadMXBean.findDeadlockedThreads();
+        boolean deadlocked = deadlockedThreads != null && deadlockedThreads.length > 0;
 
-        // Print severity
-        System.err.println(IssueSeverity.CRITICAL.format() + ": Application threads are deadlocked");
-        System.err.println("Impact: " + IssueSeverity.CRITICAL.getDescription());
-        System.err.println();
+        // Only a cycle the JVM reports is a deadlock. Said before asking, the CRITICAL line opened
+        // every timeout's dump, a slow but correct body included, and contradicted both the
+        // run's own timeout headline and the "no circular deadlocks" verdict below it (#1491).
+        if (deadlocked) {
+            System.err.println(IssueSeverity.CRITICAL.format() + ": Application threads are deadlocked");
+            System.err.println("Impact: " + IssueSeverity.CRITICAL.getDescription());
+            System.err.println();
+        }
 
-        // Print raw thread dump first
         System.err.println("=== RAW THREAD DUMP ===\n");
         for (ThreadInfo threadInfo : threadInfos) {
             System.err.println(threadInfo.toString());
         }
 
         System.err.println("\n=== LOCK ANALYSIS ===\n");
-
-        // Analyze deadlocks and lock chains
-        long[] deadlockedThreads = threadMXBean.findDeadlockedThreads();
-        if (deadlockedThreads != null && deadlockedThreads.length > 0) {
-            System.err.println("*** CIRCULAR DEADLOCK DETECTED ***");
-            System.err.println("Deadlocked threads: " + Arrays.toString(deadlockedThreads));
-            System.err.println();
-
-            // Get detailed info on deadlocked threads
-            Map<Long, ThreadInfo> threadMap = new HashMap<>();
-            for (ThreadInfo ti : threadInfos) {
-                threadMap.put(ti.getThreadId(), ti);
-            }
-
-            System.err.println("┌────────────────────────────────────────────────────────┐");
-            System.err.println("│               CIRCULAR DEADLOCK GRAPH                  │");
-            System.err.println("└────────────────────────────────────────────────────────┘");
-
-            Set<Long> visited = new HashSet<>();
-            int cycleNum = 1;
-            for (long threadId : deadlockedThreads) {
-                if (visited.contains(threadId)) {
-                    continue;
-                }
-
-                List<ThreadInfo> cycle = new ArrayList<>();
-                long currentId = threadId;
-                Set<Long> path = new java.util.LinkedHashSet<>();
-                while (currentId >= 0 && !path.contains(currentId)) {
-                    ThreadInfo ti = threadMap.get(currentId);
-                    if (ti == null) break;
-                    cycle.add(ti);
-                    path.add(currentId);
-                    currentId = ti.getLockOwnerId();
-                }
-
-                if (path.contains(currentId)) {
-                    int startIdx = 0;
-                    for (int i = 0; i < cycle.size(); i++) {
-                        if (cycle.get(i).getThreadId() == currentId) {
-                            startIdx = i;
-                            break;
-                        }
-                    }
-                    List<ThreadInfo> activeCycle = cycle.subList(startIdx, cycle.size());
-                    for (ThreadInfo ti : activeCycle) {
-                        visited.add(ti.getThreadId());
-                    }
-
-                    System.err.println("Cycle #" + cycleNum + ":");
-                    cycleNum++;
-                    for (ThreadInfo ti : activeCycle) {
-                        System.err.println(String.format("  [Thread-%d \"%s\"]", ti.getThreadId(), ti.getThreadName()));
-                        System.err.println(String.format("     │   waiting for lock: %s", ti.getLockName()));
-                        System.err.println(String.format("     ▼   held by lock owner: Thread-%d", ti.getLockOwnerId()));
-                    }
-                    ThreadInfo first = activeCycle.get(0);
-                    System.err.println(String.format("  [Thread-%d \"%s\"] (CYCLE START)", first.getThreadId(), first.getThreadName()));
-                    System.err.println();
-                }
-            }
-            
-            // Also print original detailed thread information for completeness
-            System.err.println("=== DETAILED DEADLOCKED THREAD INFOS ===\n");
-            for (long threadId : deadlockedThreads) {
-                ThreadInfo ti = threadMap.get(threadId);
-                if (ti != null) {
-                    printLockChain(ti, threadMap);
-                }
-            }
+        if (deadlocked) {
+            printDeadlock(deadlockedThreads, threadInfos);
         } else {
-            System.err.println("No circular deadlocks detected, but test timed out.");
-            System.err.println("Possible causes: Thread starvation, livelock, or infinite loops.\n");
-            
-            // Print threads that are BLOCKED or WAITING
-            System.err.println("--- Blocked/Waiting Threads ---");
-            for (ThreadInfo ti : threadInfos) {
-                if (ti.getThreadState() == Thread.State.BLOCKED ||
-                    ti.getThreadState() == Thread.State.WAITING ||
-                    ti.getThreadState() == Thread.State.TIMED_WAITING) {
-                    System.err.println(ti.getThreadName() + " (" + ti.getThreadState() + ")");
-                    if (ti.getLockName() != null) {
-                        System.err.println("  Waiting on: " + ti.getLockName());
-                    }
-                    if (ti.getLockOwnerId() >= 0) {
-                        System.err.println("  Lock owner: Thread-" + ti.getLockOwnerId());
-                    }
+            printTimeoutWithoutDeadlock(threadInfos);
+        }
+
+        System.err.println("\n=======================================================\n");
+    }
+
+    /** Draws each cycle among {@code deadlockedThreads}, then every deadlocked thread's lock chain. */
+    private static void printDeadlock(long[] deadlockedThreads, ThreadInfo[] threadInfos) {
+        System.err.println("*** CIRCULAR DEADLOCK DETECTED ***");
+        System.err.println("Deadlocked threads: " + Arrays.toString(deadlockedThreads));
+        System.err.println();
+
+        Map<Long, ThreadInfo> threadMap = new HashMap<>();
+        for (ThreadInfo ti : threadInfos) {
+            threadMap.put(ti.getThreadId(), ti);
+        }
+
+        System.err.println("┌────────────────────────────────────────────────────────┐");
+        System.err.println("│               CIRCULAR DEADLOCK GRAPH                  │");
+        System.err.println("└────────────────────────────────────────────────────────┘");
+
+        Set<Long> drawn = new HashSet<>();
+        int cycleNum = 1;
+        for (long threadId : deadlockedThreads) {
+            if (drawn.contains(threadId)) {
+                continue;
+            }
+            List<ThreadInfo> cycle = cycleThrough(threadId, threadMap);
+            if (cycle.isEmpty()) {
+                continue;
+            }
+            for (ThreadInfo ti : cycle) {
+                drawn.add(ti.getThreadId());
+            }
+            printCycle(cycleNum, cycle);
+            cycleNum++;
+        }
+
+        System.err.println("=== DETAILED DEADLOCKED THREAD INFOS ===\n");
+        for (long threadId : deadlockedThreads) {
+            ThreadInfo ti = threadMap.get(threadId);
+            if (ti != null) {
+                printLockChain(ti, threadMap);
+            }
+        }
+    }
+
+    /**
+     * {@return the cycle that following lock owners from {@code threadId} runs into, starting at the
+     * first thread the walk meets twice, or an empty list when the walk ends without closing} A
+     * thread that waits on a cycle without being part of it leads into the cycle and is not in it.
+     */
+    private static List<ThreadInfo> cycleThrough(long threadId, Map<Long, ThreadInfo> threadMap) {
+        List<ThreadInfo> walk = new ArrayList<>();
+        Set<Long> seen = new java.util.LinkedHashSet<>();
+        long currentId = threadId;
+        while (currentId >= 0 && !seen.contains(currentId)) {
+            ThreadInfo ti = threadMap.get(currentId);
+            if (ti == null) {
+                break;
+            }
+            walk.add(ti);
+            seen.add(currentId);
+            currentId = ti.getLockOwnerId();
+        }
+        if (!seen.contains(currentId)) {
+            return List.of();
+        }
+        int start = 0;
+        for (int i = 0; i < walk.size(); i++) {
+            if (walk.get(i).getThreadId() == currentId) {
+                start = i;
+                break;
+            }
+        }
+        return walk.subList(start, walk.size());
+    }
+
+    private static void printCycle(int number, List<ThreadInfo> cycle) {
+        System.err.println("Cycle #" + number + ":");
+        for (ThreadInfo ti : cycle) {
+            System.err.println(String.format("  [Thread-%d \"%s\"]", ti.getThreadId(), ti.getThreadName()));
+            System.err.println(String.format("     │   waiting for lock: %s", ti.getLockName()));
+            System.err.println(String.format("     ▼   held by lock owner: Thread-%d", ti.getLockOwnerId()));
+        }
+        ThreadInfo first = cycle.get(0);
+        System.err.println(String.format("  [Thread-%d \"%s\"] (CYCLE START)", first.getThreadId(), first.getThreadName()));
+        System.err.println();
+    }
+
+    /** Lists the threads that were blocked or waiting when a run timed out with no deadlock to draw. */
+    private static void printTimeoutWithoutDeadlock(ThreadInfo[] threadInfos) {
+        System.err.println("No circular deadlocks detected, but test timed out.");
+        System.err.println("Possible causes: Thread starvation, livelock, or infinite loops.\n");
+
+        System.err.println("--- Blocked/Waiting Threads ---");
+        for (ThreadInfo ti : threadInfos) {
+            if (ti.getThreadState() == Thread.State.BLOCKED
+                    || ti.getThreadState() == Thread.State.WAITING
+                    || ti.getThreadState() == Thread.State.TIMED_WAITING) {
+                System.err.println(ti.getThreadName() + " (" + ti.getThreadState() + ")");
+                if (ti.getLockName() != null) {
+                    System.err.println("  Waiting on: " + ti.getLockName());
+                }
+                if (ti.getLockOwnerId() >= 0) {
+                    System.err.println("  Lock owner: Thread-" + ti.getLockOwnerId());
                 }
             }
         }
-        
-        System.err.println("\n=======================================================\n");
     }
 
     private static void printLockChain(ThreadInfo thread, Map<Long, ThreadInfo> threadMap) {
