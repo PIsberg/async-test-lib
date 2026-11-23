@@ -1519,26 +1519,35 @@ public class AtomicityValidator implements RoundScoped {
                 snapshot = new ArrayList<>(history);
             }
             this.records = withdrawExclusivityFromContestedGenerations(snapshot);
+        }
+
+        void judgeEveryRound() {
+            groupByReceiver();
+            for (List<FieldAccessRecord> round : rounds().values()) {
+                judge(round);
+            }
+        }
+
+        /**
+         * Splits the records by receiver and decides which receivers' construction accesses are a
+         * corroborated hand-off.
+         *
+         * <p>Construction accesses (#312) leave the contention stats only when the excuse is
+         * corroborated: the receiver's post-publication accesses must span more than one
+         * harness-ordered round. A builder that wrote and a second thread that read once, all inside
+         * one round, is exactly what a two-thread race over an inconsistent lockset looks like, and
+         * it keeps reporting; a receiver built once and then read round after round is the hand-off
+         * the rule exists for.
+         */
+        private void groupByReceiver() {
             for (FieldAccessRecord access : records) {
                 ofInstance.computeIfAbsent(access.instanceKey, ignored -> new ArrayList<>()).add(access);
             }
-            // Construction accesses (#312) leave the contention stats only when the excuse is
-            // corroborated: the receiver's post-publication accesses must span more than one
-            // harness-ordered round. A builder that wrote and a second thread that read once,
-            // all inside one round, is exactly what a two-thread race over an inconsistent
-            // lockset looks like, and it keeps reporting; a receiver built once and then read
-            // round after round is the hand-off the rule exists for.
             for (FieldAccessRecord access : records) {
                 if (access.exclusivePhase) {
                     corroborated.computeIfAbsent(access.instanceKey,
                             instance -> spansLaterRounds(ofInstance.getOrDefault(instance, List.of()), instance));
                 }
-            }
-        }
-
-        void judgeEveryRound() {
-            for (List<FieldAccessRecord> round : rounds().values()) {
-                judge(round);
             }
         }
 
