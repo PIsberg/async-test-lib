@@ -195,8 +195,12 @@
                                  the quiet-window gate cannot tell from a subject that left a
                                  timer running. Its stack was the only one sampled inside woven
                                  code when the gate tripped on JDK 26 (#561). It is harness, not
-                                 a subject, so no subject's count is meant to include it. -->
-                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=org.apache.maven.surefire,fields=true,collections=true</argLine>
+                                 a subject, so no subject's count is meant to include it.
+                                 com.example.corpus.unwoven.: harness code that runs on the telemetry
+                                 drain thread (the quiet-window counter, #1480). Woven, it publishes
+                                 for every event it counts and feeds itself; every agent line in
+                                 this pom carries it (CorpusGatesTest pins that). -->
+                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=org.apache.maven.surefire;com.example.corpus.unwoven.,fields=true,collections=true</argLine>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
                                 <!-- A detector that throws during analysis fails the lane instead of reading as
@@ -213,7 +217,7 @@
                                      without it three of the nine documented-unsafe subjects the
                                      corpus held when this was measured reported nothing at
                                      all. -->
-                                <asynctest.agent>excludes=org.apache.maven.surefire,fields=true,collections=true</asynctest.agent>
+                                <asynctest.agent>excludes=org.apache.maven.surefire;com.example.corpus.unwoven.,fields=true,collections=true</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>
@@ -268,13 +272,13 @@
                             <includes>
                                 <include>**/CorpusAgentPairLaneTest.java</include>
                             </includes>
-                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=fields=true,collections=true</argLine>
+                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=com.example.corpus.unwoven.,fields=true,collections=true</argLine>
                             <reportsDirectory>${project.build.directory}/surefire-reports-agent-pairs</reportsDirectory>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
                                 <async-test.strict-detectors>true</async-test.strict-detectors>
                                 <corpus.lane>agent-pairs</corpus.lane>
-                                <asynctest.agent>fields=true,collections=true</asynctest.agent>
+                                <asynctest.agent>excludes=com.example.corpus.unwoven.,fields=true,collections=true</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>                    <!-- Lane five: lane four's library rows again, with every corpus library
@@ -293,13 +297,13 @@
                             <includes>
                                 <include>**/CorpusAgentPairLaneTest.java</include>
                             </includes>
-                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=com.google;com.fasterxml;com.zaxxer;org.springframework;org.apache.commons;org.codehaus.groovy,fields=true,collections=true</argLine>
+                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=com.google;com.fasterxml;com.zaxxer;org.springframework;org.apache.commons;org.codehaus.groovy;com.example.corpus.unwoven.,fields=true,collections=true</argLine>
                             <reportsDirectory>${project.build.directory}/surefire-reports-agent-pairs-library-excluded</reportsDirectory>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
                                 <async-test.strict-detectors>true</async-test.strict-detectors>
                                 <corpus.lane>agent-pairs-library-excluded</corpus.lane>
-                                <asynctest.agent>excludes=com.google;com.fasterxml;com.zaxxer;org.springframework;org.apache.commons;org.codehaus.groovy,fields=true,collections=true</asynctest.agent>
+                                <asynctest.agent>excludes=com.google;com.fasterxml;com.zaxxer;org.springframework;org.apache.commons;org.codehaus.groovy;com.example.corpus.unwoven.,fields=true,collections=true</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>
@@ -321,13 +325,13 @@
                             <includes>
                                 <include>**/CorpusIdiomLaneTest.java</include>
                             </includes>
-                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=org.apache.maven.surefire,fields=true,collections=true,arrays=true</argLine>
+                            <argLine>-Djdk.attach.allowAttachSelf=true -javaagent:${se.deversity.async-test-lib:async-test-agent:jar}=excludes=org.apache.maven.surefire;com.example.corpus.unwoven.,fields=true,collections=true,arrays=true</argLine>
                             <reportsDirectory>${project.build.directory}/surefire-reports-idioms</reportsDirectory>
                             <systemPropertyVariables>
                                 <license.mock.mode>true</license.mock.mode>
                                 <async-test.strict-detectors>true</async-test.strict-detectors>
                                 <corpus.lane>idioms</corpus.lane>
-                                <asynctest.agent>excludes=org.apache.maven.surefire,fields=true,collections=true</asynctest.agent>
+                                <asynctest.agent>excludes=org.apache.maven.surefire;com.example.corpus.unwoven.,fields=true,collections=true</asynctest.agent>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>

@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **The corpus quiet-window gate names the threads that published (#1480).** A trip used to name
+  whichever thread was runnable outside platform code, and twice that was Surefire's command reader
+  blocked in a native read of stdin, which is unwoven and publishes nothing. The window now counts
+  events per publishing thread through a drain callback of its own, prints them as
+  `corpus.quiet_window ... published_by=` on every run, and the sampler skips threads whose top frame
+  is a native method.
+
 - **Pull requests are held to SonarQube's agentic-AI quality gate (#1482).** New code must be at
   least 80% covered (Codecov's `patch` status, now blocking) and at most 3% duplicated
   (`.github/scripts/duplication_gate.py` over PMD CPD's report), and `dependency-review` refuses a

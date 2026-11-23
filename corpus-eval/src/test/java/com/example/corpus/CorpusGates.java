@@ -1179,15 +1179,16 @@ final class CorpusGates {
                         + "subject has left something running - a timer, a scheduler, an executor - "
                         + "whose woven accesses land in the event count of every subject that runs "
                         + "after it. Stop it in an @AfterEach."
-                        + (whoWasRunning.isEmpty() ? ""
-                                : " Runnable threads seen outside platform code right after the "
-                                        + "window, with sample counts: " + whoWasRunning));
+                        + (whoWasRunning.isEmpty() ? "" : " " + whoWasRunning));
     }
 
     /**
      * {@return which runnable threads are executing outside the JDK and JUnit, sampled}
      *
      * <p>Called only once the quiet window has already failed, so it costs nothing on a green run.
+     * A thread whose top frame is a native method is skipped: one blocked in a native read, such as
+     * Surefire's command reader on stdin, reports RUNNABLE while it publishes nothing, and naming it
+     * sent #561 and #1480 after a thread that could not have been the cause.
      * Each sample takes every thread's stack and keeps the first frame that is not platform code;
      * a leaked timer shows up as its own thread inside the library that started it, and the
      * harness as Surefire's.
@@ -1202,7 +1203,8 @@ final class CorpusGates {
         for (int sample = 0; sample < samples; sample++) {
             for (Map.Entry<Thread, StackTraceElement[]> entry : Thread.getAllStackTraces().entrySet()) {
                 Thread thread = entry.getKey();
-                if (thread == Thread.currentThread() || thread.getState() != Thread.State.RUNNABLE) {
+                if (thread == Thread.currentThread() || thread.getState() != Thread.State.RUNNABLE
+                        || blockedInNativeCode(entry.getValue())) {
                     continue;
                 }
                 for (StackTraceElement frame : entry.getValue()) {
@@ -1216,6 +1218,11 @@ final class CorpusGates {
             Thread.sleep(intervalMillis);
         }
         return seen.toString();
+    }
+
+    /** {@return whether a RUNNABLE thread is really sitting in a native method, such as a blocking read} */
+    static boolean blockedInNativeCode(StackTraceElement[] stack) {
+        return stack.length > 0 && stack[0].isNativeMethod();
     }
 
     private static boolean isPlatformFrame(String className) {

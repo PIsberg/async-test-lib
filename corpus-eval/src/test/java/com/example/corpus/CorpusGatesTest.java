@@ -12,8 +12,10 @@ import se.deversity.asynctest.DetectorType;
 import se.deversity.asynctest.diagnostics.DetectorFeed;
 import se.deversity.asynctest.diagnostics.IssueSeverity;
 import se.deversity.asynctest.diagnostics.TrustTier;
+import se.deversity.asynctest.telemetry.TelemetryRegistry;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -88,6 +90,101 @@ class CorpusGatesTest {
             busy.interrupt();
             busy.join(1_000);
         }
+    }
+
+    @Test
+    @DisplayName("#1480: a RUNNABLE thread whose top frame is native is not named as running")
+    void aThreadBlockedInNativeCodeIsNotNamed() {
+        // Line number -2 is how a StackTraceElement says "native method".
+        StackTraceElement nativeRead = new StackTraceElement("sun.nio.ch.FileDispatcherImpl", "read0", null, -2);
+        StackTraceElement caller = new StackTraceElement("org.apache.maven.surefire.api.util.internal.Channels$3",
+                "readImpl", "Channels.java", 120);
+        assertTrue(CorpusGates.blockedInNativeCode(new StackTraceElement[] {nativeRead, caller}),
+                "Surefire's command reader blocked on stdin reports RUNNABLE and publishes nothing (#1480)");
+        assertFalse(CorpusGates.blockedInNativeCode(new StackTraceElement[] {caller}),
+                "a thread running Java code is still sampled");
+        assertFalse(CorpusGates.blockedInNativeCode(new StackTraceElement[0]));
+    }
+
+    @Test
+    @DisplayName("#1480: the quiet window names the thread that published, with its event count")
+    void theWindowNamesTheThreadThatPublished() throws InterruptedException {
+        boolean startedHere = !TelemetryRegistry.isRunning();
+        if (startedHere) {
+            TelemetryRegistry.start();
+        }
+        try {
+            com.example.corpus.unwoven.QuietWindowPublishers publishers =
+                    com.example.corpus.unwoven.QuietWindowPublishers.listen();
+            Thread publisher = new Thread(() -> {
+                long id = Thread.currentThread().threadId();
+                for (int i = 0; i < 3; i++) {
+                    TelemetryRegistry.recordAccess(id, "QuietWindowProbe.field", true);
+                }
+            }, "publisher-probe");
+            publisher.start();
+            publisher.join(5_000);
+            String seen = publishers.stop();
+            assertTrue(seen.contains("(id " + publisher.threadId() + ")=3"),
+                    "the three events the probe published must be credited to its thread id: " + seen);
+            assertFalse(seen.contains("async-test-telemetry-drain"),
+                    "the drain thread published while counting: the counter is being woven, and each "
+                            + "event it counts publishes another (16,356 of 16,369 on #1485's first run). "
+                            + "It must stay in a package every lane excludes: " + seen);
+        } finally {
+            if (startedHere) {
+                TelemetryRegistry.stop();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("#1480: events published before the window opened are not credited to it")
+    void eventsFromBeforeTheWindowAreNotCounted() throws InterruptedException {
+        boolean startedHere = !TelemetryRegistry.isRunning();
+        if (startedHere) {
+            TelemetryRegistry.start();
+        }
+        try {
+            Thread earlier = new Thread(() -> {
+                long id = Thread.currentThread().threadId();
+                for (int i = 0; i < 50; i++) {
+                    TelemetryRegistry.recordAccess(id, "BeforeTheWindow.field", true);
+                }
+            }, "before-the-window");
+            earlier.start();
+            earlier.join(5_000);
+            // Still buffered when the window opens: on CI the window read events=0 while crediting
+            // main with 21 to 511 events the last subjects had published before it (#1485).
+            com.example.corpus.unwoven.QuietWindowPublishers publishers =
+                    com.example.corpus.unwoven.QuietWindowPublishers.listen();
+            String seen = publishers.stop();
+            assertFalse(seen.contains("(id " + earlier.threadId() + ")"),
+                    "events published before listen() belong to no window: " + seen);
+        } finally {
+            if (startedHere) {
+                TelemetryRegistry.stop();
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("#1480: every lane that attaches the agent excludes the unwoven harness package")
+    void everyAgentLineExcludesTheUnwovenPackage() throws java.io.IOException {
+        String pom = java.nio.file.Files.readString(java.nio.file.Path.of("pom.xml"));
+        java.util.regex.Matcher agentArgs = java.util.regex.Pattern
+                .compile("(?:async-test-agent:jar\\}=|<asynctest\\.agent>)([^<\\s]*)").matcher(pom);
+        int lanes = 0;
+        while (agentArgs.find()) {
+            if ("off".equals(agentArgs.group(1))) {
+                continue; // the agent-off lanes attach nothing, so there is nothing to weave
+            }
+            lanes++;
+            assertTrue(agentArgs.group(1).contains(com.example.corpus.unwoven.QuietWindowPublishers.UNWOVEN_PREFIX),
+                    "an agent line without excludes=..." + com.example.corpus.unwoven.QuietWindowPublishers.UNWOVEN_PREFIX
+                            + " weaves the quiet-window counter, which then feeds itself: " + agentArgs.group(1));
+        }
+        assertTrue(lanes >= 4, "found " + lanes + " agent lines in corpus-eval/pom.xml; the scan is reading nothing");
     }
 
     @Test
