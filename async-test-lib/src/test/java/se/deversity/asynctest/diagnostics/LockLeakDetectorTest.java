@@ -620,4 +620,73 @@ public class LockLeakDetectorTest {
         }
         fail("the pool worker never went idle");
     }
+
+    // ---- what analyze() hands on: helper holds (#1339) and the structured findings (#801) --------
+
+    /** Takes {@code lock} on a helper thread, records it as the run's helper, and maybe releases it. */
+    private static void holdOnAHelperThatEnds(LockLeakDetector detector, ReentrantLock lock, boolean release)
+            throws InterruptedException {
+        Thread helper = new Thread(() -> {
+            lock.lock();
+            detector.recordHelperAcquired(lock, "helper-lock");
+            if (release) {
+                lock.unlock();
+                detector.recordHelperReleased(lock);
+            }
+        }, "helper-lock-holder");
+        helper.start();
+        helper.join();
+    }
+
+    @Test
+    void aHelperThatEndedHoldingTheLockIsALeakTheLockConfirms() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        holdOnAHelperThatEnds(detector, lock, false);
+
+        LockLeakDetector.LockLeakReport report = detector.analyze();
+        assertEquals(List.of("helper-lock: acquired by a thread the test started and never released"
+                        + " - ReentrantLock.isLocked() confirms it: held by 'helper-lock-holder', which has finished"),
+                report.lockLeaks, report.toString());
+        assertTrue(report.heldLocks.isEmpty(), "a helper's hold is not a worker's lock left held: " + report);
+        List<GradedFindings.Grade> grades = DetectorTrust.clampToCap("LockLeakDetector", gradesOf(report));
+        assertEquals(1, grades.size(), grades.toString());
+        assertEquals(TrustTier.VERDICT, grades.get(0).tier(), "the lock confirmed it: " + grades);
+    }
+
+    @Test
+    void aHelperThatReleasedTheLockLeavesNoFinding() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock lock = new ReentrantLock();
+        holdOnAHelperThatEnds(detector, lock, true);
+
+        LockLeakDetector.LockLeakReport report = detector.analyze();
+        assertFalse(report.hasIssues(), report.toString());
+        assertTrue(report.structuredViolations.isEmpty(), report.structuredViolations.toString());
+    }
+
+    @Test
+    void everyFindingButThreadActivityBecomesOneStructuredViolationInReportOrder() throws InterruptedException {
+        LockLeakDetector detector = new LockLeakDetector();
+        ReentrantLock orphaned = new ReentrantLock();
+        leakOnAThreadThatEnds(detector, orphaned, "orphaned");
+        ReentrantLock balanced = new ReentrantLock();
+        balanced.lock();
+        detector.recordLockAcquired(balanced, "balanced");
+        balanced.unlock();
+        detector.recordLockReleased(balanced, "balanced");
+
+        LockLeakDetector.LockLeakReport report = detector.analyze();
+        assertEquals(2, report.threadActivity.size(), "both locks show their activity: " + report);
+        List<String> expected = new java.util.ArrayList<>(report.lockLeaks);
+        expected.addAll(report.heldLocks);
+        expected.addAll(report.excessiveHoldTimes);
+        assertEquals(2, expected.size(), "the leak and the lock still held: " + report);
+        assertEquals(expected, report.structuredViolations.stream()
+                .map(se.deversity.asynctest.report.Violation::message).toList());
+        for (se.deversity.asynctest.report.Violation violation : report.structuredViolations) {
+            assertEquals("LockLeaks", violation.detector(), violation.toString());
+            assertEquals(IssueSeverity.CRITICAL, violation.severity(), violation.toString());
+        }
+    }
 }
