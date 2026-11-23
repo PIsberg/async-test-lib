@@ -131,6 +131,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   first point) is never done inside the schedule, so the round hung until it timed out. The worker
   now follows it out. And a timed `get` waited for the task like an untimed one, so on every seed
   a get that should have timed out returned the value; it is now a plain scheduling point.
+- **A worker interrupted as the controlled schedule hands it the round gives the round back
+  (#1495, part 1).** An interrupt that ended its wait for a turn in the same instant `grant()` picked
+  it left the round with a worker that never took it, so its peers stalled until that worker's body
+  ended, for good when the body waited on a peer, and kept a lock hold the worker never took. The
+  turn is now handed on and the hold given back.
 
 - **A round's `@AfterEachInvocation` hooks run when its `@BeforeEachInvocation` hook throws
   (#1477).** The before-hooks ran ahead of the round's failure handling, so their exception skipped
