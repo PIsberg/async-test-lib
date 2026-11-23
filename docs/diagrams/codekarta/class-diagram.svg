@@ -124,8 +124,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="AsyncTestContext" data-target="ThreadPoolDeadlockDetector" data-type="HAS" x="3980.7" y="4786.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadPoolDeadlockDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="ConcurrentModificationDetector" data-type="HAS" d="M3458.0 484.0 Q3961.4 4615.2 4542.0 8736.3" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="ConcurrentModificationDetector" data-type="HAS" x="3980.7" y="4606.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">concurrentModificationDetector</text>
-<path class="edge-line" data-source="AsyncTestContext" data-target="LockLeakDetector" data-type="HAS" d="M3548.0 344.0 Q4627.4 1510.1 5762.0 2622.7" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="AsyncTestContext" data-target="LockLeakDetector" data-type="HAS" x="4641.2" y="1490.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">lockLeakDetector</text>
+<path class="edge-line" data-source="AsyncTestContext" data-target="LockLeakDetector" data-type="HAS" d="M3548.0 344.0 Q4627.4 1513.8 5762.0 2630.2" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="AsyncTestContext" data-target="LockLeakDetector" data-type="HAS" x="4641.2" y="1494.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">lockLeakDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="SharedRandomDetector" data-type="HAS" d="M3458.0 484.0 Q3961.5 4390.5 4542.0 8286.3" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="SharedRandomDetector" data-type="HAS" x="3980.7" y="4381.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">sharedRandomDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="BlockingQueueDetector" data-type="HAS" d="M3458.0 484.0 Q3961.5 4929.9 4542.0 9366.3" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -426,8 +426,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="DetectorRegistry" data-target="ThreadPoolDeadlockDetector" data-type="HAS" x="2422.3" y="4702.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">threadPoolDeadlockDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="ConcurrentModificationDetector" data-type="HAS" d="M338.0 304.0 Q2404.8 4537.7 4542.0 8736.3" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="ConcurrentModificationDetector" data-type="HAS" x="2422.4" y="4522.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">concurrentModificationDetector</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="LockLeakDetector" data-type="HAS" d="M428.0 209.0 Q3079.0 1451.3 5762.0 2622.7" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="LockLeakDetector" data-type="HAS" x="3087.0" y="1427.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">lockLeakDetector</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="LockLeakDetector" data-type="HAS" d="M428.0 209.0 Q3078.9 1455.0 5762.0 2630.2" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="LockLeakDetector" data-type="HAS" x="3087.0" y="1431.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">lockLeakDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="SharedRandomDetector" data-type="HAS" d="M338.0 304.0 Q2405.2 4313.5 4542.0 8286.3" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="SharedRandomDetector" data-type="HAS" x="2422.6" y="4298.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">sharedRandomDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="BlockingQueueDetector" data-type="HAS" d="M338.0 304.0 Q2404.5 4851.6 4542.0 9366.3" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -812,8 +812,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="LockDowngradeDetector" data-target="RoundScoped" data-type="IMPLEMENTS" x="5075.9" y="7874.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#1d4ed8" font-style="italic">implements</text>
 <path class="edge-line" data-source="LockDowngradeDetector" data-target="LockUpgradeDeadlockDetector" data-type="HAS" d="M4372.0 8252.8 Q4387.8 8361.1 4452.0 8449.8" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="LockDowngradeDetector" data-target="LockUpgradeDeadlockDetector" data-type="HAS" x="4399.9" y="8350.2" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">upgradeReporter</text>
-<path class="edge-line" data-source="LockLeakDetector" data-target="UnnamedLabels" data-type="HAS" d="M5852.0 2732.7 Q5998.2 6137.7 6222.0 9538.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="LockLeakDetector" data-target="UnnamedLabels" data-type="HAS" x="6017.6" y="6130.6" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">unnamedLabels</text>
+<path class="edge-line" data-source="LockLeakDetector" data-target="UnnamedLabels" data-type="HAS" d="M5852.0 2747.7 Q5998.2 6145.2 6222.0 9538.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="LockLeakDetector" data-target="UnnamedLabels" data-type="HAS" x="6017.6" y="6138.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">unnamedLabels</text>
 <path class="edge-line" data-source="LockOrderValidator" data-target="UnnamedLabels" data-type="HAS" d="M5852.0 495.7 Q5998.0 5018.7 6222.0 9538.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="LockOrderValidator" data-target="UnnamedLabels" data-type="HAS" x="6017.5" y="5011.9" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">unnamedLabels</text>
 <path class="edge-line" data-source="LockOrderValidator" data-target="IdentityKey" data-type="HAS" d="M5942.0 355.7 Q6042.3 351.4 6132.0 306.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -866,8 +866,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="RecordMutableComponentLeakDetector" data-target="RoundScoped" data-type="IMPLEMENTS" x="5178.8" y="5471.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#1d4ed8" font-style="italic">implements</text>
 <path class="edge-line" data-source="ReentrantLockDetector" data-target="UnnamedLabels" data-type="HAS" d="M4542.0 2804.3 Q5344.4 6180.8 6222.0 9538.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="ReentrantLockDetector" data-target="UnnamedLabels" data-type="HAS" x="5363.2" y="6170.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">unnamedLabels</text>
-<path class="edge-line" data-source="ReentrantLockDetector" data-target="LockLeakDetector" data-type="HAS" d="M4632.0 2664.3 Q5198.3 2678.0 5762.0 2622.7" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="ReentrantLockDetector" data-target="LockLeakDetector" data-type="HAS" x="5197.6" y="2654.7" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">leakReporter</text>
+<path class="edge-line" data-source="ReentrantLockDetector" data-target="LockLeakDetector" data-type="HAS" d="M4632.0 2664.3 Q5198.0 2681.7 5762.0 2630.2" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="ReentrantLockDetector" data-target="LockLeakDetector" data-type="HAS" x="5197.5" y="2658.5" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">leakReporter</text>
 <path class="edge-line" data-source="ResourceLeakDetector" data-target="AbstractInstanceDetector" data-type="EXTENDS" d="M4542.0 5730.3 Q5161.2 7500.1 5852.0 9243.2" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-hollow-374151)"/>
 <text class="edge-label" data-source="ResourceLeakDetector" data-target="AbstractInstanceDetector" data-type="EXTENDS" x="5179.1" y="7487.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">extends</text>
 <path class="edge-line" data-source="ScopedValueMisuseDetector" data-target="RoundScoped" data-type="IMPLEMENTS" d="M4542.0 2504.3 Q5159.5 4978.4 5852.0 7432.6" fill="none" stroke="#1d4ed8" stroke-width="1.6" stroke-dasharray="8,4" marker-end="url(#marker-hollow-1d4ed8)"/>
@@ -1601,20 +1601,21 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="LockLeakDetector">
   <title>LockLeakDetector [CLASS]</title>
-  <rect class="node-rect" x="5762.0" y="2512.7" width="180.0" height="220.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="5762.0" y="2512.7" width="180.0" height="235.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="5852.0" y="2534.7" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">LockLeakDetector</text>
   <line x1="5762.0" y1="2556.7" x2="5942.0" y2="2556.7" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="5770.0" y="2570.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">unnamedLabels: UnnamedLabe…</text>
   <text x="5770.0" y="2585.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">locks: Map&lt;IdentityKey,Loc…</text>
-  <text x="5770.0" y="2600.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
-  <line x1="5762.0" y1="2613.7" x2="5942.0" y2="2613.7" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="5770.0" y="2627.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerLock(Lock, String)…</text>
-  <text x="5770.0" y="2642.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordLockAcquired(Lock, S…</text>
-  <text x="5770.0" y="2657.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordLockReleased(Lock, S…</text>
-  <text x="5770.0" y="2672.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordHelperAcquired(Lock,…</text>
-  <text x="5770.0" y="2687.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordHelperReleased(Lock)…</text>
-  <text x="5770.0" y="2702.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): LockLeakReport</text>
-  <text x="5770.0" y="2717.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <text x="5770.0" y="2600.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">EXCESSIVE_HOLD_MS: long</text>
+  <text x="5770.0" y="2615.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enabled: boolean</text>
+  <line x1="5762.0" y1="2628.7" x2="5942.0" y2="2628.7" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="5770.0" y="2642.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerLock(Lock, String)…</text>
+  <text x="5770.0" y="2657.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordLockAcquired(Lock, S…</text>
+  <text x="5770.0" y="2672.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordLockReleased(Lock, S…</text>
+  <text x="5770.0" y="2687.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordHelperAcquired(Lock,…</text>
+  <text x="5770.0" y="2702.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordHelperReleased(Lock)…</text>
+  <text x="5770.0" y="2717.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): LockLeakReport</text>
+  <text x="5770.0" y="2732.2" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+5 more)</text>
 </g>
 <g id="SharedRandomDetector">
   <title>SharedRandomDetector [CLASS]</title>
