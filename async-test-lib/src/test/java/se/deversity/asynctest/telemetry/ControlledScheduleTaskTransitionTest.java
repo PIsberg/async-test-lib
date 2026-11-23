@@ -140,4 +140,31 @@ class ControlledScheduleTaskTransitionTest {
             }
         }
     }
+
+    @Test
+    void aTaskThatNeverStartsReleasesItsWaiterOnceItEscapes() throws Exception {
+        // Submitted, never run: its executor is busy, shut down, or the future was cancelled while
+        // queued. watchArriving() counts it escaped after the stall bound, but the waiter was still
+        // held for it as though it would end: canProceed and grant() both wait for DONE, so nobody
+        // could run and the round hung until it timed out (#1495).
+        ControlledSchedule schedule = ControlledSchedule.open(1, 7L);
+        CountDownLatch gotItBack = new CountDownLatch(1);
+        Thread worker = new Thread(() -> {
+            schedule.enter(0);
+            Object adoption = ControlledSchedule.submitting();
+            ControlledSchedule.awaitingTask(adoption);
+            gotItBack.countDown();
+            schedule.leave();
+        }, "waiting-worker");
+        try {
+            worker.start();
+            assertTrue(gotItBack.await(WAIT_SECONDS, TimeUnit.SECONDS),
+                    "the task escaped without ever starting, and its waiter never got the round back");
+            worker.join(TimeUnit.SECONDS.toMillis(WAIT_SECONDS));
+            assertEquals(1, schedule.summary().escapes(), "the task that never ran is the one escape: "
+                    + schedule.summary());
+        } finally {
+            schedule.close();
+        }
+    }
 }

@@ -75,8 +75,15 @@ class ControlledScheduleEscapeTest {
      * real {@code join} or {@code get} with no schedule frame left on its stack: the state it reaches
      * only after the schedule gave up on the thread it was waiting for. A timer would be a guess,
      * and under a loaded CI runner the run's own start can outlast it.
+     *
+     * {@return set once the worker was seen parked there} The release after the 20-second deadline is
+     * only a way out: a test must assert this, or a worker the schedule never let go passes too.
+     * Both tests below did for as long as a waiter stayed held for an escaped thread or task: each
+     * ran 20 seconds and passed (#1495).
      */
-    private static void releaseOnceParkedPastTheSchedule(Thread worker, Class<?> hook, CountDownLatch latch) {
+    private static AtomicBoolean releaseOnceParkedPastTheSchedule(Thread worker, Class<?> hook,
+                                                                  CountDownLatch latch) {
+        AtomicBoolean parked = new AtomicBoolean();
         Thread releaser = new Thread(() -> {
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
             while (latch.getCount() > 0 && System.nanoTime() < deadline) {
@@ -88,6 +95,7 @@ class ControlledScheduleEscapeTest {
                     inSchedule |= frame.getClassName().equals(ControlledSchedule.class.getName());
                 }
                 if (worker.getState() == Thread.State.WAITING && inHook && !inSchedule) {
+                    parked.set(true);
                     break;
                 }
                 try {
@@ -101,6 +109,7 @@ class ControlledScheduleEscapeTest {
         }, "escape-test-releaser");
         releaser.setDaemon(true);
         releaser.start();
+        return parked;
     }
 
     /**
@@ -125,13 +134,19 @@ class ControlledScheduleEscapeTest {
             });
             busy.await();
             AtomicInteger ran = new AtomicInteger();
+            AtomicBoolean parked = new AtomicBoolean();
 
             AsyncTestRunner.run(controlled(1), () -> {
-                releaseOnceParkedPastTheSchedule(Thread.currentThread(), AgentConcurrencyUtilHooks.class, release);
+                parked.set(false);
+                AtomicBoolean seen = releaseOnceParkedPastTheSchedule(Thread.currentThread(),
+                        AgentConcurrencyUtilHooks.class, release);
                 Future<?> task = AgentConcurrencyUtilHooks.submit(pool, (Runnable) ran::incrementAndGet);
                 AgentConcurrencyUtilHooks.get((Future<Object>) task);
+                parked.set(seen.get());
             });
 
+            assertTrue(parked.get(), "the worker never reached the real get: the schedule held it for a"
+                    + " task that escaped, until the releaser's deadline let the task run");
             assertEquals(1, ran.get(), "the task still runs once its executor frees up");
             String round = theRound();
             assertTrue(round.contains("escapes=1"),
@@ -169,9 +184,11 @@ class ControlledScheduleEscapeTest {
     @Test
     void aChildThatBlocksBeforeItsFirstPointEscapes() throws Throwable {
         CountDownLatch release = new CountDownLatch(1);
+        AtomicBoolean parked = new AtomicBoolean();
 
         AsyncTestRunner.run(controlled(1), () -> {
-            releaseOnceParkedPastTheSchedule(Thread.currentThread(), AgentThreadHooks.class, release);
+            AtomicBoolean seen = releaseOnceParkedPastTheSchedule(Thread.currentThread(), AgentThreadHooks.class,
+                    release);
             Thread child = new Thread(() -> {
                 try {
                     release.await();
@@ -183,8 +200,11 @@ class ControlledScheduleEscapeTest {
             AgentThreadHooks.threadStart(child);
             AsyncTestContext.schedulePoint();
             AgentThreadHooks.threadJoin(child);
+            parked.set(seen.get());
         });
 
+        assertTrue(parked.get(), "the worker never reached the real join: the schedule held it for a"
+                + " child that escaped, until the releaser's deadline let the child end");
         String round = theRound();
         assertTrue(round.contains("escapes=1"),
                 "a child blocked outside the schedule held the round, and nothing counted it: " + round);

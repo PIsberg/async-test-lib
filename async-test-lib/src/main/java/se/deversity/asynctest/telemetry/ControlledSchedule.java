@@ -907,6 +907,16 @@ public final class ControlledSchedule {
             running = -1;
             grant();
             awaitTurn(worker);
+            if (running == slot && status[child] == Status.ESCAPED) {
+                // Released because what it waits for escaped (#1495): the real join or get it goes
+                // on to waits outside the schedule for something the schedule no longer sees, so
+                // it follows it out, free, rather than hold the round while it waits. Not a second
+                // escape: the round already counted the one that ended the replay.
+                worker.free = true;
+                status[slot] = Status.ESCAPED;
+                running = -1;
+                grant();
+            }
         } finally {
             lock.unlock();
             worker.inside = false;
@@ -1111,10 +1121,21 @@ public final class ControlledSchedule {
         }
     }
 
+    /**
+     * Whether worker {@code slot} waits for a child or task the schedule can still see finish. One
+     * that escaped will not: it runs, or waits never to run, outside the schedule, so its joiner
+     * goes on to the real join or get and waits there, where watch() sees it. Held for an escaped
+     * task, the joiner could never be granted, fallback or not, and the round hung until it timed
+     * out (#1495). Lock held.
+     */
+    private boolean awaitsUnfinished(int slot) {
+        int child = joining[slot];
+        return child >= 0 && status[child] != Status.DONE && status[child] != Status.ESCAPED;
+    }
+
     /** Whether worker {@code slot}'s pending step can proceed now. Lock held. */
     private boolean canProceed(int slot) {
-        int child = joining[slot];
-        if (child >= 0 && status[child] != Status.DONE) {
+        if (awaitsUnfinished(slot)) {
             return false;
         }
         Object wanted = pending[slot];
@@ -1139,7 +1160,7 @@ public final class ControlledSchedule {
             }
             // A worker joining a child that is not done waits for it, fallback or not: the child is
             // either running or will join at its first point, and watch() sees one that ends first.
-            if (joining[i] < 0 && (anyReady < 0 || priority[i] > priority[anyReady])) {
+            if (!awaitsUnfinished(i) && (anyReady < 0 || priority[i] > priority[anyReady])) {
                 anyReady = i;
             }
             if (canProceed(i) && (best < 0 || priority[i] > priority[best])) {
