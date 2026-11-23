@@ -399,13 +399,9 @@ public final class OperationHistory<S> {
      */
     private @Nullable NotLinearizable replayFailure(Map<Integer, List<Drawn>> replay, long seed,
                                                    boolean licenseMockMode, Consumer<RoundLog> check) {
-        OperationHistory<S> probe = new OperationHistory<>(fresh);
-        probe.declared.addAll(declared);
-        probe.script = replay;
+        OperationHistory<S> probe;
         try {
-            AsyncTestRunner.run(AsyncTestConfig.builder().threads(Math.max(1, replay.size())).invocations(1)
-                    .replaySeed(seed).controlledSchedule(true).timeoutMs(10_000)
-                    .licenseMockMode(licenseMockMode).build(), () -> probe.generate(0));
+            probe = runProbe(replay, seed, licenseMockMode);
         } catch (Throwable notAFailingRun) { // NOPMD - a run that throws is not a linearizability failure
             return null;
         }
@@ -419,6 +415,22 @@ public final class OperationHistory<S> {
             }
         }
         return null;
+    }
+
+    /**
+     * {@return a probe history that recorded the one round of a run performing {@code replay},
+     * worker slot by slot, under {@code seed} and a controlled schedule} It records nothing into
+     * this history.
+     */
+    private OperationHistory<S> runProbe(Map<Integer, List<Drawn>> replay, long seed, boolean licenseMockMode)
+            throws Throwable {
+        OperationHistory<S> probe = new OperationHistory<>(fresh);
+        probe.declared.addAll(declared);
+        probe.script = replay;
+        AsyncTestRunner.run(AsyncTestConfig.builder().threads(Math.max(1, replay.size())).invocations(1)
+                .replaySeed(seed).controlledSchedule(true).timeoutMs(10_000)
+                .licenseMockMode(licenseMockMode).build(), () -> probe.generate(0));
+        return probe;
     }
 
     /** How many schedules each enumerated scenario is run under: seeds 1 to this (#1082). */
@@ -489,28 +501,55 @@ public final class OperationHistory<S> {
                     + "operation(name, argument, action), and none were declared");
         }
         List<List<Integer>> sequences = sequencesUpTo(choices.size(), operationsPerWorker);
+        long scenarios = scenarioCount(sequences.size(), workers, operationsPerWorker, argumentDrawsPerScenario);
+        Consumer<RoundLog> check = round -> checkWhole(round, spec);
+        for (int[] scenario : smallestFirst(sequences, workers, scenarios)) {
+            for (int draw = 0; draw < argumentDrawsPerScenario; draw++) {
+                checkScenario(drawScenario(scenario, sequences, choices, draw), choices, check);
+            }
+        }
+        return "linearizable over all " + scenarios + " scenarios of up to " + operationsPerWorker
+                + " operations on each of " + workers + " workers, each run under " + SCHEDULES_PER_SCENARIO
+                + " schedules";
+    }
+
+    /**
+     * {@return how many scenarios {@code workers} workers make from {@code sequences} sequences each}
+     *
+     * @throws IllegalArgumentException when they and their argument draws take more than
+     *                                  {@value #MAX_ENUMERATION_RUNS} runs
+     */
+    private static long scenarioCount(int sequences, int workers, int operationsPerWorker, int draws) {
         long scenarios = 1;
         try {
             for (int i = 0; i < workers; i++) {
-                scenarios = Math.multiplyExact(scenarios, sequences.size());
+                scenarios = Math.multiplyExact(scenarios, sequences);
             }
         } catch (ArithmeticException tooMany) {
             scenarios = Long.MAX_VALUE;
         }
-        long totalScenarios = scenarios;
-        if (totalScenarios != Long.MAX_VALUE) {
+        long withDraws = scenarios;
+        if (withDraws != Long.MAX_VALUE) {
             try {
-                totalScenarios = Math.multiplyExact(totalScenarios, argumentDrawsPerScenario);
+                withDraws = Math.multiplyExact(withDraws, draws);
             } catch (ArithmeticException tooMany) {
-                totalScenarios = Long.MAX_VALUE;
+                withDraws = Long.MAX_VALUE;
             }
         }
-        if (totalScenarios == Long.MAX_VALUE || totalScenarios > MAX_ENUMERATION_RUNS / SCHEDULES_PER_SCENARIO) {
+        if (withDraws == Long.MAX_VALUE || withDraws > MAX_ENUMERATION_RUNS / SCHEDULES_PER_SCENARIO) {
             throw new IllegalArgumentException("up to " + operationsPerWorker + " operations on each of "
                     + workers + " workers is " + (scenarios == Long.MAX_VALUE ? "too many" : scenarios)
                     + " scenarios, each run under " + SCHEDULES_PER_SCENARIO + " schedules, more than the "
                     + MAX_ENUMERATION_RUNS + " runs one search takes; lower workers or operationsPerWorker");
         }
+        return scenarios;
+    }
+
+    /**
+     * {@return every scenario, one sequence index per worker, ordered by how many operations it
+     * holds, fewest first} The sort is stable, so scenarios of one size keep their counting order.
+     */
+    private static List<int[]> smallestFirst(List<List<Integer>> sequences, int workers, long scenarios) {
         List<int[]> order = new ArrayList<>();
         int[] tuple = new int[workers];
         for (long n = 0; n < scenarios; n++) {
@@ -530,50 +569,67 @@ public final class OperationHistory<S> {
             }
             return total;
         }));
-        Consumer<RoundLog> check = round -> checkWhole(round, spec);
-        for (int[] scenario : order) {
-          for (int draw = 0; draw < argumentDrawsPerScenario; draw++) {
-            Map<Integer, List<Drawn>> replay = new java.util.TreeMap<>();
-            for (int w = 0; w < workers; w++) {
-                List<Integer> ops = sequences.get(scenario[w]);
-                if (ops.isEmpty()) {
-                    continue;
-                }
-                List<Drawn> steps = new ArrayList<>();
-                for (int position = 0; position < ops.size(); position++) {
-                    RandomGenerator random = new SplittableRandom(
-                            0x9E3779B97F4A7C15L * (w + 1) + position + draw * 0xC2B2AE3D27D4EB4FL);
-                    int choice = ops.get(position);
-                    steps.add(new Drawn(choice, choices.get(choice).argument().apply(random)));
-                }
-                replay.put(w, steps);
+        return order;
+    }
+
+    /**
+     * {@return the operations each worker of {@code scenario} runs, with the arguments of draw
+     * {@code draw}, keyed by worker; a worker with none is left out} An argument is drawn from a
+     * seed fixed by the worker, its position and the draw, so a scenario replays the same.
+     */
+    private Map<Integer, List<Drawn>> drawScenario(int[] scenario, List<List<Integer>> sequences,
+                                                   List<Declared<S>> choices, int draw) {
+        Map<Integer, List<Drawn>> replay = new java.util.TreeMap<>();
+        for (int w = 0; w < scenario.length; w++) {
+            List<Integer> ops = sequences.get(scenario[w]);
+            if (ops.isEmpty()) {
+                continue;
             }
-            if (replay.size() < 2) {
-                continue; // one worker alone is sequential, and a sequential run is linearizable
+            List<Drawn> steps = new ArrayList<>();
+            for (int position = 0; position < ops.size(); position++) {
+                RandomGenerator random = new SplittableRandom(
+                        0x9E3779B97F4A7C15L * (w + 1) + position + draw * 0xC2B2AE3D27D4EB4FL);
+                int choice = ops.get(position);
+                steps.add(new Drawn(choice, choices.get(choice).argument().apply(random)));
             }
-            Map<Integer, List<Drawn>> renumbered = new java.util.TreeMap<>();
-            replay.values().forEach(steps -> renumbered.put(renumbered.size(), steps));
-            for (long seed = 1; seed <= SCHEDULES_PER_SCENARIO; seed++) {
-                NotLinearizable failure = replayFailure(renumbered, seed, false, check);
-                if (failure != null) {
-                    StringBuilder sb = new StringBuilder("An enumerated scenario is not linearizable, under replaySeed = ")
-                            .append(seed).append("L, searching smallest first:");
-                    replay.forEach((slot, steps) -> {
-                        List<String> names = new ArrayList<>();
-                        for (Drawn step : steps) {
-                            Object arg = step.argument();
-                            names.add(choices.get(step.choice()).name() + "(" + (arg == null ? "" : arg) + ")");
-                        }
-                        sb.append("\n  worker ").append(slot).append(": ").append(String.join(", ", names));
-                    });
-                    throw new AssertionError(sb.append("\n\n").append(failure.getMessage()).toString(), failure);
-                }
+            replay.put(w, steps);
+        }
+        return replay;
+    }
+
+    /**
+     * Runs {@code replay} under each of {@value #SCHEDULES_PER_SCENARIO} seeds and throws for the
+     * first whose round {@code check} finds not linearizable, naming the scenario and the seed.
+     */
+    private void checkScenario(Map<Integer, List<Drawn>> replay, List<Declared<S>> choices,
+                               Consumer<RoundLog> check) {
+        if (replay.size() < 2) {
+            return; // one worker alone is sequential, and a sequential run is linearizable
+        }
+        Map<Integer, List<Drawn>> renumbered = new java.util.TreeMap<>();
+        replay.values().forEach(steps -> renumbered.put(renumbered.size(), steps));
+        for (long seed = 1; seed <= SCHEDULES_PER_SCENARIO; seed++) {
+            NotLinearizable failure = replayFailure(renumbered, seed, false, check);
+            if (failure != null) {
+                throw new AssertionError("An enumerated scenario is not linearizable, under replaySeed = " + seed
+                        + "L, searching smallest first:" + describeScenario(replay, choices) + "\n\n"
+                        + failure.getMessage(), failure);
             }
         }
-          }
-        return "linearizable over all " + scenarios + " scenarios of up to " + operationsPerWorker
-                + " operations on each of " + workers + " workers, each run under " + SCHEDULES_PER_SCENARIO
-                + " schedules";
+    }
+
+    /** {@return one line per worker of {@code replay}, listing its operations with their arguments} */
+    private static <S> String describeScenario(Map<Integer, List<Drawn>> replay, List<Declared<S>> choices) {
+        StringBuilder sb = new StringBuilder();
+        replay.forEach((slot, steps) -> {
+            List<String> names = new ArrayList<>();
+            for (Drawn step : steps) {
+                Object arg = step.argument();
+                names.add(choices.get(step.choice()).name() + "(" + (arg == null ? "" : arg) + ")");
+            }
+            sb.append("\n  worker ").append(slot).append(": ").append(String.join(", ", names));
+        });
+        return sb.toString();
     }
 
     /** {@return every sequence of 0 to {@code longest} choices from {@code choices}, shortest first} */
