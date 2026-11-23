@@ -104,6 +104,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   timeout headline and the dump's own "No circular deadlocks detected". The CRITICAL line now appears
   only when `findDeadlockedThreads()` reports a cycle. `DeadlockDetector.printThreadDump()` is also
   split into the sections it prints, under a new test that pins its output for both cases.
+- **`LockLeakDetector` times a re-entered hold as one hold (#1505).** Re-entering a `ReentrantLock`
+  overwrote the outer acquire's start time, so a lock held for seconds across a re-entry read
+  `max hold: 0ms` and never drew the long-hold finding. A hold is now timed from the outermost
+  acquire to the release that ends it. `analyze()` is also split into one lock's checks.
 
 - **A round's `@AfterEachInvocation` hooks run when its `@BeforeEachInvocation` hook throws
   (#1477).** The before-hooks ran ahead of the round's failure handling, so their exception skipped
