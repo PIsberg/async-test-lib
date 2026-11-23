@@ -568,120 +568,175 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
             return;
         }
         if (qualifiedName == null) return;
-        if (!refuted.isEmpty() || TelemetryRegistry.OPTIMISTIC_READ_IGNORED.equals(qualifiedName)) {
-            Speculation lastRefuted = refuted.remove(threadId);
-            if (TelemetryRegistry.OPTIMISTIC_READ_IGNORED.equals(qualifiedName)) {
-                // The answer of the validate just before was thrown away, so what it refuted was
-                // used anyway: plain reads racing the writer (#823).
-                if (lastRefuted != null) {
-                    deliver(lastRefuted, false);
-                }
-                return;
-            }
+        if (settleRefutedSpeculation(threadId, qualifiedName)) {
+            return;
         }
         if (TelemetryRegistry.OPTIMISTIC_READ_STARTED.equals(qualifiedName)) {
-            // A StampedLock speculation starts: this thread's reads wait for its validate (#740).
-            // One still open on the same lock was never validated, so its reads, and those of
-            // any opened inside it, were used as read. One open on another lock stays open: the
-            // new one nests inside it (#823).
-            java.util.Deque<Speculation> open =
-                    speculations.computeIfAbsent(threadId, id -> new java.util.ArrayDeque<>());
-            Speculation same = innermostOn(open, identity);
-            if (same != null) {
-                Speculation closed;
-                do {
-                    closed = open.pop();
-                    deliver(closed, false);
-                } while (!closed.equals(same));
-            }
-            if (open.size() >= MAX_NESTED_SPECULATIONS) {
-                deliver(open.removeLast(), false);
-            }
-            open.push(new Speculation(identity));
+            speculationStarted(threadId, identity);
             return;
         }
         if (TelemetryRegistry.OPTIMISTIC_READ_VALIDATED.equals(qualifiedName)) {
-            // The write slot carries the answer. A validate on a lock this thread has no
-            // speculation on judges nothing the bridge held back.
-            java.util.Deque<Speculation> open = speculations.get(threadId);
-            if (open == null) {
-                return;
-            }
-            Speculation judged = innermostOn(open, identity);
-            if (judged == null) {
-                return;
-            }
-            Speculation enclosing = enclosing(open, judged);
-            open.removeFirstOccurrence(judged);
-            if (open.isEmpty()) {
-                speculations.remove(threadId);
-            }
-            if (isWrite) {
-                if (enclosing == null) {
-                    deliver(judged, true);
-                } else {
-                    // Still inside another speculation: these reads stand or fall with it too.
-                    handOver(judged, enclosing);
-                }
-            } else if (!judged.reads.isEmpty()) {
-                // Dropped, unless the thread's next event says the answer was discarded.
-                refuted.put(threadId, judged);
-            }
+            speculationValidated(threadId, identity, isWrite);
             return;
         }
         if (!speculations.isEmpty()) {
             // Anything but a read ends this thread's speculations first, so their reads stay
             // ahead of what followed them.
-            java.util.Deque<Speculation> open = speculations.get(threadId);
-            if (open != null && !isWrite && !qualifiedName.startsWith("#")) {
-                Speculation innermost = open.peek();
-                if (innermost != null && innermost.reads.size() < MAX_SPECULATIVE_READS) {
-                    holdBack(innermost, threadId, qualifiedName, lockFingerprint, volatileField,
-                            constantTag, identity, afterVolatileRead, ownMonitor, methodMonitor,
-                            storedIdentity, receiver, stamp, round);
-                    return;
-                }
+            Speculation innermost = isWrite || qualifiedName.startsWith("#")
+                    ? null : openSpeculationWithRoom(threadId);
+            if (innermost != null) {
+                holdBack(innermost, threadId, qualifiedName, lockFingerprint, volatileField,
+                        constantTag, identity, afterVolatileRead, ownMonitor, methodMonitor,
+                        storedIdentity, receiver, stamp, round);
+                return;
             }
-            java.util.Deque<Speculation> ended = speculations.remove(threadId);
-            if (ended != null) {
-                for (Speculation speculation : ended) {
-                    deliver(speculation, false);
-                }
+            endSpeculations(threadId);
+        }
+        if (ownershipEvent(qualifiedName, threadId, isWrite, lockFingerprint, identity, storedIdentity)) {
+            return;
+        }
+        recordField(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, constantTag,
+                identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, receiver,
+                stamp, round);
+    }
+
+    /**
+     * Settles the speculation a validate on this thread refuted, and {@return whether the event
+     * was the marker that settles it}
+     *
+     * <p>A refuted speculation's reads are dropped, unless the thread's very next event says the
+     * validate's answer was thrown away: then what it refuted was used anyway, plain reads racing
+     * the writer, and the reads are delivered (#823). Any other next event drops them.
+     */
+    private boolean settleRefutedSpeculation(long threadId, String qualifiedName) {
+        boolean answerIgnored = TelemetryRegistry.OPTIMISTIC_READ_IGNORED.equals(qualifiedName);
+        if (refuted.isEmpty() && !answerIgnored) {
+            return false;
+        }
+        Speculation lastRefuted = refuted.remove(threadId);
+        if (!answerIgnored) {
+            return false;
+        }
+        if (lastRefuted != null) {
+            deliver(lastRefuted, false);
+        }
+        return true;
+    }
+
+    /**
+     * A StampedLock speculation starts: this thread's reads wait for its validate (#740). One still
+     * open on the same lock was never validated, so its reads, and those of any opened inside it,
+     * were used as read. One open on another lock stays open: the new one nests inside it (#823).
+     */
+    private void speculationStarted(long threadId, int lock) {
+        java.util.Deque<Speculation> open =
+                speculations.computeIfAbsent(threadId, id -> new java.util.ArrayDeque<>());
+        Speculation same = innermostOn(open, lock);
+        if (same != null) {
+            Speculation closed;
+            do {
+                closed = open.pop();
+                deliver(closed, false);
+            } while (!closed.equals(same));
+        }
+        if (open.size() >= MAX_NESTED_SPECULATIONS) {
+            deliver(open.removeLast(), false);
+        }
+        open.push(new Speculation(lock));
+    }
+
+    /**
+     * A validate answered this thread's speculation on {@code lock}; {@code valid} is the answer,
+     * carried in the write slot. A validate on a lock this thread has no speculation on judges
+     * nothing the bridge held back. A valid speculation's reads are delivered, or handed to the
+     * speculation it is nested in, with which they now stand or fall; an invalid one's reads wait
+     * for the thread's next event ({@link #settleRefutedSpeculation}).
+     */
+    private void speculationValidated(long threadId, int lock, boolean valid) {
+        java.util.Deque<Speculation> open = speculations.get(threadId);
+        if (open == null) {
+            return;
+        }
+        Speculation judged = innermostOn(open, lock);
+        if (judged == null) {
+            return;
+        }
+        Speculation enclosing = enclosing(open, judged);
+        open.removeFirstOccurrence(judged);
+        if (open.isEmpty()) {
+            speculations.remove(threadId);
+        }
+        if (valid) {
+            if (enclosing == null) {
+                deliver(judged, true);
+            } else {
+                handOver(judged, enclosing);
+            }
+        } else if (!judged.reads.isEmpty()) {
+            refuted.put(threadId, judged);
+        }
+    }
+
+    /** {@return this thread's innermost open speculation while it can hold one more read, else {@code null}} */
+    private @Nullable Speculation openSpeculationWithRoom(long threadId) {
+        java.util.Deque<Speculation> open = speculations.get(threadId);
+        if (open == null) {
+            return null;
+        }
+        Speculation innermost = open.peek();
+        return innermost != null && innermost.reads.size() < MAX_SPECULATIVE_READS ? innermost : null;
+    }
+
+    /** Ends every open speculation of this thread unvalidated: their reads were used as read. */
+    private void endSpeculations(long threadId) {
+        java.util.Deque<Speculation> ended = speculations.remove(threadId);
+        if (ended != null) {
+            for (Speculation speculation : ended) {
+                deliver(speculation, false);
             }
         }
+    }
+
+    /**
+     * Routes an ownership event to the validator and {@return whether {@code qualifiedName} was
+     * one} None is a field access: each says a worker moved an object between owners.
+     *
+     * <ul>
+     *   <li>A take: the object with this identity came out of a queue or an atomic slot, which
+     *       starts a new ownership generation for it (#555). The write slot flags a container that
+     *       orders nothing, whose take counts only under a lock the offer shared; the lock
+     *       fingerprint rides with it (#751).</li>
+     *   <li>An offer: the object is handed to the queue whose identity rides in the stored-identity
+     *       slot (#630), flagged like a take (#751).</li>
+     *   <li>A drain: the queue in the stored-identity slot was emptied, so offers into it are stale
+     *       from here on (#664).</li>
+     * </ul>
+     */
+    private boolean ownershipEvent(String qualifiedName, long threadId, boolean isWrite, long lockFingerprint,
+                                   int identity, int storedIdentity) {
         if (TelemetryRegistry.OWNERSHIP_TAKEN.equals(qualifiedName)) {
-            // Not a field access: a worker took the object with this identity out of a queue or
-            // an atomic slot, which starts a new ownership generation for it (#555). The write
-            // slot flags a container that orders nothing, whose take counts only under a lock the
-            // offer shared; the lock fingerprint rides with it (#751).
             if (isWrite) {
                 atomicityValidator.recordOwnershipTakenUnderLocks(identity, storedIdentity,
                         threadId, lockFingerprint);
             } else {
                 atomicityValidator.recordOwnershipTaken(identity, storedIdentity, threadId);
             }
-            return;
+            return true;
         }
         if (TelemetryRegistry.OWNERSHIP_OFFERED.equals(qualifiedName)) {
-            // Not a field access either: a worker is handing the object to the queue whose
-            // identity rides in the stored-identity slot (#630), flagged like a take (#751).
             if (isWrite) {
                 atomicityValidator.recordOwnershipOfferedUnderLocks(identity, storedIdentity,
                         threadId, lockFingerprint);
             } else {
                 atomicityValidator.recordOwnershipOffered(identity, storedIdentity, threadId);
             }
-            return;
+            return true;
         }
         if (TelemetryRegistry.OWNERSHIP_DRAINED.equals(qualifiedName)) {
-            // A worker drained the queue whose identity rides in the stored-identity slot: offers
-            // into it are stale from here on (#664).
             atomicityValidator.recordContainerDrained(storedIdentity, threadId);
-            return;
+            return true;
         }
-        recordField(threadId, qualifiedName, isWrite, lockFingerprint, volatileField, constantTag,
-                identity, afterVolatileRead, ownMonitor, methodMonitor, storedIdentity, receiver,
-                stamp, round);
+        return false;
     }
 
     /**

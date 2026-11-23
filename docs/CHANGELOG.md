@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs once the `SONAR_TOKEN` secret exists. [quality-gates/new-code-gate.md](quality-gates/new-code-gate.md)
   maps each condition to its gate.
 
+- **`TelemetryBridge.onEvent` dispatches instead of doing everything (131 to 47 lines).** The
+  StampedLock speculation steps and the ownership take, offer and drain events are methods of their
+  own; the drain thread's handling of every agent-captured access is otherwise unchanged, which a
+  golden master of the atomicity verdicts and reports confirmed across 50 test classes.
+
 - **`AtomicityValidator.analyzeAtomicity()` reads as its rules (236 to 17 lines).** The per-field
   analysis is a `FieldAnalysis` whose lock rule, per-receiver excuses, ordering excuses and volatile
   rules are methods of their own, asked in the same order; a golden master of every verdict and
