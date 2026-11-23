@@ -1450,6 +1450,11 @@ public final class AgentConcurrencyUtilHooks {
      * Weaves {@code Future.get(long, TimeUnit)}, as {@link #get(Future)}; a get that timed out
      * observed nothing.
      *
+     * <p>Under a controlled schedule this is a plain point, not a wait for the task as the untimed
+     * get is: waiting there until the task was done overrode the caller's timeout, so a get that
+     * should have timed out returned the value and the code under test took a branch it cannot take
+     * for real (#1495). A timed {@code Thread.join} is not waited for either.
+     *
      * @param receiver the future
      * @param timeout  how long to wait
      * @param unit     the unit of {@code timeout}
@@ -1461,7 +1466,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static @Nullable Object get(Future<Object> receiver, long timeout, TimeUnit unit)
             throws InterruptedException, ExecutionException, TimeoutException {
-        ControlledSchedule.awaitingTask(adoptionBehind(receiver));
+        ControlledSchedule.point();
         if (!receiver.isDone()) {
             blockingOn(receiver);
         }

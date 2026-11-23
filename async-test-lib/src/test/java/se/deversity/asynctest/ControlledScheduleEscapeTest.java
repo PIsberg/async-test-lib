@@ -245,4 +245,43 @@ class ControlledScheduleEscapeTest {
         String round = theRound();
         assertTrue(round.contains("escapes=1"), "the interrupted worker ran uncontrolled: " + round);
     }
+
+    /**
+     * A timed get keeps its timeout under a controlled schedule. It used to wait inside the schedule
+     * until the task was done, as an untimed get does, so on every seed a get that should have timed
+     * out returned the value: the schedule forced one branch of the code under test and hid the other
+     * (#1495). As a plain point, a seed may still run the task first (a worker descheduled for that
+     * long is real too), but some seed must reach the timeout.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void aTimedGetOnATaskStillRunningCanTimeOut() throws Throwable {
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            java.util.Set<String> outcomes = java.util.concurrent.ConcurrentHashMap.newKeySet();
+            for (long seed = 1; seed <= 8 && !outcomes.contains("timed out"); seed++) {
+                AsyncTestRunner.run(AsyncTestConfig.builder().threads(1).invocations(1).replaySeed(seed)
+                        .controlledSchedule(true).timeoutMs(30_000).licenseMockMode(true).build(), () -> {
+                    Future<?> task = AgentConcurrencyUtilHooks.submit(pool, (Runnable) () -> {
+                        long end = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(300);
+                        while (System.nanoTime() < end) {
+                            Thread.onSpinWait(); // no scheduling point: busy, not blocked
+                        }
+                    });
+                    try {
+                        AgentConcurrencyUtilHooks.get((Future<Object>) task, 20, TimeUnit.MILLISECONDS);
+                        outcomes.add("returned");
+                    } catch (java.util.concurrent.TimeoutException expected) {
+                        outcomes.add("timed out");
+                    }
+                    AgentConcurrencyUtilHooks.get((Future<Object>) task);
+                });
+            }
+
+            assertTrue(outcomes.contains("timed out"),
+                    "no seed in 1..8 let a 20 ms get on a task that runs 300 ms time out: " + outcomes);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
 }
