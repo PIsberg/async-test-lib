@@ -3735,7 +3735,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="5770.0" y="979.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enableVirtualThreadScan():…</text>
   <text x="5770.0" y="994.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">cycleKeys(Optional&lt;List&lt;Vi…</text>
   <text x="5770.0" y="1009.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">printThreadDump(): void</text>
-  <text x="5770.0" y="1024.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
+  <text x="5770.0" y="1024.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+14 more)</text>
 </g>
 <g id="VisibilityMonitor">
   <title>VisibilityMonitor [CLASS]</title>
@@ -4880,7 +4880,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="880.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">forCurrentContext(Set&lt;Long…</text>
   <text x="880.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">onEvent(long, String, bool…</text>
   <text x="880.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">onEvent(long, String, bool…</text>
-  <text x="880.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+25 more)</text>
+  <text x="880.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+31 more)</text>
 </g>
 <g id="TelemetryEventBuffer">
   <title>TelemetryEventBuffer [CLASS]</title>

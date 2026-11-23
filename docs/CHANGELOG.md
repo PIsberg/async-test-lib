@@ -98,6 +98,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A timeout's thread dump no longer claims a deadlock it did not find (#1491).** The dump printed
+  `CRITICAL: Application threads are deadlocked` before asking the JVM, so every timed-out run
+  opened its dump that way, a slow but correct body included, and contradicted both the run's
+  timeout headline and the dump's own "No circular deadlocks detected". The CRITICAL line now appears
+  only when `findDeadlockedThreads()` reports a cycle. `DeadlockDetector.printThreadDump()` is also
+  split into the sections it prints, under a new test that pins its output for both cases.
+
 - **A round's `@AfterEachInvocation` hooks run when its `@BeforeEachInvocation` hook throws
   (#1477).** The before-hooks ran ahead of the round's failure handling, so their exception skipped
   the after-hooks, and a before-hook that opened a resource and then failed left it open, against
