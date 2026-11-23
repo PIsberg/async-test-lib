@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs once the `SONAR_TOKEN` secret exists. [quality-gates/new-code-gate.md](quality-gates/new-code-gate.md)
   maps each condition to its gate.
 
+- **`AtomicityValidator.analyzeAtomicity()` reads as its rules (236 to 17 lines).** The per-field
+  analysis is a `FieldAnalysis` whose lock rule, per-receiver excuses, ordering excuses and volatile
+  rules are methods of their own, asked in the same order; a golden master of every verdict and
+  report the validator's 44 test classes produce matched before and after. Three more
+  `verdictCounts()` labels and the order of the rules are now pinned by tests.
+
 - **A round-scoped detector registers by implementing `RoundScoped` (#698).** The round start was
   fanned out by hand: 32 `if (x != null) x.markInvocationStart()` lines in `AsyncTestContext` and
   three more in `ConcurrencyRunner`, and a detector missing from both compiled, ran and paired
