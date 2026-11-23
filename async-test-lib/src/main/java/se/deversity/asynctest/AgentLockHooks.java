@@ -185,7 +185,7 @@ public final class AgentLockHooks {
         } else {
             HeldLocks.acquired(view.owner(), view.shared());
         }
-        deliverAcquired(view == null ? lock : view.owner(), lock, blocking);
+        deliverAcquired(view == null ? lock : view.owner(), lock, blocking, view != null && view.shared());
     }
 
     private static void noteReleased(Lock lock) {
@@ -223,11 +223,13 @@ public final class AgentLockHooks {
      * @param lock     the lock the call site actually named
      * @param blocking whether the acquisition could have waited, which decides whether
      *                 {@code LockOrderValidator} records an edge into it (#1242)
+     * @param shared   whether the view is a read lock, which two threads hold at once, so it orders
+     *                 nothing between two readers (#1496)
      */
-    private static void deliverAcquired(Object identity, Lock lock, boolean blocking) {
+    private static void deliverAcquired(Object identity, Lock lock, boolean blocking, boolean shared) {
         LockOrderValidator order = AsyncTestContext.currentLockOrderValidator();
         if (order != null) {
-            order.recordLockAcquisition(identity, blocking);
+            order.recordLockAcquisition(identity, blocking, shared);
         }
         LockLeakDetector leak = AsyncTestContext.currentLockLeakDetector();
         if (leak != null) {
@@ -246,7 +248,7 @@ public final class AgentLockHooks {
     }
 
     /**
-     * The release half of {@link #deliverAcquired(Object, Lock, boolean)}.
+     * The release half of {@link #deliverAcquired(Object, Lock, boolean, boolean)}.
      *
      * @param identity the lockset identity, the owner for a view
      * @param lock     the lock the call site actually named

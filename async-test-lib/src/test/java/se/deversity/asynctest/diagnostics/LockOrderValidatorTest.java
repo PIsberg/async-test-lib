@@ -565,4 +565,105 @@ class LockOrderValidatorTest {
         assertSame(readWrite, found[1], "a write lock's condition belongs to its owner");
         assertNull(found[2], "a lock the thread does not hold is not its condition's lock here");
     }
+
+    // ---- #1496: a Lock taken back after Condition.await() is still held ------------------------
+
+    /** Takes {@code lock} as a condition wait does: released for the wait, taken back after it. */
+    private static void waitOn(LockOrderValidator validator, Object lock) {
+        int holds = validator.recordReleaseForWait(lock);
+        validator.recordReacquireAfterWait(lock, holds);
+    }
+
+    @Test
+    void aGateTakenBackAfterAConditionWaitStillGuardsWhatItNests() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        ReentrantLock gate = new ReentrantLock();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> {
+            gate.lock();
+            try {
+                validator.recordLockAcquisition(gate);
+                waitOn(validator, gate);
+                nest(validator, a, b);
+                validator.recordLockRelease(gate);
+            } finally {
+                gate.unlock();
+            }
+        });
+        onNewThread(() -> {
+            gate.lock();
+            try {
+                nest(validator, gate, b, a);
+            } finally {
+                gate.unlock();
+            }
+        });
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertFalse(report.hasIssues(), "the first thread held the gate through its nesting; "
+                + "Thread.holdsLock cannot see a ReentrantLock and must not drop it: " + report);
+    }
+
+    @Test
+    void aLockTakenBackAfterAConditionWaitStillNestsTheNextLock() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        ReentrantLock outer = new ReentrantLock();
+        Object inner = new Object();
+        onNewThread(() -> {
+            outer.lock();
+            try {
+                validator.recordLockAcquisition(outer);
+                waitOn(validator, outer);
+                validator.recordLockAcquisition(inner);
+                validator.recordLockRelease(inner);
+                validator.recordLockRelease(outer);
+            } finally {
+                outer.unlock();
+            }
+        });
+        onNewThread(() -> nest(validator, inner, outer));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertEquals(1, report.inconsistentOrderings.size(),
+                "outer was held when inner was taken after the wait, so the two orders invert: " + report);
+    }
+
+    // ---- #1496: a read lock is shared, so it does not order two readers -------------------------
+
+    @Test
+    void twoReadersOfOneLockDoNotKeepEachOthersInversionApart() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        ReentrantReadWriteLock readWrite = new ReentrantReadWriteLock();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> underReadWrite(validator, readWrite, true, a, b));
+        onNewThread(() -> underReadWrite(validator, readWrite, true, b, a));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertEquals(1, report.inconsistentOrderings.size(),
+                "both threads can hold the read lock at once and deadlock on a and b: " + report);
+    }
+
+    @Test
+    void aReaderAndAWriterOfOneLockDoKeepEachOtherOut() throws InterruptedException {
+        LockOrderValidator validator = new LockOrderValidator();
+        ReentrantReadWriteLock readWrite = new ReentrantReadWriteLock();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> underReadWrite(validator, readWrite, true, a, b));
+        onNewThread(() -> underReadWrite(validator, readWrite, false, b, a));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertFalse(report.hasIssues(), "a writer excludes every reader, so the two orders never overlap: "
+                + report);
+    }
+
+    /** Nests {@code locks} under {@code readWrite}, held for reading or for writing. */
+    private static void underReadWrite(LockOrderValidator validator, ReentrantReadWriteLock readWrite,
+                                       boolean reading, Object... locks) {
+        validator.recordLockAcquisition(readWrite, true, reading); // the owner, as the agent passes it
+        nest(validator, locks);
+        validator.recordLockRelease(readWrite);
+    }
 }

@@ -114,6 +114,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one worker runs was skipped, so `workers = 1` checked nothing. Each now fails, naming the
   scenario and its seed; a lone worker's scenario runs once. The enumeration is also split into its
   steps.
+- **`LockOrderValidator` keeps a lock taken back after `Condition.await()` and no longer lets a
+  read lock order two readers (#1496).** A `ReentrantLock` reacquired by `await()` was confirmed
+  with `Thread.holdsLock`, which cannot see it, and dropped at the next acquisition, so a gate held
+  through the wait guarded nothing (a CRITICAL false positive) and a lock held after it nested
+  nothing (a missed inversion). And every hold counted as exclusive, so two readers' inverted
+  nesting under one `readLock()` was suppressed. Holds are now confirmed by their type and carry
+  a mode; a reader still keeps out a writer. New `recordLockAcquisition(lock, blocking, shared)`.
 
 - **A round's `@AfterEachInvocation` hooks run when its `@BeforeEachInvocation` hook throws
   (#1477).** The before-hooks ran ahead of the round's failure handling, so their exception skipped
