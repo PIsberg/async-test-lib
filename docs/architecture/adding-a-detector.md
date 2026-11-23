@@ -63,6 +63,13 @@ rule fails the build otherwise.
 `analyze()` must be idempotent: same observed state → same violations, no side effects.
 `DetectorRegistry.analyzeAll()` relies on it.
 
+**Round-scoped evidence.** A detector that pairs or counts events across threads must not pair
+an event from one round with one from the next: rounds are ordered by the runner, so they cannot
+race (#698). Such a detector implements `RoundScoped` and closes the round in progress in its
+`markInvocationStart()`. Implementing the interface is the whole registration: the context notifies
+every detector of its run that implements it, and `RoundStartFanOutIsCompleteTest` fails for a class
+that declares `markInvocationStart()` without it.
+
 **Hot-path constraints.** `recordAccess`-style methods run inside every invocation round under full
 contention: never introduce O(n²) work, allocation, autoboxing, or lock acquisition there.
 `SiteCapture` must not allocate when a site is already captured for a key.

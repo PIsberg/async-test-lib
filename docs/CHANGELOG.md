@@ -33,6 +33,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs once the `SONAR_TOKEN` secret exists. [quality-gates/new-code-gate.md](quality-gates/new-code-gate.md)
   maps each condition to its gate.
 
+- **A round-scoped detector registers by implementing `RoundScoped` (#698).** The round start was
+  fanned out by hand: 32 `if (x != null) x.markInvocationStart()` lines in `AsyncTestContext` and
+  three more in `ConcurrencyRunner`, and a detector missing from both compiled, ran and paired
+  events across rounds with only a source-scanning test to say so. Now the 35 round-scoped detectors
+  implement the new internal `RoundScoped` interface and the context notifies every registry
+  instance that does, in one loop. `RoundStartFanOutIsCompleteTest` checks at runtime that every
+  such detector is a registry instance and implements the interface, and a new context-level test
+  shows the loop separating rounds for `ConditionVariableDetector`.
+
 - **What a run reports is its own class: `RunReporter` (2,396 to 1,897 lines in
   `ConcurrencyRunner`).** The detector reports, the trust banner and console folding, the `failOn`
   gate on a passing run, and the report and error a failing or timed-out run ends with moved out
