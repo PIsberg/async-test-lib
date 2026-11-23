@@ -28,7 +28,7 @@ import se.deversity.asynctest.report.Violation;
  * thread is the accessing one); an access without a stamp orders nothing, so the excuse only ever
  * removes a finding.
  */
-public class AtomicityValidator {
+public class AtomicityValidator implements RoundScoped {
 
     private static class CompoundOperation {
         final String operationName;
@@ -637,6 +637,7 @@ public class AtomicityValidator {
      *
      * @since 1.7.3
      */
+    @Override
     public void markInvocationStart() {
         long[] started = roundTokens;
         long[] next = java.util.Arrays.copyOf(started, started.length + 1);

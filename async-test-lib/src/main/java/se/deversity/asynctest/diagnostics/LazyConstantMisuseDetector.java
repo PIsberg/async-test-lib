@@ -93,7 +93,7 @@ import se.deversity.vibetags.annotations.AIThreadSafe;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/LazyConstantMisuseDetectorTest.java"
 )
-public class LazyConstantMisuseDetector {
+public class LazyConstantMisuseDetector implements RoundScoped {
 
     /** Above this many distinct threads blocked behind one in-flight computation, we warn. */
     private static final int CONVOY_THRESHOLD = 4;
@@ -150,6 +150,7 @@ public class LazyConstantMisuseDetector {
      *
      * @since 1.11.2
      */
+    @Override
     public void markInvocationStart() {
         activeComputations.clear();
         // The constant's state is per object, and a name is all the detector has. A test that

@@ -108,7 +108,7 @@ import java.util.concurrent.atomic.AtomicStampedReference;
  * toggle, or one taken by the thread that did the toggling. Such cycles are still counted in
  * {@link ABAReport#variablesWithCycles} and shown as context beside a finding.
  */
-public class ABAProblemDetector {
+public class ABAProblemDetector implements RoundScoped {
 
     /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
     private final UnnamedLabels unnamedLabels = new UnnamedLabels();
@@ -514,6 +514,7 @@ public class ABAProblemDetector {
      *
      * @since 1.12.3
      */
+    @Override
     public void markInvocationStart() {
         for (AtomicValueHistory history : trackedVariables.values()) {
             history.reads.clear();

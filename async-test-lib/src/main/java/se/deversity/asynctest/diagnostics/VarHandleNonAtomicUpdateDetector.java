@@ -76,7 +76,7 @@ import java.util.concurrent.atomic.LongAdder;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/VarHandleNonAtomicUpdateDetectorTest.java"
 )
-public final class VarHandleNonAtomicUpdateDetector {
+public final class VarHandleNonAtomicUpdateDetector implements RoundScoped {
 
     /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
     private final UnnamedLabels unnamedLabels = new UnnamedLabels();
@@ -190,6 +190,7 @@ public final class VarHandleNonAtomicUpdateDetector {
      *
      * @since 1.13.1
      */
+    @Override
     public void markInvocationStart() {
         for (State s : locations.values()) {
             s.pendingReadByThread.clear();

@@ -30,7 +30,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * }
  * }</pre>
  */
-public class ForkJoinTaskBlockingDetector {
+public class ForkJoinTaskBlockingDetector implements RoundScoped {
 
     /**
      * How many ForkJoinTask bodies each thread is inside. A depth, not membership: a parent's
@@ -86,6 +86,7 @@ public class ForkJoinTaskBlockingDetector {
      *
      * @since 1.13.1
      */
+    @Override
     public void markInvocationStart() {
         taskDepthByThread.clear();
     }

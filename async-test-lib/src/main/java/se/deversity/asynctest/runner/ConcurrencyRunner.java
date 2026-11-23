@@ -429,7 +429,7 @@ public class ConcurrencyRunner {
                     benchmarkStart = benchmarkRecorder.recordInvocationStart();
                 }
 
-                markRoundStart(phase1, phase2Context, pinningStream);
+                markRoundStart(phase2Context, pinningStream);
                 // Before the workers exist, so every one of them sees this round's rendezvous.
                 phase2Context.openRendezvousForRound(actualThreads, remainingMs);
                 AsyncTestListenerRegistry.fireInvocationStarted(i, actualThreads);
@@ -1739,22 +1739,12 @@ public class ConcurrencyRunner {
      * {@code latch.await} returned, and the runner thread's submissions start the next round, so
      * rounds are totally ordered through the runner thread. Flushing telemetry first attributes
      * agent-captured accesses still in the ring to the round that produced them (a no-op without
-     * the agent); the epoch bumps then let the record-based detectors refuse to pair accesses from
-     * different rounds, which cannot race. {@code RoundStartFanOutIsCompleteTest} reads the calls
-     * below by their receivers, so they keep these parameter names.
+     * the agent); the context's round start then lets the record-based detectors refuse to pair
+     * accesses from different rounds, which cannot race. The phase-1 detectors are the context's
+     * own registry instances, so that one call reaches them too.
      */
-    private static void markRoundStart(Phase1DetectorSet phase1, AsyncTestContext phase2Context,
-                                       @Nullable JfrPinningStream pinningStream) {
+    private static void markRoundStart(AsyncTestContext phase2Context, @Nullable JfrPinningStream pinningStream) {
         TelemetryRegistry.flush();
-        if (phase1.visibility != null) {
-            phase1.visibility.markInvocationStart();
-        }
-        if (phase1.race != null) {
-            phase1.race.markInvocationStart();
-        }
-        if (phase1.atomicity != null) {
-            phase1.atomicity.markInvocationStart();
-        }
         phase2Context.markInvocationStart();
         // Before this round's workers start: the stream reports only a site that pinned
         // in two rounds, and the workers already started are the earlier rounds'.

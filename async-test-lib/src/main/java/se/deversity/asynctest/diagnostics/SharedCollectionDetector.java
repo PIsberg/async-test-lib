@@ -62,7 +62,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * }</pre>
  */
-public class SharedCollectionDetector extends AbstractInstanceDetector<SharedCollectionDetector.CollectionState> {
+public class SharedCollectionDetector extends AbstractInstanceDetector<SharedCollectionDetector.CollectionState> implements RoundScoped {
 
     static final class CollectionState extends SelfGuard.TrackedInstance {
         final String name;
@@ -205,6 +205,7 @@ public class SharedCollectionDetector extends AbstractInstanceDetector<SharedCol
      *
      * @since 1.9.8
      */
+    @Override
     public void markInvocationStart() {
         for (CollectionState state : states()) {
             state.foldRound();

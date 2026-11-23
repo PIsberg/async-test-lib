@@ -2,126 +2,135 @@ package se.deversity.asynctest.architecture;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import se.deversity.asynctest.AsyncTestConfig;
+import se.deversity.asynctest.AsyncTestContext;
+import se.deversity.asynctest.Preset;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * A detector that declares {@code markInvocationStart()} is round-scoped: it needs to hear that a
- * round began, or state from round N pairs with state from round N+1 and gets reported. The call
- * is fanned out by hand from two places, {@code ConcurrencyRunner} (through its phase-1 set) and
- * {@code AsyncTestContext.markInvocationStart()}, and a detector on neither list compiles, runs
- * and reports cross-round pairs with nothing to say why (#698).
+ * round began, or state from round N pairs with state from round N+1 and gets reported (#698).
  *
- * <p>This does not match names. Each call's receiver is resolved to the declared type of the
- * field it names, so {@code phase1.race} counts for {@code RaceConditionDetector} because that
- * is what the field holds, not because of how either is spelled.
+ * <p>The round start used to be fanned out by hand, one {@code if (x != null)
+ * x.markInvocationStart()} line per detector in {@code AsyncTestContext} plus three in
+ * {@code ConcurrencyRunner}, and a detector on neither list compiled, ran and reported cross-round
+ * pairs with nothing to say why. Now a round-scoped detector implements {@code RoundScoped}, and
+ * the context notifies every registry instance that does, so there is no list to forget. These
+ * tests pin the three facts that makes true.
  */
 class RoundStartFanOutIsCompleteTest {
 
-    private static final String ROOT_PACKAGE = "se.deversity.asynctest.";
+    private static final String DIAGNOSTICS = "se.deversity.asynctest.diagnostics.";
     private static final Pattern DECLARATION = Pattern.compile("\\bvoid\\s+markInvocationStart\\s*\\(\\s*\\)");
-    private static final Pattern CALL = Pattern.compile("\\b([A-Za-z_][\\w.]*)\\.markInvocationStart\\s*\\(\\s*\\)");
-
-    /** Which class owns the field a receiver's first segment names, per chain file. */
-    private static final Map<String, String> OWNER_OF_PREFIX = Map.of(
-            "registry", ROOT_PACKAGE + "DetectorRegistry",
-            "phase1", ROOT_PACKAGE + "diagnostics.Phase1DetectorSet");
+    private static final Pattern CALL = Pattern.compile("\\.markInvocationStart\\s*\\(\\s*\\)");
 
     /**
-     * Classes that declare {@code markInvocationStart()} for a caller to drive, but that no
-     * {@code DetectorType} wires, so no chain can call them. If one gets wired, its call puts it
-     * back in the count and the comparison below fails until its entry here is removed.
+     * Classes that declare {@code markInvocationStart()} but are not registry detectors. If one
+     * gets a {@code DetectorType}, it must leave this map, and the runtime check below finds it.
      */
-    private static final Map<String, String> UNWIRED = Map.of(
+    private static final Map<String, String> NOT_REGISTRY_DETECTORS = Map.of(
             "LazyInitValidator", "has no DetectorType; a test that drives it across rounds closes "
-                    + "each round itself (#764)");
-
-    /** The runner's local for the run's {@code AsyncTestContext}. */
-    private static final String HAND_OFF = "phase2Context";
+                    + "each round itself (#764)",
+            "SelfGuard", "its nested Scope is the context's own sharing clock, which the context "
+                    + "bumps itself before the detectors");
 
     @Test
-    @DisplayName("every detector declaring markInvocationStart() is called by exactly one chain")
-    void everyRoundScopedDetectorHearsTheRoundStart() throws Exception {
-        Map<String, Integer> calls = new TreeMap<>();
-        for (String declaring : declaringDetectors()) {
-            calls.put(declaring, 0);
-        }
-        assertFalse(calls.isEmpty(), "found no detector declaring markInvocationStart(); the scan is broken");
+    @DisplayName("every round-scoped detector is a registry instance, so one loop reaches them all")
+    void everyRoundScopedDetectorIsARegistryInstance() throws Exception {
+        Set<String> declared = declaringDetectors();
+        assertFalse(declared.isEmpty(), "found no detector declaring markInvocationStart(); the scan is broken");
 
-        int handOffs = 0;
-        for (String receiverType : receiverTypes()) {
-            if (receiverType.equals(HAND_OFF)) {
-                handOffs++;
-            } else {
-                calls.merge(receiverType, 1, Integer::sum);
+        AsyncTestContext context = new AsyncTestContext(AsyncTestConfig.builder().preset(Preset.ALL).build());
+        Field registryField = AsyncTestContext.class.getDeclaredField("registry");
+        registryField.setAccessible(true);
+        Object registry = registryField.get(context);
+        Method instances = registry.getClass().getDeclaredMethod("instances");
+        instances.setAccessible(true);
+        Set<String> inRegistry = new TreeSet<>();
+        for (Object detector : ((Map<?, ?>) instances.invoke(registry)).values()) {
+            if (declaresRoundStart(detector.getClass())) {
+                inRegistry.add(detector.getClass().getSimpleName());
             }
         }
-        assertEquals(1, handOffs, "ConcurrencyRunner must call " + HAND_OFF
-                + ".markInvocationStart() once per round: it is the only way the detectors "
-                + "AsyncTestContext fans out to hear that a round began.");
-
-        Map<String, Integer> expected = new TreeMap<>();
-        calls.keySet().forEach(name -> expected.put(name, 1));
-        assertEquals(expected, calls,
-                "0 means a round-scoped detector no chain notifies: add it to "
-                        + "AsyncTestContext.markInvocationStart(). 2 means both chains bump it.");
+        assertEquals(declared, inRegistry,
+                "a round-scoped detector the registry does not build is never told a round began; "
+                        + "give it a DetectorType row, or list it in NOT_REGISTRY_DETECTORS with why");
     }
 
-    /** {@return the simple names of the diagnostics classes that declare the method} */
-    private static List<String> declaringDetectors() throws IOException {
-        List<String> names = new ArrayList<>();
+    @Test
+    @DisplayName("every round-scoped detector implements RoundScoped")
+    void everyRoundScopedDetectorImplementsRoundScoped() throws Exception {
+        Class<?> roundScoped = Class.forName(DIAGNOSTICS + "RoundScoped");
+        Set<String> missing = new TreeSet<>();
+        for (String name : declaringDetectors()) {
+            if (!roundScoped.isAssignableFrom(Class.forName(DIAGNOSTICS + name))) {
+                missing.add(name);
+            }
+        }
+        assertTrue(missing.isEmpty(), "these declare markInvocationStart() but do not implement "
+                + "RoundScoped, so the context's round-start loop skips them: " + missing);
+    }
+
+    @Test
+    @DisplayName("the round start is fanned out by one loop, not by a hand-kept list")
+    void theFanOutIsOneLoop() throws IOException {
+        long contextCalls = calls(mainSources().resolve("AsyncTestContext.java"));
+        assertEquals(2, contextCalls, "AsyncTestContext should make two markInvocationStart() calls: "
+                + "its own sharing clock and the RoundScoped loop. A per-detector line next to the loop "
+                + "bumps that detector twice per round.");
+        long runnerCalls = calls(mainSources().resolve(Path.of("runner", "ConcurrencyRunner.java")));
+        assertEquals(1, runnerCalls, "ConcurrencyRunner should make one markInvocationStart() call, "
+                + "handing the round start to the context. The phase-1 detectors are the registry's "
+                + "own instances, so the loop already reaches them.");
+    }
+
+    private static boolean declaresRoundStart(Class<?> type) {
+        for (Method m : type.getDeclaredMethods()) {
+            if (m.getName().equals("markInvocationStart") && m.getParameterCount() == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static long calls(Path source) throws IOException {
+        Matcher call = CALL.matcher(Files.readString(source));
+        long count = 0;
+        while (call.find()) {
+            count++;
+        }
+        return count;
+    }
+
+    /** {@return the simple names of the diagnostics classes that declare the method, minus the exceptions} */
+    private static Set<String> declaringDetectors() throws IOException {
+        Set<String> names = new TreeSet<>();
         try (Stream<Path> files = Files.list(mainSources().resolve("diagnostics"))) {
             for (Path file : files.filter(f -> f.toString().endsWith(".java")).toList()) {
                 String name = file.getFileName().toString().replace(".java", "");
-                if (DECLARATION.matcher(Files.readString(file)).find() && !UNWIRED.containsKey(name)) {
+                // RoundScoped declares the method as the contract the others implement.
+                if (DECLARATION.matcher(Files.readString(file)).find() && !NOT_REGISTRY_DETECTORS.containsKey(name)
+                        && !name.equals("RoundScoped")) {
                     names.add(name);
                 }
             }
         }
         return names;
-    }
-
-    /** {@return the declared field type behind every call in the two chains, one entry per call} */
-    private static List<String> receiverTypes() throws Exception {
-        List<String> types = new ArrayList<>();
-        for (Path chain : List.of(mainSources().resolve("AsyncTestContext.java"),
-                mainSources().resolve(Path.of("runner", "ConcurrencyRunner.java")))) {
-            Matcher call = CALL.matcher(Files.readString(chain));
-            while (call.find()) {
-                // The runner handing the round start to the context chain, not a detector.
-                types.add(call.group(1).equals(HAND_OFF) ? HAND_OFF : fieldType(call.group(1), chain));
-            }
-        }
-        return types;
-    }
-
-    private static String fieldType(String receiver, Path chain) throws Exception {
-        String[] segments = receiver.split("\\.");
-        String owner = segments.length == 1 ? ROOT_PACKAGE + "AsyncTestContext" : OWNER_OF_PREFIX.get(segments[0]);
-        if (owner == null || segments.length > 2) {
-            throw new AssertionError("Cannot resolve the receiver '" + receiver + "' in " + chain.getFileName()
-                    + ". Teach OWNER_OF_PREFIX the class that declares it.");
-        }
-        String field = segments[segments.length - 1];
-        // A nested round clock (SelfGuard.Scope) is declared in its outer class's file, which is
-        // the name declaringDetectors() finds, so credit the call to the top-level class.
-        Class<?> type = Class.forName(owner).getDeclaredField(field).getType();
-        while (type.getEnclosingClass() != null) {
-            type = type.getEnclosingClass();
-        }
-        return type.getSimpleName();
     }
 
     private static Path mainSources() {

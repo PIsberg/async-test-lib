@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicLong;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/CompletableFutureBlockingCallbackDetectorTest.java"
 )
-public final class CompletableFutureBlockingCallbackDetector {
+public final class CompletableFutureBlockingCallbackDetector implements RoundScoped {
 
     private static final class State {
         final String callbackName;
@@ -106,6 +106,7 @@ public final class CompletableFutureBlockingCallbackDetector {
      *
      * @since 1.13.1
      */
+    @Override
     public void markInvocationStart() {
         round.incrementAndGet();
     }

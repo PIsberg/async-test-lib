@@ -48,7 +48,7 @@ import java.util.regex.Pattern;
  * monitor it is called on. Record it with {@link #recordWaitAttempted(Object)}, which reports only
  * when another monitor stays held.
  */
-public class NestedMonitorLockoutDetector {
+public class NestedMonitorLockoutDetector implements RoundScoped {
 
     /** An operation named as a call to {@code wait(}, and not {@code await(}. */
     private static final Pattern OBJECT_WAIT = Pattern.compile("(^|[^A-Za-z0-9_$])wait\\s*\\(");
@@ -67,6 +67,7 @@ public class NestedMonitorLockoutDetector {
      *
      * @since 1.13.1
      */
+    @Override
     public void markInvocationStart() {
         heldMonitors.clear();
     }

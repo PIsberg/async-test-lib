@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * fixture state) and are ordered by the harness's own round happens-before edges, so they
  * are never reported.
  */
-public class VisibilityMonitor {
+public class VisibilityMonitor implements RoundScoped {
 
     private static final class FieldSnapshot {
         final long invocationId;
@@ -86,6 +86,7 @@ public class VisibilityMonitor {
     /**
      * Mark the start of a new invocation round.
      */
+    @Override
     public void markInvocationStart() {
         invocationCounter.incrementAndGet();
     }

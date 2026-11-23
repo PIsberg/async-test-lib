@@ -91,7 +91,7 @@ import org.jspecify.annotations.Nullable;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/LambdaLostUpdateDetectorTest.java"
 )
-public final class LambdaLostUpdateDetector {
+public final class LambdaLostUpdateDetector implements RoundScoped {
 
     /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
     private final UnnamedLabels unnamedLabels = new UnnamedLabels();
@@ -151,6 +151,7 @@ public final class LambdaLostUpdateDetector {
      *
      * @since 1.12.3
      */
+    @Override
     public void markInvocationStart() {
         invocationEpoch.incrementAndGet();
     }

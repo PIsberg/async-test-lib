@@ -109,7 +109,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * }
  * }</pre>
  */
-public class MissedSignalDetector {
+public class MissedSignalDetector implements RoundScoped {
 
     /** What the caller said about the loop around a wait. */
     private enum Guard {
@@ -456,6 +456,7 @@ public class MissedSignalDetector {
      *
      * @since 1.12.1
      */
+    @Override
     public void markInvocationStart() {
         long epoch = invocationEpoch.incrementAndGet();
         if (conditions.isEmpty()) {

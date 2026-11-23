@@ -53,7 +53,7 @@ import se.deversity.asynctest.report.Violation;
  * finding is therefore the same kind of claim, which is what the detector's single {@code PROMPT}
  * tier already says.
  */
-public class RaceConditionDetector extends AbstractInstanceDetector<RaceConditionDetector.ObjectFieldState> {
+public class RaceConditionDetector extends AbstractInstanceDetector<RaceConditionDetector.ObjectFieldState> implements RoundScoped {
 
     /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
     private final UnnamedLabels unnamedLabels = new UnnamedLabels();
@@ -212,6 +212,7 @@ public class RaceConditionDetector extends AbstractInstanceDetector<RaceConditio
      *
      * @since 1.7.3
      */
+    @Override
     public void markInvocationStart() {
         invocationEpoch.incrementAndGet();
     }

@@ -77,7 +77,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * }
  * }</pre>
  */
-public class ConcurrentMapComputeRecursionDetector {
+public class ConcurrentMapComputeRecursionDetector implements RoundScoped {
 
     /** Labels for objects the test gave no name, numbered per kind within this detector (#860). */
     private final UnnamedLabels unnamedLabels = new UnnamedLabels();
@@ -197,6 +197,7 @@ public class ConcurrentMapComputeRecursionDetector {
      *
      * @since 1.11.2
      */
+    @Override
     public void markInvocationStart() {
         activeByScope.clear();
     }

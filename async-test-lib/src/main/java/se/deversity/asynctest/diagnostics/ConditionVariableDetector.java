@@ -137,7 +137,7 @@ import org.jspecify.annotations.Nullable;
  * //   ready.signalAll();
  * }</pre>
  */
-public class ConditionVariableDetector extends AbstractInstanceDetector<ConditionVariableDetector.ConditionState> {
+public class ConditionVariableDetector extends AbstractInstanceDetector<ConditionVariableDetector.ConditionState> implements RoundScoped {
 
     /** {@code waitQueue} result: the lock was held by another thread, so it was not read. */
     private static final int LOCK_HELD = -1;
@@ -422,6 +422,7 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
      *
      * @since 1.12.1
      */
+    @Override
     public void markInvocationStart() {
         invocationEpoch.incrementAndGet();
         observed.markInvocationStart();

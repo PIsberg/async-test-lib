@@ -96,7 +96,7 @@ import java.util.concurrent.atomic.AtomicReference;
     coverageGoal = 80,
     testLocation = "src/test/java/se/deversity/asynctest/diagnostics/FileChannelPositionRaceDetectorTest.java"
 )
-public final class FileChannelPositionRaceDetector extends AbstractInstanceDetector<FileChannelPositionRaceDetector.State> {
+public final class FileChannelPositionRaceDetector extends AbstractInstanceDetector<FileChannelPositionRaceDetector.State> implements RoundScoped {
 
     static final class State extends SelfGuard.ThreadTrackedInstance {
         final String label;
@@ -336,6 +336,7 @@ public final class FileChannelPositionRaceDetector extends AbstractInstanceDetec
      *
      * @since 1.12.3
      */
+    @Override
     public void markInvocationStart() {
         Seeks listed = openSeeks.getAndSet(null);
         while (listed != null) {

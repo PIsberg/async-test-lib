@@ -54,7 +54,7 @@ import java.util.Set;
  * give-up and then acts on the condition anyway, hides it. Each wait is matched to the exit
  * recorded by the same thread; an exit from a thread with no open wait changes nothing.
  */
-public class WakeupDetector extends AbstractInstanceDetector<WakeupDetector.MonitorState> {
+public class WakeupDetector extends AbstractInstanceDetector<WakeupDetector.MonitorState> implements RoundScoped {
 
     /** A recorded wait whose exit has not been recorded yet. */
     private static final class OpenWait {
@@ -247,6 +247,7 @@ public class WakeupDetector extends AbstractInstanceDetector<WakeupDetector.Moni
      *
      * @since 1.12.1
      */
+    @Override
     public void markInvocationStart() {
         for (MonitorState state : states()) {
             state.closeRound();
