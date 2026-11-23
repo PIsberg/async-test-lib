@@ -610,6 +610,19 @@ class AtomicFlagPublicationWeavingTest {
     }
 
     @Test
+    @DisplayName("a long VarHandle form used as a statement loads and runs woven (#1494)")
+    void aLongHandleFormUsedAsAStatementLoadsAndRunsWoven() {
+        // A one-slot POP of the hook's two-slot long failed verification as the class loaded.
+        assertEquals("5,7,15,12,15,1,4", new com.example.agentfixture.LongHandleStatementBean().longStatements());
+    }
+
+    @Test
+    @DisplayName("an int VarHandle form used as a statement still loads and runs woven (#658)")
+    void anIntHandleFormUsedAsAStatementStillLoadsAndRunsWoven() {
+        assertEquals("5,7,15,12,15,1,4", new com.example.agentfixture.LongHandleStatementBean().intStatements());
+    }
+
+    @Test
     @DisplayName("the woven updater forms return what the JDK's do (#1317)")
     void theWovenUpdaterFormsReturnWhatTheJdksDo() {
         assertEquals("5,5,8,8,8,8,14,14,18,18,36,true,4", new AtomicFlagBean().updaterArithmeticTrace(),

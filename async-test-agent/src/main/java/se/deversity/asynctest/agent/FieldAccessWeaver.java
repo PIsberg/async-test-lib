@@ -1333,13 +1333,20 @@ final class FieldAccessWeaver {
          *
          * <p>{@code getAndSet}, {@code getAndAdd} and {@code compareAndExchange} are declared to
          * return {@code Object}, so a call used as a statement compiles with a {@code void}
-         * descriptor, while the hook that replaces it returns the {@code int}. One {@code POP}
-         * leaves the stack exactly as the void call would have: stack-neutral and branch-free
-         * (#658).
+         * descriptor, while the hook that replaces it returns the {@code int} or {@code long}. One
+         * {@code POP} for an {@code int} or {@code boolean}, one {@code POP2} for a {@code long},
+         * which takes two stack slots, leaves the stack exactly as the void call would have:
+         * stack-neutral and branch-free (#658). A {@code POP} of a {@code long} left half of it on the
+         * stack, and the class failed verification as it loaded (#1494).
          */
         private void dropResultOfVoidCallSite(String owner, String hook, String descriptor) {
-            if (descriptor.endsWith(")V")
-                    && !spinLockHookDescriptor(owner, hook, descriptor).endsWith(")V")) {
+            if (!descriptor.endsWith(")V")) {
+                return;
+            }
+            String hookDescriptor = spinLockHookDescriptor(owner, hook, descriptor);
+            if (hookDescriptor.endsWith(")J") || hookDescriptor.endsWith(")D")) {
+                super.visitInsn(Opcodes.POP2);
+            } else if (!hookDescriptor.endsWith(")V")) {
                 super.visitInsn(Opcodes.POP);
             }
         }
