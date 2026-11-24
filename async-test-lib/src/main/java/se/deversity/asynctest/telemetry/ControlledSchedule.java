@@ -71,7 +71,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  */
 @AICore(
     sensitivity = "High",
-    note = "A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read, and the lock holds and pending acquisitions grant() consults (#1022), which change only at acquiring(), itself a point, and in acquired() and released(), which a worker calls in its own program order; an escaped worker's acquire or release lands outside a turn, but its round has already counted the escape. grant() must keep handing the round out when every ready worker waits on a held lock: the hold may be stale (a monitor released inside Object.wait is not seen), and withholding the round then stalls correct wait/notify code until the round times out (ControlledScheduleLockTest); each such grant is counted as a fallback. To keep holds from going stale, a woven Object.wait or Condition.await hands its holds back before waiting and takes them again after (releasingForWait, reacquiredAfterWait; lockOf finds a condition's ReentrantLock by asking it), and a worker re-confirms its own recorded holds with Thread.holdsLock or isHeldByCurrentThread at each of its points and at leave(), on its own thread, so the answer follows its program order and grant() still reads no thread state (#1048). Only watch() may read the clock or Thread.getState(), and it reads the state before asking whether the running worker, or an adopted child still arriving, is queued on the schedule's own lock, which is the scheduler's wait and never an escape (#1065, #1072); each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly, with one exception: an adopted child whose thread has terminated is marked done, not escaped (#1024), because while it ran to its end every peer was waiting, so the state the next grant reads is the same whenever watch() notices. Adopted children are ready from the moment they are adopted, so a grant never depends on how long the OS takes to start a thread; an adopted executor task (#1049) is ready from its woven submission the same way, joins at taskStarting on the pool thread and leaves at taskEnded, and one that has not started within STALL_NANOS is counted as an escape, since its executor may never run it. A worker waiting for an adopted task or child that escaped is let go and follows it out, free, to the real join or get: held for it, it could never be granted again, and the round hung (#1495); it is not a second escape, since the round already counted the one that ended the replay. A timed Future.get is a plain point, never a wait for the task, so it keeps its timeout (#1495). A worker whose wait for its turn an interrupt ends in the instant grant() picks it hands the turn back and gives back the hold the grant took for its pending acquire: watch() does not move a turn that was never acknowledged, so kept, it stalled its peers (#1495). A worker waiting at a rendezvous is OUTSIDE, not escaped (#1021), and no grant is made while one is outside on its way back or when the last worker steps out, so the order a rendezvous releases workers in never decides who runs next. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise."
+    note = "A seed replays a round only while every decision of who runs next depends on state changed at scheduling points: the statuses, priorities and step count that grant() and step() read, and the lock holds and pending acquisitions grant() consults (#1022), which change only at acquiring(), itself a point, and in acquired() and released(), which a worker calls in its own program order; an escaped worker's acquire or release lands outside a turn, but its round has already counted the escape. grant() must keep handing the round out when every ready worker waits on a held lock: the hold may be stale (a monitor released inside Object.wait is not seen), and withholding the round then stalls correct wait/notify code until the round times out (ControlledScheduleLockTest); each such grant is counted as a fallback. To keep holds from going stale, a woven Object.wait or Condition.await hands its holds back before waiting and takes them again after (releasingForWait, reacquiredAfterWait; lockOf finds a condition's ReentrantLock by asking it), and a worker re-confirms its own recorded holds with Thread.holdsLock or isHeldByCurrentThread at each of its points and at leave(), on its own thread, so the answer follows its program order and grant() still reads no thread state (#1048). Only watch() may read the clock or Thread.getState(), and it reads the state before asking whether the running worker, or an adopted child still arriving, is queued on the schedule's own lock, which is the scheduler's wait and never an escape (#1065, #1072); each decision it makes is counted as an escape, which is what tells the runner the seed no longer replays exactly, with one exception: an adopted child whose thread has terminated is marked done, not escaped (#1024), because while it ran to its end every peer was waiting, so the state the next grant reads is the same whenever watch() notices. Adopted children are ready from the moment they are adopted, so a grant never depends on how long the OS takes to start a thread; an adopted executor task (#1049) is ready from its woven submission the same way, joins at taskStarting on the pool thread and leaves at taskEnded, and one that has not started within STALL_NANOS is counted as an escape, since its executor may never run it. A worker waiting for an adopted task or child that escaped is let go and follows it out, free, to the real join or get: held for it, it could never be granted again, and the round hung (#1495); it is not a second escape, since the round already counted the one that ended the replay. A timed Future.get is a plain point, never a wait for the task, so it keeps its timeout (#1495). A worker whose wait for its turn an interrupt ends in the instant grant() picks it hands the turn back and gives back the hold the grant took for its pending acquire: watch() does not move a turn that was never acknowledged, so kept, it stalled its peers (#1495). A worker of a closed round is ignored and cleared wherever a thread's worker is read (current()), since an adopted thread never leaves: a pool thread reused in a later round otherwise took its stale worker for a round it was already in and ran that round's task uncontrolled with no escape counted (#1495). A worker waiting at a rendezvous is OUTSIDE, not escaped (#1021), and no grant is made while one is outside on its way back or when the last worker steps out, so the order a rendezvous releases workers in never decides who runs next. A grant() that read time or thread state, or an escape left uncounted, still passes every run and makes the printed replay line a false promise."
 )
 public final class ControlledSchedule {
 
@@ -96,6 +96,23 @@ public final class ControlledSchedule {
 
     /** The calling thread's place in the round it joined, between {@link #enter} and {@link #leave}. */
     private static final ThreadLocal<Worker> CURRENT = new ThreadLocal<>();
+
+    /**
+     * {@return the calling thread's worker, or {@code null} when it has none or its round has closed}
+     * A thread adopted into a round never calls {@link #leave}, so a pool thread a woven thread
+     * factory built in one round still carried that round's worker into the next: its
+     * taskStarting took it for a thread already in a round, a caller-runs one, marked the new task
+     * done at once and ran it uncontrolled, while the round reported no escape (#1495). A worker of a
+     * closed round is cleared here, so every entry point sees the thread as outside any round.
+     */
+    private static @Nullable Worker current() {
+        Worker worker = CURRENT.get();
+        if (worker != null && worker.schedule.closed) {
+            CURRENT.remove();
+            return null;
+        }
+        return worker;
+    }
 
     /** Threads started by a controlled round's workers, before their first point: thread to round. */
     private static final Map<Thread, Adoption> ADOPTED = new ConcurrentHashMap<>();
@@ -187,7 +204,8 @@ public final class ControlledSchedule {
     private int switches;
     private int escapes;
     private int fallbacks;
-    private boolean closed;
+    /** Volatile: {@link #current} reads it outside the lock, on any thread. */
+    private volatile boolean closed;
 
     private ControlledSchedule(int workers, long seed) {
         this.seed = seed;
@@ -249,7 +267,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null) {
             joinIfAdopted();
             return;
@@ -271,7 +289,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return false;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside || worker.free) {
             return false;
         }
@@ -281,7 +299,7 @@ public final class ControlledSchedule {
 
     /** Brings a worker that {@link #stepOutside stepped outside} back, and waits for its turn. */
     public static void rejoin() {
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside || worker.free) {
             return;
         }
@@ -306,7 +324,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside || worker.free) {
             return;
         }
@@ -325,7 +343,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return null;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside || worker.free) {
             return null;
         }
@@ -345,7 +363,7 @@ public final class ControlledSchedule {
         if (!(adoption instanceof Adoption task)) {
             return null;
         }
-        if (CURRENT.get() != null) {
+        if (current() != null) {
             task.schedule().taskDone(task.slot());
             return null;
         }
@@ -398,7 +416,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null) {
             joinIfAdopted();
             return;
@@ -424,7 +442,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null) {
             joinIfAdopted();
             return;
@@ -446,10 +464,10 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null) {
             joinIfAdopted();
-            worker = CURRENT.get();
+            worker = current();
             if (worker == null) {
                 return;
             }
@@ -471,7 +489,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside) {
             return;
         }
@@ -488,7 +506,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside) {
             return;
         }
@@ -508,7 +526,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside || worker.free) {
             return;
         }
@@ -527,7 +545,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return 0;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside) {
             return 0;
         }
@@ -549,7 +567,7 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return null;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside) {
             return null;
         }
@@ -567,7 +585,7 @@ public final class ControlledSchedule {
         if (holds <= 0 || OPEN.get() == 0) {
             return;
         }
-        Worker worker = CURRENT.get();
+        Worker worker = current();
         if (worker == null || worker.inside) {
             return;
         }
