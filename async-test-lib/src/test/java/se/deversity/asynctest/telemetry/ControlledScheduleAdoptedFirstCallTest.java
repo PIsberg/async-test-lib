@@ -213,4 +213,34 @@ class ControlledScheduleAdoptedFirstCallTest {
             }
         }
     }
+    @Test
+    void aThreadInNoRoundPassesThroughEveryHookWhileARoundIsOpen() throws Exception {
+        // The hooks run on every woven thread once any round is open: one that belongs to no round
+        // and was never adopted must go straight through, and change nothing the round reads.
+        ControlledSchedule schedule = ControlledSchedule.open(1, 7L);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread bystander = new Thread(() -> {
+            try {
+                Object lock = new Object();
+                ControlledSchedule.point();
+                ControlledSchedule.starting(new Thread(() -> { }));
+                ControlledSchedule.joining(Thread.currentThread());
+                ControlledSchedule.awaitingTask(null);
+                ControlledSchedule.acquiring(lock);
+                ControlledSchedule.acquired(lock);
+                ControlledSchedule.released(lock);
+            } catch (Throwable t) {
+                failure.set(t);
+            }
+        }, "bystander");
+        try {
+            bystander.start();
+            bystander.join(TimeUnit.SECONDS.toMillis(WAIT_SECONDS));
+            assertTrue(!bystander.isAlive(), "a thread in no round waited in a hook");
+            assertNull(failure.get());
+            assertEquals(0, schedule.summary().steps(), "a bystander took a step: " + schedule.summary());
+        } finally {
+            schedule.close();
+        }
+    }
 }

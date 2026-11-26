@@ -319,6 +319,21 @@ public final class ControlledSchedule {
     }
 
     /**
+     * The calling thread's worker, after joining its round when the thread is an adopted child not
+     * in it yet. A child joins at its first woven call, whichever it is, and the call then does its
+     * own work as for any worker: returning after the join sent a join or a get to wait outside the
+     * schedule (#1495).
+     */
+    private static @Nullable Worker joinedWorker() {
+        Worker worker = current();
+        if (worker == null) {
+            joinIfAdopted();
+            worker = current();
+        }
+        return worker;
+    }
+
+    /**
      * A child's first woven call: it joins its round and waits for a turn like any worker, holding
      * {@code held} when the call is the entry of a monitor or lock it already took. The caller then
      * does the call's own work, as a worker would.
@@ -341,17 +356,10 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = current();
-        if (worker == null) {
-            // An adopted child whose first woven call starts a grandchild joins here, so the
-            // grandchild is adopted rather than left to run beside it uncontrolled (#1495).
-            joinIfAdopted(null);
-            worker = current();
-            if (worker == null) {
-                return;
-            }
-        }
-        if (worker.inside || worker.free) {
+        // A child whose first woven call starts a grandchild joins first, so the grandchild is
+        // adopted rather than left to run beside it uncontrolled (#1495).
+        Worker worker = joinedWorker();
+        if (worker == null || worker.inside || worker.free) {
             return;
         }
         worker.schedule.adopt(worker, child);
@@ -442,17 +450,8 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = current();
-        if (worker == null) {
-            // A child whose first woven call waits for a task joins, then waits inside the schedule
-            // like any worker: returning here sent it to the real get, outside (#1495).
-            joinIfAdopted();
-            worker = current();
-            if (worker == null) {
-                return;
-            }
-        }
-        if (worker.inside || worker.free) {
+        Worker worker = joinedWorker();
+        if (worker == null || worker.inside || worker.free) {
             return;
         }
         if (adoption instanceof Adoption task && task.schedule() == worker.schedule) { // NOPMD CompareObjectsWithEquals - identity
@@ -473,17 +472,8 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = current();
-        if (worker == null) {
-            // As in awaitingTask: a child whose first woven call is a join waits for its target
-            // inside the schedule (#1495).
-            joinIfAdopted();
-            worker = current();
-            if (worker == null) {
-                return;
-            }
-        }
-        if (worker.inside || worker.free) {
+        Worker worker = joinedWorker();
+        if (worker == null || worker.inside || worker.free) {
             return;
         }
         worker.schedule.stepJoining(worker, target);
@@ -500,15 +490,8 @@ public final class ControlledSchedule {
         if (OPEN.get() == 0) {
             return;
         }
-        Worker worker = current();
-        if (worker == null) {
-            joinIfAdopted();
-            worker = current();
-            if (worker == null) {
-                return;
-            }
-        }
-        if (worker.inside || worker.free) {
+        Worker worker = joinedWorker();
+        if (worker == null || worker.inside || worker.free) {
             return;
         }
         // A null monitor makes MONITORENTER throw; there is nothing to hold, only a point.
