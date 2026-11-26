@@ -330,7 +330,7 @@ public final class ControlledSchedule {
             joinIfAdopted();
             worker = current();
         }
-        return worker;
+        return worker == null || worker.inside || worker.free ? null : worker;
     }
 
     /**
@@ -359,7 +359,7 @@ public final class ControlledSchedule {
         // A child whose first woven call starts a grandchild joins first, so the grandchild is
         // adopted rather than left to run beside it uncontrolled (#1495).
         Worker worker = joinedWorker();
-        if (worker == null || worker.inside || worker.free) {
+        if (worker == null) {
             return;
         }
         worker.schedule.adopt(worker, child);
@@ -451,7 +451,7 @@ public final class ControlledSchedule {
             return;
         }
         Worker worker = joinedWorker();
-        if (worker == null || worker.inside || worker.free) {
+        if (worker == null) {
             return;
         }
         if (adoption instanceof Adoption task && task.schedule() == worker.schedule) { // NOPMD CompareObjectsWithEquals - identity
@@ -473,7 +473,7 @@ public final class ControlledSchedule {
             return;
         }
         Worker worker = joinedWorker();
-        if (worker == null || worker.inside || worker.free) {
+        if (worker == null) {
             return;
         }
         worker.schedule.stepJoining(worker, target);
@@ -491,7 +491,7 @@ public final class ControlledSchedule {
             return;
         }
         Worker worker = joinedWorker();
-        if (worker == null || worker.inside || worker.free) {
+        if (worker == null) {
             return;
         }
         // A null monitor makes MONITORENTER throw; there is nothing to hold, only a point.
@@ -731,9 +731,7 @@ public final class ControlledSchedule {
             } else {
                 // Back from an escape: wait for a turn like everyone else.
                 status[slot] = Status.READY;
-                if (running < 0 && !returning) {
-                    grant();
-                }
+                grantIfIdle();
             }
             awaitTurn(worker);
         } finally {
@@ -782,14 +780,22 @@ public final class ControlledSchedule {
             status[worker.slot] = Status.READY;
             if (!anyOutside()) {
                 returning = false;
-                if (running < 0) {
-                    grant();
-                }
+                grantIfIdle();
             }
             awaitTurn(worker);
         } finally {
             lock.unlock();
             worker.inside = false;
+        }
+    }
+
+    /**
+     * Grants when nobody holds the round, except while the workers come back from a rendezvous
+     * ({@link #returning}): the last one back grants then. Lock held.
+     */
+    private void grantIfIdle() {
+        if (running < 0 && !returning) {
+            grant();
         }
     }
 
@@ -837,9 +843,7 @@ public final class ControlledSchedule {
             // still wait for one; only a child escaped before arriving rejoins like a worker.
             if (status[slot] == Status.ESCAPED) {
                 status[slot] = Status.READY;
-                if (running < 0 && !returning) {
-                    grant();
-                }
+                grantIfIdle();
             }
             awaitTurn(worker);
         } finally {
@@ -926,10 +930,10 @@ public final class ControlledSchedule {
             if (running == slot) {
                 running = -1;
                 grant();
-            } else if (running < 0 && !returning) {
-                // Not while the workers come back from a rendezvous: the task's executor decides when
-                // this runs, and the grant would go to whoever is back already (#1495).
-                grant();
+            } else {
+                // The task's executor decides when this runs: while the workers come back from a
+                // rendezvous, a grant would go to whoever is back already (#1495).
+                grantIfIdle();
             }
         } finally {
             lock.unlock();
@@ -1350,8 +1354,8 @@ public final class ControlledSchedule {
                 running = -1;
                 grant();
             }
-        } else if (started && childEnded() && !returning) {
-            grant();
+        } else if (started && childEnded()) {
+            grantIfIdle();
         } else if (!started && now - lastProgress > STALL_NANOS) {
             // A worker that never joined, most likely one that failed before the body: start
             // without it rather than wait out the round.
