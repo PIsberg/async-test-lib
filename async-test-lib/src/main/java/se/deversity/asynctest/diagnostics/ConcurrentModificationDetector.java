@@ -72,22 +72,28 @@ public class ConcurrentModificationDetector extends AbstractInstanceDetector<Con
          */
         final AtomicInteger observedDuringIteration = new AtomicInteger(0);
         final Set<Long> allIteratingThreads = ConcurrentHashMap.newKeySet();
-        final Set<Long> modifyingThreads = ConcurrentHashMap.newKeySet();
         /**
-         * The locks common to every recorded mutation, as an intersection.
+         * The mutations alone, judged by the family's verdict: two threads mutating an ArrayList in
+         * one round is the finding, unless one lock covered both or happens-before ordered them.
          *
-         * <p>Two threads mutating an ArrayList is the finding, unless one lock covered both. That
-         * lock has to be visible: declared through {@code AsyncTestContext.holdingLock} or observed
-         * by the agent. A lock nobody told the library about contributes no members, the
-         * intersection collapses, and the finding stands - which is the direction this must fail
-         * in, since silence bought by an invisible lock would be silence bought by nothing.
+         * <p>Apart from this instance's own lockset, which also covers the iterations. Judged by a
+         * fingerprint of the held locks compared across the run instead, one thread per round
+         * counted as many threads, a second lock nested inside the common one read as no common
+         * lock, and a read lock looked as though it guarded a write (#1497). The lock has to be
+         * visible: declared through {@code AsyncTestContext.holdingLock} or observed by the agent.
+         * A lock nobody told the library about guards nothing, and the finding stands, which is the
+         * direction this must fail in.
          */
-        final Lockset mutationLocks = new Lockset();
+        final MutationGuard mutations = new MutationGuard();
         volatile String lastModificationType = "none";
         /** Iteration and mutation are both safe here: the type is one of {@code java.util.concurrent}. */
         final boolean concurrentType;
         /** Mutation is safe, iteration is not: a {@code Collections.synchronizedXxx} wrapper. */
         final boolean synchronizedWrapper;
+
+        /** The mutations' own verdict and per-round thread count; see {@link #mutations}. */
+        static final class MutationGuard extends SelfGuard.ThreadTrackedInstance {
+        }
 
         CollectionState(Collection<?> collection, String name) {
             this.name = name;
@@ -206,13 +212,12 @@ public class ConcurrentModificationDetector extends AbstractInstanceDetector<Con
         CollectionState state = trackedState(collection);
         if (state != null) {
             state.noteAccess(collection, true);
-            state.modificationCount.incrementAndGet();
-            state.modifyingThreads.add(Thread.currentThread().threadId());
-            state.lastModificationType = modificationType;
-            // The self variant folds in the collection's own monitor, so hand-rolled
+            // The collection's own monitor is one of the locks probed, so hand-rolled
             // synchronized (theList) is recognised without any declaration.
-            state.mutationLocks.note(HeldLocks.lockFingerprint(collection), 0, 0);
-            
+            state.mutations.noteAccess(collection, true, Thread.currentThread());
+            state.modificationCount.incrementAndGet();
+            state.lastModificationType = modificationType;
+
             // Check if modification happened during iteration
             if (state.activeIterators.get() > 0) {
                 state.concurrentModifications.incrementAndGet();
@@ -235,10 +240,9 @@ public class ConcurrentModificationDetector extends AbstractInstanceDetector<Con
         if (state != null) {
             state.noteAccess(collection, true);
             state.concurrentModifications.incrementAndGet();
+            state.mutations.noteAccess(collection, true, Thread.currentThread());
             state.observedDuringIteration.incrementAndGet();
-            state.modifyingThreads.add(Thread.currentThread().threadId());
             state.lastModificationType = modificationType;
-            state.mutationLocks.note(HeldLocks.lockFingerprint(collection), 0, 0);
         }
     }
 
@@ -275,11 +279,11 @@ public class ConcurrentModificationDetector extends AbstractInstanceDetector<Con
             // same stable list and cannot tear. Only a write makes the shared iteration unsafe,
             // and this detector is VERDICT tier, whose contract is that a finding means the code
             // is wrong. Both counters are consulted: recordModification bumps modificationCount,
-            // recordModificationDuringIteration bumps only modifyingThreads (#494).
+            // recordModificationDuringIteration bumps only observedDuringIteration (#494).
             // And a lock is consulted: iterating and mutating under one lock, the idiom
             // Collections.synchronizedList documents, means no iterator ever overlaps a writer.
             // That was reported at VERDICT until the lockset below covered iterations too.
-            boolean wasMutated = state.modificationCount.get() > 0 || !state.modifyingThreads.isEmpty();
+            boolean wasMutated = state.modificationCount.get() > 0 || state.observedDuringIteration.get() > 0;
             if (!iterationIsSafe && state.allIteratingThreads.size() > 1 && wasMutated
                     && state.sawUnguardedSharing()) {
                 report.concurrentIterations.add(String.format(
@@ -288,15 +292,14 @@ public class ConcurrentModificationDetector extends AbstractInstanceDetector<Con
                     state.name, state.allIteratingThreads.size(), state.modificationCount.get()));
             }
 
-            // Check for multiple threads modifying same collection
-            // A lock the detector can see, covering every mutation, is the caller doing the
-            // right thing by hand. It was reported anyway until the lockset arrived, which is
-            // what kept CONCURRENT_MODIFICATIONS advisory.
-            if (!mutationIsSafe && state.modifyingThreads.size() > 1
-                    && !state.mutationLocks.guarded()) {
+            // Check for multiple threads modifying same collection in one round. A lock the
+            // detector can see, covering every mutation of the round, is the caller doing the
+            // right thing by hand, and so is a hand-off happens-before orders. The thread count is
+            // the racing round's, not the run's, which grows with the rounds on virtual threads.
+            if (!mutationIsSafe && state.mutations.sharedAndUnguarded()) {
                 report.concurrentMutations.add(String.format(
                     "%s: %d threads performed modifications (%d total modifications)",
-                    state.name, state.modifyingThreads.size(), state.modificationCount.get()));
+                    state.name, state.mutations.threadCount(), state.modificationCount.get()));
             }
 
             // Track collection activity
