@@ -140,6 +140,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schedule (#1495, part 3).** An adopted thread never leaves its round, so a pool thread a woven
   thread factory built in one round carried that round's worker into the next, took itself for a
   caller-runs thread there, and ran the task uncontrolled while the round counted no escape.
+- **An adopted thread's first woven call does its own work, and no grant is made while workers come
+  back from a rendezvous (#1495, part 4).** A child thread whose first woven call was a join, a
+  `Future.get`, a thread start or the entry of a `synchronized` method joined its round and then
+  skipped the call itself: the join or get blocked outside the schedule (an escape on some seeds),
+  the grandchild ran unadopted beside it with no escape counted, and the monitor it held went
+  unrecorded, so a peer's acquire of it was granted and blocked. And after a rendezvous released
+  every worker, an adopted task ending or a child thread ending could grant the round to whichever
+  worker was back first. The task ending showed this in a new test on every seed. The guard covers
+  only that return window: a worker still waiting at the rendezvous does not stop the round being
+  handed on, since its peers need turns to reach it.
 
 - **A round's `@AfterEachInvocation` hooks run when its `@BeforeEachInvocation` hook throws
   (#1477).** The before-hooks ran ahead of the round's failure handling, so their exception skipped
