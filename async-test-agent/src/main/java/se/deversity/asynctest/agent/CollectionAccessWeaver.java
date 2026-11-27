@@ -2606,6 +2606,9 @@ final class CollectionAccessWeaver {
         /** Positions where conditional jump instructions were visited. */
         private final List<Integer> conditionalJumpsAt = new ArrayList<>();
 
+        /** The target label of each conditional jump, keyed by its position (#1551). */
+        private final Map<Integer, Label> conditionalJumpTargets = new HashMap<>();
+
         /**
          * The target label of each unconditional {@code goto}, keyed by the position it was
          * visited at, so the instruction in front of a label can be asked whether it was one
@@ -3010,6 +3013,22 @@ final class CollectionAccessWeaver {
                     || opcode == Opcodes.IFNONNULL;
         }
 
+        /**
+         * {@return whether a conditional jump between {@code from} and {@code to} leaves past this
+         * point, which is a while loop's own test jumping to its exit} (#1551). At a back-edge, a
+         * target not yet visited lies beyond it; an {@code if} inside a do/while body jumps to a
+         * label inside the body, which the back-edge has already passed.
+         */
+        private boolean hasExitTestBetween(int from, int to) {
+            for (Map.Entry<Integer, Label> jump : conditionalJumpTargets.entrySet()) {
+                int pos = jump.getKey();
+                if (pos > from && pos < to && !labelsVisitedAt.containsKey(jump.getValue())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         private boolean hasConditionalJumpBetween(int from, int to) {
             for (int pos : conditionalJumpsAt) {
                 if (pos > from && pos < to) {
@@ -3090,11 +3109,16 @@ final class CollectionAccessWeaver {
                 // still finds its operands, no branch or frame is added, and it runs whether or
                 // not the jump is taken.
                 Integer visitedAt = labelsVisitedAt.get(label);
+                // A conditional back-edge marks too when the loop's own exit test stands before
+                // the wait: javac compiles while (!done) { wait(t); if (late) return; } with the
+                // deadline test jumping straight back to the head, no goto (#1551). A do/while
+                // has no such test before it waits; an if in its body jumps within the body.
                 boolean marks = visitedAt != null && visitedAt < loopTrackedAt
                         && (opcode == Opcodes.GOTO
                                 ? hasConditionalJumpBetween(visitedAt, loopTrackedAt)
                                 : isConditionalJump(opcode)
-                                        && closesRotatedLoop(visitedAt));
+                                        && (hasExitTestBetween(visitedAt, loopTrackedAt)
+                                                || closesRotatedLoop(visitedAt)));
                 if (marks) {
                     super.visitMethodInsn(Opcodes.INVOKESTATIC, tracked.hookOwnerInternalName(),
                             tracked.loopBackEdgeHookName(), "()V", false);
@@ -3102,6 +3126,7 @@ final class CollectionAccessWeaver {
             }
             if (isConditionalJump(opcode)) {
                 conditionalJumpsAt.add(position);
+                conditionalJumpTargets.put(position, label);
                 position++;
             } else if (opcode == Opcodes.GOTO) {
                 unconditionalJumpsAt.put(position, label);

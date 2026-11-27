@@ -59,6 +59,11 @@ class HandledWaitExitWeavingTest {
         bean.notifyThenInterruptedWait();
     }
 
+    @AsyncTest(threads = 2, invocations = 10, detectAll = true)
+    void aTimedWaitLoopThatReturnsAtItsDeadline() throws InterruptedException {
+        bean.notifyThenDeadlineLoop();
+    }
+
     @AfterAll
     static void noneOfTheLoopsIsReported() {
         try {

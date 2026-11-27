@@ -28,6 +28,23 @@ public class WaitLoopShapesSample {
         }
     }
 
+    /**
+     * A predicate loop whose deadline test, the body's last statement, javac compiles to a
+     * conditional jump straight back to the head, so no goto closes it (#1551). The loop's own
+     * exit test stands before the wait. One back-edge mark.
+     */
+    public void deadlineLoop() throws InterruptedException {
+        synchronized (monitor) {
+            long deadline = System.nanoTime() + 20_000_000L;
+            while (!ready) {
+                monitor.wait(5);
+                if (System.nanoTime() - deadline > 0) {
+                    return;
+                }
+            }
+        }
+    }
+
     /** The same poll written as do/while: waits before it reads the predicate. No mark. */
     public void doWhileLoop() throws InterruptedException {
         synchronized (monitor) {
