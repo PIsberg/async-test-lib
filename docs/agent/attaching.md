@@ -607,7 +607,9 @@ Three limits worth knowing before switching it on:
   only inside a `synchronized` block reports nothing even though the test never declared the lock.
   Lock weaving rides along too: a `Lock.lock()`/`unlock()` call site in woven code feeds the same
   lockset, `ReadWriteLock.readLock()`/`writeLock()` call sites resolve each view to its owner,
-  in shared mode for the read side, and `StampedLock`'s own call shapes are modelled the same way
+  in shared mode for the read side, as do a `StampedLock`'s `asReadLock()`, `asWriteLock()` and
+  `asReadWriteLock()` views. A `ReentrantReadWriteLock` view handed out before the attach or by
+  unwoven code keeps its mode, and resolves to the lock whose internal `Sync` it shares (#1498). And `StampedLock`'s own call shapes are modelled the same way
   (write stamps exclusive, read stamps shared), so a collection guarded by a `ReentrantLock`, a
   `ReentrantReadWriteLock` or a `StampedLock` reports nothing either. An optimistic read holds
   nothing, so `tryOptimisticRead()` and `validate(long)` mark where a speculation starts and

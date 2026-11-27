@@ -587,7 +587,10 @@ final class CollectionAccessWeaver {
             Entry.call(StampedLock.class, "validate", "validate", long.class)
                     .whenResultDiscarded("validateResultDiscarded"),
             Entry.view(StampedLock.class, "asReadLock", "asReadLock", Lock.class),
-            Entry.view(StampedLock.class, "asWriteLock", "asWriteLock", Lock.class));
+            Entry.view(StampedLock.class, "asWriteLock", "asWriteLock", Lock.class),
+            // Its views are the two above; the hook remembers them with the StampedLock as owner
+            // before the woven readLock()/writeLock() on the view can name the view instead (#1498).
+            Entry.view(StampedLock.class, "asReadWriteLock", "asReadWriteLock", ReadWriteLock.class));
 
     /**
      * The shared-instance table: JDK types that keep mutable state and are not thread safe.

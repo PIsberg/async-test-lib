@@ -140,6 +140,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schedule (#1495, part 3).** An adopted thread never leaves its round, so a pool thread a woven
   thread factory built in one round carried that round's worker into the next, took itself for a
   caller-runs thread there, and ran the task uncontrolled while the round counted no escape.
+- **Lock views the agent did not see hand out are judged by their lock and mode, and remembering
+  a view no longer keeps its lock alive (#1498, part 4).** A `ReentrantReadWriteLock` read or
+  write view obtained before the attach, or inside unwoven code, was recorded as an exclusive lock
+  of its own. Two writers under the read view then looked guarded by it, and a reader and a writer
+  never shared a lock. Such a view now keeps its mode and resolves, through the `Sync` both views
+  share, to its owner. `StampedLock.asReadWriteLock()` is woven, so its read view meets the write
+  stamps. And the map of remembered views held each owner strongly from its values, which kept
+  every woven lock reachable for the life of the JVM. It now holds the owner weakly.
 - **Copying fields into a result holder before `StampedLock.validate` keeps the reads validated
   (#1498, part 2).** Any write the thread recorded during an optimistic read ended it and
   delivered the reads made so far as unvalidated. The common `out.x = this.x; out.y = this.y;

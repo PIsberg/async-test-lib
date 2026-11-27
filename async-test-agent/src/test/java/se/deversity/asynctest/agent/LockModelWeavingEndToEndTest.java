@@ -1,11 +1,13 @@
 package se.deversity.asynctest.agent;
 
 import com.example.agentfixture.DirectFieldMutationBean;
+import com.example.agentfixture.HandedViewsBean;
 import com.example.agentfixture.OptimisticPointBean;
 import com.example.agentfixture.ReadLockWritingBean;
 import com.example.agentfixture.ReadWriteLockBean;
 import com.example.agentfixture.StampedLockBean;
 import com.example.agentfixture.StampedReadLockWritingBean;
+import com.example.agentfixture.StampedReadWriteViewBean;
 import com.example.agentfixture.SynchronizedMethodBean;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.AfterEach;
@@ -113,6 +115,51 @@ class LockModelWeavingEndToEndTest {
                         + "ReentrantReadWriteLock; resolving both views to the owner is what lets "
                         + "them intersect. Findings: "
                         + report.unsafeFieldAccesses + report.totcouRaces);
+    }
+
+    @Test
+    @DisplayName("views handed out by unwoven code resolve to one owner, each keeping its mode (#1498)")
+    void viewsObtainedOutsideTheWovenPackagesShareTheirOwner() {
+        // This test class is outside includes=, so these two calls are not woven: no hook sees
+        // the views handed out, as for a lock built before an attach or inside an unwoven library.
+        java.util.concurrent.locks.ReentrantReadWriteLock lock = new java.util.concurrent.locks.ReentrantReadWriteLock();
+        java.util.concurrent.locks.Lock write = lock.writeLock();
+        java.util.concurrent.locks.Lock read = lock.readLock();
+        se.deversity.asynctest.AgentLockHooks.lock(write);
+        long exclusive = se.deversity.asynctest.diagnostics.HeldLocks.lockFingerprint(true);
+        se.deversity.asynctest.AgentLockHooks.unlock(write);
+        se.deversity.asynctest.AgentLockHooks.lock(read);
+        try {
+            org.junit.jupiter.api.Assertions.assertEquals(exclusive,
+                    se.deversity.asynctest.diagnostics.HeldLocks.lockFingerprint(false),
+                    "the views share one Sync, so they are one lock; unresolved, each was its own");
+            org.junit.jupiter.api.Assertions.assertEquals(0L,
+                    se.deversity.asynctest.diagnostics.HeldLocks.lockFingerprint(true),
+                    "and the read view guards no write");
+        } finally {
+            se.deversity.asynctest.AgentLockHooks.unlock(read);
+        }
+    }
+
+    @Test
+    @DisplayName("a write under a read view handed in from unwoven code keeps firing (#1498)")
+    void writingUnderAnUnwovenReadViewIsStillReported() throws Exception {
+        java.util.concurrent.locks.ReentrantReadWriteLock lock = new java.util.concurrent.locks.ReentrantReadWriteLock();
+        HandedViewsBean bean = new HandedViewsBean(lock.readLock(), lock.writeLock());
+        AtomicityValidator.AtomicityReport report = drive(bean::incrementUnderRead);
+
+        assertTrue(report.hasIssues(),
+                "count++ under the read view; unresolved, the view was recorded as an exclusive lock"
+                        + " of its own, so both writers looked guarded by it");
+    }
+
+    @Test
+    @DisplayName("a reader through asReadWriteLock() and a writer through stamps share the lock (#1498)")
+    void stampedReadWriteViewResolvesToTheStampedLock() {
+        StampedReadWriteViewBean bean = new StampedReadWriteViewBean();
+        org.junit.jupiter.api.Assertions.assertEquals(bean.locksWhileWriting(), bean.locksWhileReading(),
+                "asReadWriteLock()'s read view is the StampedLock's own; resolved to the view object"
+                        + " instead, it never met the write stamps");
     }
 
     @Test

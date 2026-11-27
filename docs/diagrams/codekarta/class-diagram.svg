@@ -1110,19 +1110,20 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="AgentLockHooks">
   <title>AgentLockHooks [CLASS]</title>
-  <rect class="node-rect" x="3168.0" y="114.0" width="180.0" height="205.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="3168.0" y="114.0" width="180.0" height="220.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="3258.0" y="136.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">AgentLockHooks</text>
   <line x1="3168.0" y1="158.0" x2="3348.0" y2="158.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="3176.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">VIEWS: Map&lt;Lock,View&gt;</text>
-  <text x="3176.0" y="186.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">foreignViews: boolean</text>
-  <line x1="3168.0" y1="200.0" x2="3348.0" y2="200.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="3176.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">readLock(ReadWriteLock): L…</text>
-  <text x="3176.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">writeLock(ReadWriteLock): …</text>
-  <text x="3176.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">readLock(ReentrantReadWrit…</text>
-  <text x="3176.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">writeLock(ReentrantReadWri…</text>
-  <text x="3176.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">remember(Lock, Object, boo…</text>
-  <text x="3176.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">viewOf(Lock): View</text>
-  <text x="3176.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+39 more)</text>
+  <text x="3176.0" y="186.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">SYNC_OWNERS: Map&lt;Object,We…</text>
+  <text x="3176.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">foreignViews: boolean</text>
+  <line x1="3168.0" y1="215.0" x2="3348.0" y2="215.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="3176.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">readLock(ReadWriteLock): L…</text>
+  <text x="3176.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">writeLock(ReadWriteLock): …</text>
+  <text x="3176.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">readLock(ReentrantReadWrit…</text>
+  <text x="3176.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">writeLock(ReentrantReadWri…</text>
+  <text x="3176.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">remember(Lock, Object, boo…</text>
+  <text x="3176.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">viewOf(Lock): View</text>
+  <text x="3176.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+41 more)</text>
 </g>
 <g id="AgentMonitorHooks">
   <title>AgentMonitorHooks [CLASS]</title>

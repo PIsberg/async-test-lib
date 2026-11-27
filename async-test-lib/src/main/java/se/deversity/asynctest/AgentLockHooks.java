@@ -1,5 +1,6 @@
 package se.deversity.asynctest;
 
+import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
@@ -52,8 +53,10 @@ import se.deversity.vibetags.annotations.AIContract;
  * lockset records nothing for it; {@code tryOptimisticRead()} and {@code validate(long)} instead
  * tell the telemetry stream where a speculation starts and whether it held, and the drain side
  * counts the reads between them as taken under the lock in shared mode when it did and drops
- * them when it did not (#740). The {@code asReadLock()}/{@code asWriteLock()} views resolve to the
- * owning {@code StampedLock} the way read-write views resolve to theirs.
+ * them when it did not (#740). The {@code asReadLock()}/{@code asWriteLock()} views, and those of
+ * {@code asReadWriteLock()} (#1498), resolve to the owning {@code StampedLock} the way read-write
+ * views resolve to theirs. A {@code ReentrantReadWriteLock} view no woven call handed out keeps
+ * its mode and, where the JDK package is open to the library, its owner (#1498).
  *
  * <h2>Ordering</h2>
  *
@@ -73,8 +76,20 @@ import se.deversity.vibetags.annotations.AIContract;
 @AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures are matched by CollectionAccessWeaver.lockSubstitutions and cannot change independently of it. The acquire-after / release-before ordering is a safety property, not a style choice - recording a lock as held before it is actually held would make another thread's racing access read as guarded, which is the one error direction this library must never take. Every hook must perform the original operation and propagate its exceptions unchanged. The detector delivery inherits the same acquire-after / release-before ordering as the lockset and must keep it: LockOrderValidator builds its nesting edges from the order these calls arrive in, so delivering an acquisition early would invent a hold-and-wait edge that never existed. It resolves each detector through a null-returning AsyncTestContext accessor because a woven call site runs in code that does not know a test exists, so no context is the ordinary case and must cost a null check rather than an exception. DetectorFeeds lists these three as AGENT-fed and DetectorFeedCoverageTest reads this file to check the delivery is still here, so removing a call means reclassifying the detector in the same change.")
 public final class AgentLockHooks {
 
-    /** Which lock a view belongs to, and whether it admits other holders. */
-    private record View(Object owner, boolean shared) {
+    /**
+     * Which lock a view belongs to, and whether it admits other holders. The owner is held weakly:
+     * a lock holds its views, so a value naming it strongly kept its own key alive in
+     * {@link #VIEWS}, and no woven lock was ever collected (#1498).
+     */
+    private record View(WeakReference<Object> ownerRef, boolean shared) {
+
+        View(Object owner, boolean shared) {
+            this(new WeakReference<>(owner), shared);
+        }
+
+        @org.jspecify.annotations.Nullable Object owner() {
+            return ownerRef.get();
+        }
     }
 
     /**
@@ -82,6 +97,14 @@ public final class AgentLockHooks {
      * keyed by identity and held weakly so a lock's lifetime stays its own.
      */
     private static final Map<Lock, View> VIEWS = Collections.synchronizedMap(new WeakHashMap<>());
+
+    /**
+     * The {@code ReentrantReadWriteLock} behind each {@code Sync} a woven view call has shown, so
+     * a view obtained in unwoven code, which shares its owner's {@code Sync}, resolves to the
+     * owner too (#1498). Weak both ways: the lock holds its {@code Sync}.
+     */
+    private static final Map<Object, WeakReference<ReentrantReadWriteLock>> SYNC_OWNERS =
+            Collections.synchronizedMap(new WeakHashMap<>());
 
     /** Set once a view of a {@link ReadWriteLock} other than the JDK's is registered. */
     private static volatile boolean foreignViews;
@@ -135,19 +158,93 @@ public final class AgentLockHooks {
         if (!(owner instanceof ReentrantReadWriteLock)) {
             foreignViews = true;
         }
-        VIEWS.putIfAbsent(view, new View(owner, shared));
+        if (VIEWS.putIfAbsent(view, new View(owner, shared)) == null
+                && owner instanceof ReentrantReadWriteLock readWrite) {
+            Object sync = ReadWriteSyncs.of(readWrite);
+            if (sync != null) {
+                SYNC_OWNERS.putIfAbsent(sync, new WeakReference<>(readWrite));
+            }
+        }
     }
 
     /** {@return the registered view behind {@code lock}, or {@code null} for an ordinary lock} */
     private static @org.jspecify.annotations.Nullable View viewOf(Lock lock) {
         // The instanceof checks keep every plain ReentrantLock off the map, whose one monitor
         // would otherwise be taken by every thread on every acquisition.
-        if (lock instanceof ReentrantReadWriteLock.ReadLock
-                || lock instanceof ReentrantReadWriteLock.WriteLock
-                || foreignViews) {
-            return VIEWS.get(lock);
+        boolean readWriteView = lock instanceof ReentrantReadWriteLock.ReadLock
+                || lock instanceof ReentrantReadWriteLock.WriteLock;
+        if (!readWriteView && !foreignViews) {
+            return null;
         }
-        return null;
+        View view = VIEWS.get(lock);
+        if (view != null && view.owner() != null) {
+            return view;
+        }
+        return readWriteView ? unwovenView(lock) : null;
+    }
+
+    /**
+     * Resolves a {@code ReentrantReadWriteLock} view no woven call handed out: one obtained before
+     * an attach, or in unwoven code (#1498). Its mode is its type. Its owner is the lock whose
+     * {@code Sync} it shares, when a woven call has shown that lock, else the {@code Sync} itself,
+     * which both views of one lock share; only when the {@code Sync} cannot be read (the JDK
+     * package is not open to the library, as without the agent) is the view its own lock.
+     * Remembered, so the next acquisition finds it.
+     */
+    private static View unwovenView(Lock lock) {
+        boolean shared = lock instanceof ReentrantReadWriteLock.ReadLock;
+        Object sync = ReadWriteSyncs.of(lock);
+        Object owner = lock;
+        if (sync != null) {
+            WeakReference<ReentrantReadWriteLock> known = SYNC_OWNERS.get(sync);
+            ReentrantReadWriteLock readWrite = known == null ? null : known.get();
+            owner = readWrite == null ? sync : readWrite;
+        }
+        View view = new View(owner, shared);
+        VIEWS.put(lock, view);
+        return view;
+    }
+
+    /**
+     * Reads the private {@code sync} field a {@code ReentrantReadWriteLock} and both its views
+     * hold, through handles resolved once. Readable when {@code java.util.concurrent.locks} is
+     * open to the library, which the agent's install arranges; otherwise every read answers
+     * {@code null}.
+     */
+    private static final class ReadWriteSyncs {
+
+        private static final java.lang.invoke.@org.jspecify.annotations.Nullable VarHandle OF_LOCK =
+                handle(ReentrantReadWriteLock.class);
+        private static final java.lang.invoke.@org.jspecify.annotations.Nullable VarHandle OF_READ =
+                handle(ReentrantReadWriteLock.ReadLock.class);
+        private static final java.lang.invoke.@org.jspecify.annotations.Nullable VarHandle OF_WRITE =
+                handle(ReentrantReadWriteLock.WriteLock.class);
+
+        private static java.lang.invoke.@org.jspecify.annotations.Nullable VarHandle handle(Class<?> owner) {
+            try {
+                java.lang.invoke.MethodHandles.Lookup lookup = java.lang.invoke.MethodHandles
+                        .privateLookupIn(owner, java.lang.invoke.MethodHandles.lookup());
+                Class<?> sync = Class.forName("java.util.concurrent.locks.ReentrantReadWriteLock$Sync");
+                return lookup.findVarHandle(owner, "sync", sync);
+            } catch (ReflectiveOperationException | RuntimeException notOpen) {
+                return null;
+            }
+        }
+
+        static @org.jspecify.annotations.Nullable Object of(Object lockOrView) {
+            java.lang.invoke.VarHandle handle = lockOrView instanceof ReentrantReadWriteLock ? OF_LOCK
+                    : lockOrView instanceof ReentrantReadWriteLock.ReadLock ? OF_READ
+                    : lockOrView instanceof ReentrantReadWriteLock.WriteLock ? OF_WRITE
+                    : null;
+            if (handle == null) {
+                return null;
+            }
+            try {
+                return handle.get(lockOrView);
+            } catch (RuntimeException unreadable) {
+                return null;
+            }
+        }
     }
 
     /**
@@ -180,22 +277,27 @@ public final class AgentLockHooks {
      */
     private static void noteAcquired(Lock lock, boolean blocking) {
         View view = viewOf(lock);
-        if (view == null) {
+        // Read once: the owner is held weakly, and a second read could find it collected.
+        Object owner = view == null ? null : view.owner();
+        if (view == null || owner == null) {
             HeldLocks.acquired(lock);
+            deliverAcquired(lock, lock, blocking, false);
         } else {
-            HeldLocks.acquired(view.owner(), view.shared());
+            HeldLocks.acquired(owner, view.shared());
+            deliverAcquired(owner, lock, blocking, view.shared());
         }
-        deliverAcquired(view == null ? lock : view.owner(), lock, blocking, view != null && view.shared());
     }
 
     private static void noteReleased(Lock lock) {
         View view = viewOf(lock);
-        if (view == null) {
+        Object owner = view == null ? null : view.owner();
+        if (view == null || owner == null) {
             HeldLocks.released(lock);
+            deliverReleased(lock, lock);
         } else {
-            HeldLocks.released(view.owner(), view.shared());
+            HeldLocks.released(owner, view.shared());
+            deliverReleased(owner, lock);
         }
-        deliverReleased(view == null ? lock : view.owner(), lock);
     }
 
     /**
@@ -698,6 +800,23 @@ public final class AgentLockHooks {
         if (!valid) {
             TelemetryRegistry.optimisticReadIgnored();
         }
+    }
+
+    /**
+     * Weaves {@code StampedLock.asReadWriteLock()} (#1498). The views it hands out are the
+     * StampedLock's own {@code asReadLock()} and {@code asWriteLock()}, remembered here with the
+     * StampedLock as their owner, so a reader through this view and a writer through the stamps
+     * share one lock. The woven {@code readLock()}/{@code writeLock()} on the view that follow find
+     * them already remembered.
+     *
+     * @param receiver the lock
+     * @return its read-write view
+     */
+    public static ReadWriteLock asReadWriteLock(StampedLock receiver) {
+        ReadWriteLock view = receiver.asReadWriteLock();
+        remember(view.readLock(), receiver, true);
+        remember(view.writeLock(), receiver, false);
+        return view;
     }
 
     /** Weaves {@code StampedLock.asReadLock()}. @param receiver the lock @return its read view */
