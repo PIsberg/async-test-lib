@@ -57,6 +57,20 @@ class MavenTransferRetryTest {
             "-Daether.connector.http.retryHandler.requestSentEnabled=true",
             "-Dmaven.wagon.http.retryHandler.requestSentEnabled=true");
 
+    /**
+     * The retry count for a "too many requests" answer, under the name each resolver generation
+     * reads (#1548): {@code aether.transport.http.*} for resolver 2 (Maven 3.10), whose transport
+     * ignores the {@code aether.connector.http.*} name resolver 1.9 (Maven 3.9) reads. Measured
+     * against a local server answering 429: with only the old name Maven 3.10.1 made 4 attempts,
+     * with the new one 7.
+     */
+    private static final List<String> RETRY_COUNT_KEYS = List.of(
+            "-Daether.transport.http.retryHandler.count=",
+            "-Daether.connector.http.retryHandler.count=");
+
+    /** The fewest retries the 429 answers Central gives a parallel matrix are allowed (#1548). */
+    private static final int MIN_RETRIES = 6;
+
     /** A step invoking Maven. Matches {@code mvn} and {@code ./mvnw} as a whole word. */
     private static final Pattern MAVEN_CALL =
             Pattern.compile("(^|[^\\w./])(\\./mvnw|mvnw|mvn)\\s");
@@ -86,6 +100,28 @@ class MavenTransferRetryTest {
                             + "\nBoth families are needed: Maven 3.9 reads the aether key and "
                             + "ignores the wagon one, Maven 3.8 the reverse. Present:\n  "
                             + String.join("\n  ", lines));
+        }
+    }
+
+    /**
+     * Maven Central answers a burst from a parallel matrix with 429 Too Many Requests, and a
+     * plugin the restored cache lacks then fails the job in its first minute (#1548: four jobs on
+     * 2026-11-27, cyclonedx-maven-plugin 2.9.3 each time). The default three retries back off 5,
+     * 10 and 15 seconds; six back off 105 seconds in all, and only on 429 or 503.
+     */
+    @Test
+    @DisplayName("a 429 from Central is retried at least six times, under both resolver generations' names")
+    void aTooManyRequestsAnswerIsRetriedLongEnough() {
+        List<String> lines = readLines(repoRoot().resolve(".mvn/maven.config"));
+        for (String key : RETRY_COUNT_KEYS) {
+            int count = lines.stream().map(String::strip).filter(l -> l.startsWith(key))
+                    .mapToInt(l -> Integer.parseInt(l.substring(key.length())))
+                    .max().orElse(-1);
+            assertTrue(count >= MIN_RETRIES,
+                    key + " is " + (count < 0 ? "missing" : String.valueOf(count))
+                            + " in .mvn/maven.config; it must be at least " + MIN_RETRIES
+                            + ". Resolver 2 (Maven 3.10) reads only the aether.transport name, "
+                            + "resolver 1.9 (Maven 3.9) only the aether.connector one.");
         }
     }
 

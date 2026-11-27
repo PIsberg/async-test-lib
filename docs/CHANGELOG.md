@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **A 429 from Maven Central is retried six times, under the name each resolver reads (#1548).**
+  Four CI jobs failed on 2026-11-27 in their first minute resolving `cyclonedx-maven-plugin`
+  2.9.3: Central answered 429 Too Many Requests to the parallel matrix, and the restored cache
+  lacked the plugin. `.mvn/maven.config` now sets `retryHandler.count=6`, 105 s of backoff on a
+  429 or 503 instead of 30 s, as `aether.transport.http.*` for resolver 2 (Maven 3.10) and
+  `aether.connector.http.*` for resolver 1.9 (Maven 3.9). Measured against a local server that
+  always answers 429: Maven 3.10.1 made 4 attempts per resource with the old name alone and 7 with
+  the file in place. `MavenTransferRetryTest` pins both lines.
+
 - **The corpus quiet-window gate names the threads that published (#1480).** A trip used to name
   whichever thread was runnable outside platform code, and twice that was Surefire's command reader
   blocked in a native read of stdin, which is unwoven and publishes nothing. The window now counts
