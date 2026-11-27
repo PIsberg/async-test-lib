@@ -140,6 +140,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schedule (#1495, part 3).** An adopted thread never leaves its round, so a pool thread a woven
   thread factory built in one round carried that round's worker into the next, took itself for a
   caller-runs thread there, and ran the task uncontrolled while the round counted no escape.
+- **`ConcurrentModificationDetector` judges concurrent mutations per round, and a read lock guards
+  no write (#1497).** The finding counted every thread that mutated the collection across the
+  whole run and compared one fingerprint of all held locks. So a sequential
+  `@AsyncTest(threads = 1, invocations = 2)` on default virtual threads, which gives each round a
+  fresh thread, was reported as two threads racing. Writers that shared one lock but nested or
+  re-entered another were reported as unguarded. And two writers holding only a read lock looked
+  guarded by it. The mutations now have their own per-round, happens-before-aware verdict, the one
+  the iteration finding already used, and the report counts the racing round's threads.
 - **An adopted thread's first woven call does its own work, and no grant is made while workers come
   back from a rendezvous (#1495, part 4).** A child thread whose first woven call was a join, a
   `Future.get`, a thread start or the entry of a `synchronized` method joined its round and then

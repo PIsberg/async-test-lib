@@ -241,6 +241,149 @@ public class ConcurrentModificationDetectorTest {
         body.run();
     }
 
+    /**
+     * Starts the next round of {@code scope} and runs each body on a fresh thread with the scope
+     * bound, released together so their accesses overlap, as a run's workers are.
+     */
+    private static void round(SelfGuard.Scope scope, Runnable... bodies) throws InterruptedException {
+        scope.markInvocationStart();
+        java.util.concurrent.CyclicBarrier start = new java.util.concurrent.CyclicBarrier(bodies.length);
+        Thread[] workers = new Thread[bodies.length];
+        for (int i = 0; i < bodies.length; i++) {
+            Runnable body = bodies[i];
+            workers[i] = new Thread(() -> {
+                SelfGuard.Scope.bind(scope);
+                try {
+                    start.await();
+                    body.run();
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                } finally {
+                    SelfGuard.Scope.unbind();
+                }
+            }, "round-worker-" + i);
+            workers[i].start();
+        }
+        for (Thread worker : workers) {
+            worker.join();
+        }
+    }
+
+    /** Runs {@code body} holding {@code lock}, really and as declared to the library. */
+    private static void holding(java.util.concurrent.locks.ReentrantLock lock, Runnable body) {
+        lock.lock();
+        try (var declared = se.deversity.asynctest.AsyncTestContext.holdingLock(lock)) {
+            body.run();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * #1497: one thread per round, which is what default virtual threads give, never overlaps
+     * another, however many threads the run saw. The run-wide thread set counted two and reported
+     * a sequential {@code threads = 1, invocations = 2} test.
+     */
+    @Test
+    void oneFreshThreadPerRoundMutatingIsNotAConcurrentMutation() throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        detector.registerCollection(list, "per-round-list");
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable add = () -> {
+            list.add("x");
+            detector.recordModification(list, "per-round-list", "add");
+        };
+        round(scope, add);
+        round(scope, add);
+
+        assertTrue(detector.analyze().concurrentMutations.isEmpty(),
+            "two rounds of one thread each never mutated the list at the same time");
+    }
+
+    @Test
+    void twoThreadsMutatingInOneRoundAreStillReported() throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        detector.registerCollection(list, "racing-list");
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        Runnable add = () -> detector.recordModification(list, "racing-list", "add");
+        round(scope, add, add);
+
+        ConcurrentModificationDetector.ConcurrentModificationReport report = detector.analyze();
+        assertEquals(1, report.concurrentMutations.size(), "two unlocked writers in one round race");
+        assertTrue(report.concurrentMutations.get(0).contains("2 threads"),
+            "the count is the racing round's: " + report.concurrentMutations);
+    }
+
+    /**
+     * #1497: one lock held at every mutation guards them, whatever else a thread holds. The
+     * fingerprint the mutations were compared by folded the whole held set into one opaque value,
+     * so a second lock nested inside the common one, or the common one re-entered, read as no
+     * common lock at all.
+     */
+    @Test
+    void aCommonLockGuardsMutationsWhenOneThreadAlsoHoldsAnotherOrReentersIt() throws InterruptedException {
+        java.util.concurrent.locks.ReentrantLock common = new java.util.concurrent.locks.ReentrantLock();
+        java.util.concurrent.locks.ReentrantLock inner = new java.util.concurrent.locks.ReentrantLock();
+        for (boolean reentrant : new boolean[] {false, true}) {
+            ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+            List<String> list = new ArrayList<>();
+            detector.registerCollection(list, "locked-list");
+            Runnable add = () -> {
+                list.add("x");
+                detector.recordModification(list, "locked-list", "add");
+            };
+            Runnable plain = () -> holding(common, add);
+            Runnable nested = () -> holding(common, () -> holding(reentrant ? common : inner, add));
+            round(new SelfGuard.Scope(), plain, nested);
+
+            assertTrue(detector.analyze().concurrentMutations.isEmpty(), (reentrant ? "re-entering" : "nesting")
+                + " a lock inside the one every writer holds does not unguard the writes");
+        }
+    }
+
+    @Test
+    void writersUnderDifferentLocksAreStillReported() throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        detector.registerCollection(list, "two-lock-list");
+        java.util.concurrent.locks.ReentrantLock first = new java.util.concurrent.locks.ReentrantLock();
+        java.util.concurrent.locks.ReentrantLock second = new java.util.concurrent.locks.ReentrantLock();
+        Runnable add = () -> detector.recordModification(list, "two-lock-list", "add");
+        round(new SelfGuard.Scope(), () -> holding(first, add), () -> holding(second, add));
+
+        assertFalse(detector.analyze().concurrentMutations.isEmpty(),
+            "no lock is common to both writers, so nothing excluded them from each other");
+    }
+
+    /**
+     * #1497: a read lock admits every reader at once, so two writers that each hold only the read
+     * view of a read-write lock race. The mutation fingerprint was taken as for a read and kept
+     * the shared hold, so both writers looked guarded by the lock that let them in together.
+     */
+    @Test
+    void writersHoldingOnlyAReadLockAreReported() throws InterruptedException {
+        ConcurrentModificationDetector detector = new ConcurrentModificationDetector();
+        List<String> list = new ArrayList<>();
+        detector.registerCollection(list, "read-locked-list");
+        java.util.concurrent.locks.ReentrantReadWriteLock rw = new java.util.concurrent.locks.ReentrantReadWriteLock();
+        Runnable addUnderReadLock = () -> {
+            rw.readLock().lock();
+            HeldLocks.acquired(rw, true);
+            try {
+                detector.recordModification(list, "read-locked-list", "add");
+            } finally {
+                HeldLocks.released(rw, true);
+                rw.readLock().unlock();
+            }
+        };
+        round(new SelfGuard.Scope(), addUnderReadLock, addUnderReadLock);
+
+        assertFalse(detector.analyze().concurrentMutations.isEmpty(),
+            "a read lock does not exclude another holder of it, so it guards no write");
+    }
+
     @Test
     void testConcurrentMutationDetection() {
         ConcurrentModificationDetector detector = new ConcurrentModificationDetector();

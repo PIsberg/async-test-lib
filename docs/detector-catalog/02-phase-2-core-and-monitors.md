@@ -260,7 +260,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 22. Concurrent Modification Detector
 * **Severity**: `HIGH`
-* **Description**: Registers collections and tracks active iterators against concurrent modifications, flagging unsafe structural changes made during iteration over non-thread-safe collections instead of via `Iterator.remove()`.
+* **Description**: Registers collections and tracks active iterators against concurrent modifications, flagging unsafe structural changes made during iteration over non-thread-safe collections instead of via `Iterator.remove()`. It also reports two threads mutating one collection in the same round, unless a lock the library can see was held at every mutation of that round: the collection's own monitor, a lock declared with `AsyncTestContext.holdingLock`, or one the agent observed. A read lock guards no write. Threads in different rounds, or ones a happens-before hand-off orders, are not concurrent (#1497).
 * **Buggy Code**:
   ```java
   for (String item : sharedList) {
