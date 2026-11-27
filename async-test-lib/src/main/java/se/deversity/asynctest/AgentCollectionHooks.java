@@ -1605,14 +1605,42 @@ public final class AgentCollectionHooks {
         return false;
     }
 
-    /** {@return {@code remapping}, releasing what it returns before the map stores it (#1294)} */
+    /**
+     * {@return {@code remapping}, acquiring the value it is handed before it runs and releasing what
+     * it returns before the map stores it (#1294)}: the function reads the old value inside the
+     * call, so acquiring it only on the way out left those reads unordered after the put that
+     * published it (#1499). For {@code compute} and {@code computeIfPresent}, whose function takes
+     * the key first and the old value second.
+     */
     private static BiFunction<Object, Object, Object> publishing(Map<Object, Object> receiver,
             BiFunction<Object, Object, Object> remapping) {
         if (remapping == null || !HappensBefore.publishesElements(receiver)) {
             return remapping;
         }
         return (key, old) -> {
+            if (old != null) {
+                HappensBefore.acquire(old);
+            }
             Object stored = remapping.apply(key, old);
+            HappensBefore.release(stored);
+            return stored;
+        };
+    }
+
+    /**
+     * {@return {@code merge}'s {@code remapping}, as {@link #publishing(Map, BiFunction)} wraps a
+     * {@code compute}'s, with the old value as the first argument (#1499)}
+     */
+    private static BiFunction<Object, Object, Object> publishingMerge(Map<Object, Object> receiver,
+            BiFunction<Object, Object, Object> remapping) {
+        if (remapping == null || !HappensBefore.publishesElements(receiver)) {
+            return remapping;
+        }
+        return (old, given) -> {
+            if (old != null) {
+                HappensBefore.acquire(old);
+            }
+            Object stored = remapping.apply(old, given);
             HappensBefore.release(stored);
             return stored;
         };
@@ -1783,12 +1811,15 @@ public final class AgentCollectionHooks {
 
     // The atomic per-key updates (#1245). A ConcurrentHashMap runs the whole call under a lock
     // inside the JDK the lockset cannot see, so the call holds a per-(map, key) stand-in for it,
-    // and a value mutated inside the function reads as guarded. Any other map is called as is.
+    // and a value mutated inside the function reads as guarded. Any other map is called as is,
+    // and recorded as the write it is: on a plain map they are as unsafe as a put (#1499). The
+    // record skips the maps that synchronize themselves, so the stand-in's maps are not recorded.
 
     /** Weaves {@code Map.compute}. @param receiver the map @param key the key @param remapping the function @return the new value */
     public static @Nullable Object mapCompute(Map<Object, Object> receiver, Object key,
             BiFunction<Object, Object, Object> remapping) {
         ControlledSchedule.point();
+        record(receiver, "compute", true);
         Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
         HeldLocks.acquired(token);
         try {
@@ -1803,6 +1834,7 @@ public final class AgentCollectionHooks {
     public static @Nullable Object mapComputeIfPresent(Map<Object, Object> receiver, Object key,
             BiFunction<Object, Object, Object> remapping) {
         ControlledSchedule.point();
+        record(receiver, "computeIfPresent", true);
         Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
         HeldLocks.acquired(token);
         try {
@@ -1816,6 +1848,7 @@ public final class AgentCollectionHooks {
     public static @Nullable Object mapComputeIfAbsent(Map<Object, Object> receiver, Object key,
             Function<Object, Object> mapping) {
         ControlledSchedule.point();
+        record(receiver, "computeIfAbsent", true);
         Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
         HeldLocks.acquired(token);
         try {
@@ -1839,6 +1872,7 @@ public final class AgentCollectionHooks {
     public static @Nullable Object mapMerge(Map<Object, Object> receiver, Object key, Object value,
             BiFunction<Object, Object, Object> remapping) {
         ControlledSchedule.point();
+        record(receiver, "merge", true);
         Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
         HeldLocks.acquired(token);
         try {
@@ -1850,7 +1884,7 @@ public final class AgentCollectionHooks {
             boolean completed = false;
             Object merged = null;
             try {
-                merged = receiver.merge(key, value, publishing(receiver, remapping));
+                merged = receiver.merge(key, value, publishingMerge(receiver, remapping));
                 completed = true;
             } finally {
                 // A merge that threw, from the map or the function, stored nothing (#1418).
