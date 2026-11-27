@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Detects CountDownLatch misuse patterns:
@@ -23,7 +24,9 @@ import java.util.concurrent.CountDownLatch;
 public class CountDownLatchDetector {
 
     private final Map<CountDownLatch, LatchInfo> latchRegistry = new ConcurrentHashMap<>();
-    private final Set<CountDownLatch> timedOutLatches = ConcurrentHashMap.newKeySet();
+    /** Timeouts per latch, less those the caller handled (#1501): a count, not a flag, so one
+     *  thread's handled poll cannot withdraw another thread's unhandled timeout. */
+    private final Map<CountDownLatch, AtomicInteger> timeouts = new ConcurrentHashMap<>();
     private final Set<CountDownLatch> succeededLatches = ConcurrentHashMap.newKeySet();
     private final Set<CountDownLatch> extraCountDownLatches = ConcurrentHashMap.newKeySet();
 
@@ -65,7 +68,30 @@ public class CountDownLatchDetector {
      */
     public void recordTimeout(CountDownLatch latch) {
         if (latch == null) return;
-        timedOutLatches.add(latch);
+        AtomicInteger count = timeouts.get(latch);
+        if (count == null) {
+            count = timeouts.computeIfAbsent(latch, k -> new AtomicInteger());
+        }
+        count.incrementAndGet();
+    }
+
+    /**
+     * Withdraw one timeout recorded against {@code latch}, because the caller branched on it.
+     *
+     * <p>A stop-latch poll, {@code while (!stop.await(1, MILLISECONDS))}, times out by design on
+     * every pass until it is stopped, and {@code if (!latch.await(...))} handles its timeout in
+     * the branch. The agent calls this for such a caller right after recording the timeout, so
+     * only a timeout the caller discarded, stored or passed on stays a finding (#1501).
+     *
+     * @param latch the latch whose last timeout was handled, tracked by identity
+     * @since 1.14.5
+     */
+    public void recordTimeoutHandled(CountDownLatch latch) {
+        if (latch == null) return;
+        AtomicInteger count = timeouts.get(latch);
+        if (count != null) {
+            count.updateAndGet(n -> n > 0 ? n - 1 : 0);
+        }
     }
 
     /**
@@ -95,7 +121,12 @@ public class CountDownLatchDetector {
      * @return the findings this detector collected during the run
      */
     public CountDownLatchReport analyze() {
-        Set<CountDownLatch> unresolvedTimeouts = new HashSet<>(timedOutLatches);
+        Set<CountDownLatch> unresolvedTimeouts = new HashSet<>();
+        timeouts.forEach((latch, count) -> {
+            if (count.get() > 0) {
+                unresolvedTimeouts.add(latch);
+            }
+        });
         unresolvedTimeouts.removeAll(succeededLatches);
         // A latch at zero has had every countDown() it was waiting for, wherever they came from:
         // a timeout on it was a poll that came too early, not a missing countDown() (#1501). It

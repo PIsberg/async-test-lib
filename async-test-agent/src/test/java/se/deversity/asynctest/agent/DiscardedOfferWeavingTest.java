@@ -61,6 +61,10 @@ class DiscardedOfferWeavingTest {
             return s.drainPermits();
         }
 
+        public static boolean awaitResultTested(boolean reachedZero) {
+            return reachedZero;
+        }
+
         public static boolean tryAcquire(Semaphore s) {
             return s.tryAcquire();
         }

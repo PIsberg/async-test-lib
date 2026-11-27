@@ -166,6 +166,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `InterruptedException` from the condition as "not yet true" with its interrupt status already
   cleared, so a worker the round cancelled polled on until the timeout. It now restores the status
   and fails at once.
+- **A timed latch await whose timeout the caller reads is not a finding (#1501, part 2).** With the
+  agent attached, every `CountDownLatch.await(timeout, unit)` that returned `false` was a CRITICAL
+  "await() timed out" in `CountDownLatchDetector` and an await against the latch in
+  `LatchMisuseDetector`, so a stop-latch poll such as `while (!stop.await(1, MILLISECONDS))`
+  failed the build though it handles every timeout. When the instruction after a timed await is an
+  `IFNE`, whose fall-through is the caller's own code for a `false` (`if (!latch.await(..))`, a
+  `while (!stop.await(..))` loop), the weaver now puts `awaitResultTested` in front of the jump,
+  and the timeout that await recorded is withdrawn. `if (latch.await(..)) { work }` jumps with an
+  `IFEQ`, dropping the work on a timeout, and is still reported, as is a result that is popped,
+  stored, returned or passed on, so `latch.await(t, unit);` as a statement is still reported, and
+  so is Guava's `awaitUninterruptibly`, which returns the result to its caller.
+  `CountDownLatchDetector.recordTimeoutHandled` and `LatchMisuseDetector.recordTimedAwaitHandled`
+  withdraw one timeout or await each. `HandledLatchTimeoutWeavingTest` was red on the old code
+  with the CRITICAL finding.
 - **A latch that reached zero is not missing a countDown(), and a permit returned by another thread
   is not an over-release (#1501, parts 2 and 3).** A timed `await` that returned `false` was
   cleared only by a later successful await, so a poll that came too early on a latch that then

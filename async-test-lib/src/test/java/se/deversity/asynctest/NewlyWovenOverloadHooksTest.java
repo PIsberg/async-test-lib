@@ -421,4 +421,46 @@ class NewlyWovenOverloadHooksTest {
         assertEquals(1, AgentConcurrencyUtilHooks.drainPermits(semaphore), "the one permit left");
         assertEquals(0, semaphore.availablePermits(), "and none after it");
     }
+    @Test
+    @DisplayName("a timed latch await whose false the caller handles is no finding (#1501)")
+    void aHandledTimedAwaitIsNotATimeout() throws InterruptedException {
+        AsyncTestConfig cfg = AsyncTestConfig.builder()
+                .detectCountDownLatchIssues(true).detectLatchMisuse(true).build();
+        AsyncTestContext.install(new AsyncTestContext(cfg));
+        try {
+            java.util.concurrent.CountDownLatch stop = new java.util.concurrent.CountDownLatch(1);
+            int polls = 0;
+            // A stop-latch poll: the false is the loop condition, so the weaver puts the tested
+            // hook in front of the IFNE that reads it.
+            while (!AgentConcurrencyUtilHooks.awaitResultTested(
+                    AgentConcurrencyUtilHooks.await(stop, 1, TimeUnit.MILLISECONDS)) && ++polls < 3) {
+                Thread.onSpinWait();
+            }
+            assertFalse(AsyncTestContext.countDownLatchDetector().analyze().hasIssues(),
+                    "the caller checked every timeout: " + AsyncTestContext.countDownLatchDetector().analyze());
+            assertFalse(AsyncTestContext.latchMisuseDetector().analyze().hasIssues(),
+                    "nothing waited on the latch to reach zero: " + AsyncTestContext.latchMisuseDetector().analyze());
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+    @Test
+    @DisplayName("a timed latch await whose false the caller discards is the finding (#1501)")
+    void aDiscardedTimedAwaitIsATimeout() throws InterruptedException {
+        AsyncTestConfig cfg = AsyncTestConfig.builder()
+                .detectCountDownLatchIssues(true).detectLatchMisuse(true).build();
+        AsyncTestContext.install(new AsyncTestContext(cfg));
+        try {
+            java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+            // latch.await(1, MILLISECONDS); as a statement: the POP is left alone, so the timeout
+            // the await recorded stands, as it does for a result stored, returned or passed on.
+            AgentConcurrencyUtilHooks.await(done, 1, TimeUnit.MILLISECONDS);
+            assertTrue(AsyncTestContext.countDownLatchDetector().analyze().hasIssues(),
+                    "the caller went on as though the latch had reached zero");
+            assertTrue(AsyncTestContext.latchMisuseDetector().analyze().hasIssues(),
+                    "and it waited on a latch nothing counted down");
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
 }
