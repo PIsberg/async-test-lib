@@ -223,6 +223,12 @@ public class MissedSignalDetector implements RoundScoped {
         private int unsignalledWaits;
         private long notifies;
         private int notifiesWithNoWaiter;
+        /**
+         * {@link #notifiesWithNoWaiter} when the current round began. A wait the agent observed
+         * is judged only against notifies lost in its own round (#1501): one lost in an earlier
+         * round was a different round's hand-off.
+         */
+        private int lostBeforeThisRound;
         private boolean lastNotifyLost;
         /** Whether any thread has marked a loop on this condition; its marks then decide (#669). */
         private boolean loopsMarked;
@@ -276,9 +282,33 @@ public class MissedSignalDetector implements RoundScoped {
                 backEdge = previous.epoch == epoch && previous.checkedUnsatisfied;
                 settle(previous, backEdge || previous.confirmedWithoutAnotherWait());
             }
-            openWaits.add(new OpenWait(thread, guard, notifies, lastNotifyLost, notifiesWithNoWaiter,
-                    backEdge, helper));
+            int lost = guard == Guard.OBSERVED ? notifiesWithNoWaiter - lostBeforeThisRound
+                    : notifiesWithNoWaiter;
+            openWaits.add(new OpenWait(thread, guard, notifies, lastNotifyLost, lost, backEdge, helper));
             return true;
+        }
+
+        /**
+         * The thread's wait ended in {@code InterruptedException} (#1501): it was cancelled, not
+         * woken, so it is dropped unjudged, whatever it was waiting for. A loop around it is left
+         * by the throw, which is why no back-edge would ever confirm it.
+         */
+        synchronized void interrupted(Thread thread) {
+            for (int i = openWaits.size() - 1; i >= 0; i--) {
+                if (openWaits.get(i).thread.equals(thread)) {
+                    openWaits.remove(i);
+                    return;
+                }
+            }
+        }
+
+        /**
+         * The thread's caller branched on the timeout of the timed wait it just woke from, such as
+         * {@code if (!ready.await(..)) return;} inside its predicate loop (#1501). Like a back-edge,
+         * that confirms the observed wait as a loop's: the caller decided for itself how to end it.
+         */
+        synchronized void timeoutHandled(Thread thread, long epoch) {
+            loopBackEdge(thread, epoch);
         }
 
         synchronized void wokeUp(Thread thread, long epoch) {
@@ -363,6 +393,7 @@ public class MissedSignalDetector implements RoundScoped {
         /** Settles every woken wait from a round before {@code epoch}: nothing can confirm it now. */
         synchronized void closeRoundsBefore(long epoch) {
             recordedNotifies.clear();
+            lostBeforeThisRound = notifiesWithNoWaiter;
             for (Iterator<Map.Entry<Thread, PendingWait>> it = pendingWaits.entrySet().iterator(); it.hasNext(); ) {
                 Map.Entry<Thread, PendingWait> entry = it.next();
                 PendingWait pending = entry.getValue();
@@ -719,6 +750,35 @@ public class MissedSignalDetector implements RoundScoped {
      */
     public void recordObservedWakeup(Object monitor) {
         recordWakeup(monitor);
+    }
+
+    /**
+     * Internal: called by the agent's hook instead of {@link #recordObservedWakeup(Object)} when a
+     * woven {@code wait} that {@link #recordObservedWait(Object)} took ended in
+     * {@code InterruptedException} (#1501). The wait was cancelled rather than woken, so it is
+     * dropped unjudged: {@code while (!ready) wait()} left by the throw never reaches the
+     * back-edge that would have confirmed it.
+     *
+     * @param monitor the same monitor passed to {@link #recordObservedWait(Object)}
+     * @since 1.14.5
+     */
+    public void recordObservedWaitInterrupted(Object monitor) {
+        if (monitor == null) return;
+        byMonitor(monitor).interrupted(Thread.currentThread());
+    }
+
+    /**
+     * Internal: called by the agent's hook when the caller of a woven timed wait on
+     * {@code monitor} branched on its timeout at once, {@code if (!ready.await(..)) return;}
+     * inside a predicate loop (#1501). It confirms the calling thread's observed wait on that
+     * monitor, woken in this round, as a loop's, as {@link #recordObservedLoopBackEdge()} does.
+     *
+     * @param monitor the monitor or condition the timed wait was on; {@code null} is ignored
+     * @since 1.14.5
+     */
+    public void recordObservedTimeoutHandled(Object monitor) {
+        if (monitor == null) return;
+        byMonitor(monitor).timeoutHandled(Thread.currentThread(), invocationEpoch.get());
     }
 
     /**

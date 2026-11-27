@@ -41,7 +41,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.12.2
  */
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.MONITOR_ENTRIES, loopBackEdge by name with a ()V descriptor, and monitorFieldEntered by FieldAccessWeaver with an (Object, Object, String)V descriptor, so none can change independently of the weaver. monitorFieldEntered runs before a MONITORENTER and must not throw: a null monitor is left for the MONITORENTER to reject with its own NullPointerException. Every hook must perform the original call on the receiver and propagate what it throws unchanged: InterruptedException, and the IllegalMonitorStateException of a call made without the monitor, which is why nothing is recorded on a monitor unless Thread.holdsLock(receiver); a Condition cannot be asked about its lock, so its await is recorded before the call, and one made without the lock throws before it waits (#1255). Record the wait before wait() releases the monitor and the wakeup after it is reacquired, in a finally, so a notify is judged against the threads really waiting; record a notify before making it. The same goes for a controlled schedule's record of the hold: releasingForWait before wait(), reacquiredAfterWait in an outer finally, so a peer waiting to enter the monitor is not passed over while it is free (#1048). loopBackEdge takes nothing and returns nothing because the weaver inserts it in front of a jump whose operands are already on the stack.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.MONITOR_ENTRIES, loopBackEdge by name with a ()V descriptor, and monitorFieldEntered by FieldAccessWeaver with an (Object, Object, String)V descriptor, so none can change independently of the weaver. monitorFieldEntered runs before a MONITORENTER and must not throw: a null monitor is left for the MONITORENTER to reject with its own NullPointerException. Every hook must perform the original call on the receiver and propagate what it throws unchanged: InterruptedException, and the IllegalMonitorStateException of a call made without the monitor, which is why nothing is recorded on a monitor unless Thread.holdsLock(receiver); a Condition cannot be asked about its lock, so its await is recorded before the call, and one made without the lock throws before it waits (#1255). Record the wait before wait() releases the monitor and the wakeup after it is reacquired, in a finally, so a notify is judged against the threads really waiting; record a notify before making it. The same goes for a controlled schedule's record of the hold: releasingForWait before wait(), reacquiredAfterWait in an outer finally, so a peer waiting to enter the monitor is not passed over while it is free (#1048). A wait or await that ends in InterruptedException is recorded as interrupted rather than as a wakeup, still from that finally, because it was cancelled and its loop is left without a back-edge (#1501). loopBackEdge takes nothing and returns nothing because the weaver inserts it in front of a jump whose operands are already on the stack; conditionAwaitResultTested is not an operation either: the weaver emits it in front of the IFNE that tests a timed Condition await's result, and it returns the boolean it took.")
 public final class AgentMonitorHooks {
 
     private AgentMonitorHooks() {
@@ -62,12 +62,14 @@ public final class AgentMonitorHooks {
             MissedSignalDetector taken =
                     detector != null && detector.recordObservedWait(receiver, AsyncTestContext.notAWorker())
                             ? detector : null;
+            boolean interrupted = false;
             try {
                 receiver.wait();
+            } catch (InterruptedException e) {
+                interrupted = true;
+                throw e;
             } finally {
-                if (taken != null) {
-                    taken.recordObservedWakeup(receiver);
-                }
+                woke(taken, receiver, interrupted);
             }
             returnedFromWait(receiver);
         } finally {
@@ -92,12 +94,14 @@ public final class AgentMonitorHooks {
             MissedSignalDetector taken =
                     detector != null && detector.recordObservedWait(receiver, AsyncTestContext.notAWorker())
                             ? detector : null;
+            boolean interrupted = false;
             try {
                 receiver.wait(timeoutMillis);
+            } catch (InterruptedException e) {
+                interrupted = true;
+                throw e;
             } finally {
-                if (taken != null) {
-                    taken.recordObservedWakeup(receiver);
-                }
+                woke(taken, receiver, interrupted);
             }
             returnedFromWait(receiver);
         } finally {
@@ -124,12 +128,14 @@ public final class AgentMonitorHooks {
             MissedSignalDetector taken =
                     detector != null && detector.recordObservedWait(receiver, AsyncTestContext.notAWorker())
                             ? detector : null;
+            boolean interrupted = false;
             try {
                 receiver.wait(timeoutMillis, nanos);
+            } catch (InterruptedException e) {
+                interrupted = true;
+                throw e;
             } finally {
-                if (taken != null) {
-                    taken.recordObservedWakeup(receiver);
-                }
+                woke(taken, receiver, interrupted);
             }
             returnedFromWait(receiver);
         } finally {
@@ -180,12 +186,14 @@ public final class AgentMonitorHooks {
         int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
         Object orderOwner = orderLockOf(receiver);
         int orderHolds = orderOwner == null ? 0 : releasingOrderForWait(orderOwner);
+        boolean interrupted = false;
         try {
             receiver.await();
+        } catch (InterruptedException e) {
+            interrupted = true;
+            throw e;
         } finally {
-            if (conditions != null) {
-                conditions.recordObservedAwaitExit(receiver);
-            }
+            awaitExited(conditions, receiver, interrupted);
             if (orderOwner != null) {
                 reacquiredOrderAfterWait(orderOwner, orderHolds);
             }
@@ -202,12 +210,16 @@ public final class AgentMonitorHooks {
         int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
         Object orderOwner = orderLockOf(receiver);
         int orderHolds = orderOwner == null ? 0 : releasingOrderForWait(orderOwner);
+        boolean interrupted = false;
         try {
-            return receiver.await(time, unit);
+            boolean signalled = receiver.await(time, unit);
+            timedAwaitReturned(conditions, receiver, signalled);
+            return signalled;
+        } catch (InterruptedException e) {
+            interrupted = true;
+            throw e;
         } finally {
-            if (conditions != null) {
-                conditions.recordObservedAwaitExit(receiver);
-            }
+            awaitExited(conditions, receiver, interrupted);
             if (orderOwner != null) {
                 reacquiredOrderAfterWait(orderOwner, orderHolds);
             }
@@ -224,12 +236,14 @@ public final class AgentMonitorHooks {
         int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
         Object orderOwner = orderLockOf(receiver);
         int orderHolds = orderOwner == null ? 0 : releasingOrderForWait(orderOwner);
+        boolean interrupted = false;
         try {
             return receiver.awaitNanos(nanosTimeout);
+        } catch (InterruptedException e) {
+            interrupted = true;
+            throw e;
         } finally {
-            if (conditions != null) {
-                conditions.recordObservedAwaitExit(receiver);
-            }
+            awaitExited(conditions, receiver, interrupted);
             if (orderOwner != null) {
                 reacquiredOrderAfterWait(orderOwner, orderHolds);
             }
@@ -268,12 +282,16 @@ public final class AgentMonitorHooks {
         int holds = owner == null ? 0 : ControlledSchedule.releasingForWait(owner);
         Object orderOwner = orderLockOf(receiver);
         int orderHolds = orderOwner == null ? 0 : releasingOrderForWait(orderOwner);
+        boolean interrupted = false;
         try {
-            return receiver.awaitUntil(deadline);
+            boolean signalled = receiver.awaitUntil(deadline);
+            timedAwaitReturned(conditions, receiver, signalled);
+            return signalled;
+        } catch (InterruptedException e) {
+            interrupted = true;
+            throw e;
         } finally {
-            if (conditions != null) {
-                conditions.recordObservedAwaitExit(receiver);
-            }
+            awaitExited(conditions, receiver, interrupted);
             if (orderOwner != null) {
                 reacquiredOrderAfterWait(orderOwner, orderHolds);
             }
@@ -323,6 +341,78 @@ public final class AgentMonitorHooks {
         if (conditions != null) {
             conditions.recordObservedLoopBackEdge();
         }
+    }
+
+    /**
+     * Records the end of a wait {@code taken} took: a wakeup, or for a wait that ended in
+     * {@code InterruptedException} a cancellation, which is not judged (#1501). Always from the
+     * hook's {@code finally}, so the wait stops counting as open whichever way it ended.
+     */
+    private static void woke(@Nullable MissedSignalDetector taken, Object receiver, boolean interrupted) {
+        if (taken == null) {
+            return;
+        }
+        if (interrupted) {
+            taken.recordObservedWaitInterrupted(receiver);
+        } else {
+            taken.recordObservedWakeup(receiver);
+        }
+    }
+
+    /** {@link #woke} for a woven {@code Condition} await. */
+    private static void awaitExited(@Nullable ConditionVariableDetector conditions, Condition receiver,
+                                    boolean interrupted) {
+        if (conditions == null) {
+            return;
+        }
+        if (interrupted) {
+            conditions.recordObservedAwaitInterrupted(receiver);
+        } else {
+            conditions.recordObservedAwaitExit(receiver);
+        }
+    }
+
+    /**
+     * The condition the calling thread's last timed await timed out on, held weakly until
+     * {@link #conditionAwaitResultTested} says whether its caller handled the timeout (#1501).
+     */
+    private static final ThreadLocal<java.lang.ref.WeakReference<Condition>> TIMED_OUT_CONDITION =
+            new ThreadLocal<>();
+
+    /** Remembers a timed await that timed out, for the tested hook that may follow it. */
+    private static void timedAwaitReturned(@Nullable ConditionVariableDetector conditions,
+                                           Condition receiver, boolean signalled) {
+        if (conditions == null || signalled) {
+            TIMED_OUT_CONDITION.remove();
+        } else {
+            TIMED_OUT_CONDITION.set(new java.lang.ref.WeakReference<>(receiver));
+        }
+    }
+
+    /**
+     * Not an operation: the weaver calls it in front of an {@code IFNE} that tests the boolean a
+     * timed {@code Condition.await(long, TimeUnit)} or {@code awaitUntil(Date)} just returned and
+     * falls into the caller's code for a timeout: {@code if (!ready.await(..)) return;} inside a
+     * {@code while (!done)} loop (#1501). Such a loop ends on its timeout without reaching its
+     * back-edge, so this confirms the await as a loop's in its place. An await whose result is
+     * popped, {@code if (!done) ready.await(..);}, keeps its judgement.
+     *
+     * @param signalled what the await returned, which the jump after this call tests
+     * @return {@code signalled}, for the jump
+     * @since 1.14.5
+     */
+    public static boolean conditionAwaitResultTested(boolean signalled) {
+        java.lang.ref.WeakReference<Condition> pending = TIMED_OUT_CONDITION.get();
+        if (pending == null) {
+            return signalled;
+        }
+        TIMED_OUT_CONDITION.remove();
+        Condition condition = pending.get();
+        ConditionVariableDetector conditions = AsyncTestContext.currentConditionVariableDetector();
+        if (!signalled && condition != null && conditions != null) {
+            conditions.recordObservedAwaitTimeoutHandled(condition);
+        }
+        return signalled;
     }
 
     /**

@@ -125,4 +125,61 @@ class MissedSignalObservedWaitTest {
 
         assertEquals(0, detector.retainedWaits(), "every closed round folds into a count");
     }
+
+    @Test
+    void aWaitEndedByAnInterruptIsNotJudged() {
+        MissedSignalDetector detector = new MissedSignalDetector();
+        detector.markInvocationStart();
+
+        detector.recordObservedNotify(monitor);             // lost
+        assertTrue(detector.recordObservedWait(monitor));   // while (!ready) monitor.wait()
+        detector.recordObservedWaitInterrupted(monitor);    // InterruptedException leaves the loop
+
+        assertFalse(detector.analyze().hasIssues(),
+                "an interrupted wait was cancelled, not woken, so no back-edge was owed (#1501)");
+        assertEquals(0, detector.retainedWaits(), "and nothing of it stays open");
+    }
+
+    @Test
+    void aHandledTimeoutConfirmsTheWaitOnItsOwnMonitorOnly() {
+        MissedSignalDetector detector = new MissedSignalDetector();
+        Object other = new Object();
+        detector.markInvocationStart();
+
+        detector.recordObservedNotify(monitor);
+        detector.recordObservedNotify(other);
+        detector.recordObservedWait(monitor);    // while (!done) { if (!c.await(..)) return; }
+        detector.recordObservedWakeup(monitor);
+        detector.recordObservedTimeoutHandled(monitor);
+        detector.recordObservedWait(other);      // if (!done) other.await(..); on the same thread
+        detector.recordObservedWakeup(other);
+        detector.recordObservedTimeoutHandled(null);
+
+        MissedSignalDetector.MissedSignalReport report = detector.analyze();
+        assertTrue(report.hasIssues(), "the if-guarded wait on the other monitor stays a finding");
+        assertEquals(1, report.toString().split("SIGNAL LOST", -1).length - 1,
+                "and only that one: the handled timeout confirmed its own monitor's wait (#1501): "
+                        + report);
+    }
+
+    @Test
+    void aNotifyLostInAnEarlierRoundDoesNotStrandAnObservedWait() {
+        MissedSignalDetector detector = new MissedSignalDetector();
+        detector.markInvocationStart();
+        detector.recordObservedNotify(monitor);  // round 1: the producer came first, nobody waited
+
+        detector.markInvocationStart();
+        detector.recordObservedWait(monitor);    // round 2: no notify of this round was lost
+        detector.recordObservedWakeup(monitor);
+        detector.markInvocationStart();
+
+        assertFalse(detector.analyze().hasIssues(),
+                "a lost notify from another round was not this wait's hand-off (#1501)");
+
+        detector.recordObservedNotify(monitor);  // round 3: lost in the waiter's own round
+        detector.recordObservedWait(monitor);
+        detector.recordObservedWakeup(monitor);
+        detector.markInvocationStart();
+        assertTrue(detector.analyze().hasIssues(), "the same shape within one round is reported");
+    }
 }

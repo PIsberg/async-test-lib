@@ -166,6 +166,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `InterruptedException` from the condition as "not yet true" with its interrupt status already
   cleared, so a worker the round cancelled polled on until the timeout. It now restores the status
   and fails at once.
+- **A predicate loop that leaves on an interrupt or on a timeout it tests is not a lost signal
+  (#1501, part 1).** With the agent attached, `MissedSignalDetector` and
+  `ConditionVariableDetector` reported HIGH "SIGNAL LOST" for a correct `while (!done)` loop after
+  a signal nobody heard whenever the loop ended without reaching its back-edge: on an
+  `InterruptedException` from `wait` or `await`, whose wakeup the hook recorded from a
+  `finally`, or on `if (!ready.await(t, unit)) return;`, the shape `ConditionVariableDetector`'s own
+  javadoc recommends. An interrupted wait is now dropped unjudged
+  (`recordObservedWaitInterrupted`), and the weaver puts `conditionAwaitResultTested` in front of
+  the `IFNE` that tests a timed `await` or `awaitUntil`, confirming the loop as a back-edge would
+  (`recordObservedTimeoutHandled`). A notify lost in an earlier round no longer counts against an
+  observed wait. `HandledWaitExitWeavingTest` was red on the old code with 20 findings for each of
+  its three shapes; the `if` twins in `MissedSignalWeavingTest` and `ConditionSignalWeavingTest`
+  still fire. `Object.wait(timeout)` has no result to test, so a deadline check after it is still
+  read as an `if`.
 - **A timed latch await whose timeout the caller reads is not a finding (#1501, part 2).** With the
   agent attached, every `CountDownLatch.await(timeout, unit)` that returned `false` was a CRITICAL
   "await() timed out" in `CountDownLatchDetector` and an await against the latch in

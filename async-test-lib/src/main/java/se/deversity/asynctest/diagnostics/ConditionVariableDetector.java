@@ -466,6 +466,31 @@ public class ConditionVariableDetector extends AbstractInstanceDetector<Conditio
     }
 
     /**
+     * Internal: the agent saw the calling thread's await, one {@link #recordObservedAwait} took,
+     * end in {@code InterruptedException}: cancelled, not woken, so it is not judged (#1501).
+     *
+     * @param condition the receiver its {@link #recordObservedAwait} was given
+     * @since 1.14.5
+     */
+    public void recordObservedAwaitInterrupted(Condition condition) {
+        observed.recordObservedWaitInterrupted(condition);
+    }
+
+    /**
+     * Internal: the caller of the calling thread's timed await on {@code condition}, which timed
+     * out, branched on that at once, {@code if (!ready.await(..)) return;} in a predicate loop: the
+     * caller ended its loop itself, so the await is confirmed as a loop's (#1501).
+     *
+     * @param condition the timed await's receiver
+     * @since 1.14.5
+     */
+    public void recordObservedAwaitTimeoutHandled(Condition condition) {
+        if (enabled) {
+            observed.recordObservedTimeoutHandled(condition);
+        }
+    }
+
+    /**
      * Internal: the agent saw the calling thread about to signal {@code condition}, holding its
      * lock.
      *
