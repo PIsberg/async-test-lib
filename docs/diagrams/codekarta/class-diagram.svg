@@ -1053,8 +1053,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">DIRECT_RUN_RETURN_NANOS: l…</text>
   <text x="3376.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">STILL_RUNNING_DIRECTLY: Pr…</text>
   <text x="3376.0" y="141.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">STILL_ALIVE: Predicate&lt;Thr…</text>
-  <text x="3376.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">barrierGenerationField: Fi…</text>
-  <text x="3376.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+18 more)</text>
+  <text x="3376.0" y="156.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">TIMED_OUT_LATCH: ThreadLoc…</text>
+  <text x="3376.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+19 more)</text>
   <line x1="3368.0" y1="185.0" x2="3548.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="3376.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object): ABAProble…</text>
   <text x="3376.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object, Object): A…</text>
@@ -1062,7 +1062,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquire(Semaphore): void</text>
   <text x="3376.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquireUninterruptibly(Sem…</text>
   <text x="3376.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquireUninterruptibly(Sem…</text>
-  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+441 more)</text>
+  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+442 more)</text>
 </g>
 <g id="AgentConstructionHooks">
   <title>AgentConstructionHooks [CLASS]</title>

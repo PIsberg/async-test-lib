@@ -364,7 +364,7 @@ agent and writing a plain test produced silence from them.
 
 The coordination primitives joined last. Sharing is the point of a semaphore or a latch, so 
 what these report is protocol misuse rather than sharing: a permit that never came back, an 
-offer whose false return was discarded, a timed await that expired. They are plumbing, used 
+offer whose false return was discarded, a timed await that expired and whose false was discarded. They are plumbing, used 
 three layers down in the class under test, which is why nobody instruments them by hand and 
 why their detectors were unreachable in practice rather than merely inconvenient.
 

@@ -168,7 +168,7 @@ import se.deversity.asynctest.AgentHandOffHooks.Submissions;
  *
  * @since 1.10.0
  */
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.CONCURRENCY_ENTRIES and cannot change independently of it. Every hook must perform the original operation and propagate its exceptions unchanged, InterruptedException included - these types throw it as a matter of course and swallowing one would change the interruption semantics of the code under test. Record after acquiring and before releasing, the containment rule AgentLockHooks documents, and record nothing when the underlying call throws, except that a submit or execute the executor refuses records the RejectedExecutionException with ThreadPoolMonitor before rethrowing that same exception (#1055). offer, poll and the timed await must record their actual return value: the boolean a caller discards is the whole bug these detectors report. The observe* call must stay ahead of the operation: it is where LatchMisuseDetector and BlockingQueueDetector learn a subject exists at all, and the latch's starting count is only readable before this call decrements it. offerResultDiscarded is not an operation: the weaver substitutes it for the POP that follows an offer whose boolean the caller never read, so it is always the instruction after one of the offer hooks on the same thread, and it must stay that way - the detector correlates it to the offer recorded immediately before, and that correlation is exact only because the weaver emits it in place of the POP and nowhere else.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.CONCURRENCY_ENTRIES and cannot change independently of it. Every hook must perform the original operation and propagate its exceptions unchanged, InterruptedException included - these types throw it as a matter of course and swallowing one would change the interruption semantics of the code under test. Record after acquiring and before releasing, the containment rule AgentLockHooks documents, and record nothing when the underlying call throws, except that a submit or execute the executor refuses records the RejectedExecutionException with ThreadPoolMonitor before rethrowing that same exception (#1055). offer, poll and the timed await must record their actual return value: the boolean a caller discards is the whole bug these detectors report. The observe* call must stay ahead of the operation: it is where LatchMisuseDetector and BlockingQueueDetector learn a subject exists at all, and the latch's starting count is only readable before this call decrements it. offerResultDiscarded is not an operation: the weaver substitutes it for the POP that follows an offer whose boolean the caller never read, so it is always the instruction after one of the offer hooks on the same thread, and it must stay that way - the detector correlates it to the offer recorded immediately before, and that correlation is exact only because the weaver emits it in place of the POP and nowhere else. awaitResultDiscarded is the same for a timed CountDownLatch.await, and a timeout counts against the latch only there: a caller that reads the boolean handles it (#1501).")
 public final class AgentConcurrencyUtilHooks {
 
     private AgentConcurrencyUtilHooks() {
@@ -594,10 +594,50 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * The latch the calling thread's last timed await timed out on, held weakly until
+     * {@link #awaitResultDiscarded} tells whether the caller looked at the timeout (#1501).
+     */
+    private static final ThreadLocal<java.lang.ref.WeakReference<CountDownLatch>> TIMED_OUT_LATCH =
+            new ThreadLocal<>();
+
+    /**
+     * Not an operation: the weaver substitutes it for the {@code POP} that follows a timed
+     * {@code CountDownLatch.await} whose boolean the caller never read (#1501). It is always the
+     * instruction after {@link #await(CountDownLatch, long, TimeUnit)} on the same thread. A
+     * discarded timeout is the finding: the caller went on as though the latch had reached zero.
+     *
+     * @param reachedZero what the await returned, which the caller's {@code POP} would have taken
+     * @since 1.14.5
+     */
+    public static void awaitResultDiscarded(boolean reachedZero) {
+        java.lang.ref.WeakReference<CountDownLatch> pending = TIMED_OUT_LATCH.get();
+        if (reachedZero || pending == null) {
+            return;
+        }
+        TIMED_OUT_LATCH.remove();
+        CountDownLatch latch = pending.get();
+        if (latch == null) {
+            return;
+        }
+        LatchMisuseDetector misuse = AsyncTestContext.currentLatchMisuseDetector();
+        if (misuse != null) {
+            misuse.recordAwait(latch);
+        }
+        CountDownLatchDetector counts = AsyncTestContext.currentCountDownLatchDetector();
+        if (counts != null) {
+            counts.recordTimeout(latch);
+        }
+    }
+
+    /**
      * Weaves {@code CountDownLatch.await(long, TimeUnit)}.
      *
-     * <p>The timeout branch is the finding: a latch that timed out was not counted down as often as
-     * somebody expected, and the boolean saying so is routinely discarded.
+     * <p>The timeout branch is the finding when the caller discards the boolean saying so: then it
+     * went on as though the latch had reached zero. A caller that reads it, a stop-latch poll or an
+     * {@code if (!latch.await(...))}, handles the timeout, so a timeout counts against the latch
+     * only in {@link #awaitResultDiscarded}, which the weaver puts where the caller's {@code POP}
+     * was (#1501). A timed await is counted as an await by {@code LatchMisuseDetector} only once
+     * it reached zero or its timeout was discarded, for the same reason.
      *
      * @param receiver the latch
      * @param timeout  how long to wait
@@ -609,32 +649,25 @@ public final class AgentConcurrencyUtilHooks {
             throws InterruptedException {
         ControlledSchedule.point();
         LatchMisuseDetector misuse = AsyncTestContext.currentLatchMisuseDetector();
-        // As in await(): a helper thread's await is recorded once it has come back (#1339).
-        boolean helper = misuse != null && AsyncTestContext.notAWorker();
         if (misuse != null) {
             misuse.observeLatch(receiver);
-            if (!helper) {
-                misuse.recordAwait(receiver);
-            }
         }
         boolean reachedZero = receiver.await(timeout, unit);
         if (reachedZero) {
             HappensBefore.acquire(receiver);
-        }
-        if (misuse != null && helper) {
-            misuse.recordAwait(receiver);
-        }
-        // Only the true branch: a timed-out await proves nothing about the latch reaching zero.
-        if (misuse != null && reachedZero) {
-            misuse.recordAwaitReturned(receiver);
-        }
-        CountDownLatchDetector counts = AsyncTestContext.currentCountDownLatchDetector();
-        if (counts != null) {
-            if (reachedZero) {
-                counts.recordAwaitSuccess(receiver);
-            } else {
-                counts.recordTimeout(receiver);
+            TIMED_OUT_LATCH.remove();
+            if (misuse != null) {
+                misuse.recordAwait(receiver);
+                misuse.recordAwaitReturned(receiver);
             }
+            CountDownLatchDetector counts = AsyncTestContext.currentCountDownLatchDetector();
+            if (counts != null) {
+                counts.recordAwaitSuccess(receiver);
+            }
+        } else {
+            // Whether this timeout matters depends on whether the caller reads it (#1501): the
+            // next instruction on this thread is awaitResultDiscarded when it does not.
+            TIMED_OUT_LATCH.set(new java.lang.ref.WeakReference<>(receiver));
         }
         return reachedZero;
     }

@@ -902,7 +902,9 @@ final class CollectionAccessWeaver {
             Entry.call(Semaphore.class, "drainPermits", "drainPermits"),
             Entry.call(CountDownLatch.class, "countDown", "countDown"),
             Entry.call(CountDownLatch.class, "await", "await"),
-            Entry.call(CountDownLatch.class, "await", "await", long.class, TimeUnit.class),
+            // A timeout the caller reads is handled; one it pops is the finding (#1501).
+            Entry.call(CountDownLatch.class, "await", "await", long.class, TimeUnit.class)
+                    .whenResultDiscarded("awaitResultDiscarded"),
             // A rendezvous the memory model orders: what each party did before await before what
             // every party does after a normal return from the same generation (#1246).
             Entry.call(CyclicBarrier.class, "await", "await"),
