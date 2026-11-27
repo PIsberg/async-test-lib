@@ -49,10 +49,22 @@ public class LatchMisuseDetector extends AbstractInstanceDetector<LatchMisuseDet
          * to see (#499).
          */
         final AtomicInteger awaitReturns = new AtomicInteger();
+        /**
+         * The latch itself, weakly, so analysis can ask whether it reached zero (#1501); {@code null}
+         * for a subject that is not a {@code CountDownLatch}.
+         */
+        final java.lang.ref.@Nullable WeakReference<CountDownLatch> latch;
 
-        LatchState(String name, int initialCount) {
+        LatchState(String name, int initialCount, @Nullable CountDownLatch latch) {
             this.name = name;
             this.initialCount = new AtomicInteger(initialCount);
+            this.latch = latch == null ? null : new java.lang.ref.WeakReference<>(latch);
+        }
+
+        /** {@return whether the latch is known to be at zero now, which proves it was counted down} */
+        boolean atZero() {
+            CountDownLatch counted = latch == null ? null : latch.get();
+            return counted != null && counted.getCount() == 0L;
         }
     }
 
@@ -68,7 +80,8 @@ public class LatchMisuseDetector extends AbstractInstanceDetector<LatchMisuseDet
             return;
         }
         stateFor(latch, name == null || name.isBlank() ? null : name, "CountDownLatch",
-                label -> new LatchState(label, initialCount));
+                label -> new LatchState(label, initialCount,
+                        latch instanceof CountDownLatch counted ? counted : null));
     }
 
     /**
@@ -98,7 +111,8 @@ public class LatchMisuseDetector extends AbstractInstanceDetector<LatchMisuseDet
         int observed = (int) Math.min(countDownLatch.getCount(), Integer.MAX_VALUE);
         LatchState state = trackedState(latch);
         if (state == null) {
-            state = stateFor(latch, null, "CountDownLatch", label -> new LatchState(label, observed));
+            state = stateFor(latch, null, "CountDownLatch",
+                    label -> new LatchState(label, observed, countDownLatch));
         }
         state.initialCount.accumulateAndGet(observed, Math::max);
     }
@@ -158,8 +172,10 @@ public class LatchMisuseDetector extends AbstractInstanceDetector<LatchMisuseDet
         for (LatchState state : states()) {
             // An await that returned settles it: the latch reached zero, so a shortfall in what
             // this detector recorded is a gap in observation rather than a missing countDown().
+            // So does the latch being at zero now, which a timed await that returned too early
+            // never shows (#1501).
             if (state.awaitCalls.get() > 0 && state.awaitReturns.get() == 0
-                    && state.countDownCalls.get() < state.initialCount.get()) {
+                    && state.countDownCalls.get() < state.initialCount.get() && !state.atZero()) {
                 report.missingCountDowns.add(String.format(
                     "%s: awaited %d time(s) but only %d/%d countDown() calls were recorded",
                     state.name,

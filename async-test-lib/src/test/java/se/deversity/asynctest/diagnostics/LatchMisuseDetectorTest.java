@@ -151,4 +151,32 @@ class LatchMisuseDetectorTest {
         LatchMisuseDetector d = new LatchMisuseDetector();
         AbstractInstanceDetectorTest.assertNotRetained(Object::new, l -> d.registerLatch(l, null, 1));
     }
+
+    /**
+     * #1501: an await that timed out, and countdowns made where the agent did not see them. The
+     * latch reached zero, but with no await recorded as returned the shortfall in recorded
+     * countdowns read as a CRITICAL missing countDown().
+     */
+    @org.junit.jupiter.api.Test
+    void aLatchAtZeroAfterAnUnreturnedAwaitIsNotMissingACountDown() {
+        LatchMisuseDetector detector = new LatchMisuseDetector();
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        detector.observeLatch(latch);
+        detector.recordAwait(latch); // a timed await that returned false
+        latch.countDown(); // in unwoven code: never recorded
+
+        org.junit.jupiter.api.Assertions.assertFalse(detector.analyze().hasIssues(),
+                "the latch is at zero, so its countdowns all happened");
+    }
+
+    @org.junit.jupiter.api.Test
+    void aLatchStillAboveZeroAfterAnUnreturnedAwaitIsMissingACountDown() {
+        LatchMisuseDetector detector = new LatchMisuseDetector();
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        detector.observeLatch(latch);
+        detector.recordAwait(latch);
+
+        org.junit.jupiter.api.Assertions.assertTrue(detector.analyze().hasIssues(),
+                "nothing counted the latch down");
+    }
 }

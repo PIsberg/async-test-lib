@@ -260,7 +260,11 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
                         releases - acquires - takenByHelpers));
                 }
             } else {
-                int extra = returnedTwice(state) - takenByHelpers;
+                // And only beyond what the run acquired in all: a thread that returns a permit
+                // another thread took held none itself, which counted as returning twice, though
+                // the run's acquisitions and releases balance (#1501).
+                int extra = Math.min(returnedTwice(state) - takenByHelpers,
+                        releases - acquires - takenByHelpers);
                 if (extra > 0) {
                     report.overReleases.add(String.format(
                         "%s: a thread released more permits than it acquired (%d extra release%s)",

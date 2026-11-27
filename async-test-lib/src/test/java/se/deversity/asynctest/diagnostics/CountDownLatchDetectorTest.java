@@ -199,4 +199,31 @@ public class CountDownLatchDetectorTest {
             detector.analyze();
         });
     }
+
+    /**
+     * #1501: a timed await that timed out, then the latch reached zero with no later await to say
+     * so. The timeout was cleared only by a later successful await, so the run was reported
+     * CRITICAL "await() timed out" on a latch that was fully counted down.
+     */
+    @org.junit.jupiter.api.Test
+    void aTimeoutOnALatchThatLaterReachedZeroIsNotReported() {
+        CountDownLatchDetector detector = new CountDownLatchDetector();
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+        detector.recordTimeout(latch); // a poll that came too early
+        latch.countDown();
+
+        org.junit.jupiter.api.Assertions.assertFalse(detector.analyze().hasIssues(),
+                "the latch is at zero: every countDown() it waited for came");
+    }
+
+    @org.junit.jupiter.api.Test
+    void aTimeoutOnALatchThatNeverReachedZeroIsReported() {
+        CountDownLatchDetector detector = new CountDownLatchDetector();
+        java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(2);
+        detector.recordTimeout(latch);
+        latch.countDown();
+
+        org.junit.jupiter.api.Assertions.assertTrue(detector.analyze().hasIssues(),
+                "one countDown() of two never came");
+    }
 }

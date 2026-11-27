@@ -97,6 +97,10 @@ public class CountDownLatchDetector {
     public CountDownLatchReport analyze() {
         Set<CountDownLatch> unresolvedTimeouts = new HashSet<>(timedOutLatches);
         unresolvedTimeouts.removeAll(succeededLatches);
+        // A latch at zero has had every countDown() it was waiting for, wherever they came from:
+        // a timeout on it was a poll that came too early, not a missing countDown() (#1501). It
+        // only counts down, so zero now proves zero was reached.
+        unresolvedTimeouts.removeIf(latch -> latch.getCount() == 0L);
         CountDownLatchReport report = new CountDownLatchReport(
             latchRegistry,
             unresolvedTimeouts,

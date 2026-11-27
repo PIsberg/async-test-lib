@@ -728,6 +728,47 @@ class TelemetryBridgeTest {
     }
 
     /**
+     * #1498 part 2, the other side: a write to the very field the speculation read, made before
+     * its validate and with no lock, is a write inside an optimistic read. It ends the speculation,
+     * so the read is not counted as validated, and the unguarded write races the writer.
+     */
+    @Test
+    void aWriteToAFieldTheSpeculationReadEndsItAndIsReported() throws Exception {
+        AtomicityValidator av = new AtomicityValidator();
+        java.util.concurrent.locks.StampedLock lock = new java.util.concurrent.locks.StampedLock();
+        Point point = new Point();
+        try (TelemetryBridge ignored = TelemetryBridge.activateWithFilter(av, id -> true)) {
+            Thread writer = new Thread(() -> {
+                long stamp = se.deversity.asynctest.AgentLockHooks.writeLock(lock);
+                try {
+                    TelemetryRegistry.recordAccess(point, null, null, Thread.currentThread().threadId(),
+                            "Point.x", true, false, Integer.MIN_VALUE, false, false);
+                    point.x++;
+                } finally {
+                    se.deversity.asynctest.AgentLockHooks.unlockWrite(lock, stamp);
+                }
+            });
+            writer.start();
+            writer.join();
+            Thread reader = new Thread(() -> {
+                long me = Thread.currentThread().threadId();
+                long stamp = se.deversity.asynctest.AgentLockHooks.tryOptimisticRead(lock);
+                TelemetryRegistry.recordAccess(point, null, null, me, "Point.x", false, false,
+                        Integer.MIN_VALUE, false, false);
+                TelemetryRegistry.recordAccess(point, null, null, me, "Point.x", true, false,
+                        Integer.MIN_VALUE, false, false);
+                point.x++;
+                se.deversity.asynctest.AgentLockHooks.validate(lock, stamp);
+            });
+            reader.start();
+            reader.join();
+            TelemetryRegistry.flush();
+        }
+        assertTrue(av.analyzeAtomicity().unsafeFieldAccesses.stream().anyMatch(l -> l.startsWith("Point.x")),
+                "point.x++ inside an optimistic read holds no lock: " + av.analyzeAtomicity().unsafeFieldAccesses);
+    }
+
+    /**
      * One writer moves the point under the write lock and one reader reads it optimistically,
      * through the real lock hooks, ring and bridge, in an order fixed by the test (#740).
      *
