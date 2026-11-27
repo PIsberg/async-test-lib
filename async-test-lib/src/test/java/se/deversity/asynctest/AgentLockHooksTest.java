@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -121,6 +122,79 @@ class AgentLockHooksTest {
                 "the Lock view of a StampedLock resolves to the same owner its stamps do");
         assertEquals(0L, HeldLocks.lockFingerprint(true), "and stays shared");
         AgentLockHooks.unlock(stampedReadView);
+    }
+
+    @Test
+    @DisplayName("a read view no woven call handed out still guards no write (#1498)")
+    void anUnwovenReadViewIsShared() {
+        ReentrantReadWriteLock readWrite = new ReentrantReadWriteLock();
+        // Obtained directly, as a view handed out before an attach or in unwoven code is: no hook
+        // saw it, so the map has no entry, and it was recorded as an exclusive lock of its own.
+        Lock readView = readWrite.readLock();
+        AgentLockHooks.lock(readView);
+        try {
+            assertNotEquals(0L, HeldLocks.lockFingerprint(false), "the read view guards reads");
+            assertEquals(0L, HeldLocks.lockFingerprint(true),
+                    "a read view admits every other reader, so it guards no write");
+        } finally {
+            AgentLockHooks.unlock(readView);
+        }
+    }
+
+    @Test
+    @DisplayName("the read-write view of a StampedLock resolves to the StampedLock (#1498)")
+    void aStampedReadWriteViewResolvesToItsOwner() {
+        StampedLock stamped = new StampedLock();
+        long stamp = AgentLockHooks.writeLock(stamped);
+        long exclusive = HeldLocks.lockFingerprint(true);
+        AgentLockHooks.unlockWrite(stamped, stamp);
+
+        ReadWriteLock asReadWrite = AgentLockHooks.asReadWriteLock(stamped);
+        Lock readView = AgentLockHooks.readLock(asReadWrite);
+        AgentLockHooks.lock(readView);
+        try {
+            assertEquals(exclusive, HeldLocks.lockFingerprint(false),
+                    "a reader through asReadWriteLock() and a writer through writeLock() share the lock");
+            assertEquals(0L, HeldLocks.lockFingerprint(true), "and the read side stays shared");
+        } finally {
+            AgentLockHooks.unlock(readView);
+        }
+        Lock writeView = AgentLockHooks.writeLock(asReadWrite);
+        AgentLockHooks.lock(writeView);
+        try {
+            assertEquals(exclusive, HeldLocks.lockFingerprint(true), "the write side is the owner, exclusive");
+        } finally {
+            AgentLockHooks.unlock(writeView);
+        }
+    }
+
+    @Test
+    @DisplayName("remembering a lock's views does not keep the lock alive (#1498)")
+    void rememberedViewsDoNotKeepTheirLockAlive() throws InterruptedException {
+        java.lang.ref.WeakReference<ReentrantReadWriteLock> readWrite = rememberViewsOfANewReadWriteLock();
+        java.lang.ref.WeakReference<StampedLock> stamped = rememberViewsOfANewStampedLock();
+        for (int i = 0; i < 50 && (readWrite.get() != null || stamped.get() != null); i++) {
+            System.gc();
+            Thread.sleep(20);
+        }
+        // The map is weak in its keys, the views, but each value named the owner strongly, and the
+        // owner holds its views: the value kept its own key alive, and every woven lock lived on.
+        assertNull(readWrite.get(), "a ReentrantReadWriteLock whose views were remembered was never collected");
+        assertNull(stamped.get(), "a StampedLock whose views were remembered was never collected");
+    }
+
+    private static java.lang.ref.WeakReference<ReentrantReadWriteLock> rememberViewsOfANewReadWriteLock() {
+        ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+        AgentLockHooks.readLock(lock);
+        AgentLockHooks.writeLock(lock);
+        return new java.lang.ref.WeakReference<>(lock);
+    }
+
+    private static java.lang.ref.WeakReference<StampedLock> rememberViewsOfANewStampedLock() {
+        StampedLock lock = new StampedLock();
+        AgentLockHooks.asReadLock(lock);
+        AgentLockHooks.asWriteLock(lock);
+        return new java.lang.ref.WeakReference<>(lock);
     }
 
     @Test
