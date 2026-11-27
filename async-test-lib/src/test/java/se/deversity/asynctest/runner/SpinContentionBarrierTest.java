@@ -84,6 +84,10 @@ class SpinContentionBarrierTest {
         Field phaseField = SpinContentionBarrier.class.getDeclaredField("currentPhase");
         phaseField.setAccessible(true);
         phaseField.setInt(barrier, Integer.MAX_VALUE);
+        // The arrivals word carries the phase an arrival belongs to in its high half (#1504).
+        Field arrivalsField = SpinContentionBarrier.class.getDeclaredField("arrivals");
+        arrivalsField.setAccessible(true);
+        ((java.util.concurrent.atomic.AtomicLong) arrivalsField.get(barrier)).set((long) Integer.MAX_VALUE << 32);
 
         ExecutorService executor = Executors.newFixedThreadPool(threads);
         CountDownLatch latch = new CountDownLatch(threads);
@@ -120,5 +124,82 @@ class SpinContentionBarrierTest {
         assertEquals(Integer.MIN_VALUE + 1, phaseField.getInt(barrier));
 
         executor.shutdownNow();
+    }
+
+    /**
+     * An interrupted arrival used to stay counted (#1504): the thread's next await was then taken
+     * for the last of the two, returned at once without its peer, and left the peer spinning.
+     */
+    @Test
+    void anInterruptedArrivalIsWithdrawn() throws Exception {
+        SpinContentionBarrier barrier = new SpinContentionBarrier(2);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> interrupted = pool.submit(() -> {
+                Thread.currentThread().interrupt();
+                try {
+                    barrier.await();
+                    return false;
+                } catch (InterruptedException expected) {
+                    return true;
+                }
+            });
+            assertTrue(interrupted.get(5, TimeUnit.SECONDS), "the interrupted arrival throws");
+
+            CountDownLatch released = new CountDownLatch(1);
+            Future<?> again = pool.submit(() -> {
+                barrier.await();
+                released.countDown();
+                return null;
+            });
+            assertFalse(released.await(200, TimeUnit.MILLISECONDS),
+                    "alone at a barrier of two, the second await must wait for its peer");
+
+            Future<?> peer = pool.submit(() -> {
+                barrier.await();
+                return null;
+            });
+            peer.get(5, TimeUnit.SECONDS);
+            again.get(5, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    /**
+     * An interrupt that lands while the last arrival is releasing the phase does not take back an
+     * arrival that phase already counted: the thread goes through as released, its interrupt
+     * status set again for whoever looks next (#1504).
+     */
+    @Test
+    void anInterruptAsThePhaseReleasesLetsTheThreadThrough() throws Exception {
+        SpinContentionBarrier barrier = new SpinContentionBarrier(2);
+        Field arrivalsField = SpinContentionBarrier.class.getDeclaredField("arrivals");
+        arrivalsField.setAccessible(true);
+        java.util.concurrent.atomic.AtomicLong arrivals =
+                (java.util.concurrent.atomic.AtomicLong) arrivalsField.get(barrier);
+
+        CompletableFuture<Boolean> outcome = new CompletableFuture<>();
+        Thread spinner = new Thread(() -> {
+            try {
+                barrier.await();
+                outcome.complete(Thread.currentThread().isInterrupted());
+            } catch (InterruptedException e) {
+                outcome.completeExceptionally(e);
+            }
+        });
+        spinner.start();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (arrivals.get() != 1L && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertEquals(1L, arrivals.get(), "the spinner arrived in phase 0");
+        // The last arrival's first step: phase 1 open, not yet published to the spinners.
+        arrivals.set(1L << 32);
+        spinner.interrupt();
+
+        assertTrue(outcome.get(5, TimeUnit.SECONDS),
+                "the thread returns as released, with its interrupt status set again");
+        spinner.join(5_000);
     }
 }

@@ -850,13 +850,27 @@ public class ConcurrencyRunner {
     public static void executeForCodeIn(ReflectiveInvocationContext<Method> invocationContext,
                                         AsyncTestConfig config, Class<?> codeUnderTest,
                                         @Nullable String displayName) throws Throwable {
+        // Saved and put back rather than removed: the shrink a failing history's gate runs is a
+        // nested run on this same thread, inside the outer run's reporting, and removing the
+        // outer run's name there sent its gate and baseline key out as #run (#1504).
+        @Nullable Class<?> outerCode = CODE_UNDER_TEST.get();
+        @Nullable String outerName = DISPLAY_NAME.get();
         CODE_UNDER_TEST.set(codeUnderTest);
         DISPLAY_NAME.set(displayName);
         try {
             execute(invocationContext, config);
         } finally {
-            DISPLAY_NAME.remove();
-            CODE_UNDER_TEST.remove();
+            restore(DISPLAY_NAME, outerName);
+            restore(CODE_UNDER_TEST, outerCode);
+        }
+    }
+
+    /** Puts {@code outer} back in {@code local}, or empties it when there was nothing to put back. */
+    private static <T> void restore(ThreadLocal<T> local, @Nullable T outer) {
+        if (outer == null) {
+            local.remove();
+        } else {
+            local.set(outer);
         }
     }
 
@@ -872,12 +886,8 @@ public class ConcurrencyRunner {
      */
     public static void executeForCodeIn(ReflectiveInvocationContext<Method> invocationContext,
                                         AsyncTestConfig config, Class<?> codeUnderTest) throws Throwable {
-        CODE_UNDER_TEST.set(codeUnderTest);
-        try {
-            execute(invocationContext, config);
-        } finally {
-            CODE_UNDER_TEST.remove();
-        }
+        // No name of its own, so a nested run does not take over an outer run's name either.
+        executeForCodeIn(invocationContext, config, codeUnderTest, null);
     }
 
     /**
@@ -1801,19 +1811,27 @@ public class ConcurrencyRunner {
      * {@code RoundTimeoutError}, taking its thread dump and its suppressed per-worker causes with
      * it and leaving the user a message about a teardown method instead. That fired precisely when
      * the diagnosis mattered most, because after-hooks typically reset the state a timed-out round
-     * corrupted, so a corrupt round and a throwing hook are correlated, not independent.
+     * corrupted, so a corrupt round and a throwing hook are correlated, not independent. Every
+     * hook runs, whatever an earlier one threw: the first failure is the one returned when the
+     * round passed, and the rest are attached to it as suppressed (#1504).
      */
     private static @Nullable Throwable runAfterHooks(@Nullable Object testInstance, List<Method> hooks,
                                                      @Nullable Throwable roundFailure) {
-        try {
-            invokeLifecycleMethods(testInstance, hooks);
-        } catch (Throwable hookFailure) { // NOPMD - broad: any hook failure, same policy
-            if (roundFailure == null) {
-                return hookFailure;
+        Throwable failure = roundFailure;
+        // One at a time, as JUnit runs @AfterEach: a hook that throws must not skip the ones after
+        // it, which are the superclass teardowns that close what the subclass hooks assumed (#1504).
+        for (Method hook : hooks) {
+            try {
+                invokeLifecycleMethods(testInstance, List.of(hook));
+            } catch (Throwable hookFailure) { // NOPMD - broad: any hook failure, same policy
+                if (failure == null) {
+                    failure = hookFailure;
+                } else {
+                    failure.addSuppressed(hookFailure);
+                }
             }
-            roundFailure.addSuppressed(hookFailure);
         }
-        return roundFailure;
+        return failure;
     }
 
     /**

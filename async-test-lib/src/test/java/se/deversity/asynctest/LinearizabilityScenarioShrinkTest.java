@@ -137,4 +137,28 @@ class LinearizabilityScenarioShrinkTest {
         assertEquals(1, history.rounds(), "a passing check re-runs nothing into the history");
         assertThrows(NullPointerException.class, () -> history.assertLinearizable(null));
     }
+
+    /**
+     * The shrink a failing drawn scenario triggers runs on the caller's thread, inside the outer
+     * run's gate, through {@link AsyncTestRunner#run} again. Its run used to remove the outer
+     * run's display name when it ended, so the outer gate and baseline key read {@code #run}
+     * instead of the name the caller chose (#1504).
+     */
+    @Test
+    void aNamedRunKeepsItsNameThroughTheShrinkItsGateRuns() throws Throwable {
+        for (long seed = 1; seed <= 64; seed++) {
+            OperationHistory<ReadPointWriteCounter> history = history().verifiedAgainst(COUNTER);
+            AsyncTestConfig cfg = AsyncTestConfig.builder().threads(3).invocations(1).replaySeed(seed)
+                    .controlledSchedule(true).timeoutMs(60_000).licenseMockMode(true)
+                    .failOn(FailOn.HIGH).build();
+            try {
+                AsyncTestRunner.run("custom-name", cfg, () -> history.generate(6));
+            } catch (AssertionError gate) {
+                assertTrue(gate.getMessage().contains("#custom-name"),
+                        "the outer gate must keep the caller's name: " + gate.getMessage());
+                return;
+            }
+        }
+        throw new AssertionError("no seed in 1..64 lost an update, so no shrink ran");
+    }
 }

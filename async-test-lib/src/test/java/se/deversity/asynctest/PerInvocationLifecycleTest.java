@@ -203,6 +203,50 @@ class PerInvocationLifecycleTest {
                 + "surfaced: " + rendered);
     }
 
+    // ---- a throwing @AfterEachInvocation does not skip the ones after it (#1504) ----
+
+    static class ClosesItsPool {
+        static final AtomicInteger subTeardowns = new AtomicInteger();
+        static final AtomicInteger baseTeardowns = new AtomicInteger();
+
+        @AfterEachInvocation
+        void closePool() { baseTeardowns.incrementAndGet(); }
+    }
+
+    static class SubTeardownThrows extends ClosesItsPool {
+        @AsyncTest(threads = 2,
+                   invocations = 3,
+                   timeoutMs = 5_000,
+                   useVirtualThreads = false,
+                   detectAll = true)
+        void noOp() { /* nothing */ }
+
+        @AfterEachInvocation
+        void resetFirst() {
+            subTeardowns.incrementAndGet();
+            throw new IllegalStateException("the subclass teardown failed");
+        }
+    }
+
+    /**
+     * Subclass after-hooks run before superclass ones, so a subclass teardown that throws used to
+     * skip the superclass hook that closes the pool, as JUnit's {@code @AfterEach} never does.
+     */
+    @Test
+    void aThrowingAfterHookDoesNotSkipTheSuperclassTeardown() {
+        ClosesItsPool.subTeardowns.set(0);
+        ClosesItsPool.baseTeardowns.set(0);
+        Events events = EngineTestKit.engine("junit-jupiter")
+            .selectors(selectClass(SubTeardownThrows.class))
+            .execute()
+            .testEvents();
+
+        assertEquals(1, events.failed().count(), "the throwing teardown still fails the test");
+        assertTrue(ClosesItsPool.subTeardowns.get() >= 1, "the subclass teardown ran");
+        assertEquals(ClosesItsPool.subTeardowns.get(), ClosesItsPool.baseTeardowns.get(),
+            "every round whose subclass teardown threw still ran the superclass teardown after it");
+    }
+
     // ---- inherited hooks follow the @BeforeEach/@AfterEach rules ----
     //
     // JUnit: a lifecycle method is inherited from a superclass unless it is overridden, and
