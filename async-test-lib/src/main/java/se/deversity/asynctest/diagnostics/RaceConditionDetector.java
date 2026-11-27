@@ -380,6 +380,14 @@ public class RaceConditionDetector extends AbstractInstanceDetector<RaceConditio
         if (HappensBefore.everyConflictOrdered(accesses, readsConflict)) {
             return;
         }
+        // The two checks above are the fast paths: one lock over the whole round, or an edge
+        // under every pair. A round can fail both and still race nowhere, each pair covered by one
+        // or the other: unlocked set-up published to writers that then share a lock. Only a pair
+        // covered by neither is a race (#1500).
+        FieldAccess[] pair = firstRacingPair(accesses, readsConflict);
+        if (pair.length < 2) {
+            return;
+        }
 
         SiteCapture.Site site = field.firstWrite;
         // Record events for deduplication. -1 is the event contract's "line unknown"; the report
@@ -396,7 +404,8 @@ public class RaceConditionDetector extends AbstractInstanceDetector<RaceConditio
         }
 
         if (writers.size() > 1 && !allWritesGuarded
-                && !HappensBefore.everyConflictOrdered(accesses, false)) {
+                && !HappensBefore.everyConflictOrdered(accesses, false)
+                && firstRacingPair(accesses, false).length == 2) {
             report.add(report.potentialRaces, "concurrentWrites", site, String.format(Locale.ROOT,
                 "%s: written by %d threads, %d writes in all%s",
                 fieldRef, writers.size(), writeCount,
@@ -404,17 +413,14 @@ public class RaceConditionDetector extends AbstractInstanceDetector<RaceConditio
             ));
         }
 
-        FieldAccess[] pair = firstRacingPair(accesses, readsConflict);
-        if (pair.length == 2) {
-            report.add(report.unsafeAccesses, "unsynchronizedSequence", site, String.format(Locale.ROOT,
-                "%s: thread %d %s followed by thread %d %s",
-                fieldRef,
-                pair[0].threadId,
-                pair[0].write ? "write" : "read",
-                pair[1].threadId,
-                pair[1].write ? "write" : "read"
-            ));
-        }
+        report.add(report.unsafeAccesses, "unsynchronizedSequence", site, String.format(Locale.ROOT,
+            "%s: thread %d %s followed by thread %d %s",
+            fieldRef,
+            pair[0].threadId,
+            pair[0].write ? "write" : "read",
+            pair[1].threadId,
+            pair[1].write ? "write" : "read"
+        ));
     }
 
     /**

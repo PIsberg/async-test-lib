@@ -140,6 +140,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schedule (#1495, part 3).** An adopted thread never leaves its round, so a pool thread a woven
   thread factory built in one round carried that round's worker into the next, took itself for a
   caller-runs thread there, and ran the task uncontrolled while the round counted no escape.
+- **Locked writes after a published set-up are not a race, in `RaceConditionDetector` and in
+  `AtomicityValidator`'s owner-aware API (#1500).** `RaceConditionDetector`'s concurrent-writes line
+  (default in `Preset.ESSENTIALS`) asked, separately, whether one lock covered every write and
+  whether every write pair was ordered. An unlocked set-up published through a latch, followed by
+  writers sharing a monitor, failed both, so it was reported though no pair raced. It now reports
+  only a pair that shares no lock and is not ordered. `AtomicityValidator.recordFieldAccessOn`
+  records the locks it probes at the access, but the per-pair excuses read only the agent's
+  fingerprint, which that path leaves empty, so workers updating under the owner's monitor
+  followed by a joined unlocked read were reported. The excuses now read the probed locks.
 - **A write ordered after concurrent readers takes the instance over instead of sharing it
   (#1499, part 2).** Two threads reading a non-thread-safe instance at once made its round window
   shared, which was not a finding since reads alone cannot race. But a shared window never looked

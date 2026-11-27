@@ -655,4 +655,66 @@ public class RaceConditionDetectorTest {
         RaceConditionDetector d = new RaceConditionDetector();
         AbstractInstanceDetectorTest.assertNotRetained(Object::new, o -> d.recordFieldWrite(o, "count"));
     }
+
+    /**
+     * An unlocked set-up write published to two writers that then write under the object's own
+     * monitor; {@code bothOrdered} decides whether the second writer acquires the publication.
+     */
+    private static boolean setUpThenLockedWritersReported(boolean bothOrdered) throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Box box = new Box();
+        Object published = new Object();
+        Thread setUp = new Thread(() -> {
+            box.f = 1;
+            detector.recordFieldWrite(box, "f");
+            HappensBefore.release(published); // a latch countDown, a volatile store, a start
+        });
+        setUp.start();
+        setUp.join();
+        java.util.concurrent.CyclicBarrier together = new java.util.concurrent.CyclicBarrier(2);
+        Thread[] writers = new Thread[2];
+        for (int i = 0; i < writers.length; i++) {
+            boolean acquires = bothOrdered || i == 0;
+            writers[i] = new Thread(() -> {
+                if (acquires) {
+                    HappensBefore.acquire(published);
+                }
+                try {
+                    together.await(); // timing only: an unwoven barrier orders nothing
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                }
+                synchronized (box) {
+                    box.f++;
+                    detector.recordFieldWrite(box, "f");
+                }
+            });
+        }
+        for (Thread writer : writers) {
+            writer.start();
+        }
+        for (Thread writer : writers) {
+            writer.join();
+        }
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    /**
+     * #1500: every write-write pair here is covered, the set-up against each writer by the
+     * publication and the writers against each other by the monitor, but by different means. The
+     * concurrent-writes line asked whether one lock covered every write and, separately, whether
+     * every pair was ordered; both said no, so it reported a race no pair makes.
+     */
+    @Test
+    void anUnlockedSetUpPublishedBeforeLockedWritesIsNotARace() throws InterruptedException {
+        assertFalse(setUpThenLockedWritersReported(true),
+                "the set-up is ordered before both writers, and the writers share the monitor");
+    }
+
+    @Test
+    void aLockedWriterTheSetUpWasNotPublishedToStillRaces() throws InterruptedException {
+        assertTrue(setUpThenLockedWritersReported(false),
+                "the second writer holds the monitor the set-up never took and acquired nothing: "
+                        + "that pair races");
+    }
 }
