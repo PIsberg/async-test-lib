@@ -64,6 +64,11 @@ class HandledWaitExitWeavingTest {
         bean.notifyThenDeadlineLoop();
     }
 
+    @AsyncTest(threads = 2, invocations = 10, detectAll = true)
+    void aDeadlineReturnFollowedByMoreOfTheBody() throws InterruptedException {
+        bean.notifyThenDeadlineLoopWithMoreBody();
+    }
+
     @AfterAll
     static void noneOfTheLoopsIsReported() {
         try {

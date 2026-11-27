@@ -166,6 +166,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `InterruptedException` from the condition as "not yet true" with its interrupt status already
   cleared, so a worker the round cancelled polled on until the timeout. It now restores the status
   and fails at once.
+- **A wait loop that leaves after its deadline test, past the `goto` that closes it, is not a lost
+  signal (#1555).** `while (!done) { monitor.wait(t); if (late) return; work(); }` is marked as a
+  loop, but the wakeup that ends it leaves by the `return` and never reaches the back-edge call, so
+  that last wait was judged as an `if`: 20 HIGH findings in the new `HandledWaitExitWeavingTest`
+  body. The weaver now replays each waiting method once into nothing to learn which waits a marked
+  back-edge encloses, and puts `AgentMonitorHooks.loopWaitReturned()` right after each, which
+  records what the back-edge records. `MissedSignalBackEdgeWeavingTest` counts those calls per
+  shape: one in every marked loop, none in the do/while, continue, endless, break and `if` shapes.
+  The cost is a second replay of each waiting method when its class is woven.
 - **A timed `Object.wait` loop that returns at its deadline is not a lost signal (#1551).** javac
   compiles `while (!done) { monitor.wait(t); if (late) return; }` with the deadline test jumping
   straight back to the loop head, no `goto`, so the weaver never marked the loop and every wait in
