@@ -1060,9 +1060,9 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="3376.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object, Object): A…</text>
   <text x="3376.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">abaSlot(Object, int): ABAP…</text>
   <text x="3376.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquire(Semaphore): void</text>
-  <text x="3376.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">tryAcquire(Semaphore): boo…</text>
-  <text x="3376.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">futureTaskRun(FutureTask&lt;O…</text>
-  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+438 more)</text>
+  <text x="3376.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquireUninterruptibly(Sem…</text>
+  <text x="3376.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">acquireUninterruptibly(Sem…</text>
+  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+441 more)</text>
 </g>
 <g id="AgentConstructionHooks">
   <title>AgentConstructionHooks [CLASS]</title>
@@ -1509,7 +1509,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="6280.0" y="2855.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerSemaphore(Semaphor…</text>
   <text x="6280.0" y="2870.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAcquire(Semaphore, S…</text>
   <text x="6280.0" y="2885.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordRelease(Semaphore, S…</text>
-  <text x="6280.0" y="2900.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
+  <text x="6280.0" y="2900.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+4 more)</text>
 </g>
 <g id="CompletableFutureExceptionDetector">
   <title>CompletableFutureExceptionDetector [CLASS]</title>

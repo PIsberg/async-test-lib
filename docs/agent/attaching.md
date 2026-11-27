@@ -523,7 +523,8 @@ its action or transformer, an object put into such a map as the key and read bac
 `keySet()`, `keys()` or an entry (a `String`, a boxed number or an enum constant is not published
 as a key, since unrelated code shares it),
 `CountDownLatch.countDown` and an `await` that reached zero, `Semaphore.release` and an acquire that
-took a permit, a `CyclicBarrier.await` and the normal returns from the same generation (#1246; the
+took a permit (`acquire`, `tryAcquire`, `acquireUninterruptibly`, or a `drainPermits` that took at
+least one, #1501), a `CyclicBarrier.await` and the normal returns from the same generation (#1246; the
 generation is read under the barrier's own lock, which needs `collections=true`), with the
 barrier action ordered after every party's arrival and before every return (#1267), the end of each task a woven `submit` or `execute` wrapped
 and an `ExecutorService.awaitTermination` that returned `true` or a `close` that returned, once the

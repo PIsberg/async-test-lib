@@ -481,4 +481,55 @@ public class SemaphoreMisuseDetectorTest {
         org.junit.jupiter.api.Assertions.assertFalse(detector.analyze().overReleases.isEmpty(),
                 "one acquisition and two releases");
     }
+
+    /** #1501: permits a thread drained and returned, after it used one through acquire before. */
+    @org.junit.jupiter.api.Test
+    void drainedPermitsReturnedAreNotAnOverRelease() throws InterruptedException {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        java.util.concurrent.Semaphore semaphore = new java.util.concurrent.Semaphore(3);
+        onThread(() -> {
+            semaphore.acquireUninterruptibly();
+            detector.recordAcquire(semaphore, "pool");
+            detector.recordRelease(semaphore, "pool");
+            semaphore.release();
+            int drained = semaphore.drainPermits();
+            detector.recordDrain(semaphore, "pool", drained);
+            for (int i = 0; i < drained; i++) {
+                detector.recordRelease(semaphore, "pool");
+            }
+            semaphore.release(drained);
+        });
+
+        SemaphoreMisuseDetector.SemaphoreMisuseReport report = detector.analyze();
+        org.junit.jupiter.api.Assertions.assertTrue(report.overReleases.isEmpty(),
+                "the drained permits were the thread's to return: " + report.overReleases);
+        org.junit.jupiter.api.Assertions.assertTrue(report.permitLeaks.isEmpty(), report.permitLeaks.toString());
+    }
+
+    @org.junit.jupiter.api.Test
+    void aPoolDrainedToCloseItIsNotALeak() throws InterruptedException {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        java.util.concurrent.Semaphore semaphore = new java.util.concurrent.Semaphore(3);
+        onThread(() -> detector.recordDrain(semaphore, "pool", semaphore.drainPermits()));
+
+        org.junit.jupiter.api.Assertions.assertTrue(detector.analyze().permitLeaks.isEmpty(),
+                "draining takes the permits out of use; it acquires nothing anyone owes back");
+    }
+
+    @org.junit.jupiter.api.Test
+    void returningMoreThanWasDrainedIsAnOverRelease() throws InterruptedException {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        java.util.concurrent.Semaphore semaphore = new java.util.concurrent.Semaphore(2);
+        onThread(() -> {
+            int drained = semaphore.drainPermits();
+            detector.recordDrain(semaphore, "pool", drained);
+            for (int i = 0; i <= drained; i++) { // one more than drained
+                detector.recordRelease(semaphore, "pool");
+                semaphore.release();
+            }
+        });
+
+        org.junit.jupiter.api.Assertions.assertFalse(detector.analyze().overReleases.isEmpty(),
+                "two permits drained, three returned");
+    }
 }

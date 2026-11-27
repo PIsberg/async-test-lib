@@ -235,6 +235,61 @@ public final class AgentConcurrencyUtilHooks {
     }
 
     /**
+     * Weaves {@code Semaphore.acquireUninterruptibly()} (#1501): the same acquisition as
+     * {@link #acquire(Semaphore)}. Unwoven, the release that returned the permit was recorded with
+     * no acquisition before it, an over-release on a thread that had acquired before, and the
+     * acquire edge was missing.
+     *
+     * @param receiver the semaphore
+     */
+    public static void acquireUninterruptibly(Semaphore receiver) {
+        ControlledSchedule.point();
+        receiver.acquireUninterruptibly();
+        recordAcquired(receiver, 1);
+    }
+
+    /**
+     * Weaves {@code Semaphore.acquireUninterruptibly(int)}, each permit recorded as
+     * {@link #acquire(Semaphore, int)} records it (#1501).
+     *
+     * @param receiver the semaphore
+     * @param permits  how many permits to take
+     */
+    public static void acquireUninterruptibly(Semaphore receiver, int permits) {
+        ControlledSchedule.point();
+        receiver.acquireUninterruptibly(permits);
+        recordAcquired(receiver, permits);
+    }
+
+    /**
+     * Weaves {@code Semaphore.drainPermits()} (#1501). The drained permits are held by the
+     * draining thread, so a release that returns them is no over-release; they are not counted as
+     * acquisitions, so a pool drained to close it and never refilled is no leak.
+     *
+     * @param receiver the semaphore
+     * @return how many permits were taken
+     */
+    public static int drainPermits(Semaphore receiver) {
+        ControlledSchedule.point();
+        int drained = receiver.drainPermits();
+        if (drained > 0) {
+            HappensBefore.acquire(receiver);
+            SemaphoreMisuseDetector detector = AsyncTestContext.currentSemaphoreMisuseDetector();
+            if (detector != null) {
+                detector.recordDrain(receiver, receiver.getClass().getName(), drained);
+            } else {
+                detector = AsyncTestContext.helperSemaphoreMisuseDetector();
+                if (detector != null) {
+                    for (int i = 0; i < drained; i++) {
+                        detector.recordHelperAcquire(receiver, receiver.getClass().getName());
+                    }
+                }
+            }
+        }
+        return drained;
+    }
+
+    /**
      * Weaves {@code Semaphore.tryAcquire()}.
      *
      * @param receiver the semaphore

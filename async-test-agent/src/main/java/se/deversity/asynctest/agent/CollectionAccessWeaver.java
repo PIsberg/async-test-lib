@@ -895,6 +895,11 @@ final class CollectionAccessWeaver {
             Entry.call(Semaphore.class, "tryAcquire", "tryAcquire",
                     int.class, long.class, TimeUnit.class),
             Entry.call(Semaphore.class, "release", "release", int.class),
+            // The uninterruptible acquires and the drain take permits too; unwoven, the release
+            // that returned them read as one with no acquisition before it (#1501).
+            Entry.call(Semaphore.class, "acquireUninterruptibly", "acquireUninterruptibly"),
+            Entry.call(Semaphore.class, "acquireUninterruptibly", "acquireUninterruptibly", int.class),
+            Entry.call(Semaphore.class, "drainPermits", "drainPermits"),
             Entry.call(CountDownLatch.class, "countDown", "countDown"),
             Entry.call(CountDownLatch.class, "await", "await"),
             Entry.call(CountDownLatch.class, "await", "await", long.class, TimeUnit.class),
