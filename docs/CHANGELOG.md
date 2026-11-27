@@ -166,6 +166,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `InterruptedException` from the condition as "not yet true" with its interrupt status already
   cleared, so a worker the round cancelled polled on until the timeout. It now restores the status
   and fails at once.
+- **Every `@AfterEachInvocation` hook runs, a named run keeps its name through a shrink, and an
+  interrupted spin-barrier arrival is taken back (#1504).** A throwing after-hook skipped every
+  hook after it, and subclass hooks run first, so a subclass teardown that threw left the
+  superclass teardown that closes a pool unrun; each hook now runs, and later failures are
+  attached as suppressed, as JUnit does for `@AfterEach`. `AsyncTestRunner.run("name", ...)`
+  with a failing `OperationHistory.verifiedAgainst` history shrinks the scenario through nested
+  runs on the same thread, and each removed the outer run's display name when it ended, so the
+  `failOn` gate and the baseline key read `#run`; the runner now saves and restores the name
+  and the code-under-test class. `SpinContentionBarrier` (`-Dasync-test.spin-barrier.enabled`)
+  kept an interrupted thread's arrival, so the thread's next await was taken for the last one
+  and released alone while its peer spun on; the phase and the arrivals now share one
+  `AtomicLong`, and an interrupted thread takes its arrival back while its phase is open.
+  Each fix has a test that was red before it.
 - **A predicate loop that leaves on an interrupt or on a timeout it tests is not a lost signal
   (#1501, part 1).** With the agent attached, `MissedSignalDetector` and
   `ConditionVariableDetector` reported HIGH "SIGNAL LOST" for a correct `while (!done)` loop after

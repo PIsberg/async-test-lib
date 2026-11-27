@@ -24,12 +24,18 @@ true microsecond-level memory-ordering races.
 
 - A `volatile int currentPhase` field (protected with manual cache-line padding `long` fields
   on both sides) tracks the barrier generation.
-- An `AtomicInteger arrivalCount` is incremented by each arriving thread.
-- The **last** thread to arrive resets `arrivalCount` to 0 and publishes the new phase via
+- An `AtomicLong arrivals` holds the phase an arrival belongs to in its high 32 bits and the
+  arrivals in it in the low 32; each arriving thread increments it, reading its phase in the
+  same step.
+- The **last** thread to arrive opens the next phase with no arrivals and publishes it via
   `VarHandle.setRelease`.  All spinners observe the change via `VarHandle.getAcquire` and
   return simultaneously within a sub-microsecond window.
 - `Thread.onSpinWait()` emits the `x86 PAUSE` / `ARM YIELD` hint to reduce pipeline stalls
   during the spin, and the interrupt flag is checked every 64 iterations for clean teardown.
+  An interrupted thread takes back its arrival with a compare-and-set that succeeds only while
+  its phase is still open, then throws `InterruptedException`, so its peers are never released
+  short and its own next await counts once (#1504). If the phase was released as the interrupt
+  landed, the thread goes through as released with its interrupt status set again.
 
 #### Integration
 `ConcurrencyRunner.createBarrier(threads, timeoutMs, useVirtualThreads)` returns a
