@@ -140,6 +140,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schedule (#1495, part 3).** An adopted thread never leaves its round, so a pool thread a woven
   thread factory built in one round carried that round's worker into the next, took itself for a
   caller-runs thread there, and ran the task uncontrolled while the round counted no escape.
+- **`AsyncAssert` reports one exception per failed future, and an interrupted condition stops
+  polling (#1502).** `FutureCapture` recorded a failure twice: the completion callback stored the
+  `CompletionException` a `supplyAsync` stage wraps its failure in, and `awaitDone` stored the
+  unwrapped cause. So `getError()` was one or the other depending on timing, and
+  `assertInstanceOf(IllegalStateException.class, capture.getError())` was flaky. The callback now
+  records it once, unwrapped, and `isFailed()` waits for completion. `awaitUntil` treated an
+  `InterruptedException` from the condition as "not yet true" with its interrupt status already
+  cleared, so a worker the round cancelled polled on until the timeout. It now restores the status
+  and fails at once.
 - **A latch that reached zero is not missing a countDown(), and a permit returned by another thread
   is not an over-release (#1501, parts 2 and 3).** A timed `await` that returned `false` was
   cleared only by a later successful await, so a poll that came too early on a latch that then

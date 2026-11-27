@@ -198,4 +198,49 @@ public class AsyncAssertTest {
         assertThrows(CancellationException.class,
                 () -> AsyncAssert.awaitAsync(future, Duration.ofSeconds(1)));
     }
+    /**
+     * #1502: a future completed with its failure wrapped in a {@code CompletionException}, which
+     * is how {@code supplyAsync} records what its supplier threw. The completion callback stored the
+     * wrapper and {@code awaitDone}'s {@code get()} stored the cause, so {@code getError()} was one
+     * type or the other depending on whether, and when, {@code awaitDone} ran.
+     */
+    @Test
+    void getErrorIsTheCauseWhetherOrNotAwaitDoneRan() {
+        IllegalStateException boom = new IllegalStateException("boom");
+
+        CompletableFuture<String> observedOnly = new CompletableFuture<>();
+        AsyncAssert.FutureCapture<String> withoutAwait = AsyncAssert.capture(observedOnly);
+        observedOnly.completeExceptionally(new java.util.concurrent.CompletionException(boom));
+        AsyncAssert.awaitUntil(withoutAwait::isComplete, Duration.ofSeconds(5));
+
+        CompletableFuture<String> awaited = new CompletableFuture<>();
+        AsyncAssert.FutureCapture<String> withAwait = AsyncAssert.capture(awaited);
+        awaited.completeExceptionally(new java.util.concurrent.CompletionException(boom));
+        withAwait.awaitDone(Duration.ofSeconds(5));
+
+        assertSame(boom, withAwait.getError(), "awaitDone unwraps the failure");
+        assertSame(boom, withoutAwait.getError(),
+                "the capture reports what the code threw, not the wrapper the future stored it in");
+        assertTrue(withoutAwait.isFailed() && withAwait.isFailed());
+    }
+
+    /**
+     * #1502: an {@code InterruptedException} from the condition itself, as {@code latch.await}
+     * throws when the round is cancelled. It was caught as "not yet true", with the interrupt
+     * status the JDK cleared before throwing lost, so polling went on until the timeout and the
+     * cancelled worker never stopped.
+     */
+    @Test
+    void anInterruptedConditionStopsPollingAndKeepsTheInterrupt() {
+        long started = System.nanoTime();
+        AssertionError failure = assertThrows(AssertionError.class, () -> AsyncAssert.awaitUntil(() -> {
+            throw new InterruptedException("round cancelled");
+        }, Duration.ofSeconds(10)));
+        long tookMs = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+        boolean interrupted = Thread.interrupted(); // read and clear, for the next test
+
+        assertTrue(interrupted, "the interrupt the condition consumed is restored");
+        assertTrue(failure.getCause() instanceof InterruptedException, "and the failure says why: " + failure);
+        assertTrue(tookMs < 5_000, "polling stopped at once instead of running out the timeout: " + tookMs + " ms");
+    }
 }

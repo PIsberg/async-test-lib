@@ -12,6 +12,7 @@ import java.time.Duration;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -95,7 +96,9 @@ public class AsyncAssert {
      *
      * <p>Only {@link Exception} is treated as "not yet true". An {@link Error} thrown by the
      * condition — including the {@link AssertionError} of a nested assertion — propagates
-     * immediately rather than being retried until the deadline.
+     * immediately rather than being retried until the deadline. An {@link InterruptedException}
+     * thrown by the condition ends polling at once, as an interrupt of the poll's own sleep does:
+     * the interrupt status is restored and an {@link AssertionError} thrown (#1502).
      *
      * @param condition    the predicate to poll; exceptions thrown during polling are treated as
      *                     "not yet true" and reported on failure
@@ -124,6 +127,12 @@ public class AsyncAssert {
                     return;
                 }
                 lastError = null;
+            } catch (InterruptedException e) {
+                // The condition was interrupted, as a latch or queue wait is when the round is
+                // cancelled: the JDK cleared the status before throwing, so it is restored and
+                // polling stops, or the cancelled worker would poll on to the timeout (#1502).
+                Thread.currentThread().interrupt();
+                throw new AssertionError("Polling interrupted", e);
             } catch (Exception e) { // NOPMD AvoidCatchingGenericException — polling deliberately retries transient failures
                 lastError = e;
             }
@@ -213,9 +222,14 @@ public class AsyncAssert {
         @SuppressWarnings("FutureReturnValueIgnored")
         public FutureCapture(CompletableFuture<T> future) {
             this.future = future;
+            // The one place the outcome is recorded (#1502). A failure a stage recorded wrapped in a
+            // CompletionException, as supplyAsync records what its supplier threw, is unwrapped
+            // here, as get() unwraps it, so the capture reports the same exception however and
+            // whenever it is read.
             future.whenComplete((res, err) -> {
                 result.set(res);
-                error.set(err);
+                error.set(err instanceof CompletionException wrapped && wrapped.getCause() != null
+                        ? wrapped.getCause() : err);
                 complete = true;
             });
         }
@@ -236,13 +250,10 @@ public class AsyncAssert {
             } catch (TimeoutException e) {
                 throw new AssertionError(
                         "Future did not complete within " + timeout.toMillis() + " ms", e);
-            } catch (ExecutionException e) {
-                Throwable cause = e.getCause();
-                error.set(cause != null ? cause : e);
-            } catch (CancellationException e) {
-                // get() reports a cancelled future unchecked; the completion callback records the
-                // same exception, and whichever of the two gets there first stands.
-                error.compareAndSet(null, e);
+            } catch (ExecutionException | CancellationException e) { // NOPMD EmptyCatchBlock - the outcome is the callback's
+                // The future completed exceptionally. The completion callback records it, and this
+                // method waits for the callback below: writing it here as well raced the callback,
+                // and the last writer decided which exception the capture reported (#1502).
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new AssertionError("Polling interrupted", e);
@@ -290,7 +301,7 @@ public class AsyncAssert {
          * @return {@code true} if the future has completed exceptionally
          * @since 1.9.0
          */
-        public boolean isFailed() { return error.get() != null; }
+        public boolean isFailed() { return complete && error.get() != null; }
 
         /**
          * Returns the captured value, or fails the test with the reason it is unavailable.
