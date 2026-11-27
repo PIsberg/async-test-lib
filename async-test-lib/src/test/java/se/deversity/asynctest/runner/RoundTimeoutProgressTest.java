@@ -29,10 +29,45 @@ class RoundTimeoutProgressTest {
         assertTrue(message.contains("rounds completed"), message);
         assertTrue(message.contains("raise it or lower invocations"), message);
         assertFalse(message.contains("Possible deadlock"), message);
+        // When the budget runs out on the last round's start barrier the cause may honestly say
+        // a worker never got past it (#1507); what it must never be is the barrier's own
+        // TimeoutException and BrokenBarrierException passed off as the test's failures.
+        assertFalse(message.contains("concurrent thread(s) failed"), message);
         if (timeout.getCause() != null) {
-            assertFalse(String.valueOf(timeout.getCause().getMessage()).contains("barrier"),
-                    "the workers were in the body: " + timeout.getCause().getMessage());
+            assertFalse(String.valueOf(timeout.getCause().getMessage()).contains("concurrent thread(s) failed"),
+                    "the barrier's exceptions are not the test's failures: " + timeout.getCause().getMessage());
         }
+    }
+
+    @Test
+    void aBudgetThatRunsOutAtTheStartBarrierIsATimeoutNotWorkerFailures() {
+        // What the CI flake did, without its timing: the first worker's barrier wait runs out and
+        // breaks the barrier for its peer, and both are done before the runner's own wait for the
+        // round begins. That round was reported as two worker failures, TimeoutException and
+        // BrokenBarrierException, the runner's own barrier passed off as the test's (#1507).
+        ConcurrencyRunner.BARRIER_FOR_TEST.set(threads -> {
+            java.util.concurrent.atomic.AtomicBoolean first = new java.util.concurrent.atomic.AtomicBoolean();
+            return () -> {
+                if (first.compareAndSet(false, true)) {
+                    throw new java.util.concurrent.TimeoutException();
+                }
+                throw new java.util.concurrent.BrokenBarrierException();
+            };
+        });
+        AssertionError timeout;
+        try {
+            timeout = assertThrows(AssertionError.class, () -> withUnstretchedBudget(() ->
+                    AsyncTestRunner.run(config().threads(2).invocations(1).timeoutMs(5_000).build(), () -> { })));
+        } finally {
+            ConcurrencyRunner.BARRIER_FOR_TEST.remove();
+        }
+
+        String message = timeout.getMessage() + " / " + (timeout.getCause() == null ? ""
+                : timeout.getCause().getMessage());
+        assertFalse(message.contains("concurrent thread(s) failed"),
+                "the runner's own barrier exceptions are not the test's failures: " + message);
+        assertTrue(message.contains("never got past the start barrier"),
+                "the round timed out at its start barrier, and says so: " + message);
     }
 
     @Test

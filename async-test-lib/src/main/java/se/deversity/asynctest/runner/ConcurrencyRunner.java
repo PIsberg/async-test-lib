@@ -932,9 +932,17 @@ public class ConcurrencyRunner {
      * for the CyclicBarrier lambda to type-check).
      */
     @FunctionalInterface
-    private interface ContentionBarrier {
+    interface ContentionBarrier {
         void arrive() throws InterruptedException, BrokenBarrierException, TimeoutException;
     }
+
+    /**
+     * Test seam (#1507): the barrier the rounds of a run started on this thread are built with,
+     * given the round's worker count, or nothing for {@link #createBarrier}'s. A thread-local, so a
+     * test that sets it changes only its own run, whatever runs beside it.
+     */
+    static final ThreadLocal<java.util.function.IntFunction<ContentionBarrier>> BARRIER_FOR_TEST =
+            new ThreadLocal<>();
 
     /**
      * Creates a {@link ContentionBarrier} for {@code threads} participants.
@@ -956,7 +964,8 @@ public class ConcurrencyRunner {
      * the timed {@code await}, the first stranded peer to hit {@code timeoutMs} breaks
      * the barrier for all the others too (they each get {@link BrokenBarrierException}
      * immediately rather than waiting out their own timeout), so the round fails fast
-     * with a clear diagnosis instead of hanging silently.
+     * instead of hanging silently. It fails as a timeout that says how many workers never got
+     * past the barrier, not with the barrier's exceptions as worker failures (#1507).
      *
      * <p>{@link SpinContentionBarrier} has no timed {@code await} overload to mirror
      * this with (see its class Javadoc — it's a hand-tuned lock-free spin, not
@@ -1029,7 +1038,10 @@ public class ConcurrencyRunner {
          * @throws AssertionError    the workers' failures combined, when any failed
          */
         void run(long roundTimeoutMs, @Nullable ControlledSchedule schedule) throws InterruptedException {
-            Round round = new Round(createBarrier(threads, roundTimeoutMs, useVirtualThreads), threads,
+            java.util.function.IntFunction<ContentionBarrier> forTest = BARRIER_FOR_TEST.get();
+            ContentionBarrier barrier = forTest != null ? forTest.apply(threads)
+                    : createBarrier(threads, roundTimeoutMs, useVirtualThreads);
+            Round round = new Round(barrier, threads,
                     roundTimeoutMs, schedule, context.getTarget().orElse(null), context.getArguments().toArray());
             // Futures are retained (not ignored) so a round timeout can cancel(true) any worker
             // still stuck, instead of leaving it to linger until execute()'s outer
@@ -1088,7 +1100,15 @@ public class ConcurrencyRunner {
          */
         private void runBodyOnce(int workerSlot, Round round) {
             try {
-                round.barrier.arrive();
+                try {
+                    round.barrier.arrive();
+                } catch (TimeoutException | BrokenBarrierException atBarrier) {
+                    // The round's budget ran out at its start barrier, on this worker's wait or on a
+                    // peer's that broke it: the round timed out, and the barrier's exceptions are
+                    // the runner's own, not the test's failures (#1507). No body ran here.
+                    round.expiredAtBarrier.set(true);
+                    return;
+                }
                 round.pastBarrier.incrementAndGet();
                 // After the barrier, so every worker joins the schedule; left in a finally, so a
                 // body that throws hands the round on and clears the thread's slot before a pooled
@@ -1140,7 +1160,9 @@ public class ConcurrencyRunner {
             // An assertion that failed on a thread a worker started is this round's failure (#1253): a
             // body that joined the thread has seen it die, and the death was recorded before that.
             round.failures.addAll(phase2Context.takeBodyThreadAssertions());
-            if (!completed) {
+            // A round whose start barrier ran out is a timeout even when every worker finished
+            // before this wait began, which they do once the barrier breaks (#1507).
+            if (!completed || round.expiredAtBarrier.get()) {
                 throw timedOut(round, workers);
             }
             if (!round.failures.isEmpty()) {
@@ -1207,6 +1229,9 @@ public class ConcurrencyRunner {
          * reached the body rather than guessing (#1386).
          */
         final AtomicInteger pastBarrier = new AtomicInteger();
+        /** Whether a worker's start-barrier wait ran out or found it broken: a timeout (#1507). */
+        final java.util.concurrent.atomic.AtomicBoolean expiredAtBarrier =
+                new java.util.concurrent.atomic.AtomicBoolean();
         /** The workers inside the body right now, sampled if the round runs out (#1393). */
         final Set<Thread> inBody = ConcurrentHashMap.newKeySet();
 
@@ -1296,11 +1321,11 @@ public class ConcurrencyRunner {
      * @param roundTimeoutMs the time the round was given
      */
     static String roundTimeoutMessage(int threads, int finished, int passedBarrier, long roundTimeoutMs) {
-        if (finished >= threads) {
+        int heldAtBarrier = threads - passedBarrier;
+        if (finished >= threads && heldAtBarrier <= 0) {
             return "Invocation round timed out after " + roundTimeoutMs + "ms, though all " + threads
                     + " workers finished just after it ran out.";
         }
-        int heldAtBarrier = threads - passedBarrier;
         return "Invocation round timed out: " + finished + "/" + threads + " threads completed within "
                 + roundTimeoutMs + "ms."
                 + (heldAtBarrier > 0 ? " " + heldAtBarrier + " worker(s) never got past the start barrier "
