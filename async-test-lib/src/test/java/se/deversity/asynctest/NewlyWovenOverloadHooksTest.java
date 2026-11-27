@@ -389,4 +389,36 @@ class NewlyWovenOverloadHooksTest {
             HeldLocks.released(LOCK);
         }
     }
+    @Test
+    @DisplayName("the uninterruptible acquires record like acquire, and a drain holds what it took (#1501)")
+    void uninterruptibleAcquiresAndDrainsAreRecorded() {
+        AsyncTestConfig cfg = AsyncTestConfig.builder().monitorSemaphore(true).build();
+        AsyncTestContext.install(new AsyncTestContext(cfg));
+        try {
+            Semaphore semaphore = new Semaphore(4);
+            AgentConcurrencyUtilHooks.acquireUninterruptibly(semaphore);
+            AgentConcurrencyUtilHooks.acquireUninterruptibly(semaphore, 2);
+            assertEquals(1, semaphore.availablePermits(), "both uninterruptible acquires really took their permits");
+            AgentConcurrencyUtilHooks.release(semaphore, 3);
+            assertEquals(4, AgentConcurrencyUtilHooks.drainPermits(semaphore), "the drain took every permit");
+            assertEquals(0, AgentConcurrencyUtilHooks.drainPermits(semaphore), "and a second one nothing");
+            AgentConcurrencyUtilHooks.release(semaphore, 4);
+
+            assertFalse(AsyncTestContext.semaphoreMisuseDetector().analyze().hasIssues(),
+                    "three taken uninterruptibly and three returned, four drained and four returned: "
+                            + AsyncTestContext.semaphoreMisuseDetector().analyze());
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    @Test
+    @DisplayName("the uninterruptible acquires and the drain delegate outside an @AsyncTest")
+    void uninterruptibleAcquiresAndDrainsDelegateOutsideARun() {
+        Semaphore semaphore = new Semaphore(3);
+        AgentConcurrencyUtilHooks.acquireUninterruptibly(semaphore);
+        AgentConcurrencyUtilHooks.acquireUninterruptibly(semaphore, 1);
+        assertEquals(1, AgentConcurrencyUtilHooks.drainPermits(semaphore), "the one permit left");
+        assertEquals(0, semaphore.availablePermits(), "and none after it");
+    }
 }

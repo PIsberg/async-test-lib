@@ -49,6 +49,18 @@ class DiscardedOfferWeavingTest {
             s.acquire();
         }
 
+        public static void acquireUninterruptibly(Semaphore s) {
+            s.acquireUninterruptibly();
+        }
+
+        public static void acquireUninterruptibly(Semaphore s, int permits) {
+            s.acquireUninterruptibly(permits);
+        }
+
+        public static int drainPermits(Semaphore s) {
+            return s.drainPermits();
+        }
+
         public static boolean tryAcquire(Semaphore s) {
             return s.tryAcquire();
         }

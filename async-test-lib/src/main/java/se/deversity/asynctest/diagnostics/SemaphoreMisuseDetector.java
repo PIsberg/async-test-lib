@@ -55,6 +55,11 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
          */
         final AtomicInteger helperAcquireCount = new AtomicInteger(0);
         final AtomicInteger helperReleaseCount = new AtomicInteger(0);
+        /**
+         * Permits a run's thread took with {@code drainPermits} (#1501). They offset the releases
+         * that return them, but are not acquisitions: a pool drained to close it is no leak.
+         */
+        final AtomicInteger drainedCount = new AtomicInteger(0);
         final Set<Long> acquiringThreads = ConcurrentHashMap.newKeySet();
         final Set<Long> releasingThreads = ConcurrentHashMap.newKeySet();
         final AtomicInteger maxConcurrentAcquires = new AtomicInteger(0);
@@ -184,6 +189,27 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
     }
 
     /**
+     * Record permits a run's thread took with {@code Semaphore.drainPermits()} (#1501). The
+     * thread holds them, so a release that returns them is no over-release; they are not
+     * acquisitions, so draining a pool to close it, and never refilling it, is no leak.
+     *
+     * @param semaphore the semaphore being recorded, tracked by identity
+     * @param name      the semaphore name
+     * @param permits   how many permits the drain took
+     * @since 1.14.5
+     */
+    public void recordDrain(Semaphore semaphore, String name, int permits) {
+        if (!enabled || semaphore == null || permits <= 0) {
+            return;
+        }
+        SemaphoreState state = stateFor(semaphore, name, "semaphore");
+        state.drainedCount.addAndGet(permits);
+        ThreadPermits mine = permitsOf(state);
+        mine.held.addAndGet(permits);
+        mine.acquiredBefore = true;
+    }
+
+    /**
      * Record a permit acquired on a thread that works for the run without being one of its
      * workers. It is not held against the run, since the thread may still hold it when the run
      * is analysed; it only accounts for a release the run's own thread makes of that permit,
@@ -252,19 +278,20 @@ public class SemaphoreMisuseDetector extends AbstractInstanceDetector<SemaphoreM
             // more permits than it took has over-released (#1292): a thread that releases without
             // having acquired is a signal, sent ahead of or beside its waiters, or returns a permit
             // another thread took. Permits helper threads took and never returned cover as many.
+            int drained = state.drainedCount.get();
             if (initialPermits >= 0) {
-                if (releases > acquires + takenByHelpers) {
+                if (releases > acquires + drained + takenByHelpers) {
                     report.overReleases.add(String.format(
                         "%s: released %d times but acquired only %d times (%d extra releases)",
-                        state.name, releases, acquires + takenByHelpers,
-                        releases - acquires - takenByHelpers));
+                        state.name, releases, acquires + drained + takenByHelpers,
+                        releases - acquires - drained - takenByHelpers));
                 }
             } else {
                 // And only beyond what the run acquired in all: a thread that returns a permit
                 // another thread took held none itself, which counted as returning twice, though
                 // the run's acquisitions and releases balance (#1501).
                 int extra = Math.min(returnedTwice(state) - takenByHelpers,
-                        releases - acquires - takenByHelpers);
+                        releases - acquires - drained - takenByHelpers);
                 if (extra > 0) {
                     report.overReleases.add(String.format(
                         "%s: a thread released more permits than it acquired (%d extra release%s)",

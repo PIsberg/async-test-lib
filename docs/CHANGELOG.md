@@ -140,6 +140,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schedule (#1495, part 3).** An adopted thread never leaves its round, so a pool thread a woven
   thread factory built in one round carried that round's worker into the next, took itself for a
   caller-runs thread there, and ran the task uncontrolled while the round counted no escape.
+- **`Semaphore.acquireUninterruptibly` and `drainPermits` are woven (#1501, part 3).** Neither was
+  in the agent's coordination table, so the release that returned such a permit was recorded with
+  no acquisition before it. On a thread that had acquired before, `SemaphoreMisuseDetector` read
+  that as a HIGH over-release, and the acquire's happens-before edge was missing. Both
+  `acquireUninterruptibly` overloads now record what `acquire` records. Permits a drain took are
+  held by the draining thread: a release that returns them is no over-release, and since they are
+  not counted as acquisitions, a pool drained to close it is no leak. New
+  `SemaphoreMisuseDetector.recordDrain`.
 - **A new deadlock between unnamed virtual threads is reported after an earlier one, and a parked
   static initializer is the finding of the run it belongs to (#1503).** `DeadlockDetector`
   remembered the virtual-thread cycles present when its scan started by their members' names.
