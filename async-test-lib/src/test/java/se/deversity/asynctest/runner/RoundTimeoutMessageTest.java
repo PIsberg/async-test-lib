@@ -44,6 +44,16 @@ class RoundTimeoutMessageTest {
     }
 
     @Test
+    void aRoundWhoseWorkersAllFinishedAtTheStartBarrierSaysTheyNeverPassedIt() {
+        // Every worker is done because the barrier timed out and broke, not because the body ran
+        // (#1507): "finished just after it ran out" would send the reader to the body.
+        String message = ConcurrencyRunner.roundTimeoutMessage(2, 2, 0, 3);
+
+        assertTrue(message.contains("2 worker(s) never got past the start barrier"), message);
+        assertFalse(message.contains("finished just after"), message);
+    }
+
+    @Test
     void attachedWorkerFailuresAreStillAnnounced() {
         assertTrue(ConcurrencyRunner.attachedFailures(1)
                 .contains("1 worker failure(s) from this round are attached as suppressed"));

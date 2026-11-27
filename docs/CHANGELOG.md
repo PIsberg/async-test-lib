@@ -166,6 +166,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `InterruptedException` from the condition as "not yet true" with its interrupt status already
   cleared, so a worker the round cancelled polled on until the timeout. It now restores the status
   and fails at once.
+- **A budget that runs out at a round's start barrier is reported as the timeout it is (#1507).**
+  When one worker's `CyclicBarrier` wait ran out before its peer arrived, the peer got a
+  `BrokenBarrierException`, both finished before the runner's own wait for the round began, and the
+  run failed with "2 concurrent thread(s) failed: TimeoutException, BrokenBarrierException" instead
+  of the budget headline. A barrier timeout or break now marks the round as timed out, and the
+  timeout message says how many workers never got past the barrier. It flaked
+  `RoundTimeoutProgressTest` on CI; `aBudgetThatRunsOutAtTheStartBarrierIsATimeoutNotWorkerFailures`
+  reproduces it deterministically through a test-only barrier and was red with that exact message.
 - **Every `@AfterEachInvocation` hook runs, a named run keeps its name through a shrink, and an
   interrupted spin-barrier arrival is taken back (#1504).** A throwing after-hook skipped every
   hook after it, and subclass hooks run first, so a subclass teardown that threw left the
