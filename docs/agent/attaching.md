@@ -459,6 +459,17 @@ between the loop's head and the wait, which is how javac and kotlinc close a `wh
 and a loop closed by `continue` reads nothing before it blocks; both enter `wait` before they have
 read the predicate, and both are reported.
 
+Two ways out of a correct loop never reach its back-edge, and neither is reported (#1501). A
+`wait` or `await` that ends in `InterruptedException` was cancelled, not woken, so it is dropped
+unjudged. And a timed `Condition.await(time, unit)` or `awaitUntil(deadline)` whose `false` the
+caller tests at once, `while (!done) { if (!ready.await(..)) return; }`, is confirmed as the loop's
+at that test: the weaver puts `conditionAwaitResultTested` in front of the `IFNE` right after the
+call, whose fall-through is the caller's own code for the timeout. `if (!done) ready.await(..);`
+pops the result instead and is still reported. `Object.wait(timeout)` returns nothing to test, so a
+deadline check written after it, `while (!done) { monitor.wait(t); if (late()) return; }`, still
+reads as an `if` when the deadline ends the loop. A notify that found no waiter counts against an
+agent-observed wait only in the round it was made in.
+
 A compiler that rotates loops emits `goto test; body; test: if (...) goto body`, so its `while`
 closes with a conditional jump and puts the test after the wait. That shape counts too, when the
 loop head is entered by a `goto` that lands between the wait and the back-edge, which is what a

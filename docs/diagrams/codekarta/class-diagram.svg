@@ -1127,16 +1127,18 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="AgentMonitorHooks">
   <title>AgentMonitorHooks [CLASS]</title>
-  <rect class="node-rect" x="3368.0" y="114.0" width="180.0" height="162.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="3368.0" y="114.0" width="180.0" height="190.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="3458.0" y="136.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="13.0" font-weight="bold" fill="#1f2937">AgentMonitorHooks</text>
   <line x1="3368.0" y1="158.0" x2="3548.0" y2="158.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="3376.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorWait(Object): void</text>
-  <text x="3376.0" y="186.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorWait(Object, long):…</text>
-  <text x="3376.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorWait(Object, long, …</text>
-  <text x="3376.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorNotify(Object): void</text>
-  <text x="3376.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorNotifyAll(Object): …</text>
-  <text x="3376.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">conditionAwait(Condition):…</text>
-  <text x="3376.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+17 more)</text>
+  <text x="3376.0" y="171.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">TIMED_OUT_CONDITION: Threa…</text>
+  <line x1="3368.0" y1="185.0" x2="3548.0" y2="185.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
+  <text x="3376.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorWait(Object): void</text>
+  <text x="3376.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorWait(Object, long):…</text>
+  <text x="3376.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorWait(Object, long, …</text>
+  <text x="3376.0" y="243.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorNotify(Object): void</text>
+  <text x="3376.0" y="258.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">monitorNotifyAll(Object): …</text>
+  <text x="3376.0" y="273.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">conditionAwait(Condition):…</text>
+  <text x="3376.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+21 more)</text>
 </g>
 <g id="AgentSharedInstanceHooks">
   <title>AgentSharedInstanceHooks [CLASS]</title>
@@ -1668,7 +1670,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="6000.0" y="1627.0" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerCondition(Reentran…</text>
   <text x="6000.0" y="1642.0" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerCondition(Reentran…</text>
   <text x="6000.0" y="1657.0" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerCondition(Reentran…</text>
-  <text x="6000.0" y="1672.0" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+15 more)</text>
+  <text x="6000.0" y="1672.0" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+17 more)</text>
 </g>
 <g id="SimpleDateFormatDetector">
   <title>SimpleDateFormatDetector [CLASS]</title>
@@ -1865,7 +1867,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="6280.0" y="9059.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordWait(Object, boolean…</text>
   <text x="6280.0" y="9074.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordLoopStart(Object): v…</text>
   <text x="6280.0" y="9089.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordLoopEnd(Object): void</text>
-  <text x="6280.0" y="9104.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+18 more)</text>
+  <text x="6280.0" y="9104.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+20 more)</text>
 </g>
 <g id="LazyInitRaceDetector">
   <title>LazyInitRaceDetector [CLASS]</title>

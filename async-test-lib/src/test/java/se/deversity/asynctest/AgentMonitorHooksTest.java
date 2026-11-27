@@ -201,6 +201,87 @@ class AgentMonitorHooksTest {
         assertFalse(lostConditionSignalAfter(true), "while (!ready) await(1ms): the back-edge confirms the loop");
     }
 
+    @Test
+    @DisplayName("an await whose timeout the caller handles at once is a loop's, an ignored one is not (#1501)")
+    void aHandledAwaitTimeoutIsALoopsExit() throws InterruptedException {
+        assertFalse(lostConditionSignalThen(Exit.TIMEOUT_TESTED),
+                "while (!done) { if (!ready.await(1ms)) return; }: the caller ended its own loop");
+        assertTrue(lostConditionSignalThen(Exit.TIMEOUT_IGNORED),
+                "if (!done) ready.await(1ms); pops the result and stays the finding");
+        assertTrue(AgentMonitorHooks.conditionAwaitResultTested(true),
+                "with nothing pending, the hook hands the boolean back for the jump");
+    }
+
+    @Test
+    @DisplayName("an await or a wait that ends in InterruptedException is not a lost signal (#1501)")
+    void anInterruptedAwaitOrWaitIsNotALostSignal() throws InterruptedException {
+        assertFalse(lostConditionSignalThen(Exit.INTERRUPTED),
+                "while (!done) ready.await() cancelled by an interrupt never reaches its back-edge");
+
+        AsyncTestContext context = new AsyncTestContext(
+                AsyncTestConfig.builder().detectMissedSignals(true).build());
+        AsyncTestContext.install(context);
+        try {
+            synchronized (monitor) {
+                AgentMonitorHooks.monitorNotifyAll(monitor);      // nobody waits: lost
+                for (int variant = 0; variant < 3; variant++) {
+                    Thread.currentThread().interrupt();
+                    int v = variant;
+                    assertThrows(InterruptedException.class, () -> {
+                        if (v == 0) {
+                            AgentMonitorHooks.monitorWait(monitor);
+                        } else if (v == 1) {
+                            AgentMonitorHooks.monitorWait(monitor, 1_000L);
+                        } else {
+                            AgentMonitorHooks.monitorWait(monitor, 1_000L, 0);
+                        }
+                    });
+                }
+            }
+            assertFalse(AsyncTestContext.missedSignalDetector().analyze().hasIssues(),
+                    "each wait was cancelled, not woken");
+        } finally {
+            Thread.interrupted();
+            AsyncTestContext.uninstall();
+        }
+    }
+
+    /** How the await after a lost signal ends. */
+    private enum Exit { TIMEOUT_TESTED, TIMEOUT_IGNORED, INTERRUPTED }
+
+    /** Signals, then awaits and leaves as {@code exit} says; {@return whether it is a finding} */
+    private static boolean lostConditionSignalThen(Exit exit) throws InterruptedException {
+        AsyncTestContext context = conditionOnlyContext();
+        ReentrantLock lock = new ReentrantLock();
+        Condition ready = lock.newCondition();
+        AsyncTestContext.install(context);
+        try {
+            lock.lock();
+            try {
+                AgentMonitorHooks.conditionSignalAll(ready);
+                switch (exit) {
+                    case TIMEOUT_TESTED -> assertFalse(AgentMonitorHooks.conditionAwaitResultTested(
+                            AgentMonitorHooks.conditionAwaitUntil(ready,
+                                    new java.util.Date(System.currentTimeMillis() + 1))));
+                    case TIMEOUT_IGNORED -> AgentMonitorHooks.conditionAwait(ready, 1L, TimeUnit.MILLISECONDS);
+                    case INTERRUPTED -> {
+                        Thread.currentThread().interrupt();
+                        assertThrows(InterruptedException.class, () -> AgentMonitorHooks.conditionAwait(ready));
+                        Thread.currentThread().interrupt();
+                        assertThrows(InterruptedException.class,
+                                () -> AgentMonitorHooks.conditionAwaitNanos(ready, 1_000_000L));
+                    }
+                }
+            } finally {
+                lock.unlock();
+            }
+            return AsyncTestContext.conditionVariableDetector().analyze().hasIssues();
+        } finally {
+            Thread.interrupted();
+            AsyncTestContext.uninstall();
+        }
+    }
+
     /** Signals, then a timed await that runs out, then optionally the back-edge; {@return whether it is a finding} */
     private static boolean lostConditionSignalAfter(boolean loop) throws InterruptedException {
         AsyncTestContext context = conditionOnlyContext();

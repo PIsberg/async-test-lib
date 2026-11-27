@@ -1484,12 +1484,14 @@ final class CollectionAccessWeaver {
             // class twice and share this table's index of waiting methods.
             Entry.call(Condition.class, "await", "conditionAwait").whenInsideLoop("loopBackEdge"),
             Entry.call(Condition.class, "await", "conditionAwait", long.class, TimeUnit.class)
+                    .whenResultTested("conditionAwaitResultTested")
                     .whenInsideLoop("loopBackEdge"),
             Entry.call(Condition.class, "awaitNanos", "conditionAwaitNanos", long.class)
                     .whenInsideLoop("loopBackEdge"),
             Entry.call(Condition.class, "awaitUninterruptibly", "conditionAwaitUninterruptibly")
                     .whenInsideLoop("loopBackEdge"),
             Entry.call(Condition.class, "awaitUntil", "conditionAwaitUntil", Date.class)
+                    .whenResultTested("conditionAwaitResultTested")
                     .whenInsideLoop("loopBackEdge"),
             Entry.call(Condition.class, "signal", "conditionSignal"),
             Entry.call(Condition.class, "signalAll", "conditionSignalAll"));
