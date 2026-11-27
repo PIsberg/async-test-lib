@@ -1401,4 +1401,60 @@ public class SharedMessageDigestDetectorTest {
         SharedMessageDigestDetector d = new SharedMessageDigestDetector();
         AbstractInstanceDetectorTest.assertNotRetained(Object::new, m -> d.recordAccess(m, null, Thread.currentThread()));
     }
+
+    /**
+     * #1499: a declared take on a pool thread, which has the run's scope only as a loan. The take
+     * asked for the worker-bound scope alone, found none, and counted no hand-off, so two pool
+     * threads taking one digest in turn read as sharing it.
+     */
+    @Test
+    void aDeclaredHandOffOnALentPoolThreadIsNotSharing() throws Exception {
+        assertFalse(digestTakenInTurnOnLentThreads(true).hasIssues(),
+                "each checkout on the pool threads was declared");
+    }
+
+    @Test
+    void anUndeclaredCheckoutOnALentPoolThreadStillFires() throws Exception {
+        assertTrue(digestTakenInTurnOnLentThreads(false).hasIssues(),
+                "with no take declared, the two pool threads simply share the digest");
+    }
+
+    private static SharedMessageDigestDetector.SharedMessageDigestReport digestTakenInTurnOnLentThreads(
+            boolean declareTakes) throws Exception {
+        SharedMessageDigestDetector detector = new SharedMessageDigestDetector();
+        SelfGuard.Scope scope = new SelfGuard.Scope();
+        scope.markInvocationStart();
+        var pool = new java.util.concurrent.Semaphore(1);
+        MessageDigest md = sha256();
+        var barrier = new java.util.concurrent.CyclicBarrier(2);
+        Runnable body = () -> {
+            SelfGuard.Scope.lend(scope);
+            try {
+                barrier.await();
+                for (int i = 0; i < 50; i++) {
+                    pool.acquireUninterruptibly();
+                    try {
+                        if (declareTakes) {
+                            SelfGuard.Scope.ownershipTaken(md);
+                        }
+                        detector.recordAccess(md, "sha256", Thread.currentThread());
+                        md.update((byte) 1);
+                    } finally {
+                        pool.release();
+                    }
+                }
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            } finally {
+                SelfGuard.Scope.lend(null);
+            }
+        };
+        Thread first = new Thread(body, "pool-1");
+        Thread second = new Thread(body, "pool-2");
+        first.start();
+        second.start();
+        first.join();
+        second.join();
+        return detector.analyze();
+    }
 }

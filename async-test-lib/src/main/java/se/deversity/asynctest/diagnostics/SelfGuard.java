@@ -411,7 +411,8 @@ public final class SelfGuard {
          * joins the new owner's window and is reported, which is the use-after-return defect.
          *
          * <p>Called by the agent's woven takes and by {@code AsyncTestContext.ownershipTaken}.
-         * A no-op on a thread with no scope bound, and for an instance nothing tracks yet: before
+         * A no-op on a thread outside a run (no scope bound, lent or spawned into, #1499), and for an
+     * instance nothing tracks yet: before
          * its first recorded access there is nothing to separate it from. Allocates one
          * short-lived key per call only while this run tracks some instance.
          *
@@ -421,7 +422,9 @@ public final class SelfGuard {
             if (instance == null) {
                 return;
             }
-            Scope scope = BOUND.get();
+            // The scope the accesses are judged in, whichever way the thread has it: a pool thread
+            // has the run's only as a loan, a spawned thread by its start (#1499).
+            Scope scope = current();
             if (scope == null || scope.handOffs.isEmpty()) {
                 return;
             }

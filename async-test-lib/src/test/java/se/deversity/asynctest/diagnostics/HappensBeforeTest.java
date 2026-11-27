@@ -626,4 +626,75 @@ class HappensBeforeTest {
         assertFalse(guardedHandOff(box, lock, false, mail, new Object(), lock, mail),
                 "the reader loaded the field of another owner, which this store did not write");
     }
+
+    @Test
+    @DisplayName("a phaser its last party terminates by deregistering still orders that party before an awaitAdvance (#1499)")
+    void aPhaserTerminatedByItsLastDeregistrationOrdersItsArrival() throws InterruptedException {
+        java.util.concurrent.Phaser phaser = new java.util.concurrent.Phaser(1);
+        Recorded worker = onNewThread(() -> { }, true,
+                () -> se.deversity.asynctest.AgentConcurrencyUtilHooks.arriveAndDeregister(phaser));
+        int[] returned = new int[1];
+        Recorded waiter = onNewThread(
+                () -> returned[0] = se.deversity.asynctest.AgentConcurrencyUtilHooks.awaitAdvance(phaser, 0),
+                false, () -> { });
+
+        assertTrue(returned[0] < 0 && (returned[0] & Integer.MAX_VALUE) == 1,
+                "premise: the phase completed and the phaser terminated, so the phase returned is the"
+                        + " next one with the termination bit set, was " + returned[0]);
+        assertTrue(ordered(worker, waiter),
+                "phase 0 completed: every arrival in it happened before awaitAdvance(0) returned");
+    }
+
+    @Test
+    @DisplayName("a phaser terminated by onAdvance orders the arrivals of its last phase (#1499)")
+    void aPhaserTerminatedByOnAdvanceOrdersItsLastPhase() throws InterruptedException {
+        java.util.concurrent.Phaser phaser = new java.util.concurrent.Phaser(2) {
+            @Override
+            protected boolean onAdvance(int phase, int registeredParties) {
+                return true; // one phase only
+            }
+        };
+        AtomicReference<Recorded> writer = new AtomicReference<>();
+        AtomicReference<Recorded> reader = new AtomicReference<>();
+        int[] returned = new int[1];
+        // The reader arrives first and waits: only a waiting party is returned the terminated
+        // phase; the last to arrive gets the next phase as a plain number, and already acquired.
+        Thread second = new Thread(() -> {
+            returned[0] = se.deversity.asynctest.AgentConcurrencyUtilHooks.arriveAndAwaitAdvance(phaser);
+            reader.set(stampHere(false));
+        });
+        second.start();
+        while (phaser.getArrivedParties() < 1) {
+            Thread.onSpinWait();
+        }
+        Thread first = new Thread(() -> {
+            writer.set(stampHere(true));
+            se.deversity.asynctest.AgentConcurrencyUtilHooks.arriveAndAwaitAdvance(phaser);
+        });
+        first.start();
+        first.join();
+        second.join();
+
+        assertTrue(returned[0] < 0, "premise: the waiting party sees the terminated phase, was " + returned[0]);
+        assertTrue(ordered(writer.get(), reader.get()),
+                "the phase completed before it terminated, so the arrival before it is ordered");
+    }
+
+    @Test
+    @DisplayName("a phaser forced to terminate mid-phase orders nothing")
+    void aPhaserForcedToTerminateMidPhaseOrdersNothing() throws InterruptedException {
+        java.util.concurrent.Phaser phaser = new java.util.concurrent.Phaser(2);
+        Recorded worker = onNewThread(() -> { }, true,
+                () -> se.deversity.asynctest.AgentConcurrencyUtilHooks.arrive(phaser));
+        phaser.forceTermination();
+        int[] returned = new int[1];
+        Recorded waiter = onNewThread(
+                () -> returned[0] = se.deversity.asynctest.AgentConcurrencyUtilHooks.awaitAdvance(phaser, 0),
+                false, () -> { });
+
+        assertTrue(returned[0] < 0 && (returned[0] & Integer.MAX_VALUE) == 0,
+                "premise: terminated in phase 0 without completing it, was " + returned[0]);
+        assertFalse(ordered(worker, waiter),
+                "phase 0 never completed, so the other party's arrival never happened: nothing waited");
+    }
 }

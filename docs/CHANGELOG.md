@@ -140,6 +140,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schedule (#1495, part 3).** An adopted thread never leaves its round, so a pool thread a woven
   thread factory built in one round carried that round's worker into the next, took itself for a
   caller-runs thread there, and ran the task uncontrolled while the round counted no escape.
+- **A `Phaser` that terminates as its phase completes orders that phase, and a declared take on
+  a pool or spawned thread splits the owners (#1499, parts 1 and 3).** When a phaser's last party
+  deregistered, or `onAdvance` returned `true`, a waiting party was returned the next phase with
+  the termination bit set. The hooks read every negative phase as a forced termination, so
+  `awaitAdvance`, `awaitAdvanceInterruptibly` and `arriveAndAwaitAdvance` acquired nothing, and
+  a coordinator reading what fork-join workers wrote before `arriveAndDeregister` was reported. A
+  termination forced mid-phase, which returns the phase itself, still orders nothing. Separately,
+  `ownershipTaken` counted a take only on a worker thread, so a declared or woven checkout from a
+  pool on an executor thread, or on a thread a worker started, was no hand-off, and two such
+  threads taking a `MessageDigest` in turn were reported as sharing it.
 - **Lock views the agent did not see hand out are judged by their lock and mode, and remembering
   a view no longer keeps its lock alive (#1498, part 4).** A `ReentrantReadWriteLock` read or
   write view obtained before the attach, or inside unwoven code, was recorded as an exclusive lock
