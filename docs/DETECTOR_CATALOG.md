@@ -315,7 +315,9 @@ itself, `AsyncTestContext.ownershipTaken(holder.digest)` (#747). Since 1.12.3 th
 verdict also follows the shared `HappensBefore` model: a thread whose use of the instance that
 model orders after the previous thread's, through a latch, a queue or map hand-off, a
 `Thread.start` or a `join` that the agent wove or the test declared, takes the instance over
-instead of sharing it. Two threads using it at once still report, edge or no edge. A take-over
+instead of sharing it. Two threads using it at once still report, edge or no edge. Several threads
+reading it at once do not, and an access ordered after every one of those reads takes it over the
+same way, as a write after a barrier the readers passed (#1499). A take-over
 also starts the lockset again, so unlocked set-up before the hand-off does not count against
 locked use after it, as long as every later access is ordered after the hand-off; one that is
 not brings back the accesses since the latest earlier hand-off it is ordered after, or every
