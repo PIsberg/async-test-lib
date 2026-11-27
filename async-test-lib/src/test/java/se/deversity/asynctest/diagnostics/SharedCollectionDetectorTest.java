@@ -364,4 +364,90 @@ public class SharedCollectionDetectorTest {
         SharedCollectionDetector d = new SharedCollectionDetector();
         AbstractInstanceDetectorTest.assertNotRetained(ArrayList::new, c -> d.recordWrite(c, null, "add"));
     }
+
+    /**
+     * Two threads read a map at once, then one writes it after the other's reads are ordered
+     * before the write ({@code edge}), or without that ordering.
+     */
+    private static boolean readersThenOrderedWriterReported(boolean ordered) throws InterruptedException {
+        return readersThenOrderedWriterReported(ordered, false);
+    }
+
+    private static boolean readersThenOrderedWriterReported(boolean ordered, boolean readAgainAfter)
+            throws InterruptedException {
+        SharedCollectionDetector detector = new SharedCollectionDetector();
+        java.util.Map<String, String> map = new HashMap<>();
+        map.put("k", "v");
+        detector.registerCollection(map, "read-phase-map", "HashMap");
+        Object edge = new Object();
+        java.util.concurrent.CountDownLatch bothRead = new java.util.concurrent.CountDownLatch(2);
+        java.util.concurrent.CountDownLatch released = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch written = new java.util.concurrent.CountDownLatch(1);
+        Thread writer = new Thread(() -> {
+            detector.recordRead(map, "read-phase-map", "get");
+            bothRead.countDown();
+            try {
+                released.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            if (ordered) {
+                HappensBefore.acquire(edge); // as a barrier or a join would order it
+            }
+            detector.recordWrite(map, "read-phase-map", "put");
+            written.countDown();
+        }, "reader-then-writer");
+        Thread reader = new Thread(() -> {
+            detector.recordRead(map, "read-phase-map", "get");
+            bothRead.countDown();
+            try {
+                bothRead.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            HappensBefore.release(edge);
+            released.countDown();
+            if (readAgainAfter) {
+                try {
+                    written.await(); // timing only: nothing orders this read after the write
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                detector.recordRead(map, "read-phase-map", "get");
+            }
+        }, "reader");
+        writer.start();
+        reader.start();
+        writer.join();
+        reader.join();
+        return detector.analyze().hasIssues();
+    }
+
+    /**
+     * #1499: two threads reading a map at once made its window shared for the rest of the round,
+     * and a shared window looked for no hand-off again. Reads alone cannot race, and once both
+     * readers' reads were ordered before a write, the write overlapped none of them, but it was
+     * reported.
+     */
+    @Test
+    void concurrentReadersOrderedBeforeALaterWriteAreNotSharing() throws InterruptedException {
+        assertFalse(readersThenOrderedWriterReported(true),
+                "both reads happen before the write, so nothing overlapped it");
+    }
+
+    @Test
+    void aReaderReadingAgainUnorderedAfterTheHandOffWriteIsReported() throws InterruptedException {
+        assertTrue(readersThenOrderedWriterReported(true, true),
+                "the window started again at the write, but the other reader's next read is ordered"
+                        + " after nothing the writer did, so it may overlap the write");
+    }
+
+    @Test
+    void concurrentReadersWithAWriteOrderedAfterOnlyItsOwnReadAreReported() throws InterruptedException {
+        assertTrue(readersThenOrderedWriterReported(false),
+                "without the edge the other reader's read may overlap the write");
+    }
 }

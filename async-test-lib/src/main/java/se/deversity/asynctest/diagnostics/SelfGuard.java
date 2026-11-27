@@ -6,6 +6,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -508,9 +509,22 @@ public final class SelfGuard {
         /** Whether any access in this window was a write, hand-offs or not. */
         final boolean windowWrote;
 
+        /**
+         * The threads of a window shared by reads alone, each with its clock at its latest read,
+         * so an access ordered after all of them can take the instance over (#1499); {@code null}
+         * once the window wrote, before it is shared, or when a reader's clock is not known.
+         */
+        final @Nullable Readers readers;
+
         Window(long key, long owner, HappensBefore.@Nullable Stamp ownerStamp, boolean shared,
                int[] locks, int[] windowLocks, @Nullable HandOff handOff, boolean wrote,
                boolean windowWrote) {
+            this(key, owner, ownerStamp, shared, locks, windowLocks, handOff, wrote, windowWrote, null);
+        }
+
+        Window(long key, long owner, HappensBefore.@Nullable Stamp ownerStamp, boolean shared,
+               int[] locks, int[] windowLocks, @Nullable HandOff handOff, boolean wrote,
+               boolean windowWrote, @Nullable Readers readers) {
             this.key = key;
             this.owner = owner;
             this.ownerStamp = ownerStamp;
@@ -520,6 +534,82 @@ public final class SelfGuard {
             this.handOff = handOff;
             this.wrote = wrote;
             this.windowWrote = windowWrote;
+            this.readers = readers;
+        }
+    }
+
+    /**
+     * The readers of a window that only read, each with its clock at its latest read (#1499).
+     *
+     * <p>Reads alone cannot race, so several threads reading at once share the window without a
+     * finding; but shared, the window looked for no hand-off again, and a write ordered after every
+     * one of those reads, as after a barrier, still joined it and was reported. An access the model
+     * orders after each reader's latest read follows every access of the window, so it starts the
+     * window again, as an ordered hand-off does. Immutable; at most {@link #MAX} readers are kept,
+     * past which none are, and the window stays shared, which can only add a finding.
+     */
+    private static final class Readers {
+
+        /** The most readers one window keeps. Chosen as generous for a read phase, not measured. */
+        static final int MAX = 8;
+
+        final long[] threads;
+        final HappensBefore.Stamp[] stamps;
+
+        private Readers(long[] threads, HappensBefore.Stamp[] stamps) {
+            this.threads = threads;
+            this.stamps = stamps;
+        }
+
+        /** {@return the readers of a window two reads have just shared, or {@code null} without both clocks} */
+        static @Nullable Readers of(long first, HappensBefore.@Nullable Stamp firstStamp,
+                                    long second, HappensBefore.@Nullable Stamp secondStamp) {
+            if (firstStamp == null || secondStamp == null) {
+                return null;
+            }
+            return new Readers(new long[] {first, second}, new HappensBefore.Stamp[] {firstStamp, secondStamp});
+        }
+
+        /**
+         * {@return these readers with {@code thread}'s latest read at {@code stamp}: this object when
+         * nothing changed, {@code null} when the clock is unknown or there are too many readers}
+         */
+        @SuppressWarnings("ReferenceEquality") // a clock is replaced, never mutated
+        @Nullable Readers with(long thread, HappensBefore.@Nullable Stamp stamp) {
+            if (stamp == null) {
+                return null;
+            }
+            for (int i = 0; i < threads.length; i++) {
+                if (threads[i] == thread) {
+                    if (stamps[i] == stamp) { // NOPMD CompareObjectsWithEquals - a clock is replaced, never mutated
+                        return this;
+                    }
+                    HappensBefore.Stamp[] next = stamps.clone();
+                    next[i] = stamp;
+                    return new Readers(threads, next);
+                }
+            }
+            if (threads.length >= MAX) {
+                return null;
+            }
+            long[] moreThreads = Arrays.copyOf(threads, threads.length + 1);
+            HappensBefore.Stamp[] moreStamps = Arrays.copyOf(stamps, stamps.length + 1);
+            moreThreads[threads.length] = thread;
+            moreStamps[stamps.length] = stamp;
+            return new Readers(moreThreads, moreStamps);
+        }
+
+        /** {@return whether an access by {@code thread} at {@code stamp} follows every other reader's latest read} */
+        boolean allOrderedBefore(long thread, HappensBefore.@Nullable Stamp stamp) {
+            if (stamp == null) {
+                return false;
+            }
+            for (int i = 0; i < threads.length; i++) {
+                if (threads[i] != thread && !HappensBefore.ordered(threads[i], stamps[i], thread, stamp)) {
+                    return false;
+                }
+            }
+            return true;
         }
     }
 
@@ -872,6 +962,15 @@ public final class SelfGuard {
             // The same window, or an access still in flight from an older round or owner while a
             // newer one has started. The latter joins the newer window, the direction that can
             // only add a finding: it is an old owner still using what it handed on.
+            Readers readers = current.readers;
+            if (current.shared && !current.windowWrote && readers != null
+                    && readers.allOrderedBefore(threadId, stamp)) {
+                // Shared by reads alone, and every one of them is ordered before this access: it
+                // overlaps none of them, nor does anything ordered after it, so the window starts
+                // again here, as at an ordered hand-off (#1499).
+                int[] locks = probe(null, instance, forWrite);
+                return new Window(current.key, threadId, stamp, false, locks, locks, null, writes, writes);
+            }
             boolean shared = current.shared;
             long owner = current.owner;
             HappensBefore.@Nullable Stamp ownerStamp = current.ownerStamp;
@@ -887,7 +986,12 @@ public final class SelfGuard {
                     ownerStamp = stamp;
                 } else {
                     shared = true;
+                    readers = current.windowWrote || writes
+                            ? null
+                            : Readers.of(owner, ownerStamp, threadId, stamp);
                 }
+            } else if (readers != null) {
+                readers = current.windowWrote || writes ? null : readers.with(threadId, stamp);
             }
             int[] windowLocks = current.windowLocks.length == 0
                     ? current.windowLocks
@@ -950,11 +1054,12 @@ public final class SelfGuard {
                     && windowLocks == current.windowLocks // NOPMD CompareObjectsWithEquals - as above
                     && handOff == current.handOff // NOPMD CompareObjectsWithEquals - a hand-off is replaced, never mutated
                     && wrote == current.wrote
-                    && windowWrote == current.windowWrote) {
+                    && windowWrote == current.windowWrote
+                    && readers == current.readers) { // NOPMD CompareObjectsWithEquals - with() returns itself when nothing changed
                 return current;
             }
             return new Window(current.key, owner, ownerStamp, shared, locks, windowLocks,
-                    handOff, wrote, windowWrote);
+                    handOff, wrote, windowWrote, readers);
         }
 
         private static int[] probe(int @Nullable [] candidate, @Nullable Object instance,

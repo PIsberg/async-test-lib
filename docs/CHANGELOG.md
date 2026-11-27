@@ -140,6 +140,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schedule (#1495, part 3).** An adopted thread never leaves its round, so a pool thread a woven
   thread factory built in one round carried that round's worker into the next, took itself for a
   caller-runs thread there, and ran the task uncontrolled while the round counted no escape.
+- **A write ordered after concurrent readers takes the instance over instead of sharing it
+  (#1499, part 2).** Two threads reading a non-thread-safe instance at once made its round window
+  shared, which was not a finding since reads alone cannot race. But a shared window never looked
+  for a hand-off again, so a write ordered after both readers, as after a `CyclicBarrier` they
+  passed, joined it and was reported by `SharedCollectionDetector` and the other `Shared*`
+  detectors. The window now keeps each reader's clock while it has only been read, up to eight
+  readers, and an access ordered after all of them starts it again. A reader that reads again
+  without being ordered after the write is still reported.
 - **`compute`, `computeIfPresent`, `computeIfAbsent` and `merge` on a plain `HashMap` are
   recorded (#1499, part 4).** The four woven calls delegated without recording, so two threads
   running `HashMap.merge` or `computeIfAbsent` at once were invisible to `SharedCollectionDetector`.
