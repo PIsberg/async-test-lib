@@ -122,13 +122,52 @@ public final class StaticInitDeadlockDetector {
     private record Holder(long threadId, String threadName) { }
 
     /** A thread observed sitting inside a class initializer, from the live sample. */
-    private record Parked(String threadName, Thread.State state, String initializingClass) { }
+    private record Parked(long threadId, String threadName, Thread.State state, String initializingClass) { }
 
     /** Class name to the thread currently running its {@code <clinit>}. */
     private final Map<String, Holder> holders = new ConcurrentHashMap<>();
 
     /** Thread id to what that thread is waiting to have initialized. */
     private final Map<Long, Waiter> waits = new ConcurrentHashMap<>();
+
+    /** Whether a thread id is one of the run's threads; null counts every parked thread (#1503). */
+    private volatile java.util.function.@Nullable LongPredicate runThreads;
+
+    /** Whether another run was in progress at some moment of this one (#1503). */
+    private volatile java.util.function.BooleanSupplier otherRunsOverlapped = () -> false;
+
+    /**
+     * Limits the live sample to threads this run can own, as {@code DeadlockDetector.attributeTo}
+     * limits its cycles (#1385, #1503).
+     *
+     * <p>The sample walks every thread in the JVM. Under parallel test execution, two threads
+     * parked in another run's initializers were this run's finding. A sample now counts for this
+     * run when one of its parked threads satisfies {@code runThreads}, or when
+     * {@code otherRunsOverlapped} answers {@code false}, so no other run could own it.
+     *
+     * @param runThreads          whether a thread id is a worker of the run or a thread it started
+     * @param otherRunsOverlapped whether another run was in progress at some moment of this one
+     * @since 1.14.5
+     */
+    public void attributeTo(java.util.function.LongPredicate runThreads,
+                            java.util.function.BooleanSupplier otherRunsOverlapped) {
+        this.runThreads = runThreads;
+        this.otherRunsOverlapped = otherRunsOverlapped;
+    }
+
+    /** {@return whether a live sample of these parked threads is this run's to report} */
+    private boolean belongsToThisRun(List<Parked> parked) {
+        java.util.function.LongPredicate owns = runThreads;
+        if (owns == null) {
+            return true;
+        }
+        for (Parked p : parked) {
+            if (owns.test(p.threadId())) {
+                return true;
+            }
+        }
+        return !otherRunsOverlapped.getAsBoolean();
+    }
 
     /** Cached live-thread sample, taken once so repeated analyze() calls agree. */
     private final AtomicReference<@Nullable List<Parked>> sample = new AtomicReference<>();
@@ -224,7 +263,8 @@ public final class StaticInitDeadlockDetector {
         List<Parked> parked = liveSample();
         Set<String> classes = new LinkedHashSet<>();
         for (Parked p : parked) classes.add(simple(p.initializingClass()));
-        if (parked.size() >= 2 && classes.size() >= 2 && r.violations.isEmpty()) {
+        if (parked.size() >= 2 && classes.size() >= 2 && r.violations.isEmpty()
+                && belongsToThisRun(parked)) {
             StringBuilder who = new StringBuilder();
             for (Parked p : parked) {
                 if (who.length() > 0) who.append("; ");
@@ -344,7 +384,7 @@ public final class StaticInitDeadlockDetector {
             if (t.threadId() == Thread.currentThread().threadId()) continue;
             for (StackTraceElement f : e.getValue()) {
                 if (CLINIT.equals(f.getMethodName())) {
-                    found.add(new Parked(t.getName(), t.getState(), f.getClassName()));
+                    found.add(new Parked(t.threadId(), t.getName(), t.getState(), f.getClassName()));
                     break;
                 }
             }
@@ -354,12 +394,21 @@ public final class StaticInitDeadlockDetector {
             if (!thread.virtual()) continue;
             for (String frame : thread.stack()) {
                 if (frame.contains(CLINIT)) {
-                    found.add(new Parked(thread.name(), stateOf(thread), classNameOf(frame)));
+                    found.add(new Parked(tidOf(thread), thread.name(), stateOf(thread), classNameOf(frame)));
                     break;
                 }
             }
         }
         return found;
+    }
+
+    /** {@return the dumped thread's id, or -1 when the dump gives none that is a number} */
+    private static long tidOf(VirtualThreadLockGraph.DumpedThread thread) {
+        try {
+            return Long.parseLong(thread.tid());
+        } catch (NumberFormatException notANumber) {
+            return -1L;
+        }
     }
 
     /** {@return the dumped thread's state, or RUNNABLE when this JDK names it something else} */
