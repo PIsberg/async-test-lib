@@ -55,10 +55,6 @@ public class LatchMisuseDetector extends AbstractInstanceDetector<LatchMisuseDet
          */
         final java.lang.ref.@Nullable WeakReference<CountDownLatch> latch;
 
-        LatchState(String name, int initialCount) {
-            this(name, initialCount, null);
-        }
-
         LatchState(String name, int initialCount, @Nullable CountDownLatch latch) {
             this.name = name;
             this.initialCount = new AtomicInteger(initialCount);

@@ -450,4 +450,53 @@ public class SharedCollectionDetectorTest {
         assertTrue(readersThenOrderedWriterReported(false),
                 "without the edge the other reader's read may overlap the write");
     }
+    /**
+     * #1499: a reader that reads again after a synchronization event. The hand-off has to follow
+     * its latest read, not the one the window first saw, or a write ordered after only the earlier
+     * read takes the instance over while the later one may overlap it.
+     */
+    @Test
+    void aWriteOrderedAfterAReadersEarlierReadOnlyIsReported() throws InterruptedException {
+        SharedCollectionDetector detector = new SharedCollectionDetector();
+        java.util.Map<String, String> map = new HashMap<>();
+        map.put("k", "v");
+        detector.registerCollection(map, "reread-map", "HashMap");
+        Object afterFirstRead = new Object();
+        Object elsewhere = new Object();
+        java.util.concurrent.CountDownLatch bothRead = new java.util.concurrent.CountDownLatch(2);
+        java.util.concurrent.CountDownLatch reread = new java.util.concurrent.CountDownLatch(1);
+        Thread writer = new Thread(() -> {
+            detector.recordRead(map, "reread-map", "get");
+            bothRead.countDown();
+            try {
+                reread.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            HappensBefore.acquire(afterFirstRead); // ordered after the other reader's first read only
+            detector.recordWrite(map, "reread-map", "put");
+        }, "writer");
+        Thread reader = new Thread(() -> {
+            detector.recordRead(map, "reread-map", "get");
+            bothRead.countDown();
+            try {
+                bothRead.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            HappensBefore.release(afterFirstRead);
+            HappensBefore.acquire(elsewhere); // a synchronization event: a new clock
+            detector.recordRead(map, "reread-map", "get");
+            reread.countDown();
+        }, "reader");
+        writer.start();
+        reader.start();
+        writer.join();
+        reader.join();
+
+        assertTrue(detector.analyze().hasIssues(),
+                "the reader's second read is ordered before nothing the writer did");
+    }
 }
