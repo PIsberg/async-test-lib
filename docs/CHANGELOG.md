@@ -140,6 +140,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schedule (#1495, part 3).** An adopted thread never leaves its round, so a pool thread a woven
   thread factory built in one round carried that round's worker into the next, took itself for a
   caller-runs thread there, and ran the task uncontrolled while the round counted no escape.
+- **A latch that reached zero is not missing a countDown(), and a permit returned by another thread
+  is not an over-release (#1501, parts 2 and 3).** A timed `await` that returned `false` was
+  cleared only by a later successful await, so a poll that came too early on a latch that then
+  reached zero was a CRITICAL "await() timed out" in `CountDownLatchDetector`. Countdowns the
+  agent did not see were a CRITICAL "missing countDown()" in `LatchMisuseDetector` too. Both now
+  read the latch: at zero, every countDown() came. And without a registered capacity,
+  `SemaphoreMisuseDetector` reported a thread that returned a permit another thread acquired as
+  HIGH over-release, because the returning thread held none itself, although the run's
+  acquisitions and releases balanced. It now also needs more releases than acquisitions in all.
 - **Locked writes after a published set-up are not a race, in `RaceConditionDetector` and in
   `AtomicityValidator`'s owner-aware API (#1500).** `RaceConditionDetector`'s concurrent-writes line
   (default in `Preset.ESSENTIALS`) asked, separately, whether one lock covered every write and

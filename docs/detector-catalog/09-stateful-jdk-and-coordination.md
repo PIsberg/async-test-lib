@@ -164,7 +164,8 @@ them. Now part of `detectAll` like every other detector.
 * **Severity**: `HIGH`
 * **Description**: A `CountDownLatch` that is awaited but never counted down to zero (the
   awaiting thread blocks forever), or counted down more times than its initial count (a
-  no-op past zero, but a sign the coordination logic is wrong).
+  no-op past zero, but a sign the coordination logic is wrong). A latch at zero when the run ends
+  is not missing a `countDown()`, whoever made it, even when every recorded await timed out (#1501).
 * **Usage**:
   ```java
   var d = AsyncTestContext.latchMisuseDetector();

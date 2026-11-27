@@ -408,4 +408,70 @@ public class SemaphoreMisuseDetectorTest {
         assertEquals(1, report.overReleases.size(), report.toString());
         assertTrue(report.overReleases.get(0).contains("1 extra release"), report.toString());
     }
+
+    /** Runs {@code body} on a new thread and waits for it. */
+    private static void onThread(Runnable body) throws InterruptedException {
+        Thread thread = new Thread(body);
+        thread.start();
+        thread.join();
+    }
+
+    /**
+     * #1501: a permit acquired on one thread and returned by another that acquired before. The
+     * returning thread held nothing, so its release counted as returning twice, and with no
+     * registered capacity that alone was a HIGH over-release, though the run acquired and released
+     * the same number of permits.
+     */
+    @org.junit.jupiter.api.Test
+    void aPermitReleasedByAnotherThreadIsNotAnOverRelease() throws InterruptedException {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        java.util.concurrent.Semaphore semaphore = new java.util.concurrent.Semaphore(1);
+        Thread[] releaser = new Thread[1];
+        java.util.concurrent.CountDownLatch handedOver = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        releaser[0] = new Thread(() -> {
+            semaphore.acquireUninterruptibly(); // an earlier use of its own
+            detector.recordAcquire(semaphore, "pool");
+            detector.recordRelease(semaphore, "pool");
+            semaphore.release();
+            try {
+                handedOver.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            detector.recordRelease(semaphore, "pool"); // the permit the other thread took
+            semaphore.release();
+            done.countDown();
+        });
+        releaser[0].start();
+        onThread(() -> {
+            semaphore.acquireUninterruptibly();
+            detector.recordAcquire(semaphore, "pool");
+            handedOver.countDown(); // the work, and the permit with it, go to the releaser
+        });
+        done.await();
+        releaser[0].join();
+
+        org.junit.jupiter.api.Assertions.assertTrue(detector.analyze().overReleases.isEmpty(),
+                "two acquisitions and two releases: the second release returned a permit another"
+                        + " thread took, " + detector.analyze().overReleases);
+    }
+
+    @org.junit.jupiter.api.Test
+    void aThreadReturningMoreThanTheRunAcquiredIsAnOverRelease() throws InterruptedException {
+        SemaphoreMisuseDetector detector = new SemaphoreMisuseDetector();
+        java.util.concurrent.Semaphore semaphore = new java.util.concurrent.Semaphore(1);
+        onThread(() -> {
+            semaphore.acquireUninterruptibly();
+            detector.recordAcquire(semaphore, "pool");
+            detector.recordRelease(semaphore, "pool");
+            semaphore.release();
+            detector.recordRelease(semaphore, "pool"); // once too often
+            semaphore.release();
+        });
+
+        org.junit.jupiter.api.Assertions.assertFalse(detector.analyze().overReleases.isEmpty(),
+                "one acquisition and two releases");
+    }
 }
