@@ -507,8 +507,7 @@ an element added to such a collection with `add`, `addAll` or `List.set` and rea
 or `stream()` over it, a value stored with `putIfAbsent` and one read with `getOrDefault` or
 `Map.forEach`, and a value a `compute`, `computeIfAbsent`, `computeIfPresent` or `merge` stored,
 received by the caller it is returned to (#1294; a refused `add` or `putIfAbsent` publishes
-nothing), and the value already stored, received by the `compute`, `computeIfPresent` or `merge`
-function it is handed to, before the function runs (#1499), the key and value of each entry a for-each, `forEach` or `stream()` over `entrySet()`
+nothing), the key and value of each entry a for-each, `forEach` or `stream()` over `entrySet()`
 hands out, and of the entry a `NavigableMap` `firstEntry`, `lastEntry`, `floorEntry`,
 `ceilingEntry`, `lowerEntry`, `higherEntry`, `pollFirstEntry` or `pollLastEntry` returns,
 an element read with `Vector.elementAt`, `firstElement` or `lastElement`, pushed on a `Stack` and

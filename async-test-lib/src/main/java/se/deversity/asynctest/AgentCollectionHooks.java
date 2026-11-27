@@ -1606,11 +1606,14 @@ public final class AgentCollectionHooks {
     }
 
     /**
-     * {@return {@code remapping}, acquiring the value it is handed before it runs and releasing what
-     * it returns before the map stores it (#1294)}: the function reads the old value inside the
-     * call, so acquiring it only on the way out left those reads unordered after the put that
-     * published it (#1499). For {@code compute} and {@code computeIfPresent}, whose function takes
-     * the key first and the old value second.
+     * {@return {@code remapping}, releasing what it returns before the map stores it (#1294)}
+     *
+     * <p>The value the function is handed is not acquired before it runs, although the function
+     * reads it inside the call. The model matches a release to an acquire by the object, not by
+     * the slot it came through, so one value stored under two keys would order a function on the
+     * second key after another thread's update through the first, which is a race the per-key
+     * lock does not exclude (AtomicMapUpdateWeavingTest, #1499). Ordering those reads needs a
+     * release per (map, key) slot.
      */
     private static BiFunction<Object, Object, Object> publishing(Map<Object, Object> receiver,
             BiFunction<Object, Object, Object> remapping) {
@@ -1618,29 +1621,7 @@ public final class AgentCollectionHooks {
             return remapping;
         }
         return (key, old) -> {
-            if (old != null) {
-                HappensBefore.acquire(old);
-            }
             Object stored = remapping.apply(key, old);
-            HappensBefore.release(stored);
-            return stored;
-        };
-    }
-
-    /**
-     * {@return {@code merge}'s {@code remapping}, as {@link #publishing(Map, BiFunction)} wraps a
-     * {@code compute}'s, with the old value as the first argument (#1499)}
-     */
-    private static BiFunction<Object, Object, Object> publishingMerge(Map<Object, Object> receiver,
-            BiFunction<Object, Object, Object> remapping) {
-        if (remapping == null || !HappensBefore.publishesElements(receiver)) {
-            return remapping;
-        }
-        return (old, given) -> {
-            if (old != null) {
-                HappensBefore.acquire(old);
-            }
-            Object stored = remapping.apply(old, given);
             HappensBefore.release(stored);
             return stored;
         };
@@ -1884,7 +1865,7 @@ public final class AgentCollectionHooks {
             boolean completed = false;
             Object merged = null;
             try {
-                merged = receiver.merge(key, value, publishingMerge(receiver, remapping));
+                merged = receiver.merge(key, value, publishing(receiver, remapping));
                 completed = true;
             } finally {
                 // A merge that threw, from the map or the function, stored nothing (#1418).
