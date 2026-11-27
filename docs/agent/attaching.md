@@ -296,6 +296,12 @@ stand-in only when no class below `ConcurrentHashMap` declares any of the four m
 JDK's own atomic update is the one that runs (#1259). A subclass that overrides one, a
 `ConcurrentSkipListMap`, whose `compute` may run the function concurrently, and any other map get
 no stand-in. On a plain `HashMap` the four calls are recorded as writes, as a `put` is (#1499).
+The same stand-in orders a remapping function after the store it reads (#1540): a `put`,
+`putIfAbsent` or `merge` of an absent key, and every `compute`-family call that stores a value,
+releases the key's stand-in, and the function of a later `compute`, `computeIfPresent` or `merge`
+on that key acquires it before it reads the value it is handed. It is the key's slot that orders,
+not the value, so one value stored under two keys still races, and a refused `putIfAbsent` takes
+its release back. A map that gets no stand-in orders nothing this way.
 
 A map whose calls are each atomic, a `ConcurrentHashMap`, a `Hashtable` or a
 `Collections.synchronizedMap` wrapper, is not a data race on any one call, so

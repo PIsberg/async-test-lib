@@ -140,6 +140,22 @@ class AtomicMapUpdateWeavingTest {
     }
 
     @Test
+    @DisplayName("a remapping function reading a value another thread put is ordered after the put (#1540)")
+    void aFunctionReadingAPutValueIsSilent() throws InterruptedException {
+        Map<String, Tally> map = seeded(new ConcurrentHashMap<>());
+        List<String> findings = findings(w -> {
+            if (w % 2 == 0) {
+                ComputeTallyBean.putFresh(map, KEY, w);
+            } else {
+                ComputeTallyBean.computeIfPresent(map, KEY);
+            }
+        });
+        assertFalse(mentionsHits(findings),
+                "the put stores the tally after writing its count, and the function bumps it under "
+                        + "the key's lock, which the put to the same key released: " + findings);
+    }
+
+    @Test
     @DisplayName("the same bump after a get is a race")
     void getThenBumpFires() throws InterruptedException {
         Map<String, Tally> map = seeded(new ConcurrentHashMap<>());

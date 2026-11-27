@@ -191,6 +191,91 @@ class AgentHappensBeforeFeedTest {
         return detector.analyzeRaceConditions().hasIssues();
     }
 
+    /**
+     * One thread builds a box, writes it and stores it under {@code "k"} with {@code store}; when it
+     * has ended, a second runs a woven {@code computeIfPresent} on the key whose function reads and
+     * writes the value it is handed, inside the call (#1540).
+     */
+    private static boolean remappingReadReported(Map<Object, Object> map, Consumer<Box> store)
+            throws InterruptedException {
+        RaceConditionDetector detector = new RaceConditionDetector();
+        Thread producer = new Thread(() -> {
+            Box box = new Box();
+            box.value = 1;
+            detector.recordFieldWrite(box, "value");
+            store.accept(box);
+        });
+        producer.start();
+        producer.join();
+        Thread consumer = new Thread(() -> AgentCollectionHooks.mapComputeIfPresent(map, "k", (k, old) -> {
+            Box handed = (Box) old;
+            detector.recordFieldRead(handed, "value");
+            handed.value++;
+            detector.recordFieldWrite(handed, "value");
+            return old;
+        }));
+        consumer.start();
+        consumer.join();
+        return detector.analyzeRaceConditions().hasIssues();
+    }
+
+    /** A map whose compute family is not ConcurrentHashMap's atomic one, so its slots order nothing. */
+    static final class OverridingComputeMap extends ConcurrentHashMap<Object, Object> {
+        private static final long serialVersionUID = 1L;
+
+        @Override
+        public Object computeIfPresent(Object key,
+                java.util.function.BiFunction<? super Object, ? super Object, ?> remapping) {
+            Object old = get(key);
+            Object updated = old == null ? null : remapping.apply(key, old);
+            if (updated != null) {
+                put(key, updated);
+            }
+            return updated;
+        }
+    }
+
+    @Test
+    @DisplayName("a remapping function reads the value it is handed after the store through its slot (#1540)")
+    void wovenRemappingFunctionIsOrderedAfterTheSlotsStore() throws InterruptedException {
+        ConcurrentHashMap<Object, Object> put = new ConcurrentHashMap<>();
+        assertFalse(remappingReadReported(put, b -> AgentCollectionHooks.mapPut(put, "k", b)), "put");
+        ConcurrentHashMap<Object, Object> absent = new ConcurrentHashMap<>();
+        assertFalse(remappingReadReported(absent, b -> AgentCollectionHooks.mapPutIfAbsent(absent, "k", b)),
+                "putIfAbsent");
+        ConcurrentHashMap<Object, Object> merged = new ConcurrentHashMap<>();
+        assertFalse(remappingReadReported(merged, b -> AgentCollectionHooks.mapMerge(merged, "k", b, (o, n) -> o)),
+                "merge of an absent key");
+        ConcurrentHashMap<Object, Object> computed = new ConcurrentHashMap<>();
+        assertFalse(remappingReadReported(computed, b -> AgentCollectionHooks.mapCompute(computed, "k", (k, v) -> b)),
+                "compute");
+        ConcurrentHashMap<Object, Object> ifAbsent = new ConcurrentHashMap<>();
+        assertFalse(remappingReadReported(ifAbsent, b -> AgentCollectionHooks.mapComputeIfAbsent(ifAbsent, "k", k -> b)),
+                "computeIfAbsent");
+    }
+
+    @Test
+    @DisplayName("a slot orders only its own key's stores, on maps whose updates are atomic (#1540)")
+    void aSlotOrdersOnlyItsOwnKey() throws InterruptedException {
+        // The value went in under "a" through the hook and under "k" unwoven: the function on "k"
+        // acquires k's slot, which nothing released, so the read stays a race (#1499).
+        ConcurrentHashMap<Object, Object> twoKeys = new ConcurrentHashMap<>();
+        assertTrue(remappingReadReported(twoKeys, b -> {
+            AgentCollectionHooks.mapPut(twoKeys, "a", b);
+            twoKeys.put("k", b);
+        }), "a store under another key orders nothing for this one");
+        OverridingComputeMap overriding = new OverridingComputeMap();
+        assertTrue(remappingReadReported(overriding, b -> AgentCollectionHooks.mapPut(overriding, "k", b)),
+                "an overriding subclass runs the function outside the map's lock, so it gets no slot");
+        // The box is in the map already; the producer's putIfAbsent of another one is refused and
+        // stores nothing, so the slot release it made must not survive.
+        ConcurrentHashMap<Object, Object> refused = new ConcurrentHashMap<>();
+        assertTrue(remappingReadReported(refused, b -> {
+            refused.put("k", b);
+            AgentCollectionHooks.mapPutIfAbsent(refused, "k", new Box());
+        }), "a refused putIfAbsent stored nothing through the slot");
+    }
+
     /** The last element a for-each over {@code iterable} sees, through the woven call or the plain one. */
     private static Object lastOf(Iterable<Object> iterable, boolean woven) {
         Iterator<Object> each = woven ? AgentCollectionHooks.iterableIterator(iterable) : iterable.iterator();
