@@ -57,6 +57,13 @@ public final class ComputeTallyBean {
         });
     }
 
+    /** Puts a fresh tally whose count it set first: the put publishes it, field and all (#1540). */
+    public static void putFresh(Map<String, Tally> map, String key, int hits) {
+        Tally fresh = new Tally();
+        fresh.hits = hits;
+        map.put(key, fresh);
+    }
+
     /** The broken twin: the read and the bump are two steps, and nothing holds them together. */
     public static void getThenBump(Map<String, Tally> map, String key) {
         map.get(key).hits++;

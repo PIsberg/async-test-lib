@@ -30,9 +30,14 @@ import java.util.function.Function;
  * {@code ConcurrentSkipListMap.compute} may run it concurrently; neither is atomic, and a plain
  * {@code HashMap} is not thread-safe at all. Each gets no token, which can only add a finding.
  *
+ * <p>The token is also the key's slot in the happens-before model (#1540): every store to the key
+ * through a woven {@code put}, {@code putIfAbsent}, {@code merge} or {@code compute}-family call
+ * releases it, and a remapping function acquires it before it reads the value it is handed. So a
+ * store asks for a token too, and a map that is only ever {@code put} to keeps one per key.
+ *
  * <p>Maps are held weakly, by identity; keys are held strongly, by the map's own equality, while
  * their map lives. At most {@link #MAX_KEYS_PER_MAP} keys get a token per map; past that a call
- * gets none, which again can only add a finding.
+ * gets none, which again can only add a finding, and a store orders nothing for that key.
  *
  * @since 1.14.3
  */

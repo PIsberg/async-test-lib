@@ -166,6 +166,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `InterruptedException` from the condition as "not yet true" with its interrupt status already
   cleared, so a worker the round cancelled polled on until the timeout. It now restores the status
   and fails at once.
+- **A `ConcurrentHashMap` remapping function is ordered after the store it reads (#1540).** A
+  `compute`, `computeIfPresent` or `merge` function that read the value it was handed, after
+  another thread's `put` of it, read it unordered, so `AtomicityValidator` and
+  `RaceConditionDetector` reported correct code. Every woven store to a key now releases the key's
+  stand-in lock (`AtomicMapUpdateTokens`), and the function acquires it before it runs. The slot,
+  not the value, orders: acquiring the value itself, tried in #1539, let one value stored under
+  two keys order a real race away, and `oneValueUnderTwoKeysFires` still fires, five runs of five.
+  A map with no stand-in (an overriding subclass, past 4,096 keys) orders nothing this way. The
+  cost is a token lookup on each woven store to such a map, and a retained key per stored key up
+  to that limit; `RunnerAllocationBudgetTest` stays within its budget.
 - **A budget that runs out at a round's start barrier is reported as the timeout it is (#1507).**
   When one worker's `CyclicBarrier` wait ran out before its peer arrived, the peer got a
   `BrokenBarrierException`, both finished before the runner's own wait for the round began, and the

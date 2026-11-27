@@ -562,6 +562,8 @@ public final class AgentCollectionHooks {
         // The key first: retract withdraws only this thread's last release, which must be the
         // value's. A refused key's release stays, and orders nothing it should not: the map holds
         // either an equal object this call never touched or this same one, published by its put.
+        // The slot first of all: a refused key stored nothing, so its slot release is withdrawn.
+        HappensBefore.@Nullable Withdrawable slot = publishingSlot(receiver, key);
         publishingKey(receiver, key);
         boolean published = publishing(receiver, value);
         boolean stored = false;
@@ -570,6 +572,9 @@ public final class AgentCollectionHooks {
             stored = present == null;
             return received(receiver, present);
         } finally {
+            if (!stored) {
+                HappensBefore.withdraw(slot);
+            }
             if (published && !stored) {
                 HappensBefore.retract(value);
             }
@@ -1516,7 +1521,8 @@ public final class AgentCollectionHooks {
         // A concurrent map publishes the value to whoever later reads it (HappensBefore): the
         // release comes before the put, so every get that can return the value finds it. The key
         // first, as in putIfAbsent: retract withdraws only this thread's last release, which must
-        // be the value's when the put throws and stores nothing (#1418).
+        // be the value's when the put throws and stores nothing (#1418). The slot before both.
+        HappensBefore.@Nullable Withdrawable slot = publishingSlot(receiver, key);
         publishingKey(receiver, key);
         boolean published = publishing(receiver, value);
         boolean stored = false;
@@ -1525,10 +1531,30 @@ public final class AgentCollectionHooks {
             stored = true;
             return previous;
         } finally {
+            if (!stored) {
+                HappensBefore.withdraw(slot);
+            }
             if (published && !stored) {
                 HappensBefore.retract(value);
             }
         }
+    }
+
+    /**
+     * Releases the (map, key) slot of a {@code ConcurrentHashMap} store, before it, and {@return
+     * the release, for the caller to withdraw if nothing was stored, or {@code null} for none}
+     * (#1540). A remapping function for the same key acquires the slot before it reads the value
+     * it is handed, which orders it after the store as the map's per-key lock does. The slot, not
+     * the value: one value stored under two keys must not order a function on one key after an
+     * update through the other, which the per-key lock does not exclude (#1499). Only the maps
+     * {@link AtomicMapUpdateTokens} gives a token to, so an overriding subclass orders nothing.
+     */
+    private static HappensBefore.@Nullable Withdrawable publishingSlot(Map<?, ?> receiver,
+                                                                       @Nullable Object key) {
+        if (!HappensBefore.publishesElements(receiver)) {
+            return null;
+        }
+        return HappensBefore.releaseWithdrawable(AtomicMapUpdateTokens.tokenFor(receiver, key));
     }
 
     /**
@@ -1608,20 +1634,27 @@ public final class AgentCollectionHooks {
     /**
      * {@return {@code remapping}, releasing what it returns before the map stores it (#1294)}
      *
-     * <p>The value the function is handed is not acquired before it runs, although the function
-     * reads it inside the call. The model matches a release to an acquire by the object, not by
-     * the slot it came through, so one value stored under two keys would order a function on the
-     * second key after another thread's update through the first, which is a race the per-key
-     * lock does not exclude (AtomicMapUpdateWeavingTest, #1499). Ordering those reads needs a
-     * release per (map, key) slot.
+     * <p>The function acquires {@code slot}, the (map, key) token every store to the key releases,
+     * before it reads the value it is handed, and releases it with what it returns (#1540). Not
+     * the value itself: the model matches a release to an acquire by the object, so one value
+     * stored under two keys would order a function on the second key after another thread's
+     * update through the first, a race the per-key lock does not exclude
+     * (AtomicMapUpdateWeavingTest, #1499). A map with no token orders nothing through its slots.
      */
     private static BiFunction<Object, Object, Object> publishing(Map<Object, Object> receiver,
-            BiFunction<Object, Object, Object> remapping) {
+            BiFunction<Object, Object, Object> remapping, @Nullable Object slot) {
         if (remapping == null || !HappensBefore.publishesElements(receiver)) {
             return remapping;
         }
         return (key, old) -> {
+            if (old != null && slot != null) {
+                // The value it is handed was stored through this slot (#1540).
+                HappensBefore.acquire(slot);
+            }
             Object stored = remapping.apply(key, old);
+            if (stored != null && slot != null) {
+                HappensBefore.release(slot);
+            }
             HappensBefore.release(stored);
             return stored;
         };
@@ -1805,7 +1838,7 @@ public final class AgentCollectionHooks {
         HeldLocks.acquired(token);
         try {
             publishingKey(receiver, key);
-            return received(receiver, receiver.compute(key, publishing(receiver, remapping)));
+            return received(receiver, receiver.compute(key, publishing(receiver, remapping, token)));
         } finally {
             HeldLocks.released(token);
         }
@@ -1819,7 +1852,7 @@ public final class AgentCollectionHooks {
         Object token = AtomicMapUpdateTokens.tokenFor(receiver, key);
         HeldLocks.acquired(token);
         try {
-            return received(receiver, receiver.computeIfPresent(key, publishing(receiver, remapping)));
+            return received(receiver, receiver.computeIfPresent(key, publishing(receiver, remapping, token)));
         } finally {
             HeldLocks.released(token);
         }
@@ -1838,6 +1871,9 @@ public final class AgentCollectionHooks {
             if (mapping != null && HappensBefore.publishesElements(receiver)) {
                 publishing = absent -> {
                     Object stored = mapping.apply(absent);
+                    if (stored != null && token != null) {
+                        HappensBefore.release(token); // a store through the slot (#1540)
+                    }
                     HappensBefore.release(stored);
                     return stored;
                 };
@@ -1860,15 +1896,20 @@ public final class AgentCollectionHooks {
             // An absent key stores the value itself, so it is released first; a present one
             // stores what the function returns, and the value's release is withdrawn if no other
             // release followed it. The key goes first, so the value's stays the last to withdraw.
+            // An absent key stores the value through the slot without calling the function (#1540).
+            HappensBefore.@Nullable Withdrawable slot = publishingSlot(receiver, key);
             publishingKey(receiver, key);
             boolean published = publishing(receiver, value);
             boolean completed = false;
             Object merged = null;
             try {
-                merged = receiver.merge(key, value, publishing(receiver, remapping));
+                merged = receiver.merge(key, value, publishing(receiver, remapping, token));
                 completed = true;
             } finally {
                 // A merge that threw, from the map or the function, stored nothing (#1418).
+                if (!completed) {
+                    HappensBefore.withdraw(slot);
+                }
                 if (published && (!completed || merged != value)) { // NOPMD CompareObjectsWithEquals - the same object went in, or it did not
                     HappensBefore.retract(value);
                 }
