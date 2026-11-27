@@ -6,7 +6,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 29. CountDownLatch Misuse Detector
 * **Severity**: `HIGH`
-* **Description**: Flags CountDownLatch misuse: `await()` calls that time out on a latch still above zero when the run ends (a latch at zero had every `countDown()` it waited for, so a timed poll that came too early is not reported, #1501; with the agent, a timed await counts only when the caller discards its `false`, so a stop-latch poll such as `while (!stop.await(1, MILLISECONDS))` is not reported either), latches whose count never reaches zero because `countDown()` is missing on some path, extra `countDown()` calls beyond the initial count, and attempts to reuse a single-use latch.
+* **Description**: Flags CountDownLatch misuse: `await()` calls that time out on a latch still above zero when the run ends (a latch at zero had every `countDown()` it waited for, so a timed poll that came too early is not reported, #1501; with the agent, a timed await whose `false` falls straight into the caller's own handling, `if (!latch.await(..))` or a `while (!stop.await(..))` loop, is withdrawn, so a stop-latch poll such as `while (!stop.await(1, MILLISECONDS))` is not reported either; `recordTimeoutHandled` does the same by hand), latches whose count never reaches zero because `countDown()` is missing on some path, extra `countDown()` calls beyond the initial count, and attempts to reuse a single-use latch.
 * **Buggy Code**:
   ```java
   CountDownLatch latch = new CountDownLatch(3);

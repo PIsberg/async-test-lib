@@ -325,7 +325,7 @@ class SpawnedWorkEventFeedTest {
     void latchAwaitTimedOut() throws Exception {
         bothWays("a timed-out latch await",
                 AsyncTestConfig.builder().detectCountDownLatchIssues(true).build(),
-                () -> assertFalse(awaitAsAStatement(new CountDownLatch(1), 2, TimeUnit.MILLISECONDS)),
+                () -> assertFalse(AgentConcurrencyUtilHooks.await(new CountDownLatch(1), 2, TimeUnit.MILLISECONDS)),
                 () -> {
                     CountDownLatch latch = new CountDownLatch(1);
                     AgentConcurrencyUtilHooks.countDown(latch);
@@ -511,7 +511,7 @@ class SpawnedWorkEventFeedTest {
     void latchNobodyCountedDown() throws Exception {
         bothWays("an await on a latch nobody counted down",
                 AsyncTestConfig.builder().detectLatchMisuse(true).build(),
-                () -> assertFalse(awaitAsAStatement(new CountDownLatch(1), 2, TimeUnit.MILLISECONDS)),
+                () -> assertFalse(AgentConcurrencyUtilHooks.await(new CountDownLatch(1), 2, TimeUnit.MILLISECONDS)),
                 () -> {
                     CountDownLatch latch = new CountDownLatch(1);
                     AgentConcurrencyUtilHooks.countDown(latch);
@@ -572,17 +572,5 @@ class SpawnedWorkEventFeedTest {
                         },
                         ctx -> AsyncTestContext.missedSignalDetector().analyze().hasIssues()),
                 "the thread has not reached its loop's back-edge yet, and may");
-    }
-
-    /**
-     * A timed latch await as woven code makes it when the caller discards the boolean:
-     * {@code latch.await(t, unit);} compiles to the call and a POP, which the weaver replaces with
-     * {@code awaitResultDiscarded} (#1501). Only a discarded timeout is a finding.
-     */
-    private static boolean awaitAsAStatement(CountDownLatch latch, long timeout, TimeUnit unit)
-            throws InterruptedException {
-        boolean reachedZero = AgentConcurrencyUtilHooks.await(latch, timeout, unit);
-        AgentConcurrencyUtilHooks.awaitResultDiscarded(reachedZero);
-        return reachedZero;
     }
 }

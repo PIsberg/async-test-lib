@@ -179,4 +179,23 @@ class LatchMisuseDetectorTest {
         org.junit.jupiter.api.Assertions.assertTrue(detector.analyze().hasIssues(),
                 "nothing counted the latch down");
     }
+
+    @Test
+    void aHandledTimedAwaitIsWithdrawnAndOnlyThatOne() {
+        Object latch = new Object();
+        detector.registerLatch(latch, "stop", 1);
+        // A stop-latch poll: the await is recorded, times out, and the caller branches on it.
+        detector.recordAwait(latch);
+        detector.recordTimedAwaitHandled(latch);
+        assertTrue(detector.analyze().missingCountDowns.isEmpty(),
+            "the only await was a poll whose caller handled the timeout (#1501)");
+
+        // A second thread's await whose timeout nobody read stays, whatever the poll withdrew.
+        detector.recordAwait(latch);
+        detector.recordTimedAwaitHandled(latch);
+        detector.recordTimedAwaitHandled(latch);
+        detector.recordAwait(latch);
+        assertEquals(1, detector.analyze().missingCountDowns.size(),
+            "a withdrawal never takes more than the awaits recorded, so the unhandled one counts");
+    }
 }

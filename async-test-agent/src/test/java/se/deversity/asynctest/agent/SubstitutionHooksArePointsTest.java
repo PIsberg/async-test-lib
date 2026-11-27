@@ -56,9 +56,10 @@ class SubstitutionHooksArePointsTest {
 
     /** Hook-class methods that are not substitutions. */
     private static final Set<String> NOT_OPERATIONS = Set.of(
-            // Emitted in place of the POP after an offer or a timed latch await, to say its result
-            // was dropped (#1501).
-            "offerResultDiscarded", "awaitResultDiscarded",
+            // Emitted in place of the POP after an offer, to say its result was dropped.
+            "offerResultDiscarded",
+            // Emitted in front of the jump that tests a timed latch await's result (#1501).
+            "awaitResultTested",
             // Called by TelemetryRegistry's atomic hooks, after the point those take (#1157).
             "atomicRead", "atomicStored", "atomicSwapped", "atomicReferenceStored",
             "atomicIncremented", // (#1249)

@@ -168,7 +168,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.9.8
  */
-@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor changes exactly one kind of invokedynamic: a LambdaMetafactory metafactory or non-serializable altMetafactory whose implementation handle matches a table entry is pointed at that entry's hook, so a method reference such as builder::append is observed (#550). Every other bootstrap, ObjectMethods for records above all, must pass through as the same argument array, read only through ASM's Handle: parsing bootstrap constants is what made every Java record fail to instrument when this went through MemberSubstitution, and a rewritten serializable lambda would fail to deserialize. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class. The one-instruction lookahead behind whenResultDiscarded is a flag meaning the instruction just emitted was a substituted call whose result may be discarded: visitInsn(POP) is its only consumer and every other visit method must clear it, because a stale flag would turn an unrelated POP into a call whose parameter does not match the value on the stack, which is a VerifyError in the user's class at load time. SubstitutingVisitorClearsLookaheadEverywhereTest enumerates MethodVisitor to keep that override list complete. Inside a synchronized method, an entry with a synchronized variant (the sleeps, and the queue offers and takes, #796) first loads the method's monitor, ALOAD 0 or an LDC of the class for a static method, which the variant consumes as its last parameter: one more value and no branch, so only maxStack grows, and the substitution wrapper asks for COMPUTE_MAXS itself. A queue offer or take in any other instance method loads this the same way for its hook to probe (#751), except in a constructor, where this may be uninitialised and would not verify, and after a store to local 0. The one instruction the visitor inserts outside a substitution is the loop back-edge call in front of a jump that comes back over a woven Object.wait (#694): it must stay a static ()V call, because the jump's operands are already on the stack beneath it and anything that took or left a value, or added a branch, would need the frames COMPUTE_MAXS does not recompute.")
+@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor changes exactly one kind of invokedynamic: a LambdaMetafactory metafactory or non-serializable altMetafactory whose implementation handle matches a table entry is pointed at that entry's hook, so a method reference such as builder::append is observed (#550). Every other bootstrap, ObjectMethods for records above all, must pass through as the same argument array, read only through ASM's Handle: parsing bootstrap constants is what made every Java record fail to instrument when this went through MemberSubstitution, and a rewritten serializable lambda would fail to deserialize. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class. The one-instruction lookahead behind whenResultDiscarded and whenResultTested is a flag meaning the instruction just emitted was a substituted call whose result may be discarded or tested: visitInsn(POP) for a discard hook and visitJumpInsn(IFNE) for a tested hook, which takes the boolean and returns it in front of the jump (#1501), are its only consumers and every other visit method must clear it, because a stale flag would turn an unrelated POP into a call whose parameter does not match the value on the stack, which is a VerifyError in the user's class at load time. SubstitutingVisitorClearsLookaheadEverywhereTest enumerates MethodVisitor to keep that override list complete. Inside a synchronized method, an entry with a synchronized variant (the sleeps, and the queue offers and takes, #796) first loads the method's monitor, ALOAD 0 or an LDC of the class for a static method, which the variant consumes as its last parameter: one more value and no branch, so only maxStack grows, and the substitution wrapper asks for COMPUTE_MAXS itself. A queue offer or take in any other instance method loads this the same way for its hook to probe (#751), except in a constructor, where this may be uninitialised and would not verify, and after a store to local 0. Besides the tested-result call, the one instruction the visitor inserts outside a substitution is the loop back-edge call in front of a jump that comes back over a woven Object.wait (#694): it must stay a static ()V call, because the jump's operands are already on the stack beneath it and anything that took or left a value, or added a branch, would need the frames COMPUTE_MAXS does not recompute.")
 final class CollectionAccessWeaver {
 
     /**
@@ -223,13 +223,14 @@ final class CollectionAccessWeaver {
                          boolean isStatic,
                          @org.jspecify.annotations.Nullable String synchronizedHook,
                          @org.jspecify.annotations.Nullable String resultDiscardedHook,
+                         @org.jspecify.annotations.Nullable String resultTestedHook,
                          @org.jspecify.annotations.Nullable String loopBackEdgeHook,
                          Class<?>... parameters) {
 
         Entry(Class<?> declaredBy, String method, String hook,
               @org.jspecify.annotations.Nullable Class<?> returning, boolean isStatic,
               Class<?>... parameters) {
-            this(declaredBy, method, hook, returning, isStatic, null, null, null, parameters);
+            this(declaredBy, method, hook, returning, isStatic, null, null, null, null, parameters);
         }
 
         /** An entry matched by name and arguments alone, whatever the call returns. */
@@ -268,7 +269,7 @@ final class CollectionAccessWeaver {
          */
         Entry whenSynchronized(String hook) {
             return new Entry(declaredBy, method, this.hook, returning, isStatic, hook,
-                    resultDiscardedHook, loopBackEdgeHook, parameters);
+                    resultDiscardedHook, resultTestedHook, loopBackEdgeHook, parameters);
         }
 
         /**
@@ -285,7 +286,27 @@ final class CollectionAccessWeaver {
          */
         Entry whenResultDiscarded(String hook) {
             return new Entry(declaredBy, method, this.hook, returning, isStatic, synchronizedHook,
-                    hook, loopBackEdgeHook, parameters);
+                    hook, resultTestedHook, loopBackEdgeHook, parameters);
+        }
+
+        /**
+         * The hook to hand a {@code boolean} result to when the call site tests it at once.
+         *
+         * <p>The other side of {@link #whenResultDiscarded}: meaningful where a result the caller
+         * branches on is the caller handling it, which today is the timed
+         * {@code CountDownLatch.await}. {@code while (!stop.await(1, MILLISECONDS))} and
+         * {@code if (!latch.await(...))} compile to the call followed directly by an {@code IFNE}
+         * whose fall-through is the caller's code for a {@code false}, so in front of that jump,
+         * and only that jump, the weaver inserts a call to this hook. An {@code IFEQ} there is
+         * {@code if (latch.await(...)) { work }}, which drops the work on a timeout and stays the
+         * finding. It takes the {@code boolean} and returns it, so the jump consumes what it
+         * would have consumed, and it adds no branch and no frame (#1501). A result that is
+         * stored, returned or passed on is not tested here and keeps the ordinary hook's verdict:
+         * Guava's {@code awaitUninterruptibly} stores and returns it for its own caller.
+         */
+        Entry whenResultTested(String hook) {
+            return new Entry(declaredBy, method, this.hook, returning, isStatic, synchronizedHook,
+                    resultDiscardedHook, hook, loopBackEdgeHook, parameters);
         }
 
         /**
@@ -303,7 +324,7 @@ final class CollectionAccessWeaver {
          */
         Entry whenInsideLoop(String hook) {
             return new Entry(declaredBy, method, this.hook, returning, isStatic, synchronizedHook,
-                    resultDiscardedHook, hook, parameters);
+                    resultDiscardedHook, resultTestedHook, hook, parameters);
         }
     }
 
@@ -904,7 +925,7 @@ final class CollectionAccessWeaver {
             Entry.call(CountDownLatch.class, "await", "await"),
             // A timeout the caller reads is handled; one it pops is the finding (#1501).
             Entry.call(CountDownLatch.class, "await", "await", long.class, TimeUnit.class)
-                    .whenResultDiscarded("awaitResultDiscarded"),
+                    .whenResultTested("awaitResultTested"),
             // A rendezvous the memory model orders: what each party did before await before what
             // every party does after a normal return from the same generation (#1246).
             Entry.call(CyclicBarrier.class, "await", "await"),
@@ -1579,6 +1600,8 @@ final class CollectionAccessWeaver {
                           @org.jspecify.annotations.Nullable String synchronizedHookDescriptor,
                           @org.jspecify.annotations.Nullable String discardHookName,
                           @org.jspecify.annotations.Nullable String discardHookDescriptor,
+                          @org.jspecify.annotations.Nullable String testedHookName,
+                          @org.jspecify.annotations.Nullable String testedHookDescriptor,
                           @org.jspecify.annotations.Nullable String loopBackEdgeHookName) {
 
         /** {@return whether a loop around this target's call site gets a back-edge hook} */
@@ -1594,6 +1617,11 @@ final class CollectionAccessWeaver {
         /** {@return whether this target has a hook for a result the call site discards} */
         boolean hasDiscardVariant() {
             return discardHookName != null;
+        }
+
+        /** {@return whether this target has a hook for a result the call site tests at once} */
+        boolean hasTestedVariant() {
+            return testedHookName != null;
         }
     }
 
@@ -1625,6 +1653,8 @@ final class CollectionAccessWeaver {
                     synchronizedDescriptorFor(hooks, entry),
                     entry.resultDiscardedHook(),
                     discardDescriptorFor(hooks, entry, hook),
+                    entry.resultTestedHook(),
+                    testedDescriptorFor(hooks, entry, hook),
                     loopBackEdgeHookFor(hooks, entry)));
         }
         return targets;
@@ -1706,6 +1736,45 @@ final class CollectionAccessWeaver {
                     "no discarded-result hook " + hooks.getName() + "." + hookName + "("
                             + discarded.getName() + ") for " + entry.declaredBy().getName() + "."
                             + entry.method() + "; agent and library versions disagree", e);
+        }
+    }
+
+    /**
+     * {@return the descriptor of the entry's tested-result hook, or {@code null}}
+     *
+     * <p>The hook takes the {@code boolean} the call left and returns it, so the {@code IFEQ} or
+     * {@code IFNE} after it consumes what it would have. Checked here for the reason the discard
+     * hook is: a missing or mis-shaped hook is a version skew that must fail while the table is
+     * built, not as a {@code VerifyError} in a woven class.
+     *
+     * @param hooks the hooks class the table resolves against
+     * @param entry the entry, whose {@code resultTestedHook} may be unset
+     * @param hook  the entry's ordinary hook, which must return {@code boolean}
+     */
+    private static @org.jspecify.annotations.Nullable String testedDescriptorFor(
+            Class<?> hooks, Entry entry, Method hook) {
+        String hookName = entry.resultTestedHook();
+        if (hookName == null) {
+            return null;
+        }
+        if (hook.getReturnType() != boolean.class) {
+            throw new IllegalStateException(
+                    "whenResultTested on " + entry.declaredBy().getName() + "." + entry.method()
+                            + " needs a boolean result, not " + hook.getReturnType().getName());
+        }
+        try {
+            Method tested = hooks.getMethod(hookName, boolean.class);
+            if (tested.getReturnType() != boolean.class) {
+                throw new IllegalStateException(
+                        "tested-result hook " + hooks.getName() + "." + hookName
+                                + " must return the boolean it is given");
+            }
+            return Type.getType(tested).getDescriptor();
+        } catch (NoSuchMethodException e) {
+            throw new IllegalStateException(
+                    "no tested-result hook " + hooks.getName() + "." + hookName + "(boolean) for "
+                            + entry.declaredBy().getName() + "." + entry.method()
+                            + "; agent and library versions disagree", e);
         }
     }
 
@@ -2626,7 +2695,7 @@ final class CollectionAccessWeaver {
                                     target.hookOwnerInternalName(), target.hookMethodName(),
                                     target.hookDescriptor(), false);
                         }
-                        justSubstituted = target.hasDiscardVariant() ? target : null;
+                        justSubstituted = target.hasDiscardVariant() || target.hasTestedVariant() ? target : null;
                         if (target.hasLoopBackEdgeHook()) {
                             loopTracked = target;
                             loopTrackedAt = position;
@@ -2671,7 +2740,7 @@ final class CollectionAccessWeaver {
                         // A static call whose result is the defect when dropped, which today is a
                         // root CompletableFuture, arms the same one-instruction lookahead a
                         // virtual one does.
-                        justSubstituted = target.hasDiscardVariant() ? target : null;
+                        justSubstituted = target.hasDiscardVariant() || target.hasTestedVariant() ? target : null;
                         return;
                     }
                 }
@@ -2711,7 +2780,7 @@ final class CollectionAccessWeaver {
         public void visitInsn(int opcode) {
             Target discarded = justSubstituted;
             justSubstituted = null;
-            if (opcode == Opcodes.POP && discarded != null) {
+            if (opcode == Opcodes.POP && discarded != null && discarded.hasDiscardVariant()) {
                 // The instruction after a substituted offer is a POP exactly when the caller
                 // discarded the boolean, which is the defect itself (#454). The hook takes the one
                 // category-1 value the POP would have taken and returns nothing, so the frame
@@ -2979,7 +3048,17 @@ final class CollectionAccessWeaver {
 
         @Override
         public void visitJumpInsn(int opcode, Label label) {
+            Target tested = justSubstituted;
             justSubstituted = null;
+            if (tested != null && tested.hasTestedVariant() && opcode == Opcodes.IFNE) {
+                // An IFNE right after the call jumps away on true, so the code it falls into runs
+                // only on false: the caller wrote code for that case, which is it handling the
+                // result (#1501). An IFEQ is the opposite, if (latch.await(..)) { work }, which
+                // skips the work on a timeout and is the defect. The hook takes the boolean and
+                // returns it, so the jump consumes what it would have: no branch, no frame.
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, tested.hookOwnerInternalName(),
+                        tested.testedHookName(), tested.testedHookDescriptor(), false);
+            }
             if (labelsVisitedAt.containsKey(label)) {
                 sawBackwardJump = true;
             }

@@ -127,6 +127,23 @@ public class LatchMisuseDetector extends AbstractInstanceDetector<LatchMisuseDet
             state.awaitCalls.incrementAndGet();
         }
     }
+
+    /**
+     * Withdraws one recorded await on {@code latch}: a timed await that timed out and whose
+     * caller branched on the timeout, as a stop-latch poll does on every pass until it is
+     * stopped. Such a caller was not waiting for the latch to reach zero, so the await is not
+     * evidence of a missing {@code countDown()}. The agent calls this right after the await it
+     * withdraws; a timeout the caller discarded keeps its await (#1501).
+     *
+     * @param latch the latch, tracked by identity
+     * @since 1.14.5
+     */
+    public void recordTimedAwaitHandled(Object latch) {
+        LatchState state = stateFor(latch);
+        if (state != null) {
+            state.awaitCalls.updateAndGet(n -> n > 0 ? n - 1 : 0);
+        }
+    }
     /**
      * Records count down so it can be analysed at the end of the run.
      *

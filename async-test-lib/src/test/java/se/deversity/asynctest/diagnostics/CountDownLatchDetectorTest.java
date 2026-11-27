@@ -226,4 +226,23 @@ public class CountDownLatchDetectorTest {
         org.junit.jupiter.api.Assertions.assertTrue(detector.analyze().hasIssues(),
                 "one countDown() of two never came");
     }
+
+    @Test
+    void aHandledTimeoutIsWithdrawnAndOnlyThatOne() {
+        CountDownLatchDetector detector = new CountDownLatchDetector();
+        CountDownLatch stop = new CountDownLatch(1);
+        detector.recordTimeout(stop);
+        detector.recordTimeoutHandled(stop);
+        assertFalse(detector.analyze().hasIssues(),
+            "a stop-latch poll that branched on its timeout is handled (#1501)");
+
+        // One handled and one discarded timeout on the same latch: the discarded one stands.
+        detector.recordTimeout(stop);
+        detector.recordTimeoutHandled(stop);
+        detector.recordTimeoutHandled(stop);
+        detector.recordTimeout(stop);
+        assertTrue(detector.analyze().hasIssues(),
+            "a withdrawal takes one timeout, never another thread's unhandled one");
+        detector.recordTimeoutHandled(null);
+    }
 }

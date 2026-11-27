@@ -430,8 +430,10 @@ class NewlyWovenOverloadHooksTest {
         try {
             java.util.concurrent.CountDownLatch stop = new java.util.concurrent.CountDownLatch(1);
             int polls = 0;
-            // A stop-latch poll: the false is the loop condition, the very case the caller handles.
-            while (!AgentConcurrencyUtilHooks.await(stop, 1, TimeUnit.MILLISECONDS) && ++polls < 3) {
+            // A stop-latch poll: the false is the loop condition, so the weaver puts the tested
+            // hook in front of the IFNE that reads it.
+            while (!AgentConcurrencyUtilHooks.awaitResultTested(
+                    AgentConcurrencyUtilHooks.await(stop, 1, TimeUnit.MILLISECONDS)) && ++polls < 3) {
                 Thread.onSpinWait();
             }
             assertFalse(AsyncTestContext.countDownLatchDetector().analyze().hasIssues(),
@@ -450,9 +452,9 @@ class NewlyWovenOverloadHooksTest {
         AsyncTestContext.install(new AsyncTestContext(cfg));
         try {
             java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
-            // latch.await(1, MILLISECONDS); as a statement: the weaver puts the hook where the POP was
-            AgentConcurrencyUtilHooks.awaitResultDiscarded(
-                    AgentConcurrencyUtilHooks.await(done, 1, TimeUnit.MILLISECONDS));
+            // latch.await(1, MILLISECONDS); as a statement: the POP is left alone, so the timeout
+            // the await recorded stands, as it does for a result stored, returned or passed on.
+            AgentConcurrencyUtilHooks.await(done, 1, TimeUnit.MILLISECONDS);
             assertTrue(AsyncTestContext.countDownLatchDetector().analyze().hasIssues(),
                     "the caller went on as though the latch had reached zero");
             assertTrue(AsyncTestContext.latchMisuseDetector().analyze().hasIssues(),

@@ -284,7 +284,7 @@ class AgentConcurrencyUtilHooksEachAloneTest {
     void timedAwaitRecordsWhichWayItWent() throws Exception {
         CountDownLatch neverFalls = new CountDownLatch(1);
         AsyncTestContext timedOut = underAFreshContext(() ->
-                assertFalse(awaitAsAStatement(neverFalls, 5, TimeUnit.MILLISECONDS),
+                assertFalse(AgentConcurrencyUtilHooks.await(neverFalls, 5, TimeUnit.MILLISECONDS),
                         "nothing counts this latch down, so the wait expires"));
 
         AsyncTestContext.install(timedOut);
@@ -433,17 +433,5 @@ class AgentConcurrencyUtilHooksEachAloneTest {
                 "a rejected timed offer whose boolean was popped dropped the element, and the "
                         + "correlation to it exists only because the offer hook recorded; got "
                         + report);
-    }
-
-    /**
-     * A timed latch await as woven code makes it when the caller discards the boolean:
-     * {@code latch.await(t, unit);} compiles to the call and a POP, which the weaver replaces with
-     * {@code awaitResultDiscarded} (#1501). Only a discarded timeout is a finding.
-     */
-    private static boolean awaitAsAStatement(CountDownLatch latch, long timeout, TimeUnit unit)
-            throws InterruptedException {
-        boolean reachedZero = AgentConcurrencyUtilHooks.await(latch, timeout, unit);
-        AgentConcurrencyUtilHooks.awaitResultDiscarded(reachedZero);
-        return reachedZero;
     }
 }

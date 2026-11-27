@@ -134,7 +134,7 @@ class AgentConcurrencyUtilHooksTest {
             CountDownLatch neverReached = new CountDownLatch(2);
 
             AgentConcurrencyUtilHooks.countDown(neverReached);
-            assertFalse(awaitAsAStatement(neverReached, 1, TimeUnit.MILLISECONDS),
+            assertFalse(AgentConcurrencyUtilHooks.await(neverReached, 1, TimeUnit.MILLISECONDS),
                     "one countDown of two leaves the latch above zero, so the timed await fails");
 
             LatchMisuseDetector.LatchMisuseReport report = detector.analyze();
@@ -392,17 +392,5 @@ class AgentConcurrencyUtilHooksTest {
             }
         }
         return arguments;
-    }
-
-    /**
-     * A timed latch await as woven code makes it when the caller discards the boolean:
-     * {@code latch.await(t, unit);} compiles to the call and a POP, which the weaver replaces with
-     * {@code awaitResultDiscarded} (#1501). Only a discarded timeout is a finding.
-     */
-    private static boolean awaitAsAStatement(CountDownLatch latch, long timeout, TimeUnit unit)
-            throws InterruptedException {
-        boolean reachedZero = AgentConcurrencyUtilHooks.await(latch, timeout, unit);
-        AgentConcurrencyUtilHooks.awaitResultDiscarded(reachedZero);
-        return reachedZero;
     }
 }

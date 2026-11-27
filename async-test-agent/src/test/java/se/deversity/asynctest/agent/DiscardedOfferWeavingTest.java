@@ -61,8 +61,8 @@ class DiscardedOfferWeavingTest {
             return s.drainPermits();
         }
 
-        public static void awaitResultDiscarded(boolean reachedZero) {
-            // the stub weaves nothing it records
+        public static boolean awaitResultTested(boolean reachedZero) {
+            return reachedZero;
         }
 
         public static boolean tryAcquire(Semaphore s) {

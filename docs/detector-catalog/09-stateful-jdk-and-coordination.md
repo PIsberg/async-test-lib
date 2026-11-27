@@ -166,8 +166,8 @@ them. Now part of `detectAll` like every other detector.
   awaiting thread blocks forever), or counted down more times than its initial count (a
   no-op past zero, but a sign the coordination logic is wrong). A latch at zero when the run ends
   is not missing a `countDown()`, whoever made it, even when every recorded await timed out (#1501).
-  With the agent attached, a timed await that timed out counts as an await only when the caller
-  discarded its result: a caller that reads the `false` handles the timeout (#1501).
+  With the agent attached, a timed await that timed out and whose `false` falls straight into the
+  caller's own handling (`if (!latch.await(..))`, `while (!stop.await(..))`) is withdrawn (`recordTimedAwaitHandled`): that caller handles the timeout (#1501).
 * **Usage**:
   ```java
   var d = AsyncTestContext.latchMisuseDetector();

@@ -138,8 +138,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="AsyncTestContext" data-target="ParallelStreamDetector" data-type="HAS" x="4372.4" y="247.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">parallelStreamDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="ResourceLeakDetector" data-type="HAS" d="M3548.0 344.0 Q4885.3 1510.8 6272.0 2618.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="ResourceLeakDetector" data-type="HAS" x="4897.7" y="1490.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">resourceLeakDetector</text>
-<path class="edge-line" data-source="AsyncTestContext" data-target="CountDownLatchDetector" data-type="HAS" d="M3548.0 344.0 Q4474.3 271.5 5392.0 126.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="AsyncTestContext" data-target="CountDownLatchDetector" data-type="HAS" x="4472.1" y="247.4" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">countDownLatchDetector</text>
+<path class="edge-line" data-source="AsyncTestContext" data-target="CountDownLatchDetector" data-type="HAS" d="M3548.0 344.0 Q4474.1 275.2 5392.0 134.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="AsyncTestContext" data-target="CountDownLatchDetector" data-type="HAS" x="4472.1" y="251.1" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">countDownLatchDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="CyclicBarrierDetector" data-type="HAS" d="M3548.0 344.0 Q4573.2 290.6 5592.0 164.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="AsyncTestContext" data-target="CyclicBarrierDetector" data-type="HAS" x="4571.6" y="266.3" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">cyclicBarrierDetector</text>
 <path class="edge-line" data-source="AsyncTestContext" data-target="ReentrantLockDetector" data-type="HAS" d="M3458.0 484.0 Q4874.1 4095.5 6362.0 7678.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -440,8 +440,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 <text class="edge-label" data-source="DetectorRegistry" data-target="ParallelStreamDetector" data-type="HAS" x="2810.3" y="181.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">parallelStreamDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="ResourceLeakDetector" data-type="HAS" d="M428.0 209.0 Q3335.1 1449.8 6272.0 2618.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="ResourceLeakDetector" data-type="HAS" x="3342.6" y="1425.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">resourceLeakDetector</text>
-<path class="edge-line" data-source="DetectorRegistry" data-target="CountDownLatchDetector" data-type="HAS" d="M428.0 209.0 Q2910.6 206.3 5392.0 126.5" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
-<text class="edge-label" data-source="DetectorRegistry" data-target="CountDownLatchDetector" data-type="HAS" x="2910.3" y="181.0" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">countDownLatchDetector</text>
+<path class="edge-line" data-source="DetectorRegistry" data-target="CountDownLatchDetector" data-type="HAS" d="M428.0 209.0 Q2910.6 210.1 5392.0 134.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
+<text class="edge-label" data-source="DetectorRegistry" data-target="CountDownLatchDetector" data-type="HAS" x="2910.3" y="184.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">countDownLatchDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="CyclicBarrierDetector" data-type="HAS" d="M428.0 209.0 Q3010.3 225.2 5592.0 164.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
 <text class="edge-label" data-source="DetectorRegistry" data-target="CyclicBarrierDetector" data-type="HAS" x="3010.2" y="199.8" text-anchor="middle" font-family="sans-serif" font-size="10" fill="#374151" font-style="italic">cyclicBarrierDetector</text>
 <path class="edge-line" data-source="DetectorRegistry" data-target="ReentrantLockDetector" data-type="HAS" d="M338.0 304.0 Q3319.6 4015.8 6362.0 7678.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#marker-open-374151)"/>
@@ -1715,19 +1715,20 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
 </g>
 <g id="CountDownLatchDetector">
   <title>CountDownLatchDetector [CLASS]</title>
-  <rect class="node-rect" x="5392.0" y="24.0" width="180.0" height="205.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
+  <rect class="node-rect" x="5392.0" y="24.0" width="180.0" height="220.0" rx="6.0" fill="url(#grad-CLASS)" stroke="#374151" stroke-width="1.8" filter="url(#nodeShadow)"/>
   <text class="node-label" x="5482.0" y="46.0" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" font-size="12.3" font-weight="bold" fill="#1f2937">CountDownLatchDetector</text>
   <line x1="5392.0" y1="68.0" x2="5572.0" y2="68.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="5400.0" y="81.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">latchRegistry: Map&lt;CountDo…</text>
-  <text x="5400.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">timedOutLatches: Set&lt;Count…</text>
+  <text x="5400.0" y="96.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">timeouts: Map&lt;CountDownLat…</text>
   <text x="5400.0" y="111.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">succeededLatches: Set&lt;Coun…</text>
   <text x="5400.0" y="126.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">extraCountDownLatches: Set…</text>
   <line x1="5392.0" y1="140.0" x2="5572.0" y2="140.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
   <text x="5400.0" y="153.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerLatch(CountDownLat…</text>
   <text x="5400.0" y="168.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCountDown(CountDownL…</text>
   <text x="5400.0" y="183.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordTimeout(CountDownLat…</text>
-  <text x="5400.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAwaitSuccess(CountDo…</text>
-  <text x="5400.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): CountDownLatchR…</text>
+  <text x="5400.0" y="198.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordTimeoutHandled(Count…</text>
+  <text x="5400.0" y="213.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAwaitSuccess(CountDo…</text>
+  <text x="5400.0" y="228.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): CountDownLatchR…</text>
 </g>
 <g id="CyclicBarrierDetector">
   <title>CyclicBarrierDetector [CLASS]</title>
@@ -3080,10 +3081,10 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="6280.0" y="442.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">registerLatch(Object, Stri…</text>
   <text x="6280.0" y="457.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">observeLatch(Object): void</text>
   <text x="6280.0" y="472.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAwait(Object): void</text>
-  <text x="6280.0" y="487.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCountDown(Object): v…</text>
-  <text x="6280.0" y="502.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAwaitReturned(Object…</text>
-  <text x="6280.0" y="517.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">stateFor(Object): LatchSta…</text>
-  <text x="6280.0" y="532.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <text x="6280.0" y="487.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordTimedAwaitHandled(Ob…</text>
+  <text x="6280.0" y="502.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordCountDown(Object): v…</text>
+  <text x="6280.0" y="517.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordAwaitReturned(Object…</text>
+  <text x="6280.0" y="532.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+2 more)</text>
 </g>
 <g id="ExecutorDeadlockDetector">
   <title>ExecutorDeadlockDetector [CLASS]</title>

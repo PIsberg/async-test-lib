@@ -26,4 +26,22 @@ public class StopLatchBean {
         CountDownLatch done = new CountDownLatch(1);
         done.await(1, TimeUnit.MILLISECONDS);
     }
+
+    /** {@code if (latch.await(..)) { work }}: on a timeout the work is silently skipped. */
+    public int workOnlyIfReached() throws InterruptedException {
+        CountDownLatch done = new CountDownLatch(1);
+        if (done.await(1, TimeUnit.MILLISECONDS)) {
+            return 1;
+        }
+        return 0;
+    }
+
+    /**
+     * Guava's {@code Uninterruptibles.awaitUninterruptibly} shape: the timed await's result is
+     * returned to a caller, not tested here, so whether it is handled is the caller's business.
+     */
+    public boolean awaitReturningTheTimeout() throws InterruptedException {
+        CountDownLatch done = new CountDownLatch(1);
+        return done.await(1, TimeUnit.MILLISECONDS);
+    }
 }
