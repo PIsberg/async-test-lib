@@ -227,7 +227,8 @@ public final class TelemetryRegistry {
         // this whole buffer exists to leave alone.
         // The ordering clock is read here for the same reason: only the accessing thread's
         // clock says what this access is ordered after. A thread-local read; no allocation.
-        BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(),
+        // As for a write on the woven field path: a read lock guards no write (#1498).
+        BUFFER.publish(threadId, qualifiedName, isWrite, HeldLocks.lockFingerprint(isWrite),
                 volatileField, constantTag, identity, afterVolatileRead, 0, 0, 0, null,
                 HappensBefore.current(), HappensBefore.round());
     }

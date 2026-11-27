@@ -155,4 +155,48 @@ class TelemetryRegistryTest {
                         + "took the slot never saw it (VolatilePublicationWeavingTest, 2026-10-08); "
                         + "the previous callback got " + previous);
     }
+
+    /**
+     * #1498: the accessor path, which the agent weaves with {@code fields=false}, took the lock
+     * fingerprint as for a read whatever the access was. A read lock guards no write, so a setter
+     * called under a read lock looked guarded by the lock that lets every caller in at once.
+     */
+    @Test
+    void anAccessorWriteUnderAReadLockLeavesTheReadLockOutOfItsFingerprint() throws Exception {
+        java.util.concurrent.locks.ReentrantReadWriteLock rw = new java.util.concurrent.locks.ReentrantReadWriteLock();
+        java.util.Map<Boolean, Long> fingerprints = new java.util.concurrent.ConcurrentHashMap<>();
+        CountDownLatch both = new CountDownLatch(2);
+        TelemetryRegistry.start(new TelemetryEventBuffer.DrainCallback() {
+            @Override
+            public void onEvent(long threadId, String targetField, boolean isWrite) {
+                // the fingerprint overload below is the one under test
+            }
+
+            @Override
+            public void onEvent(long threadId, String targetField, boolean isWrite, long lockFingerprint) {
+                if (targetField != null && targetField.startsWith("RwService#")) {
+                    fingerprints.put(isWrite, lockFingerprint);
+                    both.countDown();
+                }
+            }
+        });
+        long me = Thread.currentThread().threadId();
+        long asRead;
+        long asWrite;
+        rw.readLock().lock();
+        se.deversity.asynctest.diagnostics.HeldLocks.acquired(rw, true);
+        try {
+            asRead = se.deversity.asynctest.diagnostics.HeldLocks.lockFingerprint(false);
+            asWrite = se.deversity.asynctest.diagnostics.HeldLocks.lockFingerprint(true);
+            TelemetryRegistry.recordAccess(me, "RwService", "getA");
+            TelemetryRegistry.recordAccess(me, "RwService", "setA");
+        } finally {
+            se.deversity.asynctest.diagnostics.HeldLocks.released(rw, true);
+            rw.readLock().unlock();
+        }
+        assertNotEquals(asRead, asWrite, "premise: the read lock is in a read's fingerprint and not a write's");
+        assertTrue(both.await(5, TimeUnit.SECONDS), "both accesses are delivered");
+        assertEquals(asRead, fingerprints.get(false), "the getter is a read, which the read lock guards");
+        assertEquals(asWrite, fingerprints.get(true), "the setter is a write, which a read lock does not guard");
+    }
 }

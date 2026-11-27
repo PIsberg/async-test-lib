@@ -581,13 +581,19 @@ public final class AgentLockHooks {
     /**
      * Weaves {@code StampedLock.tryConvertToWriteLock(long)}. On success the thread's entry for
      * this lock, whatever mode it was in (or none, for an optimistic stamp), becomes exclusive.
+     * Converting an optimistic stamp answers its speculation as a {@code validate} would: it
+     * succeeds only while the stamp still validates (#1498).
      *
      * @param receiver the lock
      * @param stamp    the stamp to convert
      * @return the write stamp, 0 for failure
      */
     public static long tryConvertToWriteLock(StampedLock receiver, long stamp) {
+        boolean wasOptimistic = StampedLock.isOptimisticReadStamp(stamp);
         long converted = receiver.tryConvertToWriteLock(stamp);
+        if (wasOptimistic) {
+            TelemetryRegistry.optimisticReadValidated(receiver, converted != 0L);
+        }
         if (converted != 0L) {
             HeldLocks.released(receiver, false);
             HeldLocks.acquired(receiver, false);
@@ -596,14 +602,19 @@ public final class AgentLockHooks {
     }
 
     /**
-     * Weaves {@code StampedLock.tryConvertToReadLock(long)}.
+     * Weaves {@code StampedLock.tryConvertToReadLock(long)}. Converting an optimistic stamp
+     * answers its speculation, as {@link #tryConvertToWriteLock} does (#1498).
      *
      * @param receiver the lock
      * @param stamp    the stamp to convert
      * @return the read stamp, 0 for failure
      */
     public static long tryConvertToReadLock(StampedLock receiver, long stamp) {
+        boolean wasOptimistic = StampedLock.isOptimisticReadStamp(stamp);
         long converted = receiver.tryConvertToReadLock(stamp);
+        if (wasOptimistic) {
+            TelemetryRegistry.optimisticReadValidated(receiver, converted != 0L);
+        }
         if (converted != 0L) {
             HeldLocks.released(receiver, false);
             HeldLocks.acquired(receiver, true);
@@ -616,7 +627,8 @@ public final class AgentLockHooks {
      * releases whatever was held; an optimistic stamp holds nothing, so nothing is pushed, and the
      * reads after it are a speculation its {@code validate} judges, as after
      * {@link #tryOptimisticRead} (#823). Converting an optimistic stamp succeeds only when it still
-     * validates, so that counts as its {@code validate} holding before the new speculation opens.
+     * validates, so that counts as its {@code validate} holding before the new speculation opens,
+     * and a failure as its {@code validate} failing (#1498).
      *
      * @param receiver the lock
      * @param stamp    the stamp to convert
@@ -631,6 +643,8 @@ public final class AgentLockHooks {
                 TelemetryRegistry.optimisticReadValidated(receiver, true);
             }
             TelemetryRegistry.optimisticReadStarted(receiver);
+        } else if (wasOptimistic) {
+            TelemetryRegistry.optimisticReadValidated(receiver, false);
         }
         return converted;
     }
