@@ -39,7 +39,10 @@ AsyncAssert.awaitUntil(() -> queue.isEmpty(), Duration.ofSeconds(5), "queue drai
 
 Exceptions thrown while polling still mean "not yet true", they are just no longer discarded.
 An `Error` from the condition, including a nested `AssertionError`, propagates immediately
-rather than being retried until the deadline.
+rather than being retried until the deadline. An `InterruptedException` from the condition, as
+`latch.await` throws when the round is cancelled, ends polling at once: the interrupt status is
+restored and an `AssertionError` is thrown, so a cancelled worker stops instead of polling on to
+the timeout (#1502).
 
 Two timing behaviours changed in 1.9.0, both of which used to report a timeout for a condition
 that was true inside the window:
@@ -70,6 +73,11 @@ A cancelled future has completed too: `awaitDone` returns, `isFailed()` is true 
 is the `CancellationException`, also for a dependent stage whose source was cancelled. Before
 #1251 `awaitDone` threw that `CancellationException` instead. `awaitAsync` still rethrows it, as
 it rethrows any unchecked failure of the stage.
+
+`getError()` is the exception the code threw. A stage that recorded its failure wrapped in a
+`CompletionException`, as `supplyAsync` does, is unwrapped, whether or not `awaitDone` ran;
+before #1502 the result was the wrapper or the cause depending on when the capture was read.
+`isFailed()` is true only once the future has completed.
 
 ## Asserting on detector findings: `AsyncFindings` (1.9.0)
 
