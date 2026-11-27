@@ -583,6 +583,107 @@ class TelemetryBridgeTest {
     }
 
     /**
+     * #1498: an optimistic stamp converted to a lock mode. The conversion succeeds only while the
+     * stamp still validates, so it answers the speculation as a {@code validate} would, and fails
+     * exactly when a validate would. The hooks never said so: on success the reads stayed held
+     * until the next write or the end of the run and were delivered unvalidated, a false positive
+     * on the upgrade idiom in StampedLock's own javadoc; on failure the discarded reads were
+     * delivered too.
+     *
+     * @param mode             0 for tryConvertToWriteLock, 1 for tryConvertToReadLock, 2 for
+     *                         tryConvertToOptimisticRead
+     * @param writerIntervenes whether a writer takes the lock between the read and the conversion,
+     *                         so the conversion fails and the reader gives up
+     * @return whether AtomicityValidator reported the point's field
+     */
+    private static boolean optimisticStampConvertedReported(int mode, boolean writerIntervenes) throws Exception {
+        AtomicityValidator av = new AtomicityValidator();
+        java.util.concurrent.locks.StampedLock lock = new java.util.concurrent.locks.StampedLock();
+        Point point = new Point();
+        java.util.concurrent.ExecutorService readerThread =
+                java.util.concurrent.Executors.newSingleThreadExecutor();
+        Runnable write = () -> {
+            long stamp = se.deversity.asynctest.AgentLockHooks.writeLock(lock);
+            try {
+                TelemetryRegistry.recordAccess(point, null, null, Thread.currentThread().threadId(),
+                        "Point.x", true, false, Integer.MIN_VALUE, false, false);
+                point.x++;
+            } finally {
+                se.deversity.asynctest.AgentLockHooks.unlockWrite(lock, stamp);
+            }
+        };
+        try (TelemetryBridge ignored = TelemetryBridge.activateWithFilter(av, id -> true)) {
+            Thread writer = new Thread(write);
+            writer.start();
+            writer.join();
+            long[] stamp = new long[1];
+            readerThread.submit(() -> {
+                stamp[0] = se.deversity.asynctest.AgentLockHooks.tryOptimisticRead(lock);
+                TelemetryRegistry.recordAccess(point, null, null, Thread.currentThread().threadId(),
+                        "Point.x", false, false, Integer.MIN_VALUE, false, false);
+            }).get(10, TimeUnit.SECONDS);
+            if (writerIntervenes) {
+                Thread second = new Thread(write);
+                second.start();
+                second.join();
+            }
+            readerThread.submit(() -> {
+                long me = Thread.currentThread().threadId();
+                if (mode == 0) {
+                    long ws = se.deversity.asynctest.AgentLockHooks.tryConvertToWriteLock(lock, stamp[0]);
+                    if (ws != 0L) {
+                        try {
+                            TelemetryRegistry.recordAccess(point, null, null, me, "Point.x", true, false,
+                                    Integer.MIN_VALUE, false, false);
+                            point.x++;
+                        } finally {
+                            se.deversity.asynctest.AgentLockHooks.unlockWrite(lock, ws);
+                        }
+                    }
+                } else if (mode == 1) {
+                    long rs = se.deversity.asynctest.AgentLockHooks.tryConvertToReadLock(lock, stamp[0]);
+                    if (rs != 0L) {
+                        se.deversity.asynctest.AgentLockHooks.unlockRead(lock, rs);
+                    }
+                } else {
+                    long os = se.deversity.asynctest.AgentLockHooks.tryConvertToOptimisticRead(lock, stamp[0]);
+                    if (os != 0L) {
+                        se.deversity.asynctest.AgentLockHooks.validate(lock, os);
+                    }
+                }
+            }).get(10, TimeUnit.SECONDS);
+            TelemetryRegistry.flush();
+            return av.analyzeAtomicity().unsafeFieldAccesses.stream()
+                    .anyMatch(line -> line.startsWith("Point.x"));
+        } finally {
+            readerThread.shutdownNow();
+        }
+    }
+
+    @Test
+    void anOptimisticReadUpgradedToTheWriteLockReadsUnderTheLock() throws Exception {
+        assertFalse(optimisticStampConvertedReported(0, false),
+                "tryConvertToWriteLock succeeded, so no writer ran since the stamp: the read before it "
+                        + "was consistent, as after a validate that held (#1498)");
+    }
+
+    @Test
+    void anOptimisticReadConvertedToTheReadLockReadsUnderTheLock() throws Exception {
+        assertFalse(optimisticStampConvertedReported(1, false),
+                "tryConvertToReadLock succeeded, so the read before it was consistent (#1498)");
+    }
+
+    @Test
+    void aFailedConversionOfAnOptimisticStampDiscardsItsReads() throws Exception {
+        for (int mode = 0; mode < 3; mode++) {
+            assertFalse(optimisticStampConvertedReported(mode, true),
+                    "mode " + mode + ": a writer ran since the stamp, so the conversion failed as a "
+                            + "validate would, and the reader gave up: the read it discarded is no "
+                            + "access at all (#1498)");
+        }
+    }
+
+    /**
      * One writer moves the point under the write lock and one reader reads it optimistically,
      * through the real lock hooks, ring and bridge, in an order fixed by the test (#740).
      *

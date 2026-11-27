@@ -614,7 +614,11 @@ Three limits worth knowing before switching it on:
   whether it held: the field reads in between count as reads under the lock in shared mode when
   `validate` returned `true`, are dropped when it returned `false`, since the caller discards what
   it read, unless the caller threw the answer away (`lock.validate(stamp);` as a statement, a call
-  followed by a `POP`), when they count as plain reads (#823), and count as plain reads when
+  followed by a `POP`), when they count as plain reads (#823). Converting an optimistic stamp
+  with `tryConvertToWriteLock`, `tryConvertToReadLock` or `tryConvertToOptimisticRead` answers
+  the speculation the same way: a conversion succeeds only while the stamp still validates, so a
+  success counts as a `validate` that held and a failure as one that did not (#1498). The reads
+  count as plain reads when
   nothing validated them before the thread's next
   speculation on the same lock, its next write or the end of the round (#740). A speculation on
   a second lock nests inside the first instead of closing it, and reads it validates are judged
