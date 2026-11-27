@@ -152,7 +152,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 ### 132. Static Init Deadlock
 * **Severity**: `CRITICAL` (recorded cycle) / `HIGH` (live-thread sample)
 * **Trust tier**: **fact** for the recorded cycle, which is a walk over init requests the test recorded (`ASSERTED`), and **fact** for the live sample, which is what the JVM's stacks showed (`OBSERVED`) but could still be one slow initializer
-* **Description**: Detects deadlocks between class initializers, where the lock each thread waits on is the JVM's per-class initialization lock. `ThreadMXBean.findDeadlockedThreads()` walks monitors and ownable synchronizers; a class init lock is neither, so the platform's own deadlock finder returns `null` while the JVM is fully wedged. That blind spot is why this detector exists separately from `DEADLOCKS`. With no instrumentation it still samples live threads for `<clinit>` frames.
+* **Description**: Detects deadlocks between class initializers, where the lock each thread waits on is the JVM's per-class initialization lock. `ThreadMXBean.findDeadlockedThreads()` walks monitors and ownable synchronizers; a class init lock is neither, so the platform's own deadlock finder returns `null` while the JVM is fully wedged. That blind spot is why this detector exists separately from `DEADLOCKS`. With no instrumentation it still samples live threads for `<clinit>` frames. The sample counts for the run one of whose workers, or threads it started, is parked in an initializer, or for a run that had the JVM to itself, so a stuck initializer in a parallel test class is that class's finding, not every overlapping one's (#1503).
 * **Buggy Code**:
   ```java
   class Config   { static final Object A = Registry.defaults(); }   // thread 1 enters here

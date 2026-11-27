@@ -3211,16 +3211,16 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="4800.0" y="201.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">secondSampleDelayMs: long</text>
   <text x="4800.0" y="216.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">holders: Map&lt;String,Holder&gt;</text>
   <text x="4800.0" y="231.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">waits: Map&lt;Long,Waiter&gt;</text>
-  <text x="4800.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sample: AtomicReference&lt;Li…</text>
-  <text x="4800.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+1 more)</text>
+  <text x="4800.0" y="246.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">runThreads: java.util.func…</text>
+  <text x="4800.0" y="261.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+3 more)</text>
   <line x1="4792.0" y1="275.0" x2="4972.0" y2="275.0" stroke="#374151" stroke-width="0.8" opacity="0.4"/>
-  <text x="4800.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordInitStart(Class&lt;?&gt;, …</text>
-  <text x="4800.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordInitRequest(Class&lt;?&gt;…</text>
-  <text x="4800.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordInitEnd(Class&lt;?&gt;, Th…</text>
-  <text x="4800.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): Report</text>
-  <text x="4800.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">liveSample(): List&lt;Parked&gt;</text>
-  <text x="4800.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">spansTwoInitializers(List&lt;…</text>
-  <text x="4800.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+10 more)</text>
+  <text x="4800.0" y="288.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">attributeTo(java.util.func…</text>
+  <text x="4800.0" y="303.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">belongsToThisRun(List&lt;Park…</text>
+  <text x="4800.0" y="318.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordInitStart(Class&lt;?&gt;, …</text>
+  <text x="4800.0" y="333.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordInitRequest(Class&lt;?&gt;…</text>
+  <text x="4800.0" y="348.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordInitEnd(Class&lt;?&gt;, Th…</text>
+  <text x="4800.0" y="363.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">analyze(): Report</text>
+  <text x="4800.0" y="378.5" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+13 more)</text>
 </g>
 <g id="VirtualThreadPoolingDetector">
   <title>VirtualThreadPoolingDetector [CLASS]</title>
@@ -3734,8 +3734,8 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="6910.0" y="8367.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">canSeeVirtualThreadDeadloc…</text>
   <text x="6910.0" y="8382.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">enableVirtualThreadScan():…</text>
   <text x="6910.0" y="8397.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">cycleKeys(Optional&lt;List&lt;Vi…</text>
-  <text x="6910.0" y="8412.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">printThreadDump(): void</text>
-  <text x="6910.0" y="8427.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+14 more)</text>
+  <text x="6910.0" y="8412.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">memberKey(VirtualThreadLoc…</text>
+  <text x="6910.0" y="8427.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+15 more)</text>
 </g>
 <g id="VisibilityMonitor">
   <title>VisibilityMonitor [CLASS]</title>

@@ -218,4 +218,25 @@ public class DeadlockDetectorTest {
         }
         return false;
     }
+
+    /**
+     * #1503: the virtual-thread cycles present when the scan is enabled were remembered by their
+     * members' names. Unnamed virtual threads are all named "", so one leaked deadlock between two
+     * of them made every later deadlock between two others look preexisting, and the new one went
+     * unreported. Driven on the cycle records the scan produces, because a live virtual-thread
+     * deadlock is visible only on JDKs whose dump names lock owners.
+     */
+    @Test
+    void aCycleBetweenOtherUnnamedThreadsIsNotTheBaselineOne() {
+        VirtualThreadLockGraph.Cycle earlier = new VirtualThreadLockGraph.Cycle(
+                java.util.List.of("", ""), java.util.List.of("41", "42"), java.util.List.of("a", "b"));
+        VirtualThreadLockGraph.Cycle later = new VirtualThreadLockGraph.Cycle(
+                java.util.List.of("", ""), java.util.List.of("57", "58"), java.util.List.of("c", "d"));
+        java.util.Set<java.util.Set<String>> baseline =
+                DeadlockDetector.cycleKeys(java.util.Optional.of(java.util.List.of(earlier)));
+
+        assertTrue(baseline.contains(DeadlockDetector.memberKey(earlier)), "the leaked cycle is the baseline");
+        assertFalse(baseline.contains(DeadlockDetector.memberKey(later)),
+                "two other unnamed threads deadlocked later: a new cycle, not the leaked one");
+    }
 }

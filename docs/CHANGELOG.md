@@ -140,6 +140,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schedule (#1495, part 3).** An adopted thread never leaves its round, so a pool thread a woven
   thread factory built in one round carried that round's worker into the next, took itself for a
   caller-runs thread there, and ran the task uncontrolled while the round counted no escape.
+- **A new deadlock between unnamed virtual threads is reported after an earlier one, and a parked
+  static initializer is the finding of the run it belongs to (#1503).** `DeadlockDetector`
+  remembered the virtual-thread cycles present when its scan started by their members' names.
+  Unnamed virtual threads are all named `""`, so once one deadlock between two of them leaked in a
+  reused JVM, every later one between two others looked preexisting and was not reported, CRITICAL
+  silenced. Cycles are now remembered by name and thread id. `StaticInitDeadlockDetector`'s live
+  sample walked every thread in the JVM, so under parallel test execution one class's slow or
+  deadlocked `<clinit>` was a HIGH finding in every overlapping test. It is now attributed to the
+  run whose threads are parked, as `DeadlockDetector`'s cycles are since #1385.
 - **`AsyncAssert` reports one exception per failed future, and an interrupted condition stops
   polling (#1502).** `FutureCapture` recorded a failure twice: the completion callback stored the
   `CompletionException` a `supplyAsync` stage wraps its failure in, and `awaitDone` stored the

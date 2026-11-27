@@ -204,4 +204,69 @@ class StaticInitDeadlockDetectorTest {
         assertFalse(StaticInitDeadlockDetector.platformDeadlockDetectorSeesAnything(),
                 "This test JVM must not be monitor-deadlocked");
     }
+    /** Released once the attribution test has sampled; until then both initializers stay parked. */
+    static final java.util.concurrent.CountDownLatch RELEASE_SLOW_INITIALIZERS = new java.util.concurrent.CountDownLatch(1);
+    static final java.util.concurrent.CountDownLatch SLOW_INITIALIZERS_ENTERED = new java.util.concurrent.CountDownLatch(2);
+
+    static final class SlowFirst {
+        static {
+            SLOW_INITIALIZERS_ENTERED.countDown();
+            awaitRelease();
+        }
+
+        static void touch() { }
+    }
+
+    static final class SlowSecond {
+        static {
+            SLOW_INITIALIZERS_ENTERED.countDown();
+            awaitRelease();
+        }
+
+        static void touch() { }
+    }
+
+    private static void awaitRelease() {
+        try {
+            RELEASE_SLOW_INITIALIZERS.await(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * #1503: the live sample walks every thread in the JVM. Under parallel test execution two
+     * threads parked in another run's initializers were this run's HIGH finding. Attributed like
+     * the deadlock detector's cycles (#1385), the sample counts a parked thread only for the run
+     * it belongs to, or for any run when none overlapped it.
+     */
+    @Test
+    void parkedInitializersAreReportedOnlyByTheRunTheyBelongTo() throws InterruptedException {
+        StaticInitDeadlockDetector otherRuns = new StaticInitDeadlockDetector();
+        otherRuns.attributeTo(id -> false, () -> true);
+        java.util.Set<Long> parkedIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        StaticInitDeadlockDetector owner = new StaticInitDeadlockDetector();
+        owner.attributeTo(parkedIds::contains, () -> true);
+        StaticInitDeadlockDetector alone = new StaticInitDeadlockDetector();
+        alone.attributeTo(id -> false, () -> false);
+
+        Thread first = new Thread(SlowFirst::touch, "slow-init-first");
+        Thread second = new Thread(SlowSecond::touch, "slow-init-second");
+        parkedIds.add(first.threadId());
+        parkedIds.add(second.threadId());
+        first.start();
+        second.start();
+        try {
+            assertTrue(SLOW_INITIALIZERS_ENTERED.await(5, java.util.concurrent.TimeUnit.SECONDS),
+                    "both initializers must be entered");
+            assertFalse(otherRuns.analyze().hasIssues(),
+                    "neither parked thread is this run's, and another run was in progress");
+            assertTrue(owner.analyze().hasIssues(), "the run the parked threads belong to reports them");
+            assertTrue(alone.analyze().hasIssues(), "with no other run overlapping, any run may own them");
+        } finally {
+            RELEASE_SLOW_INITIALIZERS.countDown();
+            first.join(5_000);
+            second.join(5_000);
+        }
+    }
 }

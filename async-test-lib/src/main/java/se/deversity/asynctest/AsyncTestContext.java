@@ -937,10 +937,16 @@ public final class AsyncTestContext {
      */
     public void attributeDeadlocks(java.util.Set<Long> workerThreadIds,
                                    java.util.function.BooleanSupplier otherRunsOverlapped) {
+        java.util.function.LongPredicate runThreads =
+                id -> workerThreadIds.contains(id) || spawnedThreadIds.contains(id);
         DeadlockDetector deadlocks = registry.deadlockDetector;
         if (deadlocks != null) {
-            deadlocks.attributeTo(id -> workerThreadIds.contains(id) || spawnedThreadIds.contains(id),
-                    otherRunsOverlapped);
+            deadlocks.attributeTo(runThreads, otherRunsOverlapped);
+        }
+        // Its live sample walks the whole JVM the same way (#1503).
+        StaticInitDeadlockDetector staticInits = registry.staticInitDeadlockDetector;
+        if (staticInits != null) {
+            staticInits.attributeTo(runThreads, otherRunsOverlapped);
         }
     }
 

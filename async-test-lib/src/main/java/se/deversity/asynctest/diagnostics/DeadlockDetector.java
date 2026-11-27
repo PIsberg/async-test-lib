@@ -155,16 +155,33 @@ public class DeadlockDetector {
         preexistingVirtualCycles = cycleKeys(VirtualThreadLockGraph.scan());
     }
 
-    /** {@return each cycle reduced to the set of thread names in it} */
-    private static Set<Set<String>> cycleKeys(
-            Optional<List<VirtualThreadLockGraph.Cycle>> scan) {
+    /** {@return each cycle reduced to its {@link #memberKey}} */
+    static Set<Set<String>> cycleKeys(Optional<List<VirtualThreadLockGraph.Cycle>> scan) {
         Set<Set<String>> keys = new HashSet<>();
         scan.ifPresent(cycles -> {
             for (VirtualThreadLockGraph.Cycle cycle : cycles) {
-                keys.add(Set.copyOf(cycle.threadNames()));
+                keys.add(memberKey(cycle));
             }
         });
         return keys;
+    }
+
+    /**
+     * {@return the cycle's members, each as its name and thread id}
+     *
+     * <p>Names alone collided: every unnamed virtual thread is named "", so one leaked deadlock
+     * between two of them hid every later one between two others, and two tests reusing thread
+     * names hid each other's (#1503). The id tells them apart, and the name keeps a dump that
+     * gives no id where it was.
+     */
+    static Set<String> memberKey(VirtualThreadLockGraph.Cycle cycle) {
+        Set<String> members = new HashSet<>();
+        List<String> names = cycle.threadNames();
+        List<String> ids = cycle.threadIds();
+        for (int i = 0; i < names.size(); i++) {
+            members.add(names.get(i) + "#" + (i < ids.size() ? ids.get(i) : ""));
+        }
+        return Set.copyOf(members);
     }
     /**
      * Creates a DeadlockDetector.
@@ -492,7 +509,7 @@ public class DeadlockDetector {
         }
         List<VirtualThreadLockGraph.Cycle> reportable = new ArrayList<>();
         for (VirtualThreadLockGraph.Cycle cycle : scan.get()) {
-            if (!preexistingVirtualCycles.contains(Set.copyOf(cycle.threadNames()))
+            if (!preexistingVirtualCycles.contains(memberKey(cycle))
                     && belongsToThisRun(idsOf(cycle.threadIds()))) {
                 reportable.add(cycle);
             }
