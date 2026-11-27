@@ -531,7 +531,9 @@ executor reports itself terminated (#1266; the common pool never does, so its `c
 nothing), a `Phaser` `arrive`, `arriveAndDeregister` or `arriveAndAwaitAdvance` and every return
 from waiting for that phase to advance, through `arriveAndAwaitAdvance`, `awaitAdvance` or either
 `awaitAdvanceInterruptibly` (#1265; keyed by the root phaser, whose phase a tiered phaser's
-children share, and a terminated phaser orders nothing), and `Thread.start` and a `Thread.join` that returned with the thread finished (every
+children share; a phaser forced to terminate mid-phase orders nothing, while one that terminates
+as a phase completes, its last party deregistering or `onAdvance` returning `true`, still orders
+that phase, #1499), and `Thread.start` and a `Thread.join` that returned with the thread finished (every
 `join` overload is substituted for this). Since #741 also: a `CompletableFuture` completed with
 `complete`, `completeExceptionally` or an `obtrude` call and a `join` or `get` that observed it, where a
 `complete` the future refused publishes nothing; a task handed to `ExecutorService.submit` or

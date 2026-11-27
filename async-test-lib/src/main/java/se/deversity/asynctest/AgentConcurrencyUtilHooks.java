@@ -819,7 +819,8 @@ public final class AgentConcurrencyUtilHooks {
      * arrives, and acquires that phase once the call returns the next one. The phase is read
      * before the call, which is exact for a registered party: the phase cannot advance without
      * its arrival. Where the returned phase says otherwise, an arrival the phaser did not need,
-     * the release is withdrawn. A terminated phaser waits for nobody and orders nothing.
+     * the release is withdrawn. A phaser forced to terminate mid-phase waits for nobody and orders
+     * nothing; one that terminates as the phase completes still orders that phase (#1499).
      *
      * <p>A tiered phaser is keyed by its root: children advance when the root does, with the
      * root's phase numbers, so arrivals on two children of one root order each other.
@@ -839,11 +840,16 @@ public final class AgentConcurrencyUtilHooks {
             HappensBefore.retract(token);
             throw e;
         }
-        if (next < 0) {
+        // A phaser that terminates as a phase completes, its last party deregistering or onAdvance
+        // returning true, returns the next phase with the termination bit set to a waiting party:
+        // the phase did complete, so its arrivals still order. Only a termination forced in the
+        // middle of the phase leaves the phase unchanged, and orders nothing (#1499).
+        int unmasked = next & Integer.MAX_VALUE;
+        if (phase < 0 || next < 0 && unmasked == phase) {
             HappensBefore.retract(token);
             return next;
         }
-        int arrived = (next - 1) & Integer.MAX_VALUE;
+        int arrived = (unmasked - 1) & Integer.MAX_VALUE;
         if (arrived != phase) {
             HappensBefore.retract(token);
         }
@@ -956,9 +962,14 @@ public final class AgentConcurrencyUtilHooks {
         return next;
     }
 
-    /** Acquires {@code phase} when the call that waited it out returned a later, live phase. */
+    /**
+     * Acquires {@code phase} when the call that waited it out returned a later phase, with the
+     * termination bit set or not: a phaser that terminates as a phase completes returns the next
+     * phase terminated, and that phase's arrivals all happened. A termination forced mid-phase
+     * returns the phase itself, terminated, and orders nothing (#1499).
+     */
     private static void acquireAdvanced(Phaser receiver, int phase, int returned) {
-        if (phase >= 0 && returned >= 0 && returned != phase) {
+        if (phase >= 0 && (returned & Integer.MAX_VALUE) != phase) {
             HappensBefore.acquire(pastPhaseToken(receiver, phase));
         }
     }
