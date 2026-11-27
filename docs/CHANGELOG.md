@@ -166,6 +166,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `InterruptedException` from the condition as "not yet true" with its interrupt status already
   cleared, so a worker the round cancelled polled on until the timeout. It now restores the status
   and fails at once.
+- **A timed `Object.wait` loop that returns at its deadline is not a lost signal (#1551).** javac
+  compiles `while (!done) { monitor.wait(t); if (late) return; }` with the deadline test jumping
+  straight back to the loop head, no `goto`, so the weaver never marked the loop and every wait in
+  it was judged as an `if`: 40 HIGH findings in `HandledWaitExitWeavingTest`'s new deadline body.
+  A conditional back-edge now marks the loop when a conditional jump before the wait leaves past
+  the back-edge, which is the `while`'s own exit test; a `do`/`while` has none, and an `if`
+  inside one jumps within its body, so `DoWhileMissedSignalWeavingTest` and the mark gates keep
+  their findings. `WaitLoopShapesSample.deadlineLoop` pins the mark.
 - **A `ConcurrentHashMap` remapping function is ordered after the store it reads (#1540).** A
   `compute`, `computeIfPresent` or `merge` function that read the value it was handed, after
   another thread's `put` of it, read it unordered, so `AtomicityValidator` and

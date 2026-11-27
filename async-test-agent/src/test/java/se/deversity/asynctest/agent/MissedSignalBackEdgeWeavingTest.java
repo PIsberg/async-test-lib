@@ -80,6 +80,10 @@ class MissedSignalBackEdgeWeavingTest {
                 "while (!ready) { ...; wait(); } is the shape a correct wait belongs in: its "
                         + "back-edge is the goto that closes the loop, and the predicate is read "
                         + "before the wait. Marks were " + marksByMethod);
+        assertEquals(1, marksByMethod.get("deadlineLoop"),
+                "while (!ready) { wait(t); if (late) return; } closes with the deadline test, a "
+                        + "conditional jump back to the head, and reads ready before it waits (#1551). "
+                        + "Marks were " + marksByMethod);
         assertEquals(1, marksByMethod.get("crossMethodLoop"),
                 "the loop is here and the wait is in awaitOnce, which is declared afterwards. "
                         + "Recognising it is the whole reason the monitor wrapper buffers a class "

@@ -66,6 +66,25 @@ public class HandledWaitExitBean {
         }
     }
 
+    /**
+     * {@code while (!done) { monitor.wait(t); if (late) return; }}: the deadline ends the loop
+     * without its back-edge, after every wakeup re-tested in the loop's own way (#1551).
+     */
+    public void notifyThenDeadlineLoop() throws InterruptedException {
+        synchronized (monitor) {
+            monitor.notifyAll();
+        }
+        long deadline = System.nanoTime() + 5_000_000L;
+        synchronized (monitor) {
+            while (!done) {
+                monitor.wait(2);
+                if (System.nanoTime() - deadline > 0) {
+                    return;
+                }
+            }
+        }
+    }
+
     private void signal() {
         lock.lock();
         try {

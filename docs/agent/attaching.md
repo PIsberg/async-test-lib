@@ -471,9 +471,13 @@ unjudged. And a timed `Condition.await(time, unit)` or `awaitUntil(deadline)` wh
 caller tests at once, `while (!done) { if (!ready.await(..)) return; }`, is confirmed as the loop's
 at that test: the weaver puts `conditionAwaitResultTested` in front of the `IFNE` right after the
 call, whose fall-through is the caller's own code for the timeout. `if (!done) ready.await(..);`
-pops the result instead and is still reported. `Object.wait(timeout)` returns nothing to test, so a
-deadline check written after it, `while (!done) { monitor.wait(t); if (late()) return; }`, still
-reads as an `if` when the deadline ends the loop. A notify that found no waiter counts against an
+pops the result instead and is still reported. `Object.wait(timeout)` returns nothing to test, but
+the deadline check written after it, `while (!done) { monitor.wait(t); if (late()) return; }`, is
+the loop's back-edge: javac compiles that last `if` to a conditional jump straight back to the head,
+and such a jump marks the loop when the loop's own exit test stands before the wait, which a
+`do`/`while` never has (#1551). The back-edge call goes in front of that jump, so it runs on the
+way out too. A deadline test followed by more of the body, `if (late()) return; work();`, leaves by
+the `return` past the `goto` that closes the loop, and still reads as an `if` (#1555). A notify that found no waiter counts against an
 agent-observed wait only in the round it was made in.
 
 A compiler that rotates loops emits `goto test; body; test: if (...) goto body`, so its `while`
