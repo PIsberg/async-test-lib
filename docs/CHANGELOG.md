@@ -140,6 +140,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schedule (#1495, part 3).** An adopted thread never leaves its round, so a pool thread a woven
   thread factory built in one round carried that round's worker into the next, took itself for a
   caller-runs thread there, and ran the task uncontrolled while the round counted no escape.
+- **`compute`, `computeIfPresent`, `computeIfAbsent` and `merge` on a plain `HashMap` are
+  recorded (#1499, part 4).** The four woven calls delegated without recording, so two threads
+  running `HashMap.merge` or `computeIfAbsent` at once were invisible to `SharedCollectionDetector`.
+  They are now recorded as writes, as `put` is. A remapping function's reads of the value it is
+  handed are still unordered after the `put` that stored it; that needs a per-slot release and is
+  #1540.
 - **A `Phaser` that terminates as its phase completes orders that phase, and a declared take on
   a pool or spawned thread splits the owners (#1499, parts 1 and 3).** When a phaser's last party
   deregistered, or `onAdvance` returned `true`, a waiting party was returned the next phase with

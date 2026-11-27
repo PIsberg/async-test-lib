@@ -295,7 +295,7 @@ reads as guarded, while the same mutation after a `get` still reports (#1245). A
 stand-in only when no class below `ConcurrentHashMap` declares any of the four methods, so the
 JDK's own atomic update is the one that runs (#1259). A subclass that overrides one, a
 `ConcurrentSkipListMap`, whose `compute` may run the function concurrently, and any other map get
-no stand-in.
+no stand-in. On a plain `HashMap` the four calls are recorded as writes, as a `put` is (#1499).
 
 A map whose calls are each atomic, a `ConcurrentHashMap`, a `Hashtable` or a
 `Collections.synchronizedMap` wrapper, is not a data race on any one call, so

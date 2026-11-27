@@ -373,4 +373,35 @@ class AgentCollectionHooksTest {
         }
         return ctx.sharedCollectionDetector.analyze().hasIssues();
     }
+
+    @Test
+    @DisplayName("compute, computeIfPresent, computeIfAbsent and merge on a plain HashMap are writes the detector sees (#1499)")
+    void perKeyUpdatesOfAPlainMapAreRecorded() throws InterruptedException {
+        String[] forms = {"compute", "computeIfPresent", "computeIfAbsent", "merge"};
+        for (int form = 0; form < forms.length; form++) {
+            assertTrue(reportsTwoUpdaters(new HashMap<>(), form),
+                    forms[form] + " on a HashMap from two threads is two unguarded writes; the hook "
+                            + "delegated without recording, so the detector never saw them");
+            assertFalse(reportsTwoUpdaters(new ConcurrentHashMap<>(), form),
+                    forms[form] + " on a ConcurrentHashMap is atomic per key");
+        }
+    }
+
+    /** Updates key {@code "k"} of {@code map} through the hook from two threads, and asks the detector. */
+    private static boolean reportsTwoUpdaters(Map<Object, Object> map, int form) throws InterruptedException {
+        AsyncTestConfig cfg = AsyncTestConfig.builder().detectSharedCollections(true).build();
+        AsyncTestContext ctx = new AsyncTestContext(cfg);
+        map.put("k", 1);
+        for (int i = 0; i < 2; i++) {
+            onItsOwnThread(ctx, () -> {
+                switch (form) {
+                    case 0 -> AgentCollectionHooks.mapCompute(map, "k", (key, old) -> old);
+                    case 1 -> AgentCollectionHooks.mapComputeIfPresent(map, "k", (key, old) -> old);
+                    case 2 -> AgentCollectionHooks.mapComputeIfAbsent(map, "other", key -> 2);
+                    default -> AgentCollectionHooks.mapMerge(map, "k", 1, (old, given) -> old);
+                }
+            });
+        }
+        return ctx.sharedCollectionDetector.analyze().hasIssues();
+    }
 }
