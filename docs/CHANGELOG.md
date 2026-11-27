@@ -140,6 +140,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   schedule (#1495, part 3).** An adopted thread never leaves its round, so a pool thread a woven
   thread factory built in one round carried that round's worker into the next, took itself for a
   caller-runs thread there, and ran the task uncontrolled while the round counted no escape.
+- **Copying fields into a result holder before `StampedLock.validate` keeps the reads validated
+  (#1498, part 2).** Any write the thread recorded during an optimistic read ended it and
+  delivered the reads made so far as unvalidated. The common `out.x = this.x; out.y = this.y;
+  if (!lock.validate(stamp)) ...` was therefore reported in `AtomicityValidator` although the
+  validate held. A write now ends the speculation only when it goes to a field of an object the
+  speculation has read, the one case where its reads could be reordered against it.
 - **An optimistic `StampedLock` read upgraded with `tryConvertToWriteLock` is a read under the
   lock, and a setter under a read lock is not guarded by it (#1498, parts 1 and 3).** The
   conversion hooks never answered the speculation they ended. After `tryConvertToWriteLock` or

@@ -684,6 +684,50 @@ class TelemetryBridgeTest {
     }
 
     /**
+     * #1498 part 2: copying fields into a result holder before {@code validate}, as
+     * {@code out.x = this.x; if (!lock.validate(stamp)) ...} does. The write to the holder ended the
+     * speculation, so the read before it went out unvalidated and was reported though the validate
+     * held. A write to anything the speculation has not read cannot reorder against its reads.
+     */
+    @Test
+    void aWriteToAnotherObjectInsideASpeculationLeavesItForItsValidate() throws Exception {
+        AtomicityValidator av = new AtomicityValidator();
+        java.util.concurrent.locks.StampedLock lock = new java.util.concurrent.locks.StampedLock();
+        Point point = new Point();
+        Point out = new Point();
+        try (TelemetryBridge ignored = TelemetryBridge.activateWithFilter(av, id -> true)) {
+            Thread writer = new Thread(() -> {
+                long stamp = se.deversity.asynctest.AgentLockHooks.writeLock(lock);
+                try {
+                    TelemetryRegistry.recordAccess(point, null, null, Thread.currentThread().threadId(),
+                            "Point.x", true, false, Integer.MIN_VALUE, false, false);
+                    point.x++;
+                } finally {
+                    se.deversity.asynctest.AgentLockHooks.unlockWrite(lock, stamp);
+                }
+            });
+            writer.start();
+            writer.join();
+            Thread reader = new Thread(() -> {
+                long me = Thread.currentThread().threadId();
+                long stamp = se.deversity.asynctest.AgentLockHooks.tryOptimisticRead(lock);
+                TelemetryRegistry.recordAccess(point, null, null, me, "Point.x", false, false,
+                        Integer.MIN_VALUE, false, false);
+                TelemetryRegistry.recordAccess(out, null, null, me, "Point.x", true, false,
+                        Integer.MIN_VALUE, false, false);
+                out.x = point.x;
+                se.deversity.asynctest.AgentLockHooks.validate(lock, stamp);
+            });
+            reader.start();
+            reader.join();
+            TelemetryRegistry.flush();
+        }
+        assertTrue(av.analyzeAtomicity().unsafeFieldAccesses.isEmpty(),
+                "the read of point.x was covered by a validate that held, and the write between went "
+                        + "to another object: " + av.analyzeAtomicity().unsafeFieldAccesses);
+    }
+
+    /**
      * One writer moves the point under the write lock and one reader reads it optimistically,
      * through the real lock hooks, ring and bridge, in an order fixed by the test (#740).
      *

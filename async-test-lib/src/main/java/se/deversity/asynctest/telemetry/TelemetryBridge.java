@@ -149,7 +149,8 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
      * plain reads (#740). Reaching it delivers every read the thread holds back as plain, which
      * reports the reads a later {@code validate} would have covered, so it is set well past the
      * idiom: 256 was reached by a loop of reads under one stamp (#823). The bound only matters for
-     * an unbroken run of reads, since anything else the thread records ends its speculations, and
+     * an unbroken run of reads, since anything else the thread records ends its speculations (but a
+     * write to an object none of its reads touched, #1498), and
      * holds at most this many reads per open speculation. Chosen as generous, not measured.
      */
     static final int MAX_SPECULATIVE_READS = 4096;
@@ -581,16 +582,21 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         }
         if (!speculations.isEmpty()) {
             // Anything but a read ends this thread's speculations first, so their reads stay
-            // ahead of what followed them.
-            Speculation innermost = isWrite || qualifiedName.startsWith("#")
-                    ? null : openSpeculationWithRoom(threadId);
+            // ahead of what followed them, except a write to a field of an object none of their
+            // reads touched: no read can reorder against it, and ending the speculation there
+            // delivered reads its validate went on to cover, the copy into a result holder before
+            // validate (#1498). The write itself is recorded now, as made.
+            boolean marker = qualifiedName.startsWith("#");
+            Speculation innermost = isWrite || marker ? null : openSpeculationWithRoom(threadId);
             if (innermost != null) {
                 holdBack(innermost, threadId, qualifiedName, lockFingerprint, volatileField,
                         constantTag, identity, afterVolatileRead, ownMonitor, methodMonitor,
                         storedIdentity, receiver, stamp, round);
                 return;
             }
-            endSpeculations(threadId);
+            if (marker || !isWrite || heldReadOf(threadId, qualifiedName, identity)) {
+                endSpeculations(threadId);
+            }
         }
         if (ownershipEvent(qualifiedName, threadId, isWrite, lockFingerprint, identity, storedIdentity)) {
             return;
@@ -685,6 +691,26 @@ public final class TelemetryBridge implements TelemetryEventBuffer.DrainCallback
         }
         Speculation innermost = open.peek();
         return innermost != null && innermost.reads.size() < MAX_SPECULATIVE_READS ? innermost : null;
+    }
+
+    /**
+     * {@return whether one of this thread's open speculations holds a read of the field
+     * {@code qualifiedName} names, on the object {@code identity} names}
+     */
+    private boolean heldReadOf(long threadId, String qualifiedName, int identity) {
+        java.util.Deque<Speculation> open = speculations.get(threadId);
+        if (open == null) {
+            return false;
+        }
+        String field = memoizedFieldIdentifier(qualifiedName);
+        for (Speculation speculation : open) {
+            for (HeldRead read : speculation.reads) {
+                if (read.identity() == identity && read.field().equals(field)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** Ends every open speculation of this thread unvalidated: their reads were used as read. */
