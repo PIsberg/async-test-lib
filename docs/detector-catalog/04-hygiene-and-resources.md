@@ -6,7 +6,7 @@ Part of the [Detector Catalog](../DETECTOR_CATALOG.md).
 
 ### 45. Race Condition Detector
 * **Severity**: `HIGH`
-* **Description**: Tracks reads and writes to the same field of the same object instance across threads and flags fields observed with concurrent read/write or write/write access from more than one thread without synchronization.
+* **Description**: Tracks reads and writes to the same field of the same object instance across threads and flags fields observed with concurrent read/write or write/write access from more than one thread without synchronization. A pair of accesses is synchronized when the two share a lock or the happens-before model orders them, so unlocked set-up published through a latch, a `volatile` store or `Thread.start` to writers that then share a lock is not a race; only a pair covered by neither is reported (#1500).
 * **Buggy Code**:
   ```java
   class Counter {

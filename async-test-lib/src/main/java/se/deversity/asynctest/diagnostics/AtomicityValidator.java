@@ -1852,7 +1852,7 @@ public class AtomicityValidator implements RoundScoped {
             if (access.instanceKey != instance || access.exclusivePhase) {
                 continue;
             }
-            if (access.fingerprint == UNMODELLED) {
+            if (locksUnknown(access)) {
                 return false;
             }
             int[] held = heldLocksOf(access);
@@ -1906,7 +1906,7 @@ public class AtomicityValidator implements RoundScoped {
             if (access.exclusivePhase) {
                 continue;
             }
-            if (access.fingerprint == UNMODELLED) {
+            if (locksUnknown(access)) {
                 return false;
             }
             int[] held = heldLocksOf(access);
@@ -1938,7 +1938,7 @@ public class AtomicityValidator implements RoundScoped {
             int[] held;
             if (access.ownerKnown) {
                 held = access.ownerLocks != null ? access.ownerLocks : HeldLocks.NONE;
-            } else if (access.fingerprint == UNMODELLED) {
+            } else if (locksUnknown(access)) {
                 return true;
             } else {
                 held = heldLocksOf(access);
@@ -1965,7 +1965,7 @@ public class AtomicityValidator implements RoundScoped {
             if (!access.write) {
                 continue;
             }
-            if (access.fingerprint == UNMODELLED) {
+            if (locksUnknown(access)) {
                 return false;
             }
             int[] held = heldLocksOf(access);
@@ -1977,8 +1977,22 @@ public class AtomicityValidator implements RoundScoped {
         return common != null;
     }
 
-    /** {@return the resolved lock ids this access held, the carried monitors included} */
+    /**
+     * {@return whether this access carried nothing to say which locks it held}: neither a
+     * fingerprint nor, for an owner-aware access, the locks probed at it (#1500)
+     */
+    private static boolean locksUnknown(FieldAccessRecord access) {
+        return !access.ownerKnown && access.fingerprint == UNMODELLED;
+    }
+
+    /**
+     * {@return the resolved lock ids this access held, the carried monitors included}; for an
+     * owner-aware access, the locks probed at it, the owner's monitor among them (#1500)
+     */
     private static int[] heldLocksOf(FieldAccessRecord access) {
+        if (access.ownerKnown) {
+            return access.ownerLocks != null ? access.ownerLocks : HeldLocks.NONE;
+        }
         int[] members;
         if (access.fingerprint == 0L || access.fingerprint == UNMODELLED) {
             members = HeldLocks.NONE;
@@ -2042,7 +2056,7 @@ public class AtomicityValidator implements RoundScoped {
                     || (access.exclusivePhase && constructionExcused)) {
                 continue;
             }
-            if (access.fingerprint == UNMODELLED) {
+            if (locksUnknown(access)) {
                 return false;
             }
             int[] writeLocks = perRound == null ? runWide : perRound.get(access.epoch);
@@ -2084,7 +2098,7 @@ public class AtomicityValidator implements RoundScoped {
     private static boolean everyConflictOrderedOrLocked(List<FieldAccessRecord> trace) {
         List<FieldAccessRecord> latest = new ArrayList<>();
         for (FieldAccessRecord access : trace) {
-            if (access.fingerprint == UNMODELLED) {
+            if (locksUnknown(access)) {
                 return false;
             }
             boolean replaced = false;
@@ -2118,7 +2132,8 @@ public class AtomicityValidator implements RoundScoped {
 
     private static boolean sameLocks(FieldAccessRecord one, FieldAccessRecord other) {
         return one.fingerprint == other.fingerprint && one.ownMonitor == other.ownMonitor
-                && one.methodMonitor == other.methodMonitor;
+                && one.methodMonitor == other.methodMonitor && one.ownerKnown == other.ownerKnown
+                && java.util.Arrays.equals(one.ownerLocks, other.ownerLocks);
     }
 
     /** {@return whether some write to {@code instance} in {@code history} stored a named reference} */
@@ -2147,7 +2162,7 @@ public class AtomicityValidator implements RoundScoped {
                     || (access.exclusivePhase && constructionExcused)) {
                 continue;
             }
-            if (access.fingerprint == UNMODELLED) {
+            if (locksUnknown(access)) {
                 return Map.of();
             }
             int[] held = heldLocksOf(access);
@@ -2187,6 +2202,15 @@ public class AtomicityValidator implements RoundScoped {
      * of them.
      */
     private static boolean heldOneOf(FieldAccessRecord access, int[] writeLocks) {
+        if (access.ownerKnown) {
+            // The locks probed at the access, the owner's monitor among them (#1500).
+            for (int hash : heldLocksOf(access)) {
+                if (Lockset.contains(writeLocks, hash)) {
+                    return true;
+                }
+            }
+            return false;
+        }
         if (access.ownMonitor != 0 && Lockset.contains(writeLocks, access.ownMonitor)) {
             return true;
         }
@@ -2251,7 +2275,7 @@ public class AtomicityValidator implements RoundScoped {
                     || (access.exclusivePhase && constructionExcused)) {
                 continue;
             }
-            if (access.fingerprint == UNMODELLED) {
+            if (locksUnknown(access)) {
                 return false;
             }
             if (access.write) {

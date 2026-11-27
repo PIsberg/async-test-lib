@@ -546,4 +546,46 @@ public class AtomicityValidatorTest {
         assertFalse(validator.analyzeAtomicity().toString().contains("array elements past"),
                 "with nothing dropped there is nothing to say");
     }
+
+    /**
+     * Two workers update {@code box.value} under its own monitor, naming the owner; then the
+     * caller, after joining them or not as the model sees it, reads it with no lock.
+     */
+    private static boolean lockedWorkersThenCallerReadReported(boolean joined) throws InterruptedException {
+        AtomicityValidator validator = new AtomicityValidator();
+        Box box = new Box();
+        Thread[] workers = {
+            new Thread(ownerAwareIncrementUnder(validator, box, box), "worker-0"),
+            new Thread(ownerAwareIncrementUnder(validator, box, box), "worker-1"),
+        };
+        for (Thread worker : workers) {
+            worker.start();
+        }
+        for (Thread worker : workers) {
+            worker.join();
+            if (joined) {
+                HappensBefore.join(worker); // what a woven Thread.join records
+            }
+        }
+        validator.recordFieldAccessOn(box, "Box.value", box.value, false);
+        return validator.analyzeAtomicity().hasIssues();
+    }
+
+    /**
+     * #1500: the workers' accesses share the monitor and the caller's read is ordered after both by
+     * the join, so no pair conflicts uncovered. The owner-aware path records the locks it probed
+     * apart from the fingerprint, and the pairwise excuse read only the fingerprint, which that path
+     * leaves unmodelled, so it gave up and the read was reported.
+     */
+    @Test
+    void ownerAwareLockedWritesThenAJoinedUnlockedReadAreNotReported() throws InterruptedException {
+        assertFalse(lockedWorkersThenCallerReadReported(true),
+                "every conflicting pair is covered by the monitor or by the join");
+    }
+
+    @Test
+    void ownerAwareLockedWritesThenAnUnjoinedUnlockedReadAreReported() throws InterruptedException {
+        assertTrue(lockedWorkersThenCallerReadReported(false),
+                "with no join edge the unlocked read is ordered after neither worker's write");
+    }
 }
