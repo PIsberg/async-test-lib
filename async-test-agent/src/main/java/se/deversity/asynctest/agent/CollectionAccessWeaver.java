@@ -2844,11 +2844,11 @@ final class CollectionAccessWeaver {
                     }
                 }
             }
-            boolean enclosedHelper = false;
+            Target enclosedHelper = null;
             if (loopHookTarget != null
                     && ((owner.equals(owningClassInternalName) && waitingMethods.contains(name + descriptor))
                     || reachesWaitingMethod(owner, name + descriptor, typePool, assignable))) {
-                enclosedHelper = trackCall();
+                enclosedHelper = trackCall() ? loopHookTarget : null;
                 loopTracked = loopHookTarget;
                 loopTrackedAt = position;
                 position++;
@@ -2861,8 +2861,8 @@ final class CollectionAccessWeaver {
                 unresolvedCalls.add(name + descriptor);
             }
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
-            if (enclosedHelper && loopHookTarget != null) {
-                enclosedCallReturned(loopHookTarget);
+            if (enclosedHelper != null) {
+                enclosedCallReturned(enclosedHelper);
             }
         }
 
@@ -3221,9 +3221,10 @@ final class CollectionAccessWeaver {
                 if (marks) {
                     super.visitMethodInsn(Opcodes.INVOKESTATIC, tracked.hookOwnerInternalName(),
                             tracked.loopBackEdgeHookName(), "()V", false);
-                    if (enclosedOut != null && visitedAt != null) {
-                        // Every tracked call between the loop's head and this jump is inside it.
-                        int head = visitedAt;
+                    if (enclosedOut != null) {
+                        // Every tracked call between the loop's head and this jump is inside it;
+                        // a mark has a head, so visitedAt is set here.
+                        int head = java.util.Objects.requireNonNull(visitedAt);
                         for (int i = 0; i < trackedPositions.size(); i++) {
                             if (trackedPositions.get(i) > head) {
                                 enclosedOut.add(i);
