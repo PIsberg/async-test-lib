@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **`DetectorAnalysisUnderConcurrentWritesTest` counts reachability in calls, not milliseconds
+  (#1533).** Each detector had a fixed 120 ms window that also paid for starting the three
+  threads, so on a loaded machine whole windows passed before a call was accepted and the floor of
+  100 reached detectors failed with 84, then 24. The window now opens once the threads run, and each
+  writer tries every recording method at least four times however long that takes. With the window
+  set to 0 ms the old harness reached 0 detectors and the new one clears the floor.
+
 - **The corpus quiet-window gate leaves the JVM's finalizer and cleaner threads out (#1546).**
   `Corpus Eval (Java 21)` went red on 2026-11-27 with 232 events in the window, every one from the
   `Finalizer` thread: a finalizer ran woven code after the subjects ended, on the garbage
