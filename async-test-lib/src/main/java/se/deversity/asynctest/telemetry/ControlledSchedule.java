@@ -665,11 +665,12 @@ public final class ControlledSchedule {
             if (running == worker.slot) {
                 running = -1;
                 grant();
-            } else if (running < 0 && !anyOutside()) {
+            } else {
                 // Nobody holds the round: an adopted task that escaped and ends here, with a
                 // worker waiting for it, is the only one left to hand it on. A task has no thread
-                // for childEnded() to see end (#1413).
-                grant();
+                // for childEnded() to see end (#1413). Held back only while workers come back from
+                // a rendezvous, as every other path is, not while one merely waits outside (#1530).
+                grantIfIdle();
             }
         } finally {
             lock.unlock();
@@ -1303,7 +1304,9 @@ public final class ControlledSchedule {
                         dropHold(slot, grantedHold);
                     }
                     running = -1;
-                    if (!anyOutside()) {
+                    // Not while a peer merely waits outside, at a rendezvous whose other parties need
+                    // this turn to reach it (#1530); only while the workers are coming back.
+                    if (!returning) {
                         grant();
                     }
                 }

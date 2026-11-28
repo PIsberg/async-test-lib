@@ -36,7 +36,8 @@ class ControlledScheduleInterruptTest {
     private static final long POLL_SYNC_NANOS = TimeUnit.MILLISECONDS.toNanos(50);
 
     /** What one run saw: where worker 1 first got the round, how long it took, whether it was aimed. */
-    private record Run(int handedOverAt, long tookMs, boolean aimed, int fallbacks, String summary, String why) {
+    private record Run(int handedOverAt, long tookMs, boolean aimed, int fallbacks, String summary, String why,
+                       int outsideAt) {
     }
 
     private static ReentrantLock lockOf(ControlledSchedule schedule) throws ReflectiveOperationException {
@@ -62,15 +63,26 @@ class ControlledScheduleInterruptTest {
      * {@code lockInterruptibly} does, and worker 0 asks for the same lock once its points are done.
      */
     private static Run run(long seed, int aimAt, boolean viaAcquire) throws Exception {
+        return run(seed, aimAt, viaAcquire, false);
+    }
+
+    /**
+     * {@link #run(long, int, boolean)}, with {@code thirdOutside} adding a third worker that steps
+     * outside, as a rendezvous wait does, at its first turn, and waits there until worker 0 is
+     * done (#1530).
+     */
+    private static Run run(long seed, int aimAt, boolean viaAcquire, boolean thirdOutside) throws Exception {
         ReentrantLock wanted = new ReentrantLock();
-        ControlledSchedule schedule = ControlledSchedule.open(2, seed);
+        ControlledSchedule schedule = ControlledSchedule.open(thirdOutside ? 3 : 2, seed);
         ReentrantLock lock = lockOf(schedule);
         AtomicInteger firstPoints = new AtomicInteger();
         AtomicInteger handedOverAt = new AtomicInteger(-1);
         AtomicBoolean atAim = new AtomicBoolean();
         AtomicBoolean go = new AtomicBoolean();
         CountDownLatch peerWentOn = new CountDownLatch(1);
-        CountDownLatch done = new CountDownLatch(2);
+        CountDownLatch done = new CountDownLatch(thirdOutside ? 3 : 2);
+        AtomicInteger outsideAt = new AtomicInteger(-1);
+        AtomicBoolean outside = new AtomicBoolean();
         Thread first = new Thread(() -> {
             schedule.enter(0);
             for (int i = 0; i < POINTS; i++) {
@@ -111,6 +123,22 @@ class ControlledScheduleInterruptTest {
             schedule.leave();
             done.countDown();
         }, "second-worker");
+        Thread third = new Thread(() -> {
+            schedule.enter(2);
+            outsideAt.set(firstPoints.get());
+            boolean out = ControlledSchedule.stepOutside();
+            outside.set(out);
+            try {
+                peerWentOn.await(WAIT_SECONDS * 3, TimeUnit.SECONDS); // a rendezvous waiting for worker 0
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            if (out) {
+                ControlledSchedule.rejoin();
+            }
+            schedule.leave();
+            done.countDown();
+        }, "third-worker");
         long started = System.nanoTime();
         boolean aimed = false;
         // (reset once the aimed interrupt is in place, so only the schedule's own time is judged)
@@ -118,8 +146,15 @@ class ControlledScheduleInterruptTest {
         try {
             second.start();
             first.start();
+            if (thirdOutside) {
+                third.start();
+            }
             if (aimAt >= 0) {
                 awaitState(first, atAim::get);
+                if (thirdOutside && !outside.get()) {
+                    why = "the third worker had not stepped outside before the aim";
+                    return new Run(-1, Long.MAX_VALUE, false, 0, "", why, outsideAt.get());
+                }
                 // Worker 1 wakes every millisecond to watch, and a wake that finds the lock held
                 // queues it too early. Start right after it parks again, with a whole poll to spare.
                 // A wake is brief and a slow runner can miss it: then this attempt is spoilt, not
@@ -149,31 +184,41 @@ class ControlledScheduleInterruptTest {
             done.await(WAIT_SECONDS * 3, TimeUnit.SECONDS);
             long tookMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
             return new Run(handedOverAt.get(), done.getCount() == 0 ? tookMs : Long.MAX_VALUE, aimed,
-                    schedule.summary().fallbacks(), schedule.summary().toString(), why);
+                    schedule.summary().fallbacks(), schedule.summary().toString(), why, outsideAt.get());
         } finally {
             go.set(true);
             schedule.close();
             first.join(2_000);
             second.join(2_000);
+            third.join(2_000);
         }
     }
 
     /** The aimed runs of up to 64 seeds, at most {@code wanted} of them; each attempt retried up to ten times. */
     private static List<Run> aimedRuns(boolean viaAcquire, int wanted, List<String> notes) throws Exception {
+        return aimedRuns(viaAcquire, false, wanted, notes);
+    }
+
+    private static List<Run> aimedRuns(boolean viaAcquire, boolean thirdOutside, int wanted, List<String> notes)
+            throws Exception {
         List<Run> runs = new ArrayList<>();
         for (long seed = 1; seed <= 64 && runs.size() < wanted; seed++) {
-            Run dry = run(seed, -1, viaAcquire);
+            Run dry = run(seed, -1, viaAcquire, thirdOutside);
             if (dry.handedOverAt() <= 0 || dry.handedOverAt() >= POINTS) {
                 notes.add(seed + ": dry handed over at " + dry.handedOverAt());
                 continue; // worker 1 ran first on this seed: no grant to interrupt into
+            }
+            if (thirdOutside && (dry.outsideAt() < 0 || dry.outsideAt() >= dry.handedOverAt())) {
+                notes.add(seed + ": the third worker stepped out at " + dry.outsideAt() + ", not before the hand-over");
+                continue; // it must already wait outside when worker 1 is granted the round
             }
             // Worker 1 reads how many points worker 0 had completed: the point that handed over is
             // the next one, with that index. Worker 1 polls every millisecond, and a poll that runs
             // out while the test holds the lock queues it before the interrupt can: not the window,
             // so try again.
-            Run aimedRun = run(seed, dry.handedOverAt(), viaAcquire);
+            Run aimedRun = run(seed, dry.handedOverAt(), viaAcquire, thirdOutside);
             for (int attempt = 1; attempt < 10 && !aimedRun.aimed(); attempt++) {
-                aimedRun = run(seed, dry.handedOverAt(), viaAcquire);
+                aimedRun = run(seed, dry.handedOverAt(), viaAcquire, thirdOutside);
             }
             if (aimedRun.aimed()) {
                 runs.add(aimedRun);
@@ -212,5 +257,22 @@ class ControlledScheduleInterruptTest {
             }
         }
         assertTrue(phantom.isEmpty(), "a hold the interrupted worker never took held up its peer: " + phantom);
+    }
+
+    @Test
+    void aHandedBackRoundGoesOnWhileAnotherWorkerWaitsOutside() throws Exception {
+        // A third worker waits outside, as at a rendezvous, for worker 0 to finish. The interrupted
+        // worker 1 handed the round back but granted only when nobody was outside, so worker 0 was
+        // never given the round again and the third worker's wait ran out: the false "rendezvous
+        // timed out" of #1530. Nobody is coming back yet (returning is false), so the grant is due.
+        List<String> stalled = new ArrayList<>();
+        for (Run run : aimedRuns(false, true, 4, new ArrayList<>())) {
+            if (run.tookMs() >= TimeUnit.SECONDS.toMillis(WAIT_SECONDS)) {
+                stalled.add((run.tookMs() == Long.MAX_VALUE ? "never ended" : run.tookMs() + " ms") + ": "
+                        + run.summary());
+            }
+        }
+        assertTrue(stalled.isEmpty(), "the handed-back round was not granted on while a worker waited outside,"
+                + " so the ready worker never ran and the outside wait timed out: " + stalled);
     }
 }

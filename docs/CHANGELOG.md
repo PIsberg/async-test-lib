@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **A controlled schedule hands a returned round on while a worker waits at a rendezvous (#1530).**
+  When an interrupt ended a worker's wait in the instant `grant()` picked it, the worker handed the
+  round back but granted it on only if nobody was outside. A peer still waiting at a rendezvous for
+  the others counted as outside, so the ready worker was never granted, never reached the
+  rendezvous, and the waiting one timed out. That path, and `leave()`'s, now hold the grant back only
+  while the workers come back from a rendezvous (`returning`), as every other grant path does since
+  #1495. A new `ControlledScheduleInterruptTest` case, three workers with one outside, stalled on all
+  four aimed seeds before the change (two never ended, two ran 9 s) and passes after it. The
+  `leave()` path has no sequence known to reach it with a worker outside, so it is unpinned.
+
 - **`DetectorAnalysisUnderConcurrentWritesTest` counts reachability in calls, not milliseconds
   (#1533).** Each detector had a fixed 120 ms window that also paid for starting the three
   threads, so on a loaded machine whole windows passed before a call was accepted and the floor of
