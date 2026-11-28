@@ -86,7 +86,12 @@ final class NamedFixtureLayer {
      * stdlib-shaped one (#1468)
      */
     static ModuleLayer module(ModuleDescriptor descriptor, Path root) {
-        return define(descriptor, root, NamedFixtureLayer.class.getClassLoader());
+        return module(descriptor, root, NamedFixtureLayer.class.getClassLoader());
+    }
+
+    /** {@return the same, its loader delegating to {@code parent}}; the platform loader hides the library */
+    static ModuleLayer module(ModuleDescriptor descriptor, Path root, ClassLoader parent) {
+        return define(descriptor, root, parent);
     }
 
     private static ModuleLayer define(ModuleDescriptor descriptor, Path root, ClassLoader parent) {

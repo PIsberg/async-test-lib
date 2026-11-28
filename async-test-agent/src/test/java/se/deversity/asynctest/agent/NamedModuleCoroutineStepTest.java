@@ -48,6 +48,9 @@ class NamedModuleCoroutineStepTest {
 
     private static Class<?> step;
 
+    /** The same step in a second stdlib module whose loader cannot see the library. */
+    private static Class<?> stranded;
+
     @BeforeAll
     static void attachThenLoadTheStdlibModule() throws Exception {
         boolean supported;
@@ -62,8 +65,11 @@ class NamedModuleCoroutineStepTest {
 
         ModuleDescriptor descriptor = ModuleDescriptor.newModule(STDLIB)
                 .exports("kotlin.coroutines").exports(INTERNAL).build();
-        ModuleLayer layer = NamedFixtureLayer.module(descriptor, stdlibClasses());
+        Path classes = stdlibClasses();
+        ModuleLayer layer = NamedFixtureLayer.module(descriptor, classes);
         step = Class.forName(STEP.replace('/', '.'), true, layer.findLoader(STDLIB));
+        ModuleLayer hidden = NamedFixtureLayer.module(descriptor, classes, ClassLoader.getPlatformClassLoader());
+        stranded = Class.forName(STEP.replace('/', '.'), true, hidden.findLoader(STDLIB));
     }
 
     @Test
@@ -105,6 +111,19 @@ class NamedModuleCoroutineStepTest {
         assertTrue(UpdaterAccess.openCoroutineSteps(inst, isolated, isolated.getUnnamedModule()),
                 "an unnamed module reads every module and is open to them");
         assertTrue(UpdaterAccess.openCoroutineSteps(inst, isolated, null), "an unknown module is woven as before");
+        assertTrue(UpdaterAccess.openCoroutineSteps(inst, step.getClassLoader(), stdlib),
+                "a module already opened is ready without being redefined again");
+    }
+
+    @Test
+    @DisplayName("a named stdlib whose loader cannot see the library runs its steps unwoven")
+    void aStrandedStdlibRunsUnwoven() throws Exception {
+        assertTrue(stranded.getModule().isNamed(), "the stranded stdlib must be named, or this proves nothing");
+        Object stack = stranded.getMethod("resumeWith", Object.class)
+                .invoke(stranded.getConstructor().newInstance(), (Object) null);
+        assertFalse(Arrays.stream((StackTraceElement[]) stack).anyMatch(frame ->
+                        "coroutineStep".equals(frame.getMethodName())),
+                "woven, resumeWith would call a hook its loader cannot link, and every step would fail");
     }
 
     /** Writes the stdlib-shaped classes to a directory of their own. */

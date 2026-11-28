@@ -187,10 +187,11 @@ final class UpdaterAccess {
         try {
             Module library = Class.forName(COROUTINE_HOOKS, false, loader).getModule();
             if (!stdlib.canRead(library) || !stdlib.isOpen(COROUTINE_INTERNAL_PACKAGE, library)) {
+                // Either applies both or throws (an unmodifiable module), which the catch refuses.
                 inst.redefineModule(stdlib, Set.of(library), Map.of(),
                         Map.of(COROUTINE_INTERNAL_PACKAGE, Set.of(library)), Set.of(), Map.of());
             }
-            return stdlib.canRead(library) && stdlib.isOpen(COROUTINE_INTERNAL_PACKAGE, library);
+            return true;
         } catch (ClassNotFoundException | RuntimeException | LinkageError e) { // NOPMD - see the class javadoc
             // Unwoven, the class runs as it would without the agent: no step is marked.
             return false;
