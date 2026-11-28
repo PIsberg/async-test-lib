@@ -77,6 +77,12 @@ final class UpdaterAccess {
      */
     private static final String LIBRARY_ENTRY = "se.deversity.asynctest.telemetry.TelemetryRegistry";
 
+    /** The stdlib package holding {@code BaseContinuationImpl.invokeSuspend}, which the coroutine hook calls. */
+    private static final String COROUTINE_INTERNAL_PACKAGE = "kotlin.coroutines.jvm.internal";
+
+    /** The library class the woven {@code resumeWith} calls, by name for the same reason. */
+    private static final String COROUTINE_HOOKS = "se.deversity.asynctest.AgentCoroutineHooks";
+
     /** Loaders already handled, weakly, so a discarded test classloader is not retained. */
     private static final Set<ClassLoader> HANDLED =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
@@ -153,6 +159,43 @@ final class UpdaterAccess {
             // Unresolved updaters report rather than hide; see the class javadoc.
         }
         HANDLED.add(loader);
+    }
+
+    /**
+     * Readies kotlin stdlib's module for the coroutine step hook (#1468), and says whether it is ready.
+     *
+     * <p>The woven {@code BaseContinuationImpl.resumeWith} calls the hook, which opens the protected
+     * {@code invokeSuspend} with {@code setAccessible} to call it through a handle. An unnamed module
+     * allows both. A named one, {@code kotlin.stdlib} on a module path, reads only what it requires
+     * and exports {@code kotlin.coroutines.jvm.internal} without opening it, so it gets a read edge
+     * to the hook's module and that one package opened to it, and to nothing else.
+     *
+     * @param inst   the agent's instrumentation
+     * @param loader the loader of {@code BaseContinuationImpl}
+     * @param stdlib its module, or {@code null} when not known
+     * @return whether the hook can run there; {@code false} leaves the class unwoven, as every
+     *         coroutine would otherwise fail in the hook
+     */
+    static boolean openCoroutineSteps(Instrumentation inst, @Nullable ClassLoader loader,
+                                      @Nullable Module stdlib) {
+        if (stdlib == null || !stdlib.isNamed()) {
+            return true;
+        }
+        if (loader == null) {
+            return false;
+        }
+        try {
+            Module library = Class.forName(COROUTINE_HOOKS, false, loader).getModule();
+            if (!stdlib.canRead(library) || !stdlib.isOpen(COROUTINE_INTERNAL_PACKAGE, library)) {
+                // Either applies both or throws (an unmodifiable module), which the catch refuses.
+                inst.redefineModule(stdlib, Set.of(library), Map.of(),
+                        Map.of(COROUTINE_INTERNAL_PACKAGE, Set.of(library)), Set.of(), Map.of());
+            }
+            return true;
+        } catch (ClassNotFoundException | RuntimeException | LinkageError e) { // NOPMD - see the class javadoc
+            // Unwoven, the class runs as it would without the agent: no step is marked.
+            return false;
+        }
     }
 
     /**

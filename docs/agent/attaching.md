@@ -152,9 +152,12 @@ step's length. `AtomicityValidator` then reports a lost update between two corou
 one thread, a read, a suspension and a write after another coroutine's write
 ([#1007](https://github.com/PIsberg/async-test-lib/issues/1007)). The coroutines' own code must be in
 `includes=` for its field accesses to be recorded, and kotlinx.coroutines too when they run on
-its dispatchers, whose threads are handed to the run through kotlinx's woven `execute`. Skipped
-where kotlin stdlib sits in a named module, since the hook opens a protected method to make the
-call. A `long` or `double` takes
+its dispatchers, whose threads are handed to the run through kotlinx's woven `execute`. Where
+kotlin stdlib sits in a named module (`kotlin.stdlib` on a module path), the agent first gives it a
+read edge to the library and opens `kotlin.coroutines.jvm.internal` to the library's module alone,
+since the hook opens the protected `invokeSuspend` to make the call; if it cannot, the class is
+left unwoven and no step is marked
+([#1468](https://github.com/PIsberg/async-test-lib/issues/1468)). A `long` or `double` takes
 the two-slot copy instructions rather than `DUP` and `SWAP`; `WideOperandWeavingTest` weaves a class
 with every field width, volatile and plain, static and instance, through the full
 `fields=true,collections=true` chain and checks that it verifies and computes what the unwoven class

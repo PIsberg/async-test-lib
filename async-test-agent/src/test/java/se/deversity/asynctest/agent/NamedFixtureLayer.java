@@ -80,6 +80,20 @@ final class NamedFixtureLayer {
                 NamedFixtureLayer.class.getClassLoader());
     }
 
+    /**
+     * {@return a new layer holding {@code descriptor}'s module, served from the class files under
+     * {@code root}, its loader delegating to the test's}; for a module built in the test, such as a
+     * stdlib-shaped one (#1468)
+     */
+    static ModuleLayer module(ModuleDescriptor descriptor, Path root) {
+        return module(descriptor, root, NamedFixtureLayer.class.getClassLoader());
+    }
+
+    /** {@return the same, its loader delegating to {@code parent}}; the platform loader hides the library */
+    static ModuleLayer module(ModuleDescriptor descriptor, Path root, ClassLoader parent) {
+        return define(descriptor, root, parent);
+    }
+
     private static ModuleLayer define(ModuleDescriptor descriptor, Path root, ClassLoader parent) {
         ModuleReference reference = new ModuleReference(descriptor, root.toUri()) {
             @Override
