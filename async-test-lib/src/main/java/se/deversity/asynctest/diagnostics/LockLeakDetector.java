@@ -149,6 +149,13 @@ public class LockLeakDetector {
         if (hold == null) {
             hold = state.threadHolds.computeIfAbsent(threadId, ignored -> new Hold());
         }
+        // Recorded after the acquire, so a ReentrantLock that counts one hold says this is the
+        // thread's outermost hold, whatever the recorded depth: a release it never recorded left
+        // the depth stale, and every later hold went untimed (#1511). A real re-entry counts more.
+        if (hold.depth > 0 && lock instanceof ReentrantLock reentrant
+                && reentrant.isHeldByCurrentThread() && reentrant.getHoldCount() == 1) {
+            hold.depth = 0;
+        }
         if (hold.depth == 0) {
             hold.since = now;
         }

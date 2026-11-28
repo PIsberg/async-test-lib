@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **`LockLeakDetector` times a thread's holds again after a release it never saw (#1511).** It
+  times a hold from the outermost acquire to the release that brings the thread's depth back to
+  zero (#1505), so one acquire whose release was not recorded left the depth at 1 for good and none
+  of that thread's later holds of the lock was timed: a long hold drew no finding. At a recorded
+  acquire, a `ReentrantLock` whose hold count is 1 now starts a fresh hold whatever the recorded
+  depth; a real re-entry counts 2 and stays one hold. `LockLeakDetectorTest` read "max hold: 0ms"
+  for a 300 ms hold after such a release before the change, and a nested hold still times as one.
+
 - **The two other ways an enumerated scenario's run fails have tests of their own (#1512).**
   #1508 made a scenario whose run throws fail as "failed to run", pinned for an operation that
   throws. A licence refusal and a timed-out round reached the same catch only by construction.
