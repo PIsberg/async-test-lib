@@ -188,6 +188,27 @@ class CorpusGatesTest {
     }
 
     @Test
+    @DisplayName("the JVM's reference threads are told apart from a thread that only shares a name (#1546)")
+    void onlyTheJvmsOwnReferenceThreadsAreLeftOutOfTheWindow() throws InterruptedException {
+        Thread finalizer = Thread.getAllStackTraces().keySet().stream()
+                .filter(t -> t.getName().equals("Finalizer")).findFirst()
+                .orElseThrow(() -> new AssertionError("this JVM has no Finalizer thread to check against"));
+        assertTrue(com.example.corpus.unwoven.QuietWindowPublishers.isJvmReferenceThread(finalizer),
+                "the JVM schedules the Finalizer; no subject owns what it publishes");
+        // Daemons both, as the JVM's are, so the group is what tells them apart and not the flag.
+        Thread impostor = new Thread(() -> { }, "Finalizer");
+        impostor.setDaemon(true);
+        Thread timer = new Thread(() -> { }, "corpus-timer");
+        timer.setDaemon(true);
+        assertFalse(com.example.corpus.unwoven.QuietWindowPublishers.isJvmReferenceThread(impostor),
+                "a thread a subject started keeps counting whatever it is called");
+        assertFalse(com.example.corpus.unwoven.QuietWindowPublishers.isJvmReferenceThread(timer),
+                "a leaked timer is exactly what the window exists to catch");
+        assertFalse(com.example.corpus.unwoven.QuietWindowPublishers.isJvmReferenceThread(null),
+                "an ended thread cannot be checked, so it counts");
+    }
+
+    @Test
     @DisplayName("a counter that stays within the allowance passes the quiescence gate")
     void aQuietWindowPassesQuiescence() {
         assertDoesNotThrow(() -> CorpusGates.nothingPublishesAfterTheLastSubject(1_000L, 1_000L, 250L));

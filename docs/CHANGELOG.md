@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **The corpus quiet-window gate leaves the JVM's finalizer and cleaner threads out (#1546).**
+  `Corpus Eval (Java 21)` went red on 2026-11-27 with 232 events in the window, every one from the
+  `Finalizer` thread: a finalizer ran woven code after the subjects ended, on the garbage
+  collector's schedule, and the gate blamed a subject for leaving something running.
+  `QuietWindowPublishers` now counts what `Finalizer`, `Reference Handler` and `Common-Cleaner`
+  published, recognised by name and by the JVM's own thread group so a subject's thread of the
+  same name still counts, and the gate leaves that out. `corpus.quiet_window` prints it as
+  `jvm_owned=`. `CorpusGatesTest` pins that the real `Finalizer` is recognised and a daemon
+  named "Finalizer" in `main`, or a leaked timer, is not.
+
 - **A 429 from Maven Central is retried six times, under the name each resolver reads (#1548).**
   Four CI jobs failed on 2026-11-27 in their first minute resolving `cyclonedx-maven-plugin`
   2.9.3: Central answered 429 Too Many Requests to the parallel matrix, and the restored cache

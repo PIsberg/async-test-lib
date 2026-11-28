@@ -256,6 +256,8 @@ class CorpusEvalTest {
         Thread.sleep(QUIET_WINDOW_MS);
         long quietTo = se.deversity.asynctest.telemetry.TelemetryRegistry.publishedEvents();
         String publishedBy = publishers.stop();
+        // The JVM's finalizer and cleaner threads run on GC's schedule, not a subject's (#1546).
+        long jvmOwned = publishers.jvmOwnedEvents();
         CorpusRecorder.uninstall();
         CorpusLane lane = CorpusLane.current();
         Path report = CorpusReport.write(
@@ -266,14 +268,15 @@ class CorpusEvalTest {
         CorpusGates.check(CorpusRecorder.findings(), CorpusRecorder.crashes(), lane);
         // Printed on every run, green or red, so the CI log shows how much headroom the gate had.
         System.out.println("corpus.quiet_window events=" + (quietTo - quietFrom)
+                + " jvm_owned=" + jvmOwned
                 + " allowance=" + CorpusGates.QUIET_WINDOW_ALLOWANCE + " window_ms=" + QUIET_WINDOW_MS
                 + " published_by=" + publishedBy);
-        String whoWasRunning = quietTo - quietFrom > CorpusGates.QUIET_WINDOW_ALLOWANCE
+        String whoWasRunning = quietTo - quietFrom - jvmOwned > CorpusGates.QUIET_WINDOW_ALLOWANCE
                 ? "Threads that published during the window, with event counts: " + publishedBy
                         + ". Runnable threads seen outside platform code right after it, with sample "
                         + "counts: " + CorpusGates.threadsInsideNonPlatformCode(100, 2)
                 : "";
-        CorpusGates.nothingPublishesAfterTheLastSubject(quietFrom, quietTo, QUIET_WINDOW_MS,
+        CorpusGates.nothingPublishesAfterTheLastSubject(quietFrom, quietTo - jvmOwned, QUIET_WINDOW_MS,
                 whoWasRunning);
     }
 
