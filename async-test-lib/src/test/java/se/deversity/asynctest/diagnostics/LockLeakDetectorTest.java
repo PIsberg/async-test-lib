@@ -711,4 +711,50 @@ public class LockLeakDetectorTest {
         assertTrue(maxHold.find(), activity);
         assertTrue(Long.parseLong(maxHold.group(1)) >= 300, "the outer hold is the one timed: " + activity);
     }
+
+    @Test
+    void aHoldAfterAnUnrecordedReleaseIsStillTimed() throws InterruptedException {
+        // One acquire whose release was never recorded left the thread at depth 1 for good, so its
+        // later holds were nested in a hold that never ended and none was timed (#1511). The lock
+        // knows better: a hold count of 1 at an acquire is an outermost hold.
+        LockLeakDetector detector = new LockLeakDetector();
+        java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
+        lock.lock();
+        detector.recordLockAcquired(lock, "ledger");
+        lock.unlock(); // released, but the release is not recorded
+
+        lock.lock();
+        detector.recordLockAcquired(lock, "ledger");
+        Thread.sleep(300);
+        detector.recordLockReleased(lock, "ledger");
+        lock.unlock();
+
+        String activity = String.join("\n", detector.analyze().threadActivity);
+        java.util.regex.Matcher max = java.util.regex.Pattern.compile("max hold: (\\d+)ms").matcher(activity);
+        assertTrue(max.find(), activity);
+        assertTrue(Integer.parseInt(max.group(1)) >= 290,
+                "the second hold, 300 ms, is timed from its own acquire: " + activity);
+    }
+
+    @Test
+    void aReallyNestedHoldIsStillTimedAsOne() throws InterruptedException {
+        // The reset must not split a genuine re-entry: held twice, the lock says 2, and the hold runs
+        // from the outer acquire to the outer release.
+        LockLeakDetector detector = new LockLeakDetector();
+        java.util.concurrent.locks.ReentrantLock lock = new java.util.concurrent.locks.ReentrantLock();
+        lock.lock();
+        detector.recordLockAcquired(lock, "ledger");
+        Thread.sleep(200);
+        lock.lock();
+        detector.recordLockAcquired(lock, "ledger");
+        detector.recordLockReleased(lock, "ledger");
+        lock.unlock();
+        detector.recordLockReleased(lock, "ledger");
+        lock.unlock();
+
+        String activity = String.join("\n", detector.analyze().threadActivity);
+        java.util.regex.Matcher max = java.util.regex.Pattern.compile("max hold: (\\d+)ms").matcher(activity);
+        assertTrue(max.find(), activity);
+        assertTrue(Integer.parseInt(max.group(1)) >= 190, "the outer hold spans the inner one: " + activity);
+    }
 }
