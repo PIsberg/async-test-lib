@@ -177,6 +177,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Coroutine steps are marked where kotlin stdlib is a named module (#1468).** With
+  `fields=true` the agent routes `BaseContinuationImpl.resumeWith`'s `invokeSuspend` call
+  through a hook that names the running coroutine, so `AtomicityValidator` can report a lost
+  update between two coroutines on one thread (#1007). The hook opens the protected
+  `invokeSuspend`, which `kotlin.stdlib` on a module path does not allow, so the agent left the
+  class unwoven there and such a lost update went unreported. It now gives the module a read edge to
+  the library and opens `kotlin.coroutines.jvm.internal` to the library's module alone, and weaves
+  only when both are in place: weaving without the opening, tried as a break-check, failed every
+  step with `InaccessibleObjectException`. `NamedModuleCoroutineStepTest` runs a step through an
+  explicit stdlib-shaped module built in the test; it failed before the change.
+
 - **`LockOrderValidator` treats a writer that downgraded to its read lock as a reader (#1510).**
   Each hold carries a mode since #1496, and a re-entered hold that was ever exclusive stayed
   exclusive. A downgrade, write lock then read lock then the write lock released, left the thread

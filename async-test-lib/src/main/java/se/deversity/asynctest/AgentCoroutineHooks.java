@@ -156,8 +156,9 @@ public final class AgentCoroutineHooks {
                     KotlinMutexes.jobReader(loader, Class.forName(CONTINUATION, false, loader));
             return new Binding(invokeSuspend, jobs);
         } catch (ReflectiveOperationException | RuntimeException e) {
-            // The weaver substitutes the call only where the stdlib's module is unnamed, so the
-            // method can always be opened; failing here would fail every coroutine.
+            // The weaver substitutes the call only where the stdlib's module is unnamed or the agent
+            // opened its package to this one (#1468), so the method can always be opened; failing
+            // here would fail every coroutine.
             throw new IllegalStateException("cannot call invokeSuspend on " + type.getName(), e);
         }
     }
