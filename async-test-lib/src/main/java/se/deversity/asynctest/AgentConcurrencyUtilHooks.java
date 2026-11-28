@@ -1512,7 +1512,7 @@ public final class AgentConcurrencyUtilHooks {
      * @since 1.12.3
      */
     public static @Nullable Object join(CompletableFuture<Object> receiver) {
-        ControlledSchedule.awaitingTask(adoptionBehind(receiver));
+        awaitingResult(receiver);
         if (!receiver.isDone()) {
             blocking("CompletableFuture.join", true);
         }
@@ -1543,7 +1543,7 @@ public final class AgentConcurrencyUtilHooks {
      */
     public static @Nullable Object get(Future<Object> receiver)
             throws InterruptedException, ExecutionException {
-        ControlledSchedule.awaitingTask(adoptionBehind(receiver));
+        awaitingResult(receiver);
         if (!receiver.isDone()) {
             blockingOn(receiver);
         }
@@ -8252,6 +8252,25 @@ public final class AgentConcurrencyUtilHooks {
      */
     private static @Nullable Object adoptionBehind(Object future) {
         return Submissions.peek(future) instanceof HandedTask handed ? handed.adoption : null;
+    }
+
+    /**
+     * The scheduling point before a woven wait for {@code future}'s result. A future that is done
+     * already cannot block, so it is a plain point: waiting for the adopted task behind it, which
+     * may never run when the future was cancelled while queued or completed by hand, lasted the
+     * stall bound and counted an escape that ended the seed's replay (#1514).
+     */
+    private static void awaitingResult(Future<?> future) {
+        if (future.isDone()) {
+            // A task not started by now never will be: the executor skips the task of a done
+            // future. Its slot is done, or the plain point hands the round to it and waits.
+            if (Submissions.peek(future) instanceof HandedTask handed) {
+                handed.abandoned();
+            }
+            ControlledSchedule.point();
+        } else {
+            ControlledSchedule.awaitingTask(adoptionBehind(future));
+        }
     }
 
     /**
