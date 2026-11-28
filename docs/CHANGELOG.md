@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **The Test Suite job stops a hung test after 75 minutes, not 360 (#1516).** Neither the job nor
+  its test step set `timeout-minutes`, so a hang would hold a runner for GitHub's default six hours
+  before its log could be read. The step now stops at 75 minutes and the job at 90: the step's
+  normal time is 11 to 30 minutes across the twelve last green runs, and the slowest correct run
+  seen, a starved runner on PR #1515, took 59. `TestSuiteTimeoutTest` pins both bounds between 60
+  and 360 minutes. See [quality-gates/ci-coverage.md](quality-gates/ci-coverage.md).
+
 - **A controlled schedule hands a returned round on while a worker waits at a rendezvous (#1530).**
   When an interrupt ended a worker's wait in the instant `grant()` picked it, the worker handed the
   round back but granted it on only if nobody was outside. A peer still waiting at a rendezvous for

@@ -32,6 +32,9 @@ jobs:
     # ubuntu-latest is the required leg (unchanged behavior); windows-latest and
     # macos-latest are experimental legs that must not block the required leg.
     continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
+    # A hung test held the runner for GitHub's default 360 minutes before anyone could read its log
+    # (#1516). The whole job normally takes 11 to 31 minutes; this also covers set-up and uploads.
+    timeout-minutes: 90
 
     strategy:
       fail-fast: false
@@ -129,6 +132,9 @@ jobs:
           cache: maven
 
       - name: Run library tests and install artifact
+        # 11 to 21 minutes on Ubuntu, up to 30 on Windows and macOS; a starved runner took 59 and
+        # passed (PR #1515). 75 lets that through and stops a hang with its log readable (#1516).
+        timeout-minutes: 75
         # Two per-class JVMs at a time on Ubuntu (#898): every class still gets its own JVM, so
         # nothing is shared, and the soak recorded in the pom comment ran on Ubuntu.
         # The skip is quoted: Windows runs this step in PowerShell, which splits a bare
