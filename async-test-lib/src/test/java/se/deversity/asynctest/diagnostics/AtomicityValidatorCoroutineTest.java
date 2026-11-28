@@ -84,6 +84,54 @@ class AtomicityValidatorCoroutineTest {
     }
 
     @Test
+    @DisplayName("#1574: a read and a later write that both hold the owner's monitor, with every write between locked too, are excused")
+    void accessesAllUnderTheOwnersMonitorAreExcused() {
+        AtomicityValidator validator = new AtomicityValidator();
+        Object field = new Object();
+        Object first = new Object();
+        Object second = new Object();
+
+        // kotlinx's DelayedTaskQueue.timeNow: every access is inside synchronized(queue), and a
+        // later step's first access stores a fresh clock value. The thread-based rules excuse a
+        // field whose conflicting accesses all hold one lock; this rule now does the same.
+        validator.recordCoroutineAccess(field, FIELD, first, 1, false, true);
+        validator.recordCoroutineAccess(field, FIELD, second, 2, true, true);
+        validator.recordCoroutineAccess(field, FIELD, first, 3, true, true);
+
+        assertTrue(validator.analyzeAtomicity().checkThenActViolations.isEmpty());
+    }
+
+    @Test
+    @DisplayName("#1574: a read made without the owner's monitor keeps the lost update, whatever the write held")
+    void anUnlockedReadIsStillReported() {
+        AtomicityValidator validator = new AtomicityValidator();
+        Object field = new Object();
+        Object first = new Object();
+        Object second = new Object();
+
+        validator.recordCoroutineAccess(field, FIELD, first, 1, false, false);
+        validator.recordCoroutineAccess(field, FIELD, second, 2, true, true);
+        validator.recordCoroutineAccess(field, FIELD, first, 3, true, true);
+
+        assertEquals(1, validator.analyzeAtomicity().checkThenActViolations.size());
+    }
+
+    @Test
+    @DisplayName("#1574: another coroutine's write without the owner's monitor keeps the lost update")
+    void anUnlockedForeignWriteIsStillReported() {
+        AtomicityValidator validator = new AtomicityValidator();
+        Object field = new Object();
+        Object first = new Object();
+        Object second = new Object();
+
+        validator.recordCoroutineAccess(field, FIELD, first, 1, false, true);
+        validator.recordCoroutineAccess(field, FIELD, second, 2, true, false);
+        validator.recordCoroutineAccess(field, FIELD, first, 3, true, true);
+
+        assertEquals(1, validator.analyzeAtomicity().checkThenActViolations.size());
+    }
+
+    @Test
     @DisplayName("the same field of another object is other state")
     void anotherObjectsFieldIsOtherState() {
         AtomicityValidator validator = new AtomicityValidator();

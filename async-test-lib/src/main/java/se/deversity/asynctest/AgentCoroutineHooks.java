@@ -114,8 +114,10 @@ public final class AgentCoroutineHooks {
         }
         Step step = CURRENT.get();
         if (step != null) {
+            // Sampled here, on the coroutine's own thread, the only place it means anything: an
+            // access whose owner's monitor is held is excused like a lock-guarded field (#1574).
             step.validator().recordCoroutineAccess(HappensBefore.fieldKey(receiver, field), field,
-                    step.coroutine(), step.number(), isWrite);
+                    step.coroutine(), step.number(), isWrite, Thread.holdsLock(receiver));
         }
     }
 

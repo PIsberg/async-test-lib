@@ -38,6 +38,8 @@ class KotlinCoroutineStepsTest {
                     "the Mutex held across the suspension kept the other coroutine out: $atomicity")
                 assertFalse(atomicity.contains("OwnBox.n"),
                     "one coroutine updating its own box is one owner: $atomicity")
+                assertFalse(atomicity.contains("DelayedTaskQueue"),
+                    "kotlinx reads and stores its queue's timeNow only under the queue's monitor (#1574): $atomicity")
             } finally {
                 findings.close()
             }
@@ -57,6 +59,12 @@ class KotlinCoroutineStepsTest {
         timeoutMs = 60_000, includes = [DetectorType.ATOMICITY_VIOLATIONS])
     fun twoCoroutinesHoldAMutex() {
         assertEquals(2 * CoroutineSteps.STEPS, steps.twoCoroutinesHoldAMutex())
+    }
+
+    @AsyncTest(threads = 4, invocations = 8, failOn = FailOn.NONE, licenseMockMode = true,
+        timeoutMs = 60_000, includes = [DetectorType.ATOMICITY_VIOLATIONS])
+    fun twoCoroutinesOnlyDelay() {
+        assertEquals(2 * CoroutineSteps.STEPS, steps.twoCoroutinesDelay())
     }
 
     @AsyncTest(threads = 4, invocations = 8, failOn = FailOn.NONE, licenseMockMode = true,

@@ -75,6 +75,26 @@ class CoroutineSteps {
         return box.n
     }
 
+    /**
+     * Two coroutines on one thread that only wait, so the shared state is kotlinx's own: its event
+     * loop's delayed-task queue, whose `timeNow` every `delay` reads and stores inside
+     * `synchronized` on the queue (#1574). Returns the delays completed, 2 x [STEPS].
+     */
+    fun twoCoroutinesDelay(): Int {
+        var done = 0
+        runBlocking {
+            repeat(2) {
+                launch {
+                    repeat(STEPS) {
+                        delay(1)
+                        done++
+                    }
+                }
+            }
+        }
+        return done
+    }
+
     /** One coroutine reading, suspending and writing its own box, moved between two threads. */
     fun ownStepsAcrossThreads(): Int =
         Executors.newFixedThreadPool(2) { Thread(it, "step-dispatcher") }

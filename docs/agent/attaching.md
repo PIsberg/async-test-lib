@@ -157,7 +157,9 @@ With `fields=true` the agent also weaves one call in kotlin stdlib, whatever `in
 and that call goes through a library hook that marks which coroutine the thread is running for the
 step's length. `AtomicityValidator` then reports a lost update between two coroutines that share
 one thread, a read, a suspension and a write after another coroutine's write
-([#1007](https://github.com/PIsberg/async-test-lib/issues/1007)). The coroutines' own code must be in
+([#1007](https://github.com/PIsberg/async-test-lib/issues/1007)), unless every one of those
+accesses held the monitor of the field's owner, which is how kotlinx guards its own event-loop
+state ([#1574](https://github.com/PIsberg/async-test-lib/issues/1574)). The coroutines' own code must be in
 `includes=` for its field accesses to be recorded, and kotlinx.coroutines too when they run on
 its dispatchers, whose threads are handed to the run through kotlinx's woven `execute`. Where
 kotlin stdlib sits in a named module (`kotlin.stdlib` on a module path), the agent first gives it a

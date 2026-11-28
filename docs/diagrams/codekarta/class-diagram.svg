@@ -3536,7 +3536,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="6280.0" y="9374.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">ownershipTakes(): int</text>
   <text x="6280.0" y="9389.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">verdictCounts(String): Map…</text>
   <text x="6280.0" y="9404.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">takerOf(int, int): Long</text>
-  <text x="6280.0" y="9419.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+59 more)</text>
+  <text x="6280.0" y="9419.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+60 more)</text>
 </g>
 <g id="AsyncTestListenerRegistry">
   <title>AsyncTestListenerRegistry [CLASS]</title>
