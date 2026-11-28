@@ -52,3 +52,13 @@ required job name also declares a `paths` or `paths-ignore` filter on a pull-req
 Its list of required job names is a copy of branch protection and must change with it; until
 #910 it lacked `E2E Tests` and `Corpus Eval`, which is how `e2e-tests.yml` kept a filter while
 required.
+
+## How long a test job may run
+
+The `Test Suite` job in `tests.yml` stops after 90 minutes, and its "Run library tests and install
+artifact" step after 75 (#1516). Without a bound, a test that hangs holds the runner for GitHub's
+default of 360 minutes, and its log cannot be read until then or until someone cancels the run.
+The step normally takes 11 to 21 minutes on Ubuntu and up to 30 on Windows and macOS (twelve green
+runs, 2026-11-28); a starved Ubuntu runner on PR #1515 took 59 minutes and passed, which the step
+bound still lets through. `TestSuiteTimeoutTest` fails if either bound is removed, drops below 60
+minutes, or reaches 360.
