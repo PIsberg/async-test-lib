@@ -168,7 +168,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.9.8
  */
-@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor changes exactly one kind of invokedynamic: a LambdaMetafactory metafactory or non-serializable altMetafactory whose implementation handle matches a table entry is pointed at that entry's hook, so a method reference such as builder::append is observed (#550). Every other bootstrap, ObjectMethods for records above all, must pass through as the same argument array, read only through ASM's Handle: parsing bootstrap constants is what made every Java record fail to instrument when this went through MemberSubstitution, and a rewritten serializable lambda would fail to deserialize. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class. The one-instruction lookahead behind whenResultDiscarded and whenResultTested is a flag meaning the instruction just emitted was a substituted call whose result may be discarded or tested: visitInsn(POP) for a discard hook and visitJumpInsn(IFNE) for a tested hook, which takes the boolean and returns it in front of the jump (#1501), are its only consumers and every other visit method must clear it, because a stale flag would turn an unrelated POP into a call whose parameter does not match the value on the stack, which is a VerifyError in the user's class at load time. SubstitutingVisitorClearsLookaheadEverywhereTest enumerates MethodVisitor to keep that override list complete. Inside a synchronized method, an entry with a synchronized variant (the sleeps, and the queue offers and takes, #796) first loads the method's monitor, ALOAD 0 or an LDC of the class for a static method, which the variant consumes as its last parameter: one more value and no branch, so only maxStack grows, and the substitution wrapper asks for COMPUTE_MAXS itself. A queue offer or take in any other instance method loads this the same way for its hook to probe (#751), except in a constructor, where this may be uninitialised and would not verify, and after a store to local 0. Besides the tested-result call, the one instruction the visitor inserts outside a substitution is the loop back-edge call in front of a jump that comes back over a woven Object.wait (#694): it must stay a static ()V call, because the jump's operands are already on the stack beneath it and anything that took or left a value, or added a branch, would need the frames COMPUTE_MAXS does not recompute.")
+@AIContract(reason = "The hook class name and the method names here are the other half of AgentCollectionHooks and AgentLockHooks: they are matched by erased signature at weave time, so renaming a hook or changing a parameter type breaks weaving with a NoSuchMethodError inside user code rather than at compile time. Each substitution must consume exactly the stack its original invocation consumed - stack-shape-neutral and member-free is what keeps retransformation safe under disableClassFormatChanges(). The visitor changes exactly one kind of invokedynamic: a LambdaMetafactory metafactory or non-serializable altMetafactory whose implementation handle matches a table entry is pointed at that entry's hook, so a method reference such as builder::append is observed (#550). Every other bootstrap, ObjectMethods for records above all, must pass through as the same argument array, read only through ASM's Handle: parsing bootstrap constants is what made every Java record fail to instrument when this went through MemberSubstitution, and a rewritten serializable lambda would fail to deserialize. Collection weaving is opt-in (collections=true) because it instruments every listed call in every matched class. The one-instruction lookahead behind whenResultDiscarded and whenResultTested is a flag meaning the instruction just emitted was a substituted call whose result may be discarded or tested: visitInsn(POP) for a discard hook and visitJumpInsn(IFNE) for a tested hook, which takes the boolean and returns it in front of the jump (#1501), are its only consumers and every other visit method must clear it, because a stale flag would turn an unrelated POP into a call whose parameter does not match the value on the stack, which is a VerifyError in the user's class at load time. SubstitutingVisitorClearsLookaheadEverywhereTest enumerates MethodVisitor to keep that override list complete. Inside a synchronized method, an entry with a synchronized variant (the sleeps, and the queue offers and takes, #796) first loads the method's monitor, ALOAD 0 or an LDC of the class for a static method, which the variant consumes as its last parameter: one more value and no branch, so only maxStack grows, and the substitution wrapper asks for COMPUTE_MAXS itself. A queue offer or take in any other instance method loads this the same way for its hook to probe (#751), except in a constructor, where this may be uninitialised and would not verify, and after a store to local 0. Besides the tested-result call, the instructions the visitor inserts outside a substitution are the loop back-edge call in front of a jump that comes back over a woven Object.wait (#694), and the wait-returned call right after a wait such a loop encloses, which a dry replay of the buffered method finds before the emitting one and which must hand nothing over (#1555): both must stay static ()V calls, because the jump's operands are already on the stack beneath it and anything that took or left a value, or added a branch, would need the frames COMPUTE_MAXS does not recompute.")
 final class CollectionAccessWeaver {
 
     /**
@@ -1604,7 +1604,8 @@ final class CollectionAccessWeaver {
                           @org.jspecify.annotations.Nullable String discardHookDescriptor,
                           @org.jspecify.annotations.Nullable String testedHookName,
                           @org.jspecify.annotations.Nullable String testedHookDescriptor,
-                          @org.jspecify.annotations.Nullable String loopBackEdgeHookName) {
+                          @org.jspecify.annotations.Nullable String loopBackEdgeHookName,
+                          @org.jspecify.annotations.Nullable String waitReturnedHookName) {
 
         /** {@return whether a loop around this target's call site gets a back-edge hook} */
         boolean hasLoopBackEdgeHook() {
@@ -1657,7 +1658,8 @@ final class CollectionAccessWeaver {
                     discardDescriptorFor(hooks, entry, hook),
                     entry.resultTestedHook(),
                     testedDescriptorFor(hooks, entry, hook),
-                    loopBackEdgeHookFor(hooks, entry)));
+                    loopBackEdgeHookFor(hooks, entry),
+                    waitReturnedHookFor(hooks, entry)));
         }
         return targets;
     }
@@ -1807,6 +1809,30 @@ final class CollectionAccessWeaver {
                     "no loop back-edge hook " + hooks.getName() + "." + hookName + "() for "
                             + entry.declaredBy().getName() + "." + entry.method()
                             + "; agent and library versions disagree", e);
+        }
+    }
+
+    /** The hook a marked loop's enclosed wait calls once it returns (#1555). */
+    private static final String WAIT_RETURNED_HOOK = "loopWaitReturned";
+
+    /**
+     * {@return the name of the hook a wait a marked loop encloses calls once it returns, or
+     * {@code null} when the entry has no loop hook or the library has no such method} (#1555)
+     *
+     * <p>Optional, unlike the back-edge hook: a library without it only loses the confirmation of
+     * a loop left past its back-edge, which the back-edge alone already gave up, so the weave goes
+     * on without the call rather than refusing the table.
+     */
+    private static @org.jspecify.annotations.Nullable String waitReturnedHookFor(Class<?> hooks, Entry entry) {
+        if (entry.loopBackEdgeHook() == null) {
+            return null;
+        }
+        try {
+            Method returned = hooks.getMethod(WAIT_RETURNED_HOOK);
+            return returned.getReturnType() == void.class
+                    && java.lang.reflect.Modifier.isStatic(returned.getModifiers()) ? WAIT_RETURNED_HOOK : null;
+        } catch (NoSuchMethodException e) {
+            return null;
         }
     }
 
@@ -2542,11 +2568,23 @@ final class CollectionAccessWeaver {
                         }
                     }
                     for (BufferedMethod bm : bufferedMethods) {
+                        // A method that waits, here or through a helper of this class, is first
+                        // replayed into nothing to learn which of its waits a marked loop
+                        // encloses (#1555); the emitting replay confirms each as it returns.
+                        Set<Integer> enclosed = new HashSet<>();
+                        if (waitingMethods.contains(bm.methodKey())
+                                && finalLoopHook.waitReturnedHookName() != null) {
+                            bm.replay(new SubstitutingMethodVisitor(new MethodVisitor(Opcodes.ASM9) { },
+                                    targets, typePool, assignable, bm.access(), bm.name(),
+                                    instrumentedType.getInternalName(), waitingMethods, finalLoopHook)
+                                    .collectingEnclosedCalls(enclosed));
+                        }
                         MethodVisitor downstream = super.visitMethod(bm.access(), bm.name(),
                                 bm.descriptor(), bm.signature(), bm.exceptions());
                         SubstitutingMethodVisitor smv = new SubstitutingMethodVisitor(
                                 downstream, targets, typePool, assignable, bm.access(), bm.name(),
-                                instrumentedType.getInternalName(), waitingMethods, finalLoopHook);
+                                instrumentedType.getInternalName(), waitingMethods, finalLoopHook)
+                                .withEnclosedCalls(enclosed);
                         bm.replay(smv);
                     }
                     super.visitEnd();
@@ -2649,6 +2687,56 @@ final class CollectionAccessWeaver {
         /** Where each label was visited, so a jump to one already seen reads as backward. */
         private final Map<Label, Integer> labelsVisitedAt = new HashMap<>();
 
+        /** {@link #position} of each tracked call, in the order they were visited (#1555). */
+        private final List<Integer> trackedPositions = new ArrayList<>();
+
+        /**
+         * On a dry replay, where the ordinals of the tracked calls a marked back-edge encloses go;
+         * {@code null} on the replay that emits (#1555).
+         */
+        private @org.jspecify.annotations.Nullable Set<Integer> enclosedOut;
+
+        /**
+         * The ordinals a dry replay of this method found enclosed by a marked loop. Each gets the
+         * wait-returned call right after it, so a loop that leaves after waking by {@code return}
+         * or {@code break}, past the {@code goto} that closes it, still confirms the wait (#1555).
+         */
+        private Set<Integer> enclosedIn = Collections.emptySet();
+
+        /**
+         * Makes this a dry replay that records into {@code out} which tracked calls a marked loop
+         * encloses, and hands nothing over at its end. {@return this}
+         */
+        SubstitutingMethodVisitor collectingEnclosedCalls(Set<Integer> out) {
+            this.enclosedOut = out;
+            return this;
+        }
+
+        /** Hands this replay what a dry one found. {@return this} */
+        SubstitutingMethodVisitor withEnclosedCalls(Set<Integer> in) {
+            this.enclosedIn = in;
+            return this;
+        }
+
+        /** Records a tracked call at the current position. {@return whether a marked loop encloses it} */
+        private boolean trackCall() {
+            int ordinal = trackedPositions.size();
+            trackedPositions.add(position);
+            return enclosedIn.contains(ordinal);
+        }
+
+        /**
+         * Emits the wait-returned call right after a tracked call a marked loop encloses (#1555):
+         * a static {@code ()V} call, which takes and leaves nothing, so the stack after the call
+         * is what the next instruction expects.
+         */
+        private void enclosedCallReturned(Target hook) {
+            String returned = hook.waitReturnedHookName();
+            if (returned != null) {
+                super.visitMethodInsn(Opcodes.INVOKESTATIC, hook.hookOwnerInternalName(), returned, "()V", false);
+            }
+        }
+
         SubstitutingMethodVisitor(MethodVisitor delegate, List<Target> targets,
                                   TypePool typePool, Map<String, Boolean> assignable,
                                   int access, String methodName, String owningClassInternalName,
@@ -2702,9 +2790,15 @@ final class CollectionAccessWeaver {
                         }
                         justSubstituted = target.hasDiscardVariant() || target.hasTestedVariant() ? target : null;
                         if (target.hasLoopBackEdgeHook()) {
+                            boolean enclosed = trackCall();
                             loopTracked = target;
                             loopTrackedAt = position;
                             position++;
+                            if (enclosed) {
+                                // Through super, so the lookahead above still sees the call's
+                                // result next: the inserted call takes and leaves nothing.
+                                enclosedCallReturned(target);
+                            }
                         }
                         return;
                     }
@@ -2750,9 +2844,11 @@ final class CollectionAccessWeaver {
                     }
                 }
             }
+            boolean enclosedHelper = false;
             if (loopHookTarget != null
                     && ((owner.equals(owningClassInternalName) && waitingMethods.contains(name + descriptor))
                     || reachesWaitingMethod(owner, name + descriptor, typePool, assignable))) {
+                enclosedHelper = trackCall();
                 loopTracked = loopHookTarget;
                 loopTrackedAt = position;
                 position++;
@@ -2765,6 +2861,9 @@ final class CollectionAccessWeaver {
                 unresolvedCalls.add(name + descriptor);
             }
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+            if (enclosedHelper && loopHookTarget != null) {
+                enclosedCallReturned(loopHookTarget);
+            }
         }
 
         /**
@@ -3122,6 +3221,15 @@ final class CollectionAccessWeaver {
                 if (marks) {
                     super.visitMethodInsn(Opcodes.INVOKESTATIC, tracked.hookOwnerInternalName(),
                             tracked.loopBackEdgeHookName(), "()V", false);
+                    if (enclosedOut != null && visitedAt != null) {
+                        // Every tracked call between the loop's head and this jump is inside it.
+                        int head = visitedAt;
+                        for (int i = 0; i < trackedPositions.size(); i++) {
+                            if (trackedPositions.get(i) > head) {
+                                enclosedOut.add(i);
+                            }
+                        }
+                    }
                 }
             }
             if (isConditionalJump(opcode)) {
@@ -3225,9 +3333,9 @@ final class CollectionAccessWeaver {
         @Override
         public void visitEnd() {
             justSubstituted = null;
-            if (sawBackwardJump) {
+            if (sawBackwardJump && enclosedOut == null) {
                 // Only now is it known that this method has a loop at all, which is what makes an
-                // unresolved call worth remembering (#715).
+                // unresolved call worth remembering (#715). A dry replay hands nothing over.
                 for (String signature : unresolvedCalls) {
                     StaleCallerRetransformer.recordUnresolvedCall(owningClassInternalName, signature);
                 }

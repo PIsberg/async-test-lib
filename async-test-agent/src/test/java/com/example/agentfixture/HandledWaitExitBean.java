@@ -85,6 +85,30 @@ public class HandledWaitExitBean {
         }
     }
 
+    /**
+     * {@code while (!done) { monitor.wait(t); if (late) return; work(); }}: a goto after the body
+     * closes the loop, and the deadline's return leaves past it (#1555).
+     */
+    public void notifyThenDeadlineLoopWithMoreBody() throws InterruptedException {
+        synchronized (monitor) {
+            monitor.notifyAll();
+        }
+        long deadline = System.nanoTime() + 5_000_000L;
+        int polls = 0;
+        synchronized (monitor) {
+            while (!done) {
+                monitor.wait(2);
+                if (System.nanoTime() - deadline > 0) {
+                    return;
+                }
+                polls++;
+            }
+        }
+        if (polls < 0) {
+            throw new IllegalStateException("unreachable");
+        }
+    }
+
     private void signal() {
         lock.lock();
         try {

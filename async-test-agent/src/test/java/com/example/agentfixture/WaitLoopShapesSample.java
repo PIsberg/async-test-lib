@@ -45,6 +45,25 @@ public class WaitLoopShapesSample {
         }
     }
 
+    /**
+     * The deadline loop with more of the body after its test: a goto closes it, and the deadline's
+     * return leaves past that goto (#1555). One mark, and the wait confirms itself on return.
+     */
+    public void deadlineLoopWithMoreBody() throws InterruptedException {
+        synchronized (monitor) {
+            long deadline = System.nanoTime() + 20_000_000L;
+            int polls = 0;
+            while (!ready) {
+                monitor.wait(5);
+                if (System.nanoTime() - deadline > 0) {
+                    return;
+                }
+                polls++;
+            }
+            bail = polls > 0;
+        }
+    }
+
     /** The same poll written as do/while: waits before it reads the predicate. No mark. */
     public void doWhileLoop() throws InterruptedException {
         synchronized (monitor) {

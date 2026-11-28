@@ -17,6 +17,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **The corpus quiet-window gate leaves the JVM's finalizer and cleaner threads out (#1546).**
+  `Corpus Eval (Java 21)` went red on 2026-11-27 with 232 events in the window, every one from the
+  `Finalizer` thread: a finalizer ran woven code after the subjects ended, on the garbage
+  collector's schedule, and the gate blamed a subject for leaving something running.
+  `QuietWindowPublishers` now counts what `Finalizer`, `Reference Handler` and `Common-Cleaner`
+  published, recognised by name and by the JVM's own thread group so a subject's thread of the
+  same name still counts, and the gate leaves that out. `corpus.quiet_window` prints it as
+  `jvm_owned=`. `CorpusGatesTest` pins that the real `Finalizer` is recognised and a daemon
+  named "Finalizer" in `main`, or a leaked timer, is not.
+
+- **A 429 from Maven Central is retried six times, under the name each resolver reads (#1548).**
+  Four CI jobs failed on 2026-11-27 in their first minute resolving `cyclonedx-maven-plugin`
+  2.9.3: Central answered 429 Too Many Requests to the parallel matrix, and the restored cache
+  lacked the plugin. `.mvn/maven.config` now sets `retryHandler.count=6`, 105 s of backoff on a
+  429 or 503 instead of 30 s, as `aether.transport.http.*` for resolver 2 (Maven 3.10) and
+  `aether.connector.http.*` for resolver 1.9 (Maven 3.9). Measured against a local server that
+  always answers 429: Maven 3.10.1 made 4 attempts per resource with the old name alone and 7 with
+  the file in place. `MavenTransferRetryTest` pins both lines.
+
 - **The corpus quiet-window gate names the threads that published (#1480).** A trip used to name
   whichever thread was runnable outside platform code, and twice that was Surefire's command reader
   blocked in a native read of stdin, which is unwoven and publishes nothing. The window now counts
@@ -166,6 +185,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `InterruptedException` from the condition as "not yet true" with its interrupt status already
   cleared, so a worker the round cancelled polled on until the timeout. It now restores the status
   and fails at once.
+- **A wait loop that leaves after its deadline test, past the `goto` that closes it, is not a lost
+  signal (#1555).** `while (!done) { monitor.wait(t); if (late) return; work(); }` is marked as a
+  loop, but the wakeup that ends it leaves by the `return` and never reaches the back-edge call, so
+  that last wait was judged as an `if`: 20 HIGH findings in the new `HandledWaitExitWeavingTest`
+  body. The weaver now replays each waiting method once into nothing to learn which waits a marked
+  back-edge encloses, and puts `AgentMonitorHooks.loopWaitReturned()` right after each, which
+  records what the back-edge records. `MissedSignalBackEdgeWeavingTest` counts those calls per
+  shape: one in every marked loop, none in the do/while, continue, endless, break and `if` shapes.
+  The cost is a second replay of each waiting method when its class is woven.
 - **A timed `Object.wait` loop that returns at its deadline is not a lost signal (#1551).** javac
   compiles `while (!done) { monitor.wait(t); if (late) return; }` with the deadline test jumping
   straight back to the loop head, no `goto`, so the weaver never marked the loop and every wait in

@@ -477,7 +477,11 @@ the loop's back-edge: javac compiles that last `if` to a conditional jump straig
 and such a jump marks the loop when the loop's own exit test stands before the wait, which a
 `do`/`while` never has (#1551). The back-edge call goes in front of that jump, so it runs on the
 way out too. A deadline test followed by more of the body, `if (late()) return; work();`, leaves by
-the `return` past the `goto` that closes the loop, and still reads as an `if` (#1555). A notify that found no waiter counts against an
+the `return` past the `goto` that closes the loop, so a wait a marked loop encloses also confirms
+itself as it returns: a dry replay of the buffered method finds which waits a marked back-edge
+encloses, and the emitting replay puts a `loopWaitReturned()` call right after each (#1555). The
+back-edge marks themselves are unchanged, and a library without that hook is woven without the
+call. A notify that found no waiter counts against an
 agent-observed wait only in the round it was made in.
 
 A compiler that rotates loops emits `goto test; body; test: if (...) goto body`, so its `while`

@@ -70,6 +70,18 @@ three times by default: `DEFAULT_HTTP_RETRY_HANDLER_COUNT` is `3` in `maven-reso
 `retryHandler.requestSentEnabled`, which governs a request whose bytes already went out. Setting
 the count to 3 changes nothing; that flag is the fix.
 
+**A 429 from Central is retried six times, not three (#1548).** Maven Central answers a burst from a
+parallel matrix with 429 Too Many Requests, and a plugin the restored cache lacks then fails the job
+in its first minute: four jobs on 2026-11-27, `cyclonedx-maven-plugin` 2.9.3 each time. The
+resolver retries 429 and 503 with a backoff of 5 s times the attempt number, obeying a
+`Retry-After` header, so three retries wait 30 s in all and six wait 105 s. The count is set under
+both names: resolver 2, which Maven 3.10 ships, reads `aether.transport.http.retryHandler.count`
+and ignores `aether.connector.http.retryHandler.count`, the name resolver 1.9 (Maven 3.9) reads.
+That was measured, not read: against a local server answering 429, Maven 3.10.1 made 4 attempts
+with only the old name and 7 with the new one. The same measurement means the
+`aether.connector.http.retryHandler.requestSentEnabled` line below does nothing on Maven 3.10, and
+resolver 2 has no such setting to move it to.
+
 Both property families are set because Maven 3.9 resolves through
 `maven-resolver-transport-http`, which reads `aether.connector.http.*` and contains no reference
 to any `maven.wagon.*` key (`maven-core` 3.9.9 maps none across), while Maven 3.8 ships only the

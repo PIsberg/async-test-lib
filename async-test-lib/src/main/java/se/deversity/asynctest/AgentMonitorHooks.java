@@ -41,7 +41,7 @@ import se.deversity.vibetags.annotations.AIContract;
  *
  * @since 1.12.2
  */
-@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.MONITOR_ENTRIES, loopBackEdge by name with a ()V descriptor, and monitorFieldEntered by FieldAccessWeaver with an (Object, Object, String)V descriptor, so none can change independently of the weaver. monitorFieldEntered runs before a MONITORENTER and must not throw: a null monitor is left for the MONITORENTER to reject with its own NullPointerException. Every hook must perform the original call on the receiver and propagate what it throws unchanged: InterruptedException, and the IllegalMonitorStateException of a call made without the monitor, which is why nothing is recorded on a monitor unless Thread.holdsLock(receiver); a Condition cannot be asked about its lock, so its await is recorded before the call, and one made without the lock throws before it waits (#1255). Record the wait before wait() releases the monitor and the wakeup after it is reacquired, in a finally, so a notify is judged against the threads really waiting; record a notify before making it. The same goes for a controlled schedule's record of the hold: releasingForWait before wait(), reacquiredAfterWait in an outer finally, so a peer waiting to enter the monitor is not passed over while it is free (#1048). A wait or await that ends in InterruptedException is recorded as interrupted rather than as a wakeup, still from that finally, because it was cancelled and its loop is left without a back-edge (#1501). loopBackEdge takes nothing and returns nothing because the weaver inserts it in front of a jump whose operands are already on the stack; conditionAwaitResultTested is not an operation either: the weaver emits it in front of the IFNE that tests a timed Condition await's result, and it returns the boolean it took.")
+@AIContract(reason = "Called from bytecode the agent rewrites: method names and erased signatures here are matched by CollectionAccessWeaver.MONITOR_ENTRIES, loopBackEdge by name with a ()V descriptor, and monitorFieldEntered by FieldAccessWeaver with an (Object, Object, String)V descriptor, so none can change independently of the weaver. monitorFieldEntered runs before a MONITORENTER and must not throw: a null monitor is left for the MONITORENTER to reject with its own NullPointerException. Every hook must perform the original call on the receiver and propagate what it throws unchanged: InterruptedException, and the IllegalMonitorStateException of a call made without the monitor, which is why nothing is recorded on a monitor unless Thread.holdsLock(receiver); a Condition cannot be asked about its lock, so its await is recorded before the call, and one made without the lock throws before it waits (#1255). Record the wait before wait() releases the monitor and the wakeup after it is reacquired, in a finally, so a notify is judged against the threads really waiting; record a notify before making it. The same goes for a controlled schedule's record of the hold: releasingForWait before wait(), reacquiredAfterWait in an outer finally, so a peer waiting to enter the monitor is not passed over while it is free (#1048). A wait or await that ends in InterruptedException is recorded as interrupted rather than as a wakeup, still from that finally, because it was cancelled and its loop is left without a back-edge (#1501). loopBackEdge takes nothing and returns nothing because the weaver inserts it in front of a jump whose operands are already on the stack, and loopWaitReturned, which records the same thing, takes nothing for the same reason after a call a marked loop encloses (#1555); conditionAwaitResultTested is not an operation either: the weaver emits it in front of the IFNE that tests a timed Condition await's result, and it returns the boolean it took.")
 public final class AgentMonitorHooks {
 
     private AgentMonitorHooks() {
@@ -325,6 +325,19 @@ public final class AgentMonitorHooks {
             conditions.recordObservedSignal(receiver);
         }
         receiver.signalAll();
+    }
+
+    /**
+     * Emitted right after a woven wait, or a call into a waiting method, that a marked loop
+     * encloses, once it has returned (#1555). It records what {@link #loopBackEdge()} records: the
+     * weaver has already seen the back-edge that closes the loop, so a loop that leaves after
+     * waking by {@code return} or {@code break}, past that back-edge, still confirms the wait as
+     * its own. A separate name so a back-edge count counts back-edges.
+     *
+     * @since 1.14.5
+     */
+    public static void loopWaitReturned() {
+        loopBackEdge();
     }
 
     /** Emitted before a backward jump that encloses a woven wait: the loop's back-edge. */

@@ -246,6 +246,25 @@ class AgentMonitorHooksTest {
         }
     }
 
+    @Test
+    @DisplayName("the call after a wait a marked loop encloses confirms it as the back-edge would (#1555)")
+    void aReturnedEnclosedWaitIsConfirmedLikeABackEdge() throws InterruptedException {
+        AsyncTestContext context = new AsyncTestContext(
+                AsyncTestConfig.builder().detectMissedSignals(true).build());
+        AsyncTestContext.install(context);
+        try {
+            synchronized (monitor) {
+                AgentMonitorHooks.monitorNotifyAll(monitor);   // nobody waits: lost
+                AgentMonitorHooks.monitorWait(monitor, 1L);    // while (!done) { wait(1); if (late) return; ... }
+                AgentMonitorHooks.loopWaitReturned();          // what the weaver emits right after it
+            }
+            assertFalse(AsyncTestContext.missedSignalDetector().analyze().hasIssues(),
+                    "the loop encloses the wait, so leaving past its goto is no if");
+        } finally {
+            AsyncTestContext.uninstall();
+        }
+    }
+
     /** How the await after a lost signal ends. */
     private enum Exit { TIMEOUT_TESTED, TIMEOUT_IGNORED, INTERRUPTED }
 

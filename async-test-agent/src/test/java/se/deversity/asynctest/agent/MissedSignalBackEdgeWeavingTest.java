@@ -44,6 +44,9 @@ class MissedSignalBackEdgeWeavingTest {
 
     private static Map<String, Integer> marksByMethod;
 
+    /** How many wait-returned calls each method got, after the waits a marked loop encloses (#1555). */
+    private static Map<String, Integer> returnsByMethod;
+
     @BeforeAll
     static void weaveTheShapes() {
         byte[] woven = new ByteBuddy()
@@ -53,11 +56,13 @@ class MissedSignalBackEdgeWeavingTest {
                 .getBytes();
 
         Map<String, Integer> counts = new LinkedHashMap<>();
+        Map<String, Integer> returns = new LinkedHashMap<>();
         new ClassReader(woven).accept(new ClassVisitor(Opcodes.ASM9) {
             @Override
             public MethodVisitor visitMethod(int access, String name, String descriptor,
                                              String signature, String[] exceptions) {
                 counts.putIfAbsent(name, 0);
+                returns.putIfAbsent(name, 0);
                 return new MethodVisitor(Opcodes.ASM9) {
                     @Override
                     public void visitMethodInsn(int opcode, String owner, String method,
@@ -66,11 +71,16 @@ class MissedSignalBackEdgeWeavingTest {
                                 && "loopBackEdge".equals(method) && "()V".equals(desc)) {
                             counts.merge(name, 1, Integer::sum);
                         }
+                        if (opcode == Opcodes.INVOKESTATIC
+                                && "loopWaitReturned".equals(method) && "()V".equals(desc)) {
+                            returns.merge(name, 1, Integer::sum);
+                        }
                     }
                 };
             }
         }, ClassReader.SKIP_FRAMES);
         marksByMethod = counts;
+        returnsByMethod = returns;
     }
 
     @Test
@@ -122,5 +132,22 @@ class MissedSignalBackEdgeWeavingTest {
         assertEquals(0, marksByMethod.get("awaitOnce"),
                 "the helper holds the wait and no loop; the mark belongs to its caller. Marks "
                         + "were " + marksByMethod);
+    }
+
+    @Test
+    @DisplayName("a wait a marked loop encloses confirms itself on return, so an exit past the goto counts (#1555)")
+    void enclosedWaitsAreConfirmedOnReturn() {
+        assertEquals(1, returnsByMethod.get("deadlineLoopWithMoreBody"),
+                "while (!ready) { wait(t); if (late) return; work(); } leaves by the return past the "
+                        + "goto that closes the loop: the wait must confirm itself as it returns. "
+                        + "Returns were " + returnsByMethod);
+        assertEquals(1, returnsByMethod.get("whileLoop"), "every marked loop's wait gets one: " + returnsByMethod);
+        assertEquals(1, returnsByMethod.get("crossMethodLoop"),
+                "so does a call into a waiting helper a marked loop encloses: " + returnsByMethod);
+        for (String unmarked : new String[] {"doWhileLoop", "doWhileAlwaysWaits", "continueLoop",
+                "endlessWait", "breakThenDoWhile", "ifGuarded", "awaitOnce"}) {
+            assertEquals(0, returnsByMethod.get(unmarked),
+                    unmarked + " is not a marked loop, so its wait must not confirm itself: " + returnsByMethod);
+        }
     }
 }
