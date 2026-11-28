@@ -121,7 +121,6 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
-          cache: maven
 
       - name: Set up Java (retry after a transient resolver failure)
         if: steps.setup-java.outcome == 'failure'
@@ -129,7 +128,20 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
-          cache: maven
+
+      # Its own key, as consumer-fixture (#890) and junit-compat (#1405) have: setup-java's shared entry
+      # was saved by a light job (42 MB on 2026-11-24), so the plugins only this full build runs came
+      # from Central on every leg at once and Central answered 429 (#1570). The coverage leg runs
+      # JaCoCo and the others skip it, so it keeps an entry of its own. The library is never cached.
+      - name: Cache this job's Maven dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/se/deversity
+          key: maven-${{ runner.os }}-tests-${{ env.UPLOADS_COVERAGE == 'true' && 'coverage' || 'plain' }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-tests-
 
       - name: Run library tests and install artifact
         # 11 to 21 minutes on Ubuntu, up to 30 on Windows and macOS; a starved runner took 59 and
@@ -338,7 +350,6 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
-          cache: maven
 
       - name: Set up Java (retry after a transient resolver failure)
         if: steps.setup-java.outcome == 'failure'
@@ -346,7 +357,18 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: 'temurin'
-          cache: maven
+
+      # The entry a plain Test Suite leg saved after its full install, which runs first (needs: test), so
+      # this job's plugins are restored rather than fetched from Central (#1570).
+      - name: Cache this job's Maven dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/se/deversity
+          key: maven-${{ runner.os }}-tests-plain-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-tests-
 
       - name: Compile and build
         run: mvn clean package -DskipTests

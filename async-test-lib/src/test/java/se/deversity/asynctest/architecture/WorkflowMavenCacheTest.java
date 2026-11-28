@@ -104,6 +104,36 @@ class WorkflowMavenCacheTest {
                         + "fixtures; there are at least four. Fewer means the scan stopped matching.");
     }
 
+    /**
+     * The two full builds of tests.yml, whose plugins only a full lifecycle runs. On the shared
+     * setup-java entry, which a light job saved (42 MB on 2026-11-24, against 167 to 699 MB for the
+     * full builds keyed on their own), every leg fetched cyclonedx-maven-plugin from Central at once,
+     * and Central's 429 failed five legs in two days, through #1558's six retries (#1570).
+     */
+    @Test
+    @DisplayName("#1570: the Test Suite and Build Maven Project jobs restore a Maven cache of their own")
+    void theFullBuildsOfTheTestsWorkflowHaveTheirOwnCache() {
+        Path workflow = repoRoot().resolve(".github/workflows/tests.yml");
+        List<String> missing = new ArrayList<>();
+        int found = 0;
+        for (List<String> job : jobsOf(readLines(workflow))) {
+            String key = job.get(0).strip();
+            if (!key.equals("test:") && !key.equals("build:")) {
+                continue;
+            }
+            found++;
+            String body = String.join("\n", job);
+            if (body.contains("cache: maven") || !body.contains("key: maven-${{ runner.os }}-tests-")) {
+                missing.add(key);
+            }
+        }
+        assertTrue(found == 2, "found " + found + " of the test and build jobs in tests.yml; the scan stopped matching");
+        assertTrue(missing.isEmpty(),
+                "These tests.yml jobs restore setup-java's shared cache: maven entry instead of a "
+                        + "maven-<os>-tests- cache of their own, so their plugins come from Central on "
+                        + "every leg and a 429 fails the job (#1570): " + missing);
+    }
+
     @Test
     @DisplayName("#890: a cached Maven repository never carries this library's own artifacts")
     void aCachedRepositoryExcludesTheLibrary() {

@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **The Test Suite and Build Maven Project jobs cache their Maven dependencies under a key of their
+  own (#1570).** They restored setup-java's shared `cache: maven` entry, one per OS and pom hash,
+  saved once by whichever job missed first: on 2026-11-24 a light job saved it, 42 MB against 167 to
+  699 MB for the full builds that already have keys of their own. The plugins only a full build runs
+  were in no restored entry, so every leg fetched `cyclonedx-maven-plugin` from Central at once and
+  a 429 failed five legs in two days, through #1558's six retries. They now restore
+  `maven-<os>-tests-`, saved by a Test Suite leg after its full install, with the coverage leg's
+  JaCoCo kept in an entry of its own, as consumer-fixture (#890) and junit-compat (#1405) do.
+  `WorkflowMavenCacheTest` fails if either job goes back to the shared entry.
+
 - **`LockLeakDetector` times a thread's holds again after a release it never saw (#1511).** It
   times a hold from the outermost acquire to the release that brings the thread's depth back to
   zero (#1505), so one acquire whose release was not recorded left the depth at 1 for good and none
