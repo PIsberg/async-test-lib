@@ -165,9 +165,40 @@ final class AgentHandOffHooks {
             return this;
         }
 
-        /** Tells the controlled schedule this task will never run: its executor rejected it. */
+        /** Not started yet: neither {@link #starting} nor {@link #abandoned} has claimed it. */
+        private static final int NEW = 0;
+        /** Started: it joined the controlled round where it runs. */
+        private static final int STARTED = 1;
+        /** Abandoned: the schedule was told it will never run. */
+        private static final int ABANDONED = 2;
+
+        private static final java.util.concurrent.atomic.AtomicIntegerFieldUpdater<HandedTask> PHASE =
+                java.util.concurrent.atomic.AtomicIntegerFieldUpdater.newUpdater(HandedTask.class, "phase");
+
+        /**
+         * {@link #NEW}, {@link #STARTED} or {@link #ABANDONED}, switched once by compare-and-set, so a
+         * task is either started in the schedule or abandoned to it, never both (#1514).
+         */
+        @SuppressWarnings("PMD.UnusedPrivateField") // read and written only through PHASE
+        private volatile int phase;
+
+        /**
+         * Tells the controlled schedule this task will never run, unless it has started: its executor
+         * rejected it, or its future was done before it started (#1514), cancelled while queued or
+         * completed by hand, so the executor skips it. A wait for it then has nothing to wait for.
+         */
         void abandoned() {
-            ControlledSchedule.taskAbandoned(adoption);
+            if (PHASE.compareAndSet(this, NEW, ABANDONED)) {
+                ControlledSchedule.taskAbandoned(adoption);
+            }
+        }
+
+        /**
+         * {@return what {@link ControlledSchedule#taskStarting} returned, or {@code null} for a task
+         * already abandoned to the schedule} Such a task runs outside the round: its slot is done.
+         */
+        private @Nullable Object starting() {
+            return PHASE.compareAndSet(this, NEW, STARTED) ? ControlledSchedule.taskStarting(adoption) : null;
         }
 
         /**
@@ -217,7 +248,7 @@ final class AgentHandOffHooks {
 
         @Override
         public void run() {
-            Object scheduled = ControlledSchedule.taskStarting(adoption);
+            Object scheduled = starting();
             HappensBefore.receive(submitted);
             AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
@@ -248,7 +279,7 @@ final class AgentHandOffHooks {
 
         @Override
         public @Nullable Object call() throws Exception {
-            Object scheduled = ControlledSchedule.taskStarting(adoption);
+            Object scheduled = starting();
             HappensBefore.receive(submitted);
             AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);
@@ -275,7 +306,7 @@ final class AgentHandOffHooks {
 
         @Override
         public @Nullable Object get() {
-            Object scheduled = ControlledSchedule.taskStarting(adoption);
+            Object scheduled = starting();
             HappensBefore.receive(submitted);
             AsyncTestContext lentBefore = AsyncTestContext.lend(submittedIn);
             TelemetryRegistry.taskStarted(token);

@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **A `get` or `join` on a future that is already done no longer waits for its task under a
+  controlled schedule (#1514).** The task of a future cancelled while queued, or completed by hand,
+  is skipped by its executor, so the woven wait for it lasted the 500 ms stall bound and counted an
+  escape, which ends the seed's exact replay. A done future's wait is now a plain point, and its
+  task, if it has not started, is dropped from the round as a rejected one is. Making it a plain
+  point alone was not enough: the seed then handed the round to the task's slot, which waited the
+  same bound. `HandedTask` claims its start or its abandonment by compare-and-set, so a task the
+  executor runs after all runs outside the round instead of joining a slot that is done.
+  `DoneFutureWaitTest` counts the escapes: 1 before, 0 after, for a cancelled `submit` and a
+  hand-completed `supplyAsync`.
 - **The Test Suite job stops a hung test after 75 minutes, not 360 (#1516).** Neither the job nor
   its test step set `timeout-minutes`, so a hang would hold a runner for GitHub's default six hours
   before its log could be read. The step now stops at 75 minutes and the job at 90: the step's

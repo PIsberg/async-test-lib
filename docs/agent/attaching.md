@@ -190,6 +190,10 @@ thread carries nothing into its next task, and a woven `get` or `join` on its fu
 the schedule ([#1049](https://github.com/PIsberg/async-test-lib/issues/1049)). A task the executor
 rejects is dropped from the round, one it has not started within the stall bound escapes, and a task
 run inline on the submitting worker, under a caller-runs policy, is part of that worker's turn. A
+`get` or `join` on a future that is done already, cancelled while its task was queued or completed
+by hand, is a plain point: the executor will skip that task, so it is dropped from the round as a
+rejected one is, instead of being waited for until the stall bound counts an escape
+([#1514](https://github.com/PIsberg/async-test-lib/issues/1514)). A
 task given to an executor outside `java.util.concurrent` runs outside the schedule.
 
 The call carries the receiver, so the analysis can tell six threads racing on one object from six
