@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Maintenance
 
+- **The two other ways an enumerated scenario's run fails have tests of their own (#1512).**
+  #1508 made a scenario whose run throws fail as "failed to run", pinned for an operation that
+  throws. A licence refusal and a timed-out round reached the same catch only by construction.
+  `LinearizabilityScenarioLicenceDenialTest` (`@E2E`, it clears `license.mock.mode` for one
+  enumeration) and `LinearizabilityScenarioTimeoutTest` now pin both; each fails if a run that
+  throws passes again. The probe's ten-second budget is a package-private field per history, so the
+  timeout test runs in about a second.
+
 - **A `get` or `join` on a future that is already done no longer waits for its task under a
   controlled schedule (#1514).** The task of a future cancelled while queued, or completed by hand,
   is skipped by its executor, so the woven wait for it lasted the 500 ms stall bound and counted an
