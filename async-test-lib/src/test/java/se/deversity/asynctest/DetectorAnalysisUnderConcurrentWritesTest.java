@@ -72,6 +72,14 @@ class DetectorAnalysisUnderConcurrentWritesTest {
     /** A cap on calls per writer, so append-only state stays small enough to analyse quickly. */
     private static final int MAX_CALLS = 3_000;
 
+    /**
+     * How many times each writer tries every recording method, however long that takes (#1533).
+     * Reachability is then a count, not a race with the clock: on a loaded machine the window
+     * used to pass before the first call was accepted, and the floor failed with 84, then 24,
+     * detectors reached although nothing was wrong with them.
+     */
+    private static final int MIN_TRIES_PER_RECORDER = 4;
+
     /** Method name prefixes that read, configure or tear down rather than record. */
     private static final List<String> NOT_RECORDING = List.of(
             "analyze", "analyse", "validate", "reset", "clear", "enable", "disable", "get", "is",
@@ -364,11 +372,14 @@ class DetectorAnalysisUnderConcurrentWritesTest {
         AtomicBoolean accepted = new AtomicBoolean();
         AtomicReference<Throwable> analysisFailure = new AtomicReference<>();
         CountDownLatch started = new CountDownLatch(3);
-        long deadline = System.nanoTime() + WINDOW.toNanos();
+        int minCalls = Math.min(MAX_CALLS, recorders.size() * MIN_TRIES_PER_RECORDER);
 
         Runnable writer = () -> {
             await(started);
-            for (int i = 0; i < MAX_CALLS && System.nanoTime() < deadline; i++) {
+            // The window opens once all three threads run, not before they are even started, and
+            // every recorder gets its tries past it: only the concurrent window is timed (#1533).
+            long deadline = System.nanoTime() + WINDOW.toNanos();
+            for (int i = 0; i < MAX_CALLS && (i < minCalls || System.nanoTime() < deadline); i++) {
                 Method m = recorders.get(i % recorders.size());
                 Object[] args = arguments(m, i, shared);
                 if (args == null) {
