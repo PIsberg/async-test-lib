@@ -418,6 +418,13 @@ public final class OperationHistory<S> {
     }
 
     /**
+     * The budget of one probe run, in milliseconds. Package-private and per history, so a test can
+     * time a probe out in milliseconds rather than ten seconds without touching another history
+     * (#1512).
+     */
+    long probeTimeoutMs = 10_000;
+
+    /**
      * {@return a probe history that recorded the one round of a run performing {@code replay},
      * worker slot by slot, under {@code seed} and a controlled schedule} It records nothing into
      * this history.
@@ -428,7 +435,7 @@ public final class OperationHistory<S> {
         probe.declared.addAll(declared);
         probe.script = replay;
         AsyncTestRunner.run(AsyncTestConfig.builder().threads(Math.max(1, replay.size())).invocations(1)
-                .replaySeed(seed).controlledSchedule(true).timeoutMs(10_000)
+                .replaySeed(seed).controlledSchedule(true).timeoutMs(probeTimeoutMs)
                 .licenseMockMode(licenseMockMode).build(), () -> probe.generate(0));
         return probe;
     }
