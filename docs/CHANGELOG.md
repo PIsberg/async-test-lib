@@ -177,6 +177,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The agent weaves kotlinc's generic value classes under `-javaagent` (#1467).** `premain` let
+  Byte Buddy rebase each woven class, which describes every method generically before any visitor
+  runs. kotlinc gives a generic value class static `-impl` methods whose signatures name the
+  class's own type variable, which Byte Buddy cannot resolve from a static method, so the class
+  failed with `Cannot resolve S` and was left unwoven: kotlinx.coroutines'
+  `internal.SegmentOrClosed` under `fields=true` with kotlinx in `includes=`. Every weaver is
+  a visitor and none intercepts or adds a method, so `premain` now decorates instead
+  (`TypeStrategy.Default.DECORATE`); a dynamic attach already redefined and was not affected.
+  `PremainValueClassWeavingTest` loads a class of that shape through `premain` and failed with
+  the same message before the change; `AgentmainValueClassWeavingTest` pins the dynamic attach.
+  The Kotlin consumer fixture's `coroutine-fields` run now prints no `Failed to instrument`.
+
 - **Coroutine steps are marked where kotlin stdlib is a named module (#1468).** With
   `fields=true` the agent routes `BaseContinuationImpl.resumeWith`'s `invokeSuspend` call
   through a hook that names the running coroutine, so `AtomicityValidator` can report a lost

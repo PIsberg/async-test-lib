@@ -102,7 +102,14 @@ The three ways below are the explicit forms.
 
 Routes through `AsyncTestAgent.premain(String, Instrumentation)` before `main()` runs. Every
 class loaded afterwards is woven at load time. `premain` never retransforms — it does not
-need to, because nothing has loaded yet.
+need to, because nothing has loaded yet. It decorates each class rather than rebasing it: every
+weaver is an ASM visitor and none intercepts or adds a method, and a rebase first describes every
+method generically, which fails on the static `-impl` methods kotlinc gives a generic value class
+(their signatures name the class's type variable). kotlinx.coroutines'
+`internal.SegmentOrClosed` was left unwoven that way, with
+`Failed to instrument ... Cannot resolve S`, before 1.14.5
+([#1467](https://github.com/PIsberg/async-test-lib/issues/1467)). A dynamic attach redefines
+classes and never had the failure.
 
 ### 3.2 Launch flag with arguments
 
