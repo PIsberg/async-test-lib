@@ -167,6 +167,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`LockOrderValidator` treats a writer that downgraded to its read lock as a reader (#1510).**
+  Each hold carries a mode since #1496, and a re-entered hold that was ever exclusive stayed
+  exclusive. A downgrade, write lock then read lock then the write lock released, left the thread
+  holding only the read lock under an exclusive mark, so another reader's inverted nesting under the
+  same lock was kept apart and missed. Holds now count their exclusive acquisitions, a release can
+  say which side it gave back (`recordLockRelease(lock, shared)`, new), and the agent's unlock hook
+  passes the view's mode. The one-argument release keeps a hold exclusive while it can be.
+  `LockOrderValidatorTest` and `LockDowngradeHookTest` were red with the release mode ignored;
+  a writer that also reads and releases the read side is still a writer.
+
 - **A timeout's thread dump no longer claims a deadlock it did not find (#1491).** The dump printed
   `CRITICAL: Application threads are deadlocked` before asking the JVM, so every timed-out run
   opened its dump that way, a slow but correct body included, and contradicted both the run's

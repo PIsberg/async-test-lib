@@ -1415,7 +1415,7 @@ text { font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe
   <text x="6910.0" y="7750.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">sequence(): LockSequence</text>
   <text x="6910.0" y="7765.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordLockAcquisition(Obje…</text>
   <text x="6910.0" y="7780.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">recordLockAcquisition(Obje…</text>
-  <text x="6910.0" y="7795.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+15 more)</text>
+  <text x="6910.0" y="7795.8" font-family="sans-serif" font-size="10" fill="#374151" dominant-baseline="central">…(+16 more)</text>
 </g>
 <g id="SynchronizerMonitor">
   <title>SynchronizerMonitor [CLASS]</title>

@@ -151,6 +151,12 @@ public class LockOrderValidator {
         private boolean[] confirm = new boolean[8];
         /** Whether the hold is shared, a read lock, which other threads' shared holds overlap (#1496). */
         private boolean[] shared = new boolean[8];
+        /**
+         * How many of a hold's counted acquisitions were exclusive: a hold is shared exactly when
+         * none is, so a writer that downgrades to its read lock is a reader again once the write
+         * side is released (#1510).
+         */
+        private int[] exclusiveCounts = new int[8];
         private int size;
         private int confirmed;
         /**
@@ -220,7 +226,10 @@ public class LockOrderValidator {
                 // also reads keeps its hold exclusive.
                 holdCounts[index]++;
                 markConfirm(index, confirmHold);
-                shared[index] &= sharedHold;
+                if (!sharedHold) {
+                    exclusiveCounts[index]++;
+                }
+                shared[index] = exclusiveCounts[index] == 0;
                 return;
             }
             IdentityKey key = null;
@@ -311,12 +320,14 @@ public class LockOrderValidator {
                 holdCounts = java.util.Arrays.copyOf(holdCounts, grown);
                 confirm = java.util.Arrays.copyOf(confirm, grown);
                 shared = java.util.Arrays.copyOf(shared, grown);
+                exclusiveCounts = java.util.Arrays.copyOf(exclusiveCounts, grown);
             }
             heldLocks[size] = lock;
             heldKeys[size] = key;
             holdCounts[size] = 1;
             confirm[size] = false;
             shared[size] = sharedHold;
+            exclusiveCounts[size] = sharedHold ? 0 : 1;
             size++;
             markConfirm(size - 1, confirmHold);
         }
@@ -336,7 +347,29 @@ public class LockOrderValidator {
             holdCounts[index]--;
             if (holdCounts[index] == 0) {
                 removeAt(index);
+                return;
             }
+            // Which side went is not known: the hold stays exclusive while it can be (#1510).
+            exclusiveCounts[index] = Math.min(exclusiveCounts[index], holdCounts[index]);
+            shared[index] = exclusiveCounts[index] == 0;
+        }
+
+        /** One release of {@code lock}, of its shared side or its exclusive one (#1510). */
+        void release(Object lock, boolean sharedRelease) {
+            int index = indexOf(lock);
+            if (index < 0) {
+                return;
+            }
+            holdCounts[index]--;
+            if (holdCounts[index] == 0) {
+                removeAt(index);
+                return;
+            }
+            if (!sharedRelease && exclusiveCounts[index] > 0) {
+                exclusiveCounts[index]--;
+            }
+            exclusiveCounts[index] = Math.min(exclusiveCounts[index], holdCounts[index]);
+            shared[index] = exclusiveCounts[index] == 0;
         }
 
         int releaseAll(Object lock) {
@@ -366,11 +399,13 @@ public class LockOrderValidator {
             System.arraycopy(holdCounts, index + 1, holdCounts, index, tail);
             System.arraycopy(confirm, index + 1, confirm, index, tail);
             System.arraycopy(shared, index + 1, shared, index, tail);
+            System.arraycopy(exclusiveCounts, index + 1, exclusiveCounts, index, tail);
             size--;
             heldLocks[size] = null;
             heldKeys[size] = null;
             confirm[size] = false;
             shared[size] = false;
+            exclusiveCounts[size] = 0;
         }
     }
 
@@ -491,6 +526,28 @@ public class LockOrderValidator {
         if (sequence != null) {
             synchronized (sequence) {
                 sequence.release(lock);
+            }
+        }
+    }
+
+    /**
+     * Record a lock release, saying which side was released (#1510).
+     *
+     * <p>A {@code ReentrantReadWriteLock}'s write lock released while its read lock is still held is
+     * a downgrade: the thread holds only the read lock from then on, which another reader holds at
+     * once. {@link #recordLockRelease(Object)} cannot tell, so it keeps such a hold exclusive, which
+     * can only miss an inversion between readers; this form makes the hold shared again.
+     *
+     * @param lock   the lock being recorded, tracked by identity rather than equality
+     * @param shared whether the released side was the shared one, a read lock
+     * @since 1.14.5
+     */
+    public void recordLockRelease(Object lock, boolean shared) {
+        if (!enabled || lock == null) return;
+        LockSequence sequence = existingSequence();
+        if (sequence != null) {
+            synchronized (sequence) {
+                sequence.release(lock, shared);
             }
         }
     }
