@@ -590,6 +590,8 @@ public class AtomicityValidator implements RoundScoped {
      */
     private static final class CoroutineField {
         long version;
+        /** Writes made without holding the field owner's monitor (#1574). */
+        long unlockedWrites;
         /** Set once this field's lost update has been reported, so it is reported once. */
         boolean reported;
         final Map<Object, long[]> seen = new java.util.WeakHashMap<>();
@@ -2438,6 +2440,8 @@ public class AtomicityValidator implements RoundScoped {
      * other writer out, and nothing is reported. A read and a write in the same step are left to
      * the thread-based rules, since no other coroutine can run on the thread in between.
      *
+     * <p>Made without saying whether the field owner's monitor was held, so as though it was not.
+     *
      * @param field     what identifies this field of this object, compared by identity and held
      *                  weakly
      * @param fieldName the field's qualified name, for the report
@@ -2449,6 +2453,34 @@ public class AtomicityValidator implements RoundScoped {
     @API(status = Status.INTERNAL, since = "1.14.5")
     public void recordCoroutineAccess(Object field, String fieldName, Object coroutine, long step,
                                       boolean isWrite) {
+        recordCoroutineAccess(field, fieldName, coroutine, step, isWrite, false);
+    }
+
+    /**
+     * Records a field access made inside a coroutine step, as {@link #recordCoroutineAccess(Object,
+     * String, Object, long, boolean)} does, saying whether the coroutine's thread held the monitor of
+     * the object the field belongs to (the declaring class for a static field).
+     *
+     * <p>A lost update whose stale read, final write and every write between them by another
+     * coroutine all held that monitor is excused (#1574), as the thread-based rules excuse a field
+     * whose conflicting accesses all hold one lock: like them, it judges each pair, not the compound
+     * operation. That is kotlinx's own {@code EventLoopImplBase.DelayedTaskQueue.timeNow}, read and
+     * stored only inside {@code synchronized} on the queue, where a later step's first access stores
+     * a fresh clock value. A read-modify-write split by a suspension with its two halves locked
+     * separately is excused with it, which is the trade the thread-based rules already make.
+     *
+     * @param field       what identifies this field of this object, compared by identity and held
+     *                    weakly
+     * @param fieldName   the field's qualified name, for the report
+     * @param coroutine   the coroutine making the access, compared by identity and held weakly
+     * @param step        the coroutine step the access is made in, a new value after each resumption
+     * @param isWrite     whether the access writes the field
+     * @param ownerLocked whether the thread held the field owner's monitor while making it
+     * @since 1.14.5
+     */
+    @API(status = Status.INTERNAL, since = "1.14.5")
+    public void recordCoroutineAccess(Object field, String fieldName, Object coroutine, long step,
+                                      boolean isWrite, boolean ownerLocked) {
         if (!enabled) {
             return;
         }
@@ -2457,10 +2489,13 @@ public class AtomicityValidator implements RoundScoped {
             state = coroutineFields.computeIfAbsent(field, ignored -> new CoroutineField());
         }
         synchronized (state) {
-            // {write count seen, step seen in}; -1 until this coroutine first touches the field.
-            long[] seen = state.seen.computeIfAbsent(coroutine, ignored -> new long[] {-1L, -1L});
+            // {write count seen, step seen in, 1 when seen under the owner's monitor, unlocked
+            // writes counted then}; -1 until this coroutine first touches the field.
+            long[] seen = state.seen.computeIfAbsent(coroutine, ignored -> new long[] {-1L, -1L, 0L, 0L});
             if (isWrite) {
-                if (seen[0] >= 0L && seen[1] != step && seen[0] != state.version && !state.reported) {
+                boolean allLocked = ownerLocked && seen[2] == 1L && seen[3] == state.unlockedWrites;
+                if (seen[0] >= 0L && seen[1] != step && seen[0] != state.version && !state.reported
+                        && !allLocked) {
                     state.reported = true;
                     atomicityViolations.add(String.format(
                             "%s: lost update across a suspension: a coroutine read it, suspended, and"
@@ -2469,9 +2504,14 @@ public class AtomicityValidator implements RoundScoped {
                             fieldName));
                 }
                 state.version++;
+                if (!ownerLocked) {
+                    state.unlockedWrites++;
+                }
             }
             seen[0] = state.version;
             seen[1] = step;
+            seen[2] = ownerLocked ? 1L : 0L;
+            seen[3] = state.unlockedWrites;
         }
     }
 

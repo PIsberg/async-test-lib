@@ -177,6 +177,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The coroutine lost-update rule no longer reports kotlinx's own event-loop clock (#1574).**
+  With `fields=true` and kotlinx in `includes=`, two coroutines that only `delay` drew a
+  PROMPT lost update on `EventLoopImplBase$DelayedTaskQueue.timeNow`: kotlinx reads and stores
+  it only inside `synchronized` on the queue, and a later step's first access stores a fresh
+  clock value. The thread-based rules excuse a field whose conflicting accesses all hold one lock,
+  and the coroutine rule (#1007) now does the same: a read, a later write and every other
+  coroutine's write between them that all held the field owner's monitor, sampled with
+  `Thread.holdsLock` on the coroutine's thread, are not reported. Like the thread-based excuse it
+  judges each pair, so a read-modify-write split by a suspension with both halves locked
+  separately is excused too. `AtomicityValidatorCoroutineTest` pins the excuse and its two
+  twins (an unlocked read, an unlocked foreign write); the Kotlin fixture's new
+  `twoCoroutinesOnlyDelay` drew two `timeNow` findings before the change and none after, and
+  `LostBox.n` is still reported.
+
 - **The agent weaves kotlinc's generic value classes under `-javaagent` (#1467).** `premain` let
   Byte Buddy rebase each woven class, which describes every method generically before any visitor
   runs. kotlinc gives a generic value class static `-impl` methods whose signatures name the
