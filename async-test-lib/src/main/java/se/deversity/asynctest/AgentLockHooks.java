@@ -293,10 +293,10 @@ public final class AgentLockHooks {
         Object owner = view == null ? null : view.owner();
         if (view == null || owner == null) {
             HeldLocks.released(lock);
-            deliverReleased(lock, lock);
+            deliverReleased(lock, lock, false);
         } else {
             HeldLocks.released(owner, view.shared());
-            deliverReleased(owner, lock);
+            deliverReleased(owner, lock, view.shared());
         }
     }
 
@@ -354,11 +354,13 @@ public final class AgentLockHooks {
      *
      * @param identity the lockset identity, the owner for a view
      * @param lock     the lock the call site actually named
+     * @param shared   whether the view released is a read lock, so a writer that downgrades to its
+     *                 read lock is a reader again in {@code LockOrderValidator} (#1510)
      */
-    private static void deliverReleased(Object identity, Lock lock) {
+    private static void deliverReleased(Object identity, Lock lock, boolean shared) {
         LockOrderValidator order = AsyncTestContext.currentLockOrderValidator();
         if (order != null) {
-            order.recordLockRelease(identity);
+            order.recordLockRelease(identity, shared);
         }
         LockLeakDetector leak = AsyncTestContext.currentLockLeakDetector();
         if (leak != null) {

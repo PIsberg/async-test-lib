@@ -659,6 +659,48 @@ class LockOrderValidatorTest {
                 + report);
     }
 
+    @Test
+    void aWriterThatDowngradedToReadingIsAReaderAgain() throws InterruptedException {
+        // Write lock, then read lock, then the write lock released: the thread holds only the read
+        // lock, which another reader holds at once, so the two inverted nestings can deadlock. The
+        // hold stayed exclusive after the downgrade, which kept the inversion apart (#1510).
+        LockOrderValidator validator = new LockOrderValidator();
+        ReentrantReadWriteLock readWrite = new ReentrantReadWriteLock();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> {
+            validator.recordLockAcquisition(readWrite, true, false); // writeLock()
+            validator.recordLockAcquisition(readWrite, true, true);  // readLock() while writing
+            validator.recordLockRelease(readWrite, false);           // writeLock().unlock(): downgraded
+            nest(validator, a, b);
+            validator.recordLockRelease(readWrite, true);
+        });
+        onNewThread(() -> underReadWrite(validator, readWrite, true, b, a));
+
+        LockOrderValidator.LockOrderReport report = validator.validateLockOrder();
+        assertEquals(1, report.inconsistentOrderings.size(),
+                "after the downgrade both threads read, so their nestings overlap: " + report);
+    }
+
+    @Test
+    void aWriterThatAlsoReadsIsStillAWriter() throws InterruptedException {
+        // The twin: the read lock released first leaves the write lock, which keeps the reader out.
+        LockOrderValidator validator = new LockOrderValidator();
+        ReentrantReadWriteLock readWrite = new ReentrantReadWriteLock();
+        Object a = new Object();
+        Object b = new Object();
+        onNewThread(() -> {
+            validator.recordLockAcquisition(readWrite, true, false);
+            validator.recordLockAcquisition(readWrite, true, true);
+            validator.recordLockRelease(readWrite, true);            // readLock().unlock(): still writing
+            nest(validator, a, b);
+            validator.recordLockRelease(readWrite, false);
+        });
+        onNewThread(() -> underReadWrite(validator, readWrite, true, b, a));
+
+        assertFalse(validator.validateLockOrder().hasIssues(), "a writer excludes the reader");
+    }
+
     /** Nests {@code locks} under {@code readWrite}, held for reading or for writing. */
     private static void underReadWrite(LockOrderValidator validator, ReentrantReadWriteLock readWrite,
                                        boolean reading, Object... locks) {
